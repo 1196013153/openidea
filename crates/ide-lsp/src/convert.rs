@@ -760,8 +760,7 @@ pub fn inlay_hint(conv: &Conv, path: &Path, h: lsp::InlayHint) -> InlayHint {
 pub fn decode_semantic_tokens(data: &[u32], enc: Encoding, text: Option<&DocText>) -> Vec<u32> {
     let mut out = Vec::with_capacity(data.len());
     let (mut line, mut start) = (0u32, 0u32);
-    for chunk in data.chunks_exact(5) {
-        let (dl, ds, len, ty, mods) = (chunk[0], chunk[1], chunk[2], chunk[3], chunk[4]);
+    for &[dl, ds, len, ty, mods] in data.as_chunks::<5>().0 {
         if dl == 0 {
             start = start.saturating_add(ds);
         } else {

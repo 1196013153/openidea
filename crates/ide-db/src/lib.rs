@@ -398,7 +398,7 @@ impl DbManager {
             Err(OpenError::Other(e)) => Err(e),
             Err(OpenError::UnknownHostKey(k)) => {
                 let message = format!("Unknown SSH host key for {}:{} ({})", k.host, k.port, k.fingerprint());
-                self.unknown_host_keys.lock().insert(source.id.clone(), k);
+                self.unknown_host_keys.lock().insert(source.id.clone(), *k);
                 Err(IdeError::new(ErrorKind::Protocol, message))
             }
         }

@@ -209,10 +209,9 @@ fn kotlin_location(s: &str, severity: Severity) -> Option<RawMessage> {
 fn kotlin_line(line: &str) -> Option<RawMessage> {
     let (severity, rest) = if let Some(r) = line.strip_prefix("e: ") {
         (Severity::Error, r)
-    } else if let Some(r) = line.strip_prefix("w: ") {
-        (Severity::Warning, r)
     } else {
-        return None;
+        let r = line.strip_prefix("w: ")?;
+        (Severity::Warning, r)
     };
     kotlin_location(rest, severity)
 }
@@ -226,10 +225,9 @@ fn javac_header(line: &str) -> Option<RawMessage> {
     let rest = rest.trim_start_matches(':').trim_start();
     let (severity, msg) = if let Some(m) = rest.strip_prefix("error:") {
         (Severity::Error, m)
-    } else if let Some(m) = rest.strip_prefix("warning:") {
-        (Severity::Warning, m)
     } else {
-        return None;
+        let m = rest.strip_prefix("warning:")?;
+        (Severity::Warning, m)
     };
     Some(RawMessage::new(severity, msg.trim(), ColUnit::Char).at(path, ln, col))
 }
@@ -238,10 +236,9 @@ fn javac_header(line: &str) -> Option<RawMessage> {
 fn maven_line(line: &str) -> Option<RawMessage> {
     let (severity, rest) = if let Some(r) = line.strip_prefix("[ERROR] ") {
         (Severity::Error, r)
-    } else if let Some(r) = line.strip_prefix("[WARNING] ") {
-        (Severity::Warning, r)
     } else {
-        return None;
+        let r = line.strip_prefix("[WARNING] ")?;
+        (Severity::Warning, r)
     };
     let rest = rest.trim_start();
     if let Some((path, pos)) = rest.split_once(":[")
@@ -276,10 +273,9 @@ fn tsc_line(line: &str) -> Option<RawMessage> {
     let rest = rest.trim_start();
     let (severity, rest) = if let Some(r) = rest.strip_prefix("error") {
         (Severity::Error, r)
-    } else if let Some(r) = rest.strip_prefix("warning") {
-        (Severity::Warning, r)
     } else {
-        return None;
+        let r = rest.strip_prefix("warning")?;
+        (Severity::Warning, r)
     };
     let (code, msg) = match rest.trim_start().split_once(':') {
         Some((code, msg)) if code.starts_with("TS") => (Some(code.to_owned()), msg.trim()),

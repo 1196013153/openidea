@@ -44,7 +44,7 @@ impl UnknownHostKey {
 
 #[derive(Debug)]
 pub enum OpenError {
-    UnknownHostKey(UnknownHostKey),
+    UnknownHostKey(Box<UnknownHostKey>),
     Other(IdeError),
 }
 
@@ -319,7 +319,7 @@ where
     };
     result.map_err(|e| match issue.lock().take() {
         Some(HostKeyIssue::Unknown(key)) => {
-            OpenError::UnknownHostKey(UnknownHostKey { host: hop.host.clone(), port: hop.port, key })
+            OpenError::UnknownHostKey(Box::new(UnknownHostKey { host: hop.host.clone(), port: hop.port, key }))
         }
         Some(HostKeyIssue::Changed(line)) => OpenError::Other(IdeError::new(
             ErrorKind::PermissionDenied,
