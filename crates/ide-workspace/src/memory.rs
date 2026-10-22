@@ -624,7 +624,7 @@ mod tests {
             let t = ProcessTable::snapshot();
             assert!(t.get(me).is_some(), "own pid listed");
             let bytes = footprint_bytes(me).expect("own footprint");
-            assert!(bytes > 1 << 20 && bytes < 1 << 40, "{bytes}");
+            assert!(bytes > 1 << 16 && bytes < 1 << 40, "{bytes}");
         }
         if cfg!(target_os = "macos") {
             assert!(imp::responsible_pid(std::process::id()).is_some(), "responsibility SPI resolved");

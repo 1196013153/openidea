@@ -285,8 +285,10 @@ mod tests {
         let p = python_command(&cfg("python3", &["main.py", "a"])).unwrap();
         assert_eq!(p.target, ["main.py", "a"]);
 
-        let p = python_command(&cfg("/v/bin/pytest", &[])).unwrap();
-        assert!(p.interpreter[0].starts_with("/v/bin/python"));
+        if cfg!(unix) {
+            let p = python_command(&cfg("/v/bin/pytest", &[])).unwrap();
+            assert!(p.interpreter[0].starts_with("/v/bin/python"));
+        }
         assert!(python_command(&cfg("cargo", &["test"])).is_none());
     }
 

@@ -230,6 +230,9 @@ mod tests {
 
     #[test]
     fn jdtls_workspace_and_runtimes() {
+        if cfg!(windows) {
+            return; // Unix paths and shells
+        }
         let mut cfg: LanguageServerConfig = toml::from_str("name = \"jdtls\"\ncommand = \"jdtls\"").unwrap();
         let jdks = [
             Jdk { major: 25, home: PathBuf::from("/jdk25") },

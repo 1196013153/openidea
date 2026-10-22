@@ -1212,7 +1212,8 @@ mod tests {
               </dependencies>
             </project>"#,
         );
-        write(&root, "mvnw", "#!/bin/sh");
+        let wrapper = if cfg!(windows) { "mvnw.cmd" } else { "mvnw" };
+        write(&root, wrapper, "#!/bin/sh");
         let model = load_with_repo(&root, Some(repo));
         let p = &model.projects[0];
         assert_eq!(p.java_version, Some(17));
@@ -1221,7 +1222,7 @@ mod tests {
         let boot = p.plugins.iter().find(|pl| pl.artifact_id == "boot-maven-plugin").unwrap();
         assert_eq!(boot.version.as_deref(), Some("0.1-SNAPSHOT"), "interpolated with the child's version");
         assert_eq!(boot.prefix, "boot");
-        assert!(p.command.ends_with("mvnw") && Path::new(&p.command).is_absolute());
+        assert!(p.command.ends_with(wrapper) && Path::new(&p.command).is_absolute());
     }
 
     #[test]

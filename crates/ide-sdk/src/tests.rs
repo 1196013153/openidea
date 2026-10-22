@@ -47,6 +47,9 @@ fn run(kind: &str, command: &str, args: &[&str]) -> RunConfig {
 
 #[test]
 fn project_venv_is_the_default_interpreter() {
+    if cfg!(windows) {
+        return; // Unix paths and shells
+    }
     let tmp = tempfile::tempdir().unwrap();
     let s = Settings::default();
     assert_eq!(python_interpreter(tmp.path(), &s), None);
@@ -72,6 +75,9 @@ fn pyright_gets_python_path_and_venv_env() {
 
 #[test]
 fn rust_analyzer_check_command_and_toolchain() {
+    if cfg!(windows) {
+        return; // Unix paths and shells
+    }
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Settings::default();
     s.languages.rust.check_command = "clippy".into();
@@ -112,6 +118,9 @@ fn typescript_workspace_version() {
 
 #[test]
 fn run_configs_use_selected_interpreter_and_package_manager() {
+    if cfg!(windows) {
+        return; // Unix paths and shells
+    }
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Settings::default();
     s.languages.python.interpreter = "/opt/py/bin/python3".into();
@@ -135,6 +144,9 @@ fn run_configs_use_selected_interpreter_and_package_manager() {
 
 #[test]
 fn terminal_activation_for_project_venv() {
+    if cfg!(windows) {
+        return; // Unix paths and shells
+    }
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Settings::default();
     assert_eq!(terminal_activation(tmp.path(), &s, Some("/bin/zsh")), None);

@@ -138,6 +138,9 @@ mod tests {
 
     #[test]
     fn bash_gets_init_file_and_login_flag() {
+        if cfg!(windows) {
+            return; // Unix paths and shells
+        }
         let mut args = vec!["-l".to_owned()];
         let mut env = BTreeMap::new();
         assert!(apply("bash", &mut args, &mut env));
@@ -157,6 +160,9 @@ mod tests {
 
     #[test]
     fn zsh_points_zdotdir_at_generated_files() {
+        if cfg!(windows) {
+            return; // Unix paths and shells
+        }
         let mut args = vec!["-l".to_owned()];
         let mut env = BTreeMap::from([("ZDOTDIR".to_owned(), "/home/me/zsh".to_owned())]);
         assert!(apply("zsh", &mut args, &mut env));

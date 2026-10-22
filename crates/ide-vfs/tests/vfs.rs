@@ -245,7 +245,7 @@ fn walk_honours_ignores() {
 
     let found = Mutex::new(BTreeSet::new());
     walk_files(&r, &["**/node_modules".into()], |p| {
-        found.lock().insert(p.strip_prefix(&r).unwrap().to_string_lossy().into_owned());
+        found.lock().insert(p.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/"));
     });
     let found = found.into_inner();
     let expected: BTreeSet<String> =
