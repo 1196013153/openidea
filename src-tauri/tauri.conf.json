@@ -47,7 +47,11 @@
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
     "shortDescription": "An open-source IDE inspired by IntelliJ IDEA",
-    "longDescription": "OpenIDEA is an open-source IDE inspired by IntelliJ IDEA. Not affiliated with JetBrains."
+    "longDescription": "OpenIDEA is an open-source IDE inspired by IntelliJ IDEA. Not affiliated with JetBrains.",
+    "macOS": {
+      "entitlements": "./Entitlements.plist",
+      "minimumSystemVersion": "11.0"
+    }
   },
   "mainBinaryName": "openidea",
   "plugins": {
