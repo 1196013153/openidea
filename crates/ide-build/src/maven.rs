@@ -1163,7 +1163,7 @@ mod tests {
         let profiles: Vec<(&str, bool)> = model.profiles.iter().map(|p| (p.id.as_str(), p.active_by_default)).collect();
         assert_eq!(profiles, [("dev", true), ("extra", false)]);
         assert_eq!(parent.profiles, ["dev", "extra"]);
-        assert!(model.projects.iter().all(|p| p.command == "mvn"));
+        assert!(model.projects.iter().all(|p| p.command == if cfg!(windows) { "mvn.cmd" } else { "mvn" }));
     }
 
     #[test]

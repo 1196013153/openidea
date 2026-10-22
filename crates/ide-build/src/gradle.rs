@@ -406,7 +406,8 @@ Pattern: clean<TaskName>: Cleans the output files of a task.
         std::fs::write(root.join("settings.gradle.kts"), "rootProject.name = \"demo\"\ninclude(\"app\")").unwrap();
         std::fs::create_dir_all(root.join("app")).unwrap();
         std::fs::write(root.join("app/build.gradle.kts"), "plugins { application }").unwrap();
-        std::fs::write(root.join("gradlew"), "#!/bin/sh").unwrap();
+        let wrapper = if cfg!(windows) { "gradlew.bat" } else { "gradlew" };
+        std::fs::write(root.join(wrapper), "#!/bin/sh").unwrap();
         let m = load(root).unwrap();
         assert_eq!(m.dir, "");
         let ps: Vec<(&str, &str, &str, Option<&str>)> = m
@@ -418,7 +419,7 @@ Pattern: clean<TaskName>: Cleans the output files of a task.
         assert!(m.projects[0].tasks.iter().any(|t| t.name == "wrapper"));
         assert!(!m.projects[0].tasks.iter().any(|t| t.name == "build"));
         assert!(m.projects[1].tasks.iter().any(|t| t.name == "run" && t.group == "application"));
-        assert!(m.command.ends_with("gradlew"));
+        assert!(m.command.ends_with(wrapper));
         assert_eq!(build_files(root, &m).len(), 2);
         assert_eq!(m.java_version, None);
         assert_eq!(

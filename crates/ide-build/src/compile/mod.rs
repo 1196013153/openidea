@@ -735,6 +735,8 @@ mod tests {
         assert_eq!(identifier_len("x é_1 c", 2), 3);
     }
 
+    // Uses Unix absolute paths for the canonical root.
+    #[cfg(unix)]
     #[test]
     fn resolves_paths_against_cwd_and_canonical_root() {
         let tmp = tempfile::tempdir().unwrap();
