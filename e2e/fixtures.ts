@@ -7,6 +7,8 @@ export const test = base.extend<{ workbench: Page }>({
   workbench: async ({ page }, provide) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    // CodeMirror picks Mod-key bindings from navigator.platform, not the user agent.
+    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" }));
     await page.goto("/");
     await expect(page.getByRole("tree", { name: "Project" })).toBeVisible();
     await expect(page.getByRole("treeitem", { name: /acme-api/ })).toBeVisible();
