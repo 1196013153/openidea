@@ -166,3 +166,9 @@ export function cancelRunning() {
   const r = useHttpClient.getState().running;
   if (r) void commands.cancelRequest(r.request);
 }
+
+/** The window switched projects: history, responses and environments belong to the previous one. */
+export function resetHttpClient() {
+  cancelRunning();
+  useHttpClient.setState({ environments: {}, history: [], exchanges: {}, selected: null, running: null });
+}

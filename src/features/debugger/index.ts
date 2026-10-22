@@ -16,7 +16,7 @@ import { loadSpecialBreakpoints } from "./breakpoints/special";
 import { breakpointGutter } from "./editor/breakpointGutter";
 import { executionPoint } from "./editor/execution";
 import { onHotCodeReplace } from "./hotswap";
-import { handleDebugEvent, loadWatches, publishContext } from "./state";
+import { handleDebugEvent, loadWatches, publishContext, resetSessions } from "./state";
 import { DebuggerOverlays } from "./ui/Overlays";
 
 export function activate(): () => void {
@@ -50,6 +50,7 @@ export function activate(): () => void {
     useProject.subscribe((s, prev) => {
       const root = s.project?.root ?? null;
       if (root !== (prev.project?.root ?? null)) {
+        resetSessions();
         loadBreakpoints(root);
         loadExceptionBreakpoints(root);
         loadSpecialBreakpoints(root);

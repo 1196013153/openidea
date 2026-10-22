@@ -109,6 +109,20 @@ export function installPreparedMessage(): () => void {
   const op = (s = useVcs.getState()) => s.branch?.operation ?? null;
   if (PREPARED_MESSAGE_OPS.has(op() ?? "")) void load();
   return useVcs.subscribe((s, prev) => {
+    if (s.root !== prev.root) {
+      // Another repository: nothing typed or ticked for the previous one carries over (Amend least of all).
+      useCommit.setState({
+        message: "",
+        amend: false,
+        checks: new Map(),
+        selection: [],
+        tab: "changes",
+        selectedList: null,
+        selectedShelf: null,
+      });
+      if (PREPARED_MESSAGE_OPS.has(op(s) ?? "")) void load();
+      return;
+    }
     const now = op(s);
     if (now !== op(prev) && PREPARED_MESSAGE_OPS.has(now ?? "")) void load();
   });

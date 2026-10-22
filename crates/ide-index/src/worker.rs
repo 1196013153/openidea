@@ -172,6 +172,19 @@ impl Shared {
         r.truncate(MAX_RECENT);
     }
 
+    /// A cancelled scan (project closed) still ends its progress task and the indexing state.
+    fn end_scan(&self, task: TaskId) {
+        self.indexing.store(false, Ordering::SeqCst);
+        self.sink.emit(IdeEvent::Task {
+            id: task,
+            title: "Indexing".into(),
+            message: None,
+            fraction: None,
+            done: true,
+        });
+        self.emit_state();
+    }
+
     fn full_scan(&self) {
         let started = Instant::now();
         self.indexing.store(true, Ordering::SeqCst);
@@ -187,7 +200,7 @@ impl Shared {
 
         let found = self.filter.walk(self.filter.root(), &self.cancelled);
         if self.is_cancelled() {
-            return;
+            return self.end_scan(task);
         }
         let seen: HashSet<&Path> = found.iter().map(|f| f.path.as_path()).collect();
         let (todo, stale): (Vec<&Found>, Vec<String>) = {
@@ -212,7 +225,7 @@ impl Shared {
         let mut last_progress = Instant::now();
         for chunk in todo.chunks(CHUNK) {
             if self.is_cancelled() {
-                return;
+                return self.end_scan(task);
             }
             self.index_files(chunk.iter().copied());
             done += chunk.len();

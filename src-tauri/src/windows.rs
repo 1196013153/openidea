@@ -108,6 +108,13 @@ pub fn settings_label(parent: &str) -> String {
     format!("{SETTINGS_PREFIX}{parent}")
 }
 
+/// Closes `parent`'s settings window: it shows (and would apply to) the project the parent is leaving.
+pub fn close_settings_window(app: &AppHandle, parent: &str) {
+    if let Some(w) = app.get_webview_window(&settings_label(parent)) {
+        let _ = w.close();
+    }
+}
+
 /// Project windows (everything but settings windows), for counting and cycling.
 pub fn project_window_labels(app: &AppHandle) -> Vec<String> {
     sorted_labels(app.webview_windows().keys().map(String::as_str).filter(|l| !is_settings_window(l)))

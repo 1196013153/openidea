@@ -192,6 +192,8 @@ export class EditorController implements SlotHost {
           this.saveSession();
           this.sessionRoot = null;
           this.closeEverything();
+          this.nav.clear();
+          this.edits.clear();
           if (root) this.restoreSession(root);
         }
       }),

@@ -49,19 +49,28 @@ interface DuplicatesState {
   last: { choice: ScopeChoice; options: DuplicateOptions } | null;
 }
 
-export const useDuplicates = create<DuplicatesState>(() => ({
+const initialDuplicates = (): DuplicatesState => ({
   running: false,
   report: null,
   scopeLabel: null,
   error: null,
   selected: null,
   last: null,
-}));
+});
+
+export const useDuplicates = create<DuplicatesState>(initialDuplicates);
 
 let inflight: RequestId | null = null;
 
 export function cancelDuplicates() {
   if (inflight !== null) void commands.cancelRequest(inflight).catch(() => undefined);
+}
+
+/** The window switched projects: stops the run and forgets its report. */
+export function resetDuplicates() {
+  cancelDuplicates();
+  inflight = null;
+  useDuplicates.setState(initialDuplicates());
 }
 
 export async function locateDuplicates(choice: ScopeChoice, options: DuplicateOptions): Promise<void> {

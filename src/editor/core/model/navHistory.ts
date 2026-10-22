@@ -71,6 +71,12 @@ export class NavigationHistory {
     this.emit();
   }
 
+  clear() {
+    this.entries = [];
+    this.index = -1;
+    this.emit();
+  }
+
   snapshot() {
     return { entries: this.entries.map((e) => ({ ...e })), index: this.index };
   }

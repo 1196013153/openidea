@@ -12,6 +12,21 @@ interface ProjectState {
 
 export const useProject = create<ProjectState>(() => ({ project: null, settings: null, opening: false }));
 
+let leaveGuard: (() => Promise<boolean>) | null = null;
+
+/** Installs the check run before this window leaves its project (unsaved changes). */
+export function provideLeaveProjectGuard(guard: () => Promise<boolean>): () => void {
+  leaveGuard = guard;
+  return () => {
+    if (leaveGuard === guard) leaveGuard = null;
+  };
+}
+
+/** False when the user chose to stay (another project in place, Close Project). */
+export function confirmLeaveProject(): Promise<boolean> {
+  return useProject.getState().project && leaveGuard ? leaveGuard() : Promise.resolve(true);
+}
+
 export async function openProject(path: string): Promise<ProjectInfo> {
   useProject.setState({ opening: true });
   try {

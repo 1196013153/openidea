@@ -56,6 +56,10 @@ pub async fn open_project(window: Window, path: PathBuf) -> IdeResult<ProjectInf
     // Opening touches the disk (index cache, watcher, git): keep it off the async runtime threads.
     let app = window.app_handle().clone();
     let label = window.label().to_owned();
+    // Replacing this window's project (the UI skips reopening the same one).
+    if app.state::<AppState>().project(&label).is_ok() {
+        crate::windows::close_settings_window(&app, &label);
+    }
     let project = tauri::async_runtime::spawn_blocking(move || app.state::<AppState>().open_project(&label, &path))
         .await
         .map_err(|e| IdeError::internal(e.to_string()))??;
@@ -76,6 +80,7 @@ fn project_info(project: &crate::state::Project) -> ProjectInfo {
 #[tauri::command]
 #[specta::specta]
 pub fn close_project(window: Window, state: State<'_, AppState>) {
+    crate::windows::close_settings_window(window.app_handle(), window.label());
     state.close_project(window.label());
 }
 

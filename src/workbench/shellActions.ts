@@ -1,6 +1,6 @@
 import { executeAction, getAction, registerActions } from "@/platform/actions";
 import { isTauri } from "@/platform/ipc";
-import { closeProject, openProject, useProject } from "@/platform/project";
+import { closeProject, confirmLeaveProject, openProject, useProject } from "@/platform/project";
 import { notify } from "./notificationStore";
 import { NOTIFICATIONS_TOOL_WINDOW } from "./Notifications";
 import { activateToolWindow } from "./toolwindows/store";
@@ -49,7 +49,7 @@ export function registerShellActions(): () => void {
       category: "File",
       when: "projectOpen",
       run: async () => {
-        if (useProject.getState().project) await closeProject();
+        if (useProject.getState().project && (await confirmLeaveProject())) await closeProject();
       },
     },
     {

@@ -20,11 +20,11 @@ import {
 } from "./bookmarks/store";
 import { maybeToolWindowService } from "./common/services";
 import { openLocation } from "./common/open";
-import { installTracking } from "./common/tracking";
+import { installTracking, resetTracking } from "./common/tracking";
 import { SearchEverywhereOverlay } from "./everywhere/SearchEverywhere";
 import { hideSearchEverywhere, showSearchEverywhere } from "./everywhere/store";
 import { FindInFilesOverlay } from "./find/FindInFiles";
-import { hideFindPopup, parseFindArg, showFindPopup } from "./find/store";
+import { hideFindPopup, parseFindArg, showFindPopup, useFindPopup } from "./find/store";
 import { disposeFindWindow } from "./find/windowStore";
 import { RecentPopupsOverlay } from "./recent/RecentPopups";
 import { cycleSwitcher, hideRecentPopup, showRecentPopup } from "./recent/store";
@@ -294,7 +294,11 @@ export function activate(): void | (() => void) {
   onProject(useProject.getState().project?.root ?? null);
   disposers.push(
     useProject.subscribe((s, prev) => {
-      if (s.project?.root !== prev.project?.root) onProject(s.project?.root ?? null);
+      if (s.project?.root === prev.project?.root) return;
+      onProject(s.project?.root ?? null);
+      resetTracking();
+      // A directory scope pointed into the previous project.
+      if (useFindPopup.getState().scopeTab === "directory") useFindPopup.setState({ scopeTab: "project", directory: "" });
     }),
     onIdeEvent("fsChanged", (e) => {
       if (!e.removed.length) return;

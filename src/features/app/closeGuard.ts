@@ -9,7 +9,7 @@
  */
 import { commands, isTauri, onIdeEvent, type Settings } from "@/platform/ipc";
 import { t } from "@/platform/i18n";
-import { useProject } from "@/platform/project";
+import { provideLeaveProjectGuard, useProject } from "@/platform/project";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
 import { ask, type Ask } from "./prompt";
 
@@ -115,6 +115,15 @@ async function onCloseRequested(deps: CloseDeps): Promise<boolean> {
   }
 }
 
+/** Unsaved changes before this window opens another project in place or closes it. */
+export function confirmLeave(deps: CloseDeps = defaultDeps): Promise<boolean> {
+  const s = useProject.getState();
+  return decideClose(
+    { quitting: false, windows: 2, confirmExit: false, dirty: dirtyCount(), project: s.project?.name ?? null },
+    deps,
+  );
+}
+
 /** Quit: confirm once (if enabled), then let the backend close every window. */
 export async function quitApp(deps: CloseDeps = defaultDeps): Promise<void> {
   if (!isTauri()) return;
@@ -134,6 +143,7 @@ export function installCloseGuard(deps: CloseDeps = defaultDeps): () => void {
     useProject.subscribe((s, prev) => {
       if (s.project?.root !== prev.project?.root) dirtyDocs.clear();
     }),
+    provideLeaveProjectGuard(() => confirmLeave(deps)),
   ];
   let unlisten: (() => void) | undefined;
   let disposed = false;

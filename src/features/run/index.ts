@@ -33,7 +33,7 @@ import { registerExternalTools } from "./externalTools";
 import { EditConfigsOverlay } from "./EditConfigsDialog";
 import { RunWidget } from "./RunWidget";
 import { runGutter } from "./runGutter";
-import { activateStackTrace } from "./stackTrace";
+import { activateStackTrace, useStackTraces } from "./stackTrace";
 import { clearRuntimeCache } from "./runtimes";
 import {
   adoptTemporary,
@@ -373,6 +373,7 @@ export function activate(): () => void {
     useProject.subscribe((s, prev) => {
       if (s.project?.root === prev.project?.root) return;
       resetRuns();
+      useStackTraces.setState({ tabs: [], dialog: null });
       if (s.project) void loadConfigs();
     }),
   ];

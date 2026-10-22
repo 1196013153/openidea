@@ -46,6 +46,11 @@ export class EditHistory {
     return this.entries[this.index]!;
   }
 
+  clear() {
+    this.entries = [];
+    this.index = 0;
+  }
+
   /** Drops the places of a deleted file. */
   removePath(path: string) {
     const before = this.entries.length;

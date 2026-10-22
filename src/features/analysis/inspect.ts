@@ -101,7 +101,7 @@ interface InspectState {
   last: ScopeChoice | null;
 }
 
-export const useInspection = create<InspectState>(() => ({
+const initialInspection = (): InspectState => ({
   running: false,
   total: 0,
   done: 0,
@@ -110,13 +110,22 @@ export const useInspection = create<InspectState>(() => ({
   scopeLabel: null,
   error: null,
   last: null,
-}));
+});
+
+export const useInspection = create<InspectState>(initialInspection);
 
 let inflight: RequestId | null = null;
 
 export function cancelInspection() {
   if (inflight === null) return;
   void commands.cancelRequest(inflight).catch(() => undefined);
+}
+
+/** The window switched projects: stops the run and forgets its results. */
+export function resetInspection() {
+  cancelInspection();
+  inflight = null;
+  useInspection.setState(initialInspection());
 }
 
 export async function runInspection(choice: ScopeChoice): Promise<void> {

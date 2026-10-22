@@ -3,14 +3,22 @@
  * Duplicates and Search / Replace Structurally.
  */
 import { registerActions } from "@/platform/actions";
+import { useProject } from "@/platform/project";
 import { registerOverlay, registerToolWindow } from "@/workbench/contributions";
 import { showDuplicatesDialog, showInspectCodeDialog, showStructuralDialog } from "./AnalysisDialogs";
 import { AnalysisDialogHost } from "./dialogs";
+import { resetDuplicates } from "./duplicates";
 import { DuplicatesHeaderActions, DuplicatesView } from "./DuplicatesView";
+import { resetInspection } from "./inspect";
 import { InspectionHeaderActions, InspectionView } from "./InspectionView";
 
 export function activate(): () => void {
   const disposers = [
+    useProject.subscribe((s, prev) => {
+      if (s.project?.root === prev.project?.root) return;
+      resetInspection();
+      resetDuplicates();
+    }),
     registerOverlay({ id: "analysis.dialogs", component: AnalysisDialogHost }),
     registerToolWindow({
       id: "inspection",

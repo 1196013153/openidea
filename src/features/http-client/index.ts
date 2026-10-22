@@ -7,11 +7,12 @@
 import { activeEditor, registerEditorContribution, registerLanguageMode } from "@/editor/api";
 import { registerActions } from "@/platform/actions";
 import { call, commands, emitLocalIdeEvent, IpcError, isTauri } from "@/platform/ipc";
+import { useProject } from "@/platform/project";
 import { editorService, notifications, registerServiceView, showServiceView } from "@/workbench/contributions";
 import { HTTP_LANGUAGE, httpEditorExtension, refreshRequests, requestAtCaret } from "./editor";
 import { HttpClientHeaderActions, HttpClientView } from "./HttpClientView";
 import { httpLanguageDescription } from "./language";
-import { SERVICE_VIEW, runAll, runRequest } from "./store";
+import { SERVICE_VIEW, resetHttpClient, runAll, runRequest } from "./store";
 
 export const NEW_REQUEST_TEMPLATE = `### Example request
 # Variables come from http-client.env.json / http-client.private.env.json
@@ -73,6 +74,9 @@ async function newRequest() {
 
 export function activate(): () => void {
   const disposers = [
+    useProject.subscribe((s, prev) => {
+      if (s.project?.root !== prev.project?.root) resetHttpClient();
+    }),
     registerLanguageMode(httpLanguageDescription),
     registerEditorContribution({ id: "http.requests", order: 56, extensions: httpEditorExtension }),
     registerServiceView({

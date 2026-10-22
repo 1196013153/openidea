@@ -126,6 +126,12 @@ export async function fetchUsages(c: CaretContext): Promise<FetchedUsages> {
   return { groups: groupUsages(locs, files), note };
 }
 
+/** The window switched projects: results (and in-flight searches) of the previous one are dropped. */
+export function resetUsages() {
+  useUsages.setState({ search: null });
+  useUsagesPopup.setState({ open: false, symbol: null, groups: [], note: null });
+}
+
 export async function findUsages() {
   const c = caretContext();
   if (!c) {

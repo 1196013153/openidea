@@ -6,7 +6,7 @@
 import type { Action } from "@/platform/actions";
 import { t } from "@/platform/i18n";
 import { call, commands, isTauri } from "@/platform/ipc";
-import { basename, openProject, useProject } from "@/platform/project";
+import { basename, confirmLeaveProject, openProject, useProject } from "@/platform/project";
 import { notifications } from "@/workbench/contributions";
 import { ask } from "./prompt";
 
@@ -24,6 +24,7 @@ function desktopOnly(): boolean {
 
 async function openHere(path: string) {
   if (useProject.getState().project?.root === path) return;
+  if (!(await confirmLeaveProject())) return;
   try {
     await openProject(path);
   } catch (e) {

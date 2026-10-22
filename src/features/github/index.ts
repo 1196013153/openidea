@@ -9,7 +9,7 @@ import { registerOverlay, registerToolWindow } from "@/workbench/contributions";
 import { GithubDialogHost } from "./dialogs";
 import { checkoutAction, createPullRequest, openInBrowser, showPullRequests, WINDOW } from "./ops";
 import { PullRequestsHeader, PullRequestsView } from "./PullRequestsView";
-import { DEFAULT_QUERY, refreshAll, useGithub } from "./store";
+import { refreshAll, resetGithub } from "./store";
 
 const WHEN = "projectOpen";
 
@@ -65,10 +65,8 @@ export function activate(): () => void {
       },
       { id: "github.refresh", title: "Refresh Pull Requests", category: "GitHub", icon: "refresh", when: WHEN, run: () => refreshAll() },
     ]),
-    // Another project: start over.
     useProject.subscribe((s, prev) => {
-      if (s.project?.root === prev.project?.root) return;
-      useGithub.setState({ availability: null, list: [], selected: null, details: null, reviewComments: [], query: DEFAULT_QUERY });
+      if (s.project?.root !== prev.project?.root) resetGithub();
     }),
   ];
   return () => disposers.reverse().forEach((d) => d());

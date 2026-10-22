@@ -635,6 +635,15 @@ export function handleDebugEvent(id: DebugSessionId, event: DebugEvent) {
   }
 }
 
+/** The window switched projects: stops its sessions and forgets them (late events stay ignored via `owned`). */
+export function resetSessions() {
+  const { sessions } = useDebug.getState();
+  for (const s of Object.values(sessions)) if (s.parent == null && isLive(s)) void stopSession(s.id);
+  useDebug.setState({ sessions: {}, active: null, console: {}, stopSeq: 0 });
+  useExecutionPoint.setState({ path: null, line: 0, top: true, values: {} });
+  publishContext();
+}
+
 /** Breakpoint ↔ session glue: unverified look only makes sense while debugging. */
 export function sessionsRunning(): boolean {
   return Object.values(useDebug.getState().sessions).some(isLive);

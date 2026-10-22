@@ -67,6 +67,9 @@ export function activate(): () => void {
         treeReveal: null,
         manualCommit: new Set(),
         pendingTx: new Set(),
+        running: {},
+        dialog: null,
+        newMenuOpen: false,
       });
     }),
     registerDatabaseTreeActions(),

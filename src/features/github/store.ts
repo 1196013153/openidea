@@ -163,6 +163,12 @@ export function cancelBusy() {
 
 const diffCache = new Map<string, PrDiffRevisions>();
 
+/** Another project: start over. */
+export function resetGithub() {
+  diffCache.clear();
+  useGithub.setState({ availability: null, list: [], selected: null, details: null, reviewComments: [], query: DEFAULT_QUERY });
+}
+
 /** Fetches what the local repository lacks to diff `pr`, once per head commit. */
 export async function diffRevisions(pr: PullRequestDetails): Promise<PrDiffRevisions | null> {
   const key = `${pr.summary.number}:${pr.headOid}:${pr.baseOid}`;

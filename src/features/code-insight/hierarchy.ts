@@ -45,6 +45,17 @@ export const useHierarchy = create<HierarchyState>(() => ({
   generation: 0,
 }));
 
+/** The window switched projects: the tree refers to the previous one's documents. */
+export function resetHierarchy() {
+  useHierarchy.setState((s) => ({
+    root: null,
+    children: new Map(),
+    failed: new Set(),
+    loading: false,
+    generation: s.generation + 1,
+  }));
+}
+
 export function directionLabel(mode: HierarchyMode, direction: HierarchyDirection): string {
   if (mode === "call") return direction === "incoming" ? "Callers" : "Callees";
   return direction === "incoming" ? "Supertypes" : "Subtypes";

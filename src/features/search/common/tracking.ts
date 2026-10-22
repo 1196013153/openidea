@@ -36,6 +36,11 @@ export const useTracking = create<TrackingState>(() => ({
 
 const docPaths = new Map<number, string>();
 
+/** The window switched projects: the previous one's places and edits don't apply. */
+export function resetTracking() {
+  useTracking.setState({ caret: null, editVersions: new Map(), edited: new Set(), locations: [] });
+}
+
 function bumpVersion(path: string, userEdit: boolean) {
   useTracking.setState((s) => ({
     editVersions: new Map(s.editVersions).set(path, (s.editVersions.get(path) ?? 0) + 1),

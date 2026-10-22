@@ -13,7 +13,7 @@ import {
 import { installBrowserGuards } from "./browserGuards";
 import { installDistractionFree } from "./distractionFree";
 import { installFocusTracking } from "./focus";
-import { installNotifyEvents, notificationServiceImpl } from "./notificationStore";
+import { clearNotifications, installNotifyEvents, notificationServiceImpl } from "./notificationStore";
 import {
   NOTIFICATIONS_TOOL_WINDOW,
   NotificationsHeaderActions,
@@ -39,7 +39,10 @@ export function activateWorkbench(): () => void {
   };
   onProject(useProject.getState().project?.root ?? null);
   const unsubProject = useProject.subscribe((s, prev) => {
-    if (s.project?.root !== prev.project?.root) onProject(s.project?.root ?? null);
+    if (s.project?.root === prev.project?.root) return;
+    // The previous project's notifications (and their actions) no longer apply.
+    if (prev.project) clearNotifications();
+    onProject(s.project?.root ?? null);
   });
 
   const disposers = [

@@ -4,7 +4,7 @@ import type { Branch, BranchInfo, Commit } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { computeGraph, emptyGraphState, type GraphRow, type GraphState } from "./graph";
-import { errorMessage } from "./ops";
+import { clearConsole, errorMessage } from "./ops";
 import { useVcs } from "./store";
 
 export interface LogFilters {
@@ -71,12 +71,13 @@ export const useGitLog = create<LogState>(() => ({ ...initialLog(), generation: 
 
 let loadPromise: Promise<void> | null = null;
 
-/** Another repository (the window switched projects): forget its commits, filters and selection. */
+/** Another repository (the window switched projects): forget its commits, filters, selection and console. */
 export function installGitLog(): () => void {
   return useVcs.subscribe((s, prev) => {
     if (s.root === prev.root) return;
     loadPromise = null;
     useGitLog.setState((l) => ({ ...initialLog(), tab: l.tab, generation: l.generation + 1 }));
+    clearConsole();
   });
 }
 

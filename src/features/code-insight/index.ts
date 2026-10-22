@@ -11,9 +11,9 @@ import { installProblemDecorations } from "./decorations";
 import { ProblemsHeaderActions, ProblemsTabs, ProblemsView } from "./ProblemsView";
 import { UsagesTabs, UsagesView } from "./UsagesView";
 import { UsagesPopup } from "./UsagesPopup";
-import { findUsages, showUsageResults, showUsagesPopup } from "./usages";
+import { findUsages, resetUsages, showUsageResults, showUsagesPopup } from "./usages";
 import { HierarchyTabs, HierarchyView } from "./HierarchyView";
-import { showHierarchy } from "./hierarchy";
+import { resetHierarchy, showHierarchy } from "./hierarchy";
 import { installServerEvents } from "./servers";
 import { ServerStatus } from "./ServerStatus";
 
@@ -35,6 +35,8 @@ export function activate(): () => void {
     if (r !== root) {
       root = r;
       clearProblems();
+      resetUsages();
+      resetHierarchy();
     }
   });
   const disposers = [
