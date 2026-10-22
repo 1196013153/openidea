@@ -1,0 +1,120 @@
+/**
+ * Terminal keyboard handling that must run before the IDE keymap dispatcher
+ * (IDEA's "Override IDE shortcuts"): Ctrl+letter goes to the shell (Ctrl+R
+ * reverse search, Ctrl+D EOF…), plus the macOS conveniences ⌘C / ⌘V / ⌘K /
+ * ⌘W, ⌘F (find) and ⌘/⌥ arrow navigation, and Ctrl+Shift+C / V (copy / paste
+ * on Windows and Linux, where Ctrl+C must reach the shell).
+ *
+ * Registered on `window` in the capture phase during feature activation, i.e.
+ * before `installKeyboardDispatcher`, so `stopImmediatePropagation` keeps the
+ * dispatcher from seeing these strokes. Until the terminal runtime has loaded
+ * there is no terminal, so there is nothing to handle.
+ */
+import { executeAction } from "@/platform/actions";
+import { workflowSettings } from "@/platform/workflowSettings";
+import { terminalRuntime } from "./loader";
+
+export type TerminalKeyResult =
+  | { kind: "send"; data: string }
+  | { kind: "copy" }
+  | { kind: "paste" }
+  | { kind: "clear" }
+  | { kind: "close" }
+  | { kind: "find" }
+  | { kind: "pass" };
+
+type KeyLike = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
+
+/** Maps a key event in a terminal to what the terminal should do with it. */
+export function terminalKeyAction(e: KeyLike, hasSelection: boolean): TerminalKeyResult {
+  const { metaKey: meta, ctrlKey: ctrl, altKey: alt, shiftKey: shift } = e;
+  if (meta && !ctrl && !alt) {
+    const k = e.key.toLowerCase();
+    if (k === "c" && !shift) return hasSelection ? { kind: "copy" } : { kind: "pass" };
+    if (k === "v" && !shift) return { kind: "paste" };
+    if (k === "k" && !shift) return { kind: "clear" };
+    if (k === "w" && !shift) return { kind: "close" };
+    if (k === "f" && !shift) return { kind: "find" };
+    if (e.key === "ArrowLeft") return { kind: "send", data: "\x01" };
+    if (e.key === "ArrowRight") return { kind: "send", data: "\x05" };
+    if (e.key === "Backspace") return { kind: "send", data: "\x15" };
+    return { kind: "pass" };
+  }
+  if (alt && !ctrl && !meta && !shift) {
+    if (e.key === "ArrowLeft") return { kind: "send", data: "\x1bb" };
+    if (e.key === "ArrowRight") return { kind: "send", data: "\x1bf" };
+    if (e.key === "Backspace") return { kind: "send", data: "\x17" };
+    return { kind: "pass" };
+  }
+  if (ctrl && shift && !meta && !alt) {
+    if (e.code === "KeyC") return hasSelection ? { kind: "copy" } : { kind: "pass" };
+    if (e.code === "KeyV") return { kind: "paste" };
+  }
+  if (ctrl && !meta && !alt) {
+    // Use the physical key so layouts and Shift don't change the control code.
+    const m = /^Key([A-Z])$/.exec(e.code);
+    if (m) return { kind: "send", data: String.fromCharCode(m[1]!.charCodeAt(0) - 64) };
+    if (e.code === "BracketLeft") return { kind: "send", data: "\x1b" };
+    if (e.code === "Backslash") return { kind: "send", data: "\x1c" };
+    if (e.code === "BracketRight") return { kind: "send", data: "\x1d" };
+    if (e.code === "Space") return { kind: "send", data: "\x00" };
+    return { kind: "pass" };
+  }
+  if (!meta && !ctrl && !alt && e.key === "Escape") return { kind: "send", data: "\x1b" };
+  return { kind: "pass" };
+}
+
+export function installTerminalKeys(target: Window = window): () => void {
+  const onKeyDown = (e: KeyboardEvent) => {
+    const rt = terminalRuntime();
+    if (e.isComposing || !rt) return;
+    // The terminal find bar: Escape closes it (instead of "focus editor"), ⌘F reselects the query.
+    if ((e.target as Element | null)?.closest?.("[data-terminal-find]")) {
+      const plain = !e.ctrlKey && !e.altKey && !e.shiftKey;
+      if (plain && !e.metaKey && e.key === "Escape") rt.closeTerminalFind();
+      else if (plain && e.metaKey && e.key.toLowerCase() === "f") rt.openTerminalFind();
+      else return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    const session = rt.sessionFromElement(e.target as Element | null);
+    if (!session) return;
+    const action = terminalKeyAction(e, session.hasSelection);
+    // "Override IDE shortcuts" off: Ctrl+key and Escape reach the IDE keymap first;
+    // keys it doesn't bind still get to xterm through its own key handling.
+    if (
+      action.kind === "send" &&
+      (e.ctrlKey || e.key === "Escape") &&
+      !workflowSettings().terminal.overrideIdeShortcuts
+    )
+      return;
+    switch (action.kind) {
+      case "pass":
+        return;
+      case "paste":
+        // Let the native paste reach xterm's textarea; only keep the IDE keymap out.
+        e.stopImmediatePropagation();
+        return;
+      case "send":
+        session.send(action.data);
+        break;
+      case "copy":
+        session.copySelection();
+        break;
+      case "clear":
+        session.clear();
+        break;
+      case "close":
+        void executeAction("terminal.closeSession");
+        break;
+      case "find":
+        void executeAction("terminal.find");
+        break;
+    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+  target.addEventListener("keydown", onKeyDown, true);
+  return () => target.removeEventListener("keydown", onKeyDown, true);
+}

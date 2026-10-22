@@ -1,0 +1,85 @@
+/** Branch context menu shared by the Branches popup and the Git Log Branches pane (IDEA's Git.Branch actions). */
+import type { Branch } from "@/bindings";
+import { executeAction } from "@/platform/actions";
+import type { MenuItem } from "@/ui";
+import { isFavoriteBranch } from "./branches";
+import {
+  checkoutAndRebase,
+  checkoutBranch,
+  deleteBranch,
+  deleteRemoteBranch,
+  loadFavoriteBranches,
+  mergeIntoCurrent,
+  newBranch,
+  rebaseOnto,
+  renameBranch,
+  toggleFavoriteBranch,
+  updateBranch,
+  useFavoriteBranches,
+} from "./branchOps";
+import { showCompareBranches } from "./CompareBranches";
+import { showDiffWithWorkingTree } from "./operations";
+
+export function branchMenu(b: Branch, current: string | null, done: () => void = () => {}): MenuItem[] {
+  const run = (fn: () => unknown) => () => {
+    done();
+    void fn();
+  };
+  const cur = current ?? "HEAD";
+  loadFavoriteBranches();
+  const favorite = isFavoriteBranch(b, useFavoriteBranches.getState().names);
+  const favoriteItem: MenuItem = {
+    label: favorite ? "Remove from Favorites" : "Add to Favorites",
+    icon: "star",
+    run: run(() => toggleFavoriteBranch(b)),
+  };
+  const history: MenuItem = {
+    label: "Show History",
+    icon: "history",
+    run: run(() => executeAction("vcs.showLog", { branch: b.name })),
+  };
+  if (b.current) {
+    return [
+      { label: `New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch()) },
+      { kind: "separator" },
+      { label: "Update", icon: "git-pull", run: run(() => executeAction("vcs.update")) },
+      { label: "Push…", icon: "git-push", run: run(() => executeAction("vcs.push")) },
+      { kind: "separator" },
+      { label: "Rename…", run: run(() => renameBranch(b.name)) },
+      favoriteItem,
+      history,
+    ];
+  }
+  const items: MenuItem[] = [
+    { label: "Checkout", run: run(() => checkoutBranch(b.name)) },
+    { label: `New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch(b.name)) },
+    ...(current
+      ? [{ label: `Checkout and Rebase onto '${cur}'`, run: run(() => checkoutAndRebase(b.name)) }]
+      : []),
+    { kind: "separator" },
+    { label: `Compare with '${cur}'`, icon: "diff", run: run(() => showCompareBranches(b.name)) },
+    { label: "Show Diff with Working Tree", run: run(() => showDiffWithWorkingTree(b.name)) },
+    history,
+    { kind: "separator" },
+    { label: `Rebase '${cur}' onto '${b.name}'`, run: run(() => rebaseOnto(b.name)) },
+    { label: `Merge '${b.name}' into '${cur}'`, run: run(() => mergeIntoCurrent(b.name)) },
+  ];
+  if (!b.remote)
+    items.push(
+      { kind: "separator" },
+      { label: "Update", icon: "git-pull", disabled: !b.upstream, run: run(() => updateBranch(b.name)) },
+      { label: "Push…", icon: "git-push", run: run(() => executeAction("vcs.push", { branch: b.name })) },
+    );
+  items.push(
+    { kind: "separator" },
+    ...(b.remote ? [] : [{ label: "Rename…", run: run(() => renameBranch(b.name)) }]),
+    favoriteItem,
+    {
+      label: "Delete",
+      danger: true,
+      icon: "trash",
+      run: run(() => (b.remote ? deleteRemoteBranch(b.name) : deleteBranch(b.name))),
+    },
+  );
+  return items;
+}

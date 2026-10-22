@@ -1,0 +1,477 @@
+//! SQL text generation per dialect: quoting, introspection queries, table
+//! pages and row edits. Pure functions, so they are unit-tested without a server.
+
+use crate::DbDriver;
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+pub fn quote_ident(driver: DbDriver, name: &str) -> String {
+    match driver {
+        DbDriver::Mysql => format!("`{}`", name.replace('`', "``")),
+        _ => format!("\"{}\"", name.replace('"', "\"\"")),
+    }
+}
+
+pub fn quote_literal(driver: DbDriver, value: &str) -> String {
+    let mut s = value.replace('\'', "''");
+    if driver == DbDriver::Mysql {
+        s = s.replace('\\', "\\\\");
+    }
+    format!("'{s}'")
+}
+
+fn literal_or_null(driver: DbDriver, v: Option<&str>) -> String {
+    v.map_or_else(|| "NULL".to_owned(), |v| quote_literal(driver, v))
+}
+
+pub fn qualified(driver: DbDriver, schema: &str, table: &str) -> String {
+    if schema.is_empty() {
+        quote_ident(driver, table)
+    } else {
+        format!("{}.{}", quote_ident(driver, schema), quote_ident(driver, table))
+    }
+}
+
+/// Databases one can connect to (PostgreSQL).
+pub const DATABASES: &str = "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY datname";
+
+/// Databases of managed services that their users cannot use (hidden unless connected to).
+pub const INTERNAL_DATABASES: &[&str] = &["rdsadmin", "azure_maintenance", "azure_sys", "cloudsqladmin"];
+
+pub fn schemas(driver: DbDriver) -> &'static str {
+    match driver {
+        DbDriver::Sqlite => "SELECT name FROM pragma_database_list WHERE name <> 'temp' ORDER BY seq",
+        DbDriver::Postgres => {
+            "SELECT schema_name FROM information_schema.schemata \
+             WHERE schema_name NOT IN ('pg_catalog', 'information_schema') \
+             AND schema_name NOT LIKE 'pg\\_toast%' AND schema_name NOT LIKE 'pg\\_temp%' ORDER BY 1"
+        }
+        DbDriver::Mysql => {
+            "SELECT schema_name FROM information_schema.schemata \
+             WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY 1"
+        }
+    }
+}
+
+/// Rows: `name, kind` where kind is `table` or `view`.
+pub fn tables(driver: DbDriver, schema: &str) -> String {
+    match driver {
+        DbDriver::Sqlite => format!(
+            "SELECT name, type FROM {}.sqlite_master WHERE type IN ('table', 'view') \
+             AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name",
+            quote_ident(driver, schema)
+        ),
+        _ => format!(
+            "SELECT table_name, CASE WHEN table_type LIKE '%VIEW%' THEN 'view' ELSE 'table' END \
+             FROM information_schema.tables WHERE table_schema = {} ORDER BY 1",
+            quote_literal(driver, schema)
+        ),
+    }
+}
+
+/// Rows: `name, type, nullable (YES/NO or 0/1), default, is_pk (0/1)`.
+pub fn columns(driver: DbDriver, schema: &str, table: &str) -> String {
+    let (s, t) = (quote_literal(driver, schema), quote_literal(driver, table));
+    match driver {
+        DbDriver::Sqlite => format!(
+            "SELECT name, type, CASE WHEN \"notnull\" = 0 THEN 'YES' ELSE 'NO' END, dflt_value, \
+             CASE WHEN pk > 0 THEN 1 ELSE 0 END FROM pragma_table_info({t}, {s}) ORDER BY cid"
+        ),
+        DbDriver::Postgres => format!(
+            "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, \
+             CASE WHEN EXISTS (SELECT 1 FROM information_schema.table_constraints tc \
+               JOIN information_schema.key_column_usage k ON k.constraint_name = tc.constraint_name \
+               AND k.table_schema = tc.table_schema AND k.table_name = tc.table_name \
+               WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = c.table_schema \
+               AND tc.table_name = c.table_name AND k.column_name = c.column_name) THEN 1 ELSE 0 END \
+             FROM information_schema.columns c WHERE c.table_schema = {s} AND c.table_name = {t} \
+             ORDER BY c.ordinal_position"
+        ),
+        DbDriver::Mysql => format!(
+            "SELECT column_name, column_type, is_nullable, column_default, \
+             CASE WHEN column_key = 'PRI' THEN 1 ELSE 0 END \
+             FROM information_schema.columns WHERE table_schema = {s} AND table_name = {t} \
+             ORDER BY ordinal_position"
+        ),
+    }
+}
+
+/// Rows: `index name, unique (0/1), column` (one row per indexed column, in order).
+pub fn indexes(driver: DbDriver, schema: &str, table: &str) -> String {
+    let (s, t) = (quote_literal(driver, schema), quote_literal(driver, table));
+    match driver {
+        DbDriver::Sqlite => format!(
+            "SELECT il.name, il.\"unique\", ii.name FROM pragma_index_list({t}, {s}) il \
+             JOIN pragma_index_info(il.name, {s}) ii ORDER BY il.name, ii.seqno"
+        ),
+        DbDriver::Postgres => format!(
+            "SELECT i.relname, CASE WHEN ix.indisunique THEN 1 ELSE 0 END, a.attname \
+             FROM pg_index ix JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_class i ON i.oid = ix.indexrelid \
+             JOIN pg_namespace n ON n.oid = t.relnamespace \
+             JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ON true \
+             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum \
+             WHERE n.nspname = {s} AND t.relname = {t} ORDER BY i.relname, k.ord"
+        ),
+        DbDriver::Mysql => format!(
+            "SELECT index_name, CASE WHEN non_unique = 0 THEN 1 ELSE 0 END, column_name \
+             FROM information_schema.statistics WHERE table_schema = {s} AND table_name = {t} \
+             ORDER BY index_name, seq_in_index"
+        ),
+    }
+}
+
+/// Rows: `schema, table, kind (table/view), column, type, nullable (YES/NO), is_pk (0/1), has_default (0/1)`
+/// for SQL completion, grouped by table in column order.
+pub fn completion_columns(driver: DbDriver) -> &'static str {
+    match driver {
+        DbDriver::Sqlite => {
+            "SELECT 'main', m.name, m.type, p.name, p.type, CASE WHEN p.\"notnull\" = 0 THEN 'YES' ELSE 'NO' END, \
+             CASE WHEN p.pk > 0 THEN 1 ELSE 0 END, \
+             CASE WHEN p.dflt_value IS NOT NULL THEN 1 \
+             WHEN p.pk = 1 AND upper(p.type) = 'INTEGER' \
+             AND (SELECT count(*) FROM pragma_table_info(m.name) k WHERE k.pk > 0) = 1 THEN 1 ELSE 0 END \
+             FROM sqlite_master m JOIN pragma_table_info(m.name) p \
+             WHERE m.type IN ('table', 'view') AND m.name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY m.name, p.cid"
+        }
+        DbDriver::Postgres => {
+            "SELECT n.nspname, c.relname, CASE WHEN c.relkind IN ('v', 'm') THEN 'view' ELSE 'table' END, a.attname, \
+             format_type(a.atttypid, a.atttypmod), CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END, \
+             CASE WHEN EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisprimary \
+               AND a.attnum = ANY(i.indkey)) THEN 1 ELSE 0 END, \
+             CASE WHEN a.atthasdef OR a.attidentity <> '' THEN 1 ELSE 0 END \
+             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace JOIN pg_attribute a ON a.attrelid = c.oid \
+             WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f') AND a.attnum > 0 AND NOT a.attisdropped \
+             AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+             AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp%' \
+             ORDER BY n.nspname, c.relname, a.attnum LIMIT 50000"
+        }
+        DbDriver::Mysql => {
+            "SELECT c.table_schema, c.table_name, CASE WHEN t.table_type LIKE '%VIEW%' THEN 'view' ELSE 'table' END, \
+             c.column_name, c.column_type, c.is_nullable, CASE WHEN c.column_key = 'PRI' THEN 1 ELSE 0 END, \
+             CASE WHEN c.column_default IS NOT NULL OR c.extra LIKE '%auto_increment%' THEN 1 ELSE 0 END \
+             FROM information_schema.columns c JOIN information_schema.tables t \
+             ON t.table_schema = c.table_schema AND t.table_name = c.table_name \
+             WHERE c.table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') \
+             ORDER BY c.table_schema, c.table_name, c.ordinal_position LIMIT 50000"
+        }
+    }
+}
+
+/// Rows: `schema, table, constraint, column, ref schema, ref table, ref column`
+/// (one row per column pair, in key order). SQLite leaves the ref column NULL
+/// when the key references the primary key implicitly.
+pub fn foreign_keys(driver: DbDriver) -> &'static str {
+    match driver {
+        DbDriver::Sqlite => {
+            "SELECT 'main', m.name, f.id, f.\"from\", 'main', f.\"table\", f.\"to\" \
+             FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) f \
+             WHERE m.type = 'table' ORDER BY m.name, f.id, f.seq"
+        }
+        DbDriver::Postgres => {
+            "SELECT sn.nspname, sc.relname, con.conname, sa.attname, tn.nspname, tc.relname, ta.attname \
+             FROM pg_constraint con \
+             JOIN pg_class sc ON sc.oid = con.conrelid JOIN pg_namespace sn ON sn.oid = sc.relnamespace \
+             JOIN pg_class tc ON tc.oid = con.confrelid JOIN pg_namespace tn ON tn.oid = tc.relnamespace \
+             CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(s, t, ord) \
+             JOIN pg_attribute sa ON sa.attrelid = sc.oid AND sa.attnum = k.s \
+             JOIN pg_attribute ta ON ta.attrelid = tc.oid AND ta.attnum = k.t \
+             WHERE con.contype = 'f' AND sn.nspname NOT IN ('pg_catalog', 'information_schema') \
+             ORDER BY 1, 2, 3, k.ord LIMIT 20000"
+        }
+        DbDriver::Mysql => {
+            "SELECT table_schema, table_name, constraint_name, column_name, \
+             referenced_table_schema, referenced_table_name, referenced_column_name \
+             FROM information_schema.key_column_usage WHERE referenced_table_name IS NOT NULL \
+             AND table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') \
+             ORDER BY table_schema, table_name, constraint_name, ordinal_position LIMIT 20000"
+        }
+    }
+}
+
+/// [`foreign_keys`] rows of one table.
+pub fn table_foreign_keys(driver: DbDriver, schema: &str, table: &str) -> String {
+    let (s, t) = (quote_literal(driver, schema), quote_literal(driver, table));
+    match driver {
+        DbDriver::Sqlite => format!(
+            "SELECT {s}, {t}, f.id, f.\"from\", {s}, f.\"table\", f.\"to\"              FROM pragma_foreign_key_list({t}, {s}) f ORDER BY f.id, f.seq"
+        ),
+        DbDriver::Postgres => format!(
+            "SELECT sn.nspname, sc.relname, con.conname, sa.attname, tn.nspname, tc.relname, ta.attname              FROM pg_constraint con              JOIN pg_class sc ON sc.oid = con.conrelid JOIN pg_namespace sn ON sn.oid = sc.relnamespace              JOIN pg_class tc ON tc.oid = con.confrelid JOIN pg_namespace tn ON tn.oid = tc.relnamespace              CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(s, t, ord)              JOIN pg_attribute sa ON sa.attrelid = sc.oid AND sa.attnum = k.s              JOIN pg_attribute ta ON ta.attrelid = tc.oid AND ta.attnum = k.t              WHERE con.contype = 'f' AND sn.nspname = {s} AND sc.relname = {t} ORDER BY 3, k.ord"
+        ),
+        DbDriver::Mysql => format!(
+            "SELECT table_schema, table_name, constraint_name, column_name,              referenced_table_schema, referenced_table_name, referenced_column_name              FROM information_schema.key_column_usage WHERE referenced_table_name IS NOT NULL              AND table_schema = {s} AND table_name = {t} ORDER BY constraint_name, ordinal_position"
+        ),
+    }
+}
+
+/// The schema unqualified names resolve to (`None`: always `main`).
+pub fn current_schema(driver: DbDriver) -> Option<&'static str> {
+    match driver {
+        DbDriver::Sqlite => None,
+        DbDriver::Postgres => Some("SELECT current_schema()"),
+        DbDriver::Mysql => Some("SELECT DATABASE()"),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+#[serde(rename = "DbSortKey")]
+pub struct SortKey {
+    pub column: String,
+    pub descending: bool,
+}
+
+/// One page of a table: `limit + 1` rows so the caller knows whether more exist.
+pub fn table_page(
+    driver: DbDriver,
+    schema: &str,
+    table: &str,
+    filter: Option<&str>,
+    sort: &[SortKey],
+    offset: u64,
+    limit: u64,
+) -> String {
+    let mut sql = format!("SELECT * FROM {}", qualified(driver, schema, table));
+    if let Some(f) = filter.map(str::trim).filter(|f| !f.is_empty()) {
+        let f = f.strip_prefix("WHERE ").or_else(|| f.strip_prefix("where ")).unwrap_or(f);
+        sql.push_str(&format!(" WHERE {f}"));
+    }
+    if !sort.is_empty() {
+        let keys: Vec<String> = sort
+            .iter()
+            .map(|k| format!("{}{}", quote_ident(driver, &k.column), if k.descending { " DESC" } else { "" }))
+            .collect();
+        sql.push_str(&format!(" ORDER BY {}", keys.join(", ")));
+    }
+    sql.push_str(&format!(" LIMIT {} OFFSET {offset}", limit + 1));
+    sql
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+#[serde(rename = "DbCellValue")]
+pub struct CellValue {
+    pub column: String,
+    /// `None` is SQL NULL.
+    pub value: Option<String>,
+}
+
+/// A pending change of the table editor. `key` identifies the row: its primary
+/// key columns with their original values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DbRowEdit {
+    Update { key: Vec<CellValue>, values: Vec<CellValue> },
+    Insert { values: Vec<CellValue> },
+    Delete { key: Vec<CellValue> },
+}
+
+fn where_key(driver: DbDriver, key: &[CellValue]) -> String {
+    key.iter()
+        .map(|c| match &c.value {
+            Some(v) => format!("{} = {}", quote_ident(driver, &c.column), quote_literal(driver, v)),
+            None => format!("{} IS NULL", quote_ident(driver, &c.column)),
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+/// The DML statement for `edit`. Values are written as quoted literals, which
+/// every supported database coerces to the column type.
+pub fn edit_statement(driver: DbDriver, schema: &str, table: &str, edit: &DbRowEdit) -> Result<String, String> {
+    let target = qualified(driver, schema, table);
+    match edit {
+        DbRowEdit::Update { key, values } => {
+            if key.is_empty() {
+                return Err("rows can only be updated in tables with a primary key".into());
+            }
+            if values.is_empty() {
+                return Err("nothing to update".into());
+            }
+            let set: Vec<String> = values
+                .iter()
+                .map(|c| {
+                    format!("{} = {}", quote_ident(driver, &c.column), literal_or_null(driver, c.value.as_deref()))
+                })
+                .collect();
+            Ok(format!("UPDATE {target} SET {} WHERE {}", set.join(", "), where_key(driver, key)))
+        }
+        DbRowEdit::Insert { values } => {
+            if values.is_empty() {
+                return Ok(match driver {
+                    DbDriver::Mysql => format!("INSERT INTO {target} () VALUES ()"),
+                    _ => format!("INSERT INTO {target} DEFAULT VALUES"),
+                });
+            }
+            let cols: Vec<String> = values.iter().map(|c| quote_ident(driver, &c.column)).collect();
+            let vals: Vec<String> = values.iter().map(|c| literal_or_null(driver, c.value.as_deref())).collect();
+            Ok(format!("INSERT INTO {target} ({}) VALUES ({})", cols.join(", "), vals.join(", ")))
+        }
+        DbRowEdit::Delete { key } => {
+            if key.is_empty() {
+                return Err("rows can only be deleted in tables with a primary key".into());
+            }
+            Ok(format!("DELETE FROM {target} WHERE {}", where_key(driver, key)))
+        }
+    }
+}
+
+/// Rows: `sql` — the statements that created a SQLite table or view, then its indexes and triggers.
+pub fn sqlite_ddl(schema: &str, name: &str) -> String {
+    format!(
+        "SELECT sql FROM {}.sqlite_master WHERE tbl_name = {} AND sql IS NOT NULL \
+         ORDER BY CASE type WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 ELSE 0 END, name",
+        quote_ident(DbDriver::Sqlite, schema),
+        quote_literal(DbDriver::Sqlite, name)
+    )
+}
+
+/// Rows: `oid, relkind` of a PostgreSQL relation.
+pub fn postgres_relation(schema: &str, name: &str) -> String {
+    format!(
+        "SELECT c.oid::text, c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = {} AND c.relname = {}",
+        quote_literal(DbDriver::Postgres, schema),
+        quote_literal(DbDriver::Postgres, name)
+    )
+}
+
+/// Rows: `name, type, not null (0/1), default` of relation `oid`.
+pub fn postgres_ddl_columns(oid: u32) -> String {
+    format!(
+        "SELECT a.attname, format_type(a.atttypid, a.atttypmod), CASE WHEN a.attnotnull THEN 1 ELSE 0 END, \
+         pg_get_expr(d.adbin, d.adrelid) FROM pg_attribute a \
+         LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
+         WHERE a.attrelid = {oid} AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum"
+    )
+}
+
+/// Rows: `name, definition` of the constraints of relation `oid` (primary key first).
+pub fn postgres_ddl_constraints(oid: u32) -> String {
+    format!(
+        "SELECT conname, pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = {oid} \
+         ORDER BY CASE contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 WHEN 'f' THEN 3 ELSE 4 END, conname"
+    )
+}
+
+/// Rows: `CREATE INDEX …` of relation `oid`, except the indexes behind constraints.
+pub fn postgres_ddl_indexes(oid: u32) -> String {
+    format!(
+        "SELECT pg_get_indexdef(i.indexrelid) FROM pg_index i WHERE i.indrelid = {oid} \
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid AND c.conrelid = i.indrelid) \
+         ORDER BY 1"
+    )
+}
+
+/// A column of [`postgres_table_ddl`].
+pub struct DdlColumn {
+    pub name: String,
+    pub data_type: String,
+    pub not_null: bool,
+    pub default: Option<String>,
+}
+
+/// `create table` of a PostgreSQL table from its catalog (the server has no `SHOW CREATE`).
+pub fn postgres_table_ddl(
+    schema: &str,
+    table: &str,
+    columns: &[DdlColumn],
+    constraints: &[(String, String)],
+    indexes: &[String],
+) -> String {
+    let d = DbDriver::Postgres;
+    let mut items: Vec<String> = columns
+        .iter()
+        .map(|c| {
+            let mut s = format!("    {} {}", quote_ident(d, &c.name), c.data_type);
+            if let Some(v) = &c.default {
+                s.push_str(&format!(" default {v}"));
+            }
+            if c.not_null {
+                s.push_str(" not null");
+            }
+            s
+        })
+        .collect();
+    items.extend(constraints.iter().map(|(name, def)| format!("    constraint {} {def}", quote_ident(d, name))));
+    let mut out = format!("create table {}\n(\n{}\n);\n", qualified(d, schema, table), items.join(",\n"));
+    for i in indexes {
+        out.push_str(&format!("\n{i};\n"));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cv(c: &str, v: Option<&str>) -> CellValue {
+        CellValue { column: c.into(), value: v.map(Into::into) }
+    }
+
+    #[test]
+    fn quoting() {
+        assert_eq!(quote_ident(DbDriver::Postgres, "a\"b"), "\"a\"\"b\"");
+        assert_eq!(quote_ident(DbDriver::Mysql, "a`b"), "`a``b`");
+        assert_eq!(quote_literal(DbDriver::Sqlite, "it's \\"), "'it''s \\'");
+        assert_eq!(quote_literal(DbDriver::Mysql, "it's \\"), "'it''s \\\\'");
+    }
+
+    #[test]
+    fn pages() {
+        let sort = [SortKey { column: "id".into(), descending: true }];
+        assert_eq!(
+            table_page(DbDriver::Postgres, "public", "users", Some("WHERE age > 3"), &sort, 100, 50),
+            "SELECT * FROM \"public\".\"users\" WHERE age > 3 ORDER BY \"id\" DESC LIMIT 51 OFFSET 100"
+        );
+        assert_eq!(table_page(DbDriver::Mysql, "", "t", Some("  "), &[], 0, 10), "SELECT * FROM `t` LIMIT 11 OFFSET 0");
+    }
+
+    #[test]
+    fn edits() {
+        let key = vec![cv("id", Some("1"))];
+        assert_eq!(
+            edit_statement(
+                DbDriver::Sqlite,
+                "main",
+                "t",
+                &DbRowEdit::Update { key: key.clone(), values: vec![cv("name", Some("O'Brien")), cv("note", None)] }
+            )
+            .unwrap(),
+            "UPDATE \"main\".\"t\" SET \"name\" = 'O''Brien', \"note\" = NULL WHERE \"id\" = '1'"
+        );
+        assert_eq!(
+            edit_statement(DbDriver::Mysql, "db", "t", &DbRowEdit::Insert { values: vec![cv("a", Some("x"))] })
+                .unwrap(),
+            "INSERT INTO `db`.`t` (`a`) VALUES ('x')"
+        );
+        assert_eq!(
+            edit_statement(DbDriver::Postgres, "s", "t", &DbRowEdit::Delete { key: vec![cv("k", None)] }).unwrap(),
+            "DELETE FROM \"s\".\"t\" WHERE \"k\" IS NULL"
+        );
+        assert!(edit_statement(DbDriver::Postgres, "s", "t", &DbRowEdit::Delete { key: vec![] }).is_err());
+    }
+
+    #[test]
+    fn postgres_ddl() {
+        let cols = [
+            DdlColumn { name: "id".into(), data_type: "integer".into(), not_null: true, default: None },
+            DdlColumn {
+                name: "name".into(),
+                data_type: "character varying(40)".into(),
+                not_null: false,
+                default: Some("'x'::character varying".into()),
+            },
+        ];
+        assert_eq!(
+            postgres_table_ddl(
+                "public",
+                "t",
+                &cols,
+                &[("t_pkey".into(), "PRIMARY KEY (id)".into())],
+                &["CREATE INDEX t_name ON public.t USING btree (name)".into()]
+            ),
+            "create table \"public\".\"t\"\n(\n    \"id\" integer not null,\n    \"name\" character varying(40) default 'x'::character varying,\n    constraint \"t_pkey\" PRIMARY KEY (id)\n);\n\nCREATE INDEX t_name ON public.t USING btree (name);\n"
+        );
+    }
+}

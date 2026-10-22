@@ -1,0 +1,668 @@
+use crate::state::AppState;
+use ide_core::{IdeResult, RequestId};
+use ide_vcs::*;
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use std::path::{Path, PathBuf};
+use tauri::ipc::Channel;
+use tauri::{State, Window};
+
+/// Settings › Version Control › Git › Path to Git executable (empty = auto-detect).
+pub(crate) fn apply_git_executable(settings: &ide_core::settings::Settings) {
+    let exe = settings.vcs.git.executable.trim();
+    ide_vcs::set_git_executable((!exe.is_empty()).then(|| Path::new(exe)));
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_status(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<FileStatus>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.status())).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_branch_info(window: Window, state: State<'_, AppState>) -> IdeResult<BranchInfo> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.branch_info())).await
+}
+
+/// Gutter change markers for a file, computed against its current (unsaved) text.
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_line_hunks(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<Vec<LineHunk>> {
+    let project = state.project(window.label())?;
+    let text = project.text_of(&path)?;
+    project.with_repo(|r| r.line_hunks(&path, &text, false))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_file_at(
+    window: Window,
+    state: State<'_, AppState>,
+    path: PathBuf,
+    rev: Option<String>,
+) -> IdeResult<Option<String>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.file_at(&path, rev.as_deref()))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_blame(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<Vec<BlameLine>> {
+    let project = state.project(window.label())?;
+    let text = project.documents.text_of(&path);
+    blocking(move || project.with_repo(|r| r.blame(&path, text.as_deref()))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_log(window: Window, state: State<'_, AppState>, query: LogQuery) -> IdeResult<Vec<Commit>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.log(&query))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_commit_files(
+    window: Window,
+    state: State<'_, AppState>,
+    commit: String,
+) -> IdeResult<Vec<ChangedFile>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.commit_files(&commit))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_branches(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<Branch>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.branches())).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_stashes(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<Stash>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.stashes())).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_stage(window: Window, state: State<'_, AppState>, paths: Vec<PathBuf>) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.stage(&paths))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_unstage(window: Window, state: State<'_, AppState>, paths: Vec<PathBuf>) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.unstage(&paths))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_stage_patch(window: Window, state: State<'_, AppState>, patch: String) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.stage_patch(&patch))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_discard(window: Window, state: State<'_, AppState>, paths: Vec<PathBuf>) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_recorded(Some("Rollback"), |r| r.discard(&paths))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_commit(
+    window: Window,
+    state: State<'_, AppState>,
+    message: String,
+    amend: bool,
+    sign_off: bool,
+) -> IdeResult<String> {
+    // Commit hooks may run for a long time.
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.commit(&message, amend, sign_off))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_checkout(window: Window, state: State<'_, AppState>, branch: String, create: bool) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_recorded(Some("Git checkout"), |r| r.checkout(&branch, create))).await
+}
+
+/// New Branch: creates `name` at `start` (HEAD when absent), optionally checking it out.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_create_branch(
+    window: Window,
+    state: State<'_, AppState>,
+    name: String,
+    start: Option<String>,
+    checkout: bool,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    let recorded = checkout.then_some("Git checkout");
+    blocking(move || project.with_repo_recorded(recorded, |r| r.create_branch(&name, start.as_deref(), checkout))).await
+}
+
+/// Undo Commit: moves HEAD back to the commit's parent, keeping its changes staged.
+/// Returns the undone commit's message.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_undo_commit(window: Window, state: State<'_, AppState>, commit: String) -> IdeResult<String> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.undo_commit(&commit))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_delete_branch(
+    window: Window,
+    state: State<'_, AppState>,
+    branch: String,
+    force: bool,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.delete_branch(&branch, force))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_rename_branch(window: Window, state: State<'_, AppState>, from: String, to: String) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.rename_branch(&from, &to))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_merge(window: Window, state: State<'_, AppState>, branch: String) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_recorded(Some("Git merge"), |r| r.merge(&branch))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_rebase(window: Window, state: State<'_, AppState>, onto: String) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_recorded(Some("Git rebase"), |r| r.rebase(&onto))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_stash_push(
+    window: Window,
+    state: State<'_, AppState>,
+    message: Option<String>,
+    include_untracked: bool,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo_recorded(Some("Git stash"), |r| r.stash_push(message.as_deref(), include_untracked))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_stash_apply(window: Window, state: State<'_, AppState>, index: u32, pop: bool) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_recorded(Some("Git unstash"), |r| r.stash_apply(index, pop))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_stash_drop(window: Window, state: State<'_, AppState>, index: u32) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.stash_drop(index))).await
+}
+
+#[derive(Clone, Serialize, Deserialize, Type)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum RemoteOp {
+    Fetch,
+    Pull {
+        rebase: bool,
+    },
+    Push {
+        force_with_lease: bool,
+        set_upstream: bool,
+        /// Push dialog › Push tags.
+        #[serde(default)]
+        tags: Option<PushTags>,
+    },
+    /// Deletes a remote branch; `branch` is the remote-tracking name (`origin/feature`).
+    DeleteBranch {
+        branch: String,
+    },
+    /// Pushes local `branch` (only up to `revision` when set) to its upstream.
+    PushBranch {
+        branch: String,
+        revision: Option<String>,
+        force_with_lease: bool,
+    },
+    /// Fast-forwards local `branch` (not checked out) to its upstream.
+    UpdateBranch {
+        branch: String,
+    },
+}
+
+/// Network operation; progress lines stream through `on_output`. Cancellable.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_remote(
+    window: Window,
+    state: State<'_, AppState>,
+    request: RequestId,
+    op: RemoteOp,
+    on_output: Channel<String>,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    let cancel = state.begin_request(request);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let out = |line: String| {
+            let _ = on_output.send(line);
+        };
+        let recorded = matches!(op, RemoteOp::Pull { .. }).then_some("Git pull");
+        project.with_repo_recorded(recorded, |r| match op {
+            RemoteOp::Fetch => r.fetch(&cancel, &out),
+            RemoteOp::Pull { rebase } => r.pull(rebase, &cancel, &out),
+            RemoteOp::Push { force_with_lease, set_upstream, tags } => {
+                r.push_with_tags(force_with_lease, set_upstream, tags, &cancel, &out)
+            }
+            RemoteOp::DeleteBranch { branch } => r.delete_remote_branch(&branch, &cancel, &out),
+            RemoteOp::PushBranch { branch, revision, force_with_lease } => {
+                r.push_branch(&branch, revision.as_deref(), force_with_lease, &cancel, &out)
+            }
+            RemoteOp::UpdateBranch { branch } => r.update_branch(&branch, &cancel, &out),
+        })
+    })
+    .await
+    .map_err(|e| ide_core::IdeError::internal(e.to_string()))?;
+    state.end_request(request);
+    result
+}
+
+#[derive(Serialize, Deserialize, Type)]
+pub struct ConflictVersions {
+    pub base: Option<String>,
+    pub ours: Option<String>,
+    pub theirs: Option<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_conflict_versions(
+    window: Window,
+    state: State<'_, AppState>,
+    path: PathBuf,
+) -> IdeResult<ConflictVersions> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo(|r| {
+            r.conflict_versions(&path).map(|(base, ours, theirs)| ConflictVersions { base, ours, theirs })
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_diff_text(
+    window: Window,
+    state: State<'_, AppState>,
+    path: PathBuf,
+    staged: bool,
+) -> IdeResult<String> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.diff_text(&path, staged))).await
+}
+
+/// Line hunks between two arbitrary texts (diff viewer, commit dialog).
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_diff_hunks(old_text: String, new_text: String) -> Vec<LineHunk> {
+    ide_vcs::diff_hunks(&old_text, &new_text)
+}
+
+/// Stages only the selected hunks of a file's working-tree changes.
+/// Indices refer to `vcs_diff_hunks(index_text, worktree_text)`.
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_stage_hunks(window: Window, state: State<'_, AppState>, path: PathBuf, hunks: Vec<u32>) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    let current = ide_vfs::load_text(&path)?.text;
+    project.with_repo(|r| {
+        let index_text = r.file_at(&path, Some(":0"))?.unwrap_or_default();
+        let rel = path.strip_prefix(r.root()).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        let selected: Vec<usize> = hunks.iter().map(|&h| h as usize).collect();
+        let patch = ide_vcs::build_partial_patch(&rel, &index_text, &current, &selected);
+        if patch.is_empty() { Ok(()) } else { r.stage_patch(&patch) }
+    })
+}
+
+/// Clones a repository (Get from VCS). Works without an open project.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_clone(
+    state: State<'_, AppState>,
+    request: RequestId,
+    url: String,
+    dest: PathBuf,
+    on_output: Channel<String>,
+) -> IdeResult<()> {
+    apply_git_executable(&state.global_settings.effective());
+    let cancel = state.begin_request(request);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        ide_vcs::clone(&url, &dest, &cancel, &|line| {
+            let _ = on_output.send(line);
+        })
+    })
+    .await
+    .map_err(|e| ide_core::IdeError::internal(e.to_string()))?;
+    state.end_request(request);
+    result
+}
+
+#[derive(Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GitExecutableInfo {
+    /// `git version …` output.
+    pub version: String,
+    /// The executable that was run.
+    pub path: String,
+}
+
+/// Settings › Git › Test: runs `git --version` on `path`, or on the auto-detected
+/// executable when `path` is empty.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_git_version(path: String) -> IdeResult<GitExecutableInfo> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let explicit = path.trim();
+        let exe = if explicit.is_empty() {
+            ide_vcs::detected_git_executable()
+                .ok_or_else(|| ide_core::IdeError::unavailable("git executable not found on PATH"))?
+        } else {
+            PathBuf::from(explicit)
+        };
+        let version = ide_vcs::git_version(Some(&exe))?;
+        Ok(GitExecutableInfo { version, path: exe.to_string_lossy().into_owned() })
+    })
+    .await
+    .map_err(|e| ide_core::IdeError::internal(e.to_string()))?
+}
+
+/// The auto-detected git executable (shown as the field's placeholder).
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_detected_git() -> Option<String> {
+    ide_vcs::detected_git_executable().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// `git config --get <key>` in the project repository; `None` when unset.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_config_get(window: Window, state: State<'_, AppState>, key: String) -> IdeResult<Option<String>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.config_get(&key))).await
+}
+
+// ---- in-progress operations, history rewriting (Git Log actions) ----
+
+#[derive(Clone, Serialize, Deserialize, Type)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum GitOperation {
+    /// Continue the merge / rebase / cherry-pick / revert in progress.
+    Continue,
+    Abort,
+    Skip,
+    /// Commits oldest first.
+    CherryPick {
+        commits: Vec<String>,
+    },
+    /// Commits newest first.
+    Revert {
+        commits: Vec<String>,
+    },
+    Reset {
+        commit: String,
+        mode: ResetMode,
+    },
+    /// Rebases `base..HEAD` (`base: None` = from the root) following `entries`, oldest first.
+    InteractiveRebase {
+        base: Option<String>,
+        entries: Vec<RebaseEntry>,
+    },
+}
+
+/// Local history operation that may take a while (hooks, large checkouts); git's
+/// output streams through `on_output`. Cancellable.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_operation(
+    window: Window,
+    state: State<'_, AppState>,
+    request: RequestId,
+    op: GitOperation,
+    on_output: Channel<String>,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    let cancel = state.begin_request(request);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let out = |line: String| {
+            let _ = on_output.send(line);
+        };
+        let recorded = match &op {
+            GitOperation::CherryPick { .. } => Some("Git cherry-pick"),
+            GitOperation::Revert { .. } => Some("Git revert"),
+            GitOperation::Reset { .. } => Some("Git reset"),
+            GitOperation::InteractiveRebase { .. } => Some("Git rebase"),
+            _ => None,
+        };
+        project.with_repo_recorded(recorded, |r| match op {
+            GitOperation::Continue => r.continue_operation(&cancel, &out),
+            GitOperation::Abort => r.abort_operation(&cancel, &out),
+            GitOperation::Skip => r.skip_operation(&cancel, &out),
+            GitOperation::CherryPick { commits } => r.cherry_pick(&commits, &cancel, &out),
+            GitOperation::Revert { commits } => r.revert(&commits, &cancel, &out),
+            GitOperation::Reset { commit, mode } => r.reset(&commit, mode, &cancel, &out),
+            GitOperation::InteractiveRebase { base, entries } => {
+                r.interactive_rebase(base.as_deref(), &entries, &cancel, &out)
+            }
+        })
+    })
+    .await
+    .map_err(|e| ide_core::IdeError::internal(e.to_string()))?;
+    state.end_request(request);
+    result
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_create_tag(
+    window: Window,
+    state: State<'_, AppState>,
+    name: String,
+    commit: String,
+    message: Option<String>,
+    force: bool,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.create_tag(&name, &commit, message.as_deref(), force))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_tags(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<String>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.tags())).await
+}
+
+/// Compare with Local: tracked files that differ between `rev` and the working tree.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_diff_with_worktree(
+    window: Window,
+    state: State<'_, AppState>,
+    rev: String,
+) -> IdeResult<Vec<ChangedFile>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.diff_with_worktree(&rev))).await
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> IdeResult<T> + Send + 'static) -> IdeResult<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| ide_core::IdeError::internal(e.to_string()))?
+}
+
+// ---- patches ----
+
+#[derive(Clone, Serialize, Deserialize, Type)]
+#[serde(tag = "from", rename_all = "camelCase")]
+pub enum PatchSource {
+    /// Local changes of these files (absolute paths).
+    Changes { paths: Vec<ide_core::IpcPath>, reverse: bool },
+    /// Changes made by these commits (oldest first).
+    Commits { commits: Vec<String>, reverse: bool },
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_create_patch(window: Window, state: State<'_, AppState>, source: PatchSource) -> IdeResult<String> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo(|r| match source {
+            PatchSource::Changes { paths, reverse } => {
+                let paths: Vec<PathBuf> = paths.into_iter().map(Into::into).collect();
+                r.create_patch(&paths, reverse)
+            }
+            PatchSource::Commits { commits, reverse } => r.create_commits_patch(&commits, reverse),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_patch_preview(window: Window, state: State<'_, AppState>, patch: String) -> IdeResult<Vec<PatchFile>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.patch_preview(&patch))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_apply_patch(window: Window, state: State<'_, AppState>, patch: String) -> IdeResult<ApplyOutcome> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo(|r| r.apply_patch(&patch))).await
+}
+
+// ---- shelf (`.openidea/shelf`) and change lists (`.openidea/changelists.json`) ----
+
+const PRIVATE_ENTRIES: [&str; 2] = ["/shelf/", "/changelists.json"];
+
+fn shelf_dir(root: &Path) -> PathBuf {
+    ide_core::project_dir::path(root, "shelf")
+}
+
+fn keep_private(root: &Path) {
+    if let Err(e) = ide_vcs::changelists::ensure_ignored(&ide_core::project_dir::path(root, ""), &PRIVATE_ENTRIES) {
+        tracing::warn!("could not update .openidea/.gitignore: {e}");
+    }
+}
+
+/// Shelve Changes: saves the changes of `paths` as a patch on the shelf and reverts them.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_shelve(
+    window: Window,
+    state: State<'_, AppState>,
+    name: String,
+    paths: Vec<PathBuf>,
+) -> IdeResult<ShelvedChangeList> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        keep_private(&project.root);
+        project.with_repo_recorded(Some("Shelve"), |r| r.shelve(&shelf_dir(&project.root), &name, &paths))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_shelves(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<ShelvedChangeList>> {
+    let project = state.project(window.label())?;
+    ide_vcs::shelf::list(&shelf_dir(&project.root))
+}
+
+/// Unshelve: applies the shelved patch (3-way merging; conflicts are left for the
+/// merge UI); with `remove`, deletes it from the shelf.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_unshelve(
+    window: Window,
+    state: State<'_, AppState>,
+    id: String,
+    remove: bool,
+) -> IdeResult<ApplyOutcome> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo_recorded(Some("Unshelve"), |r| r.unshelve(&shelf_dir(&project.root), &id, remove))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_shelf_delete(window: Window, state: State<'_, AppState>, id: String) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    ide_vcs::shelf::delete(&shelf_dir(&project.root), &id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_shelf_rename(window: Window, state: State<'_, AppState>, id: String, name: String) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    ide_vcs::shelf::rename(&shelf_dir(&project.root), &id, &name)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_shelf_patch(window: Window, state: State<'_, AppState>, id: String) -> IdeResult<String> {
+    let project = state.project(window.label())?;
+    ide_vcs::shelf::patch_of(&shelf_dir(&project.root), &id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_changelists_load(window: Window, state: State<'_, AppState>) -> IdeResult<ChangelistState> {
+    let project = state.project(window.label())?;
+    Ok(ide_vcs::changelists::load(&ide_core::project_dir::path(&project.root, "changelists.json")))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_changelists_save(window: Window, state: State<'_, AppState>, changelists: ChangelistState) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    keep_private(&project.root);
+    ide_vcs::changelists::save(&ide_core::project_dir::path(&project.root, "changelists.json"), &changelists)
+}
+
+/// Create Patch › Save to file.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_write_patch(path: PathBuf, patch: String) -> IdeResult<()> {
+    blocking(move || {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(&path, patch)?;
+        Ok(())
+    })
+    .await
+}

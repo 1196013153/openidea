@@ -1,0 +1,25 @@
+[package]
+name = "ide-db"
+description = "Database tools: data sources, connections, introspection, query execution and table editing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ide-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+toml.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+futures.workspace = true
+sqlx.workspace = true
+dirs.workspace = true
+russh = { version = "0.64", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh-config = "0.58.0"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tempfile.workspace = true

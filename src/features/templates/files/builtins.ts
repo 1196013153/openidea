@@ -1,0 +1,176 @@
+/** Built-in file templates for the "New ▸" menu. */
+import type { FileTemplate } from "./model";
+
+export const BUILTIN_FILE_TEMPLATES: readonly FileTemplate[] = [
+  {
+    id: "file",
+    name: "File",
+    icon: "file",
+    extension: "",
+    nameStyle: "asis",
+    kinds: [{ id: "file", label: "File", body: "$END$" }],
+  },
+  {
+    id: "rust",
+    name: "Rust File",
+    icon: "file-rust",
+    extension: "rs",
+    nameStyle: "snake",
+    kinds: [
+      { id: "module", label: "Module", body: "$END$\n" },
+      { id: "struct", label: "Struct", body: "pub struct $NAME$ {\n    $END$\n}\n" },
+      {
+        id: "test",
+        label: "Test module",
+        body: "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn it_works() {\n        $END$\n    }\n}\n",
+      },
+    ],
+  },
+  {
+    id: "typescript",
+    name: "TypeScript File",
+    icon: "file-ts",
+    extension: "ts",
+    nameStyle: "asis",
+    kinds: [
+      { id: "file", label: "File", body: "$END$\n" },
+      { id: "class", label: "Class", body: "export class $NAME$ {\n  $END$\n}\n" },
+      {
+        id: "test",
+        label: "Test",
+        body: 'import { describe, expect, it } from "vitest";\n\ndescribe("$NAME$", () => {\n  it("works", () => {\n    $END$\n  });\n});\n',
+      },
+    ],
+  },
+  {
+    id: "tsx",
+    name: "React Component",
+    icon: "file-tsx",
+    extension: "tsx",
+    nameStyle: "pascal",
+    kinds: [
+      {
+        id: "component",
+        label: "Function component",
+        body: "export interface $NAME$Props {}\n\nexport function $NAME$(props: $NAME$Props) {\n  return <div>$END$</div>;\n}\n",
+      },
+      {
+        id: "styled",
+        label: "Component with CSS module",
+        body: 'import styles from "./$NAME$.module.css";\n\nexport function $NAME$() {\n  return <div className={styles.root}>$END$</div>;\n}\n',
+      },
+    ],
+  },
+  {
+    id: "javascript",
+    name: "JavaScript File",
+    icon: "file-js",
+    extension: "js",
+    nameStyle: "asis",
+    kinds: [{ id: "file", label: "File", body: "$END$\n" }],
+  },
+  {
+    id: "python",
+    name: "Python File",
+    icon: "file-python",
+    extension: "py",
+    nameStyle: "snake",
+    kinds: [
+      { id: "module", label: "Module", body: '"""$NAME$ module."""\n\n$END$\n' },
+      {
+        id: "class",
+        label: "Class",
+        body: "class $NAME$:\n    def __init__(self):\n        $END$\n",
+      },
+      { id: "test", label: "Test (pytest)", body: "def test_$NAME$():\n    $END$\n" },
+      { id: "script", label: "Script", body: 'def main():\n    $END$\n\n\nif __name__ == "__main__":\n    main()\n' },
+    ],
+  },
+  {
+    id: "go",
+    name: "Go File",
+    icon: "file-go",
+    extension: "go",
+    nameStyle: "snake",
+    packageStyle: "go",
+    kinds: [
+      { id: "file", label: "Empty file", body: "package $PACKAGE$\n\n$END$\n" },
+      {
+        id: "test",
+        label: "Test file",
+        body: 'package $PACKAGE$\n\nimport "testing"\n\nfunc Test$NAME$(t *testing.T) {\n\t$END$\n}\n',
+      },
+      { id: "main", label: "Main", body: "package main\n\nfunc main() {\n\t$END$\n}\n" },
+    ],
+  },
+  {
+    id: "java",
+    name: "Java Class",
+    icon: "class",
+    extension: "java",
+    nameStyle: "pascal",
+    packageStyle: "jvm",
+    dottedPackages: true,
+    kinds: [
+      { id: "class", label: "Class", body: "package $PACKAGE$;\n\npublic class $NAME$ {\n    $END$\n}\n" },
+      { id: "interface", label: "Interface", body: "package $PACKAGE$;\n\npublic interface $NAME$ {\n    $END$\n}\n" },
+      { id: "enum", label: "Enum", body: "package $PACKAGE$;\n\npublic enum $NAME$ {\n    $END$\n}\n" },
+      { id: "record", label: "Record", body: "package $PACKAGE$;\n\npublic record $NAME$($END$) {\n}\n" },
+      {
+        id: "annotation",
+        label: "Annotation",
+        body: "package $PACKAGE$;\n\npublic @interface $NAME$ {\n    $END$\n}\n",
+      },
+      {
+        id: "test",
+        label: "JUnit 5 Test",
+        body: "package $PACKAGE$;\n\nimport org.junit.jupiter.api.Test;\n\nimport static org.junit.jupiter.api.Assertions.*;\n\nclass $NAME$ {\n\n    @Test\n    void test() {\n        $END$\n    }\n}\n",
+      },
+    ],
+  },
+  {
+    id: "kotlin",
+    name: "Kotlin Class/File",
+    icon: "class",
+    extension: "kt",
+    nameStyle: "pascal",
+    packageStyle: "jvm",
+    dottedPackages: true,
+    kinds: [
+      { id: "class", label: "Class", body: "package $PACKAGE$\n\nclass $NAME$ {\n    $END$\n}\n" },
+      { id: "file", label: "File", body: "package $PACKAGE$\n\n$END$\n" },
+      { id: "interface", label: "Interface", body: "package $PACKAGE$\n\ninterface $NAME$ {\n    $END$\n}\n" },
+      { id: "data", label: "Data class", body: "package $PACKAGE$\n\ndata class $NAME$($END$)\n" },
+      { id: "enum", label: "Enum class", body: "package $PACKAGE$\n\nenum class $NAME$ {\n    $END$\n}\n" },
+      { id: "object", label: "Object", body: "package $PACKAGE$\n\nobject $NAME$ {\n    $END$\n}\n" },
+      {
+        id: "test",
+        label: "JUnit 5 Test",
+        body: "package $PACKAGE$\n\nimport org.junit.jupiter.api.Test\nimport org.junit.jupiter.api.Assertions.*\n\nclass $NAME$ {\n\n    @Test\n    fun test() {\n        $END$\n    }\n}\n",
+      },
+    ],
+  },
+  {
+    id: "html",
+    name: "HTML File",
+    icon: "file-html",
+    extension: "html",
+    nameStyle: "asis",
+    kinds: [
+      {
+        id: "html5",
+        label: "HTML 5 file",
+        body: '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>$NAME$</title>\n</head>\n<body>\n$END$\n</body>\n</html>\n',
+      },
+      { id: "fragment", label: "Fragment", body: "$END$\n" },
+    ],
+  },
+  {
+    id: "markdown",
+    name: "Markdown File",
+    icon: "file-md",
+    extension: "md",
+    nameStyle: "asis",
+    kinds: [{ id: "md", label: "Markdown file", body: "# $NAME$\n\n$END$\n" }],
+  },
+];

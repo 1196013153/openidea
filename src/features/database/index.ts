@@ -1,0 +1,133 @@
+/**
+ * Database tools (IDEA's Database tool window, scoped): data sources for
+ * SQLite / PostgreSQL / MySQL-MariaDB, a schema tree, query consoles with
+ * results grids, and a table data editor. Connections, introspection and
+ * statements run in Rust (`ide-db`).
+ */
+import { lazyComponent } from "@/ui";
+import { activeEditor, registerEditorContribution } from "@/editor/api";
+import { registerActions } from "@/platform/actions";
+import { useProject } from "@/platform/project";
+import { registerEditorKind, registerOverlay, registerServiceView, registerToolWindow, toolWindowService } from "@/workbench/contributions";
+import { SQL_LANGUAGE, consoleExtension, executeInView } from "./console";
+import { DatabaseDialogs } from "./Dialogs";
+import { TABLE_KIND, tableTitle } from "./tableInput";
+import { nodeTarget, type DbNode } from "./nodes";
+import { registerDatabaseTreeActions } from "./treeActions";
+import {
+  DB_TOOL_WINDOW,
+  RESULTS_VIEW,
+  consoleSource,
+  loadSources,
+  openConsole,
+  openSourceDialog,
+  useDatabase,
+} from "./store";
+
+export function activate(): () => void {
+  const disposers = [
+    registerToolWindow({
+      id: DB_TOOL_WINDOW,
+      title: "Database",
+      icon: "toolwindow-database",
+      anchor: "right",
+      order: 20,
+      component: lazyComponent(() => import("./DatabaseView").then((m) => m.DatabaseView)),
+      headerActions: lazyComponent(() => import("./DatabaseView").then((m) => m.DatabaseHeaderActions)),
+    }),
+    registerServiceView({
+      id: RESULTS_VIEW,
+      title: "Database",
+      icon: "database",
+      order: 20,
+      onUse: true,
+      component: lazyComponent(() => import("./ResultsView").then((m) => m.ResultsView)),
+    }),
+    registerEditorKind({ kind: TABLE_KIND, component: lazyComponent(() => import("./TableEditor").then((m) => m.TableEditor)), title: tableTitle, icon: () => "database" }),
+    registerOverlay({ id: "database.dialogs", component: DatabaseDialogs }),
+    registerEditorContribution({ id: "database.console", order: 57, extensions: consoleExtension }),
+    // A reopened project starts with a fresh backend: forget the old one's state.
+    useProject.subscribe((s, prev) => {
+      if (s.project?.root === prev.project?.root) return;
+      useDatabase.setState({
+        sources: [],
+        loaded: false,
+        connected: new Set(),
+        databases: {},
+        schemas: {},
+        tables: {},
+        details: {},
+        completion: {},
+        results: [],
+        output: [],
+        activeResult: null,
+        selectedSource: null,
+        selectedNode: null,
+        treeExpanded: new Set(),
+        treeReveal: null,
+        manualCommit: new Set(),
+        pendingTx: new Set(),
+      });
+    }),
+    registerDatabaseTreeActions(),
+    registerActions([
+      {
+        id: "db.showToolWindow",
+        title: "Database",
+        category: "Tools",
+        icon: "toolwindow-database",
+        keywords: ["data sources", "sql", "tables"],
+        when: "projectOpen",
+        run: () => toolWindowService().show(DB_TOOL_WINDOW, true),
+      },
+      {
+        id: "db.newDataSource",
+        title: "New Data Source…",
+        category: "Tools",
+        icon: "plus",
+        keywords: ["database", "connection", "postgres", "mysql", "sqlite"],
+        when: "projectOpen",
+        run: async () => {
+          if (!useDatabase.getState().loaded) await loadSources();
+          openSourceDialog(null);
+        },
+      },
+      {
+        id: "db.openConsole",
+        title: "Query Console",
+        category: "Tools",
+        icon: "file-sql",
+        keywords: ["database", "sql console"],
+        when: "projectOpen",
+        run: async ({ arg }) => {
+          const s = useDatabase.getState();
+          if (!s.loaded) await loadSources();
+          const { sources, selectedSource } = useDatabase.getState();
+          // A tree node (New ▸ Query Console) opens its data source's console.
+          const node = arg && typeof arg === "object" && "kind" in arg ? nodeTarget(arg as DbNode) : null;
+          const id = node ?? selectedSource ?? (sources.length === 1 ? sources[0]!.id : null);
+          if (id) await openConsole(id);
+          else toolWindowService().show(DB_TOOL_WINDOW, true);
+        },
+      },
+      {
+        id: "db.execute",
+        title: "Execute SQL Statement",
+        category: "Tools",
+        icon: "run",
+        when: `editorTextFocus && editorLangId == ${SQL_LANGUAGE}`,
+        run: async () => {
+          const e = activeEditor();
+          if (!e || e.ctx.language !== SQL_LANGUAGE) return;
+          if (!useDatabase.getState().loaded) await loadSources();
+          if (!consoleSource(e.ctx.path) && !useDatabase.getState().sources.length) {
+            openSourceDialog(null);
+            return;
+          }
+          await executeInView(e.view, e.ctx.path);
+        },
+      },
+    ]),
+  ];
+  return () => disposers.reverse().forEach((d) => d());
+}

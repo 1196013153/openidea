@@ -1,0 +1,308 @@
+//! History-rewriting operations (cherry-pick, revert, reset, tags) and the
+//! Continue / Abort / Skip controls of an operation that stopped half-way.
+
+use crate::cli::{self, run};
+use crate::repo::{gx, resolve};
+use crate::{ChangeKind, ChangedFile, RebaseAction, RebaseEntry, Repo, ResetMode};
+use ide_core::{CancellationToken, IdeError, IdeResult};
+
+/// The in-progress operation git can continue / abort / skip.
+fn sequencer(r: &Repo) -> IdeResult<&'static str> {
+    match r.branch_info()?.operation.as_deref() {
+        Some("rebase") => Ok("rebase"),
+        Some("merge") => Ok("merge"),
+        Some("cherry-pick") => Ok("cherry-pick"),
+        Some("revert") => Ok("revert"),
+        Some("am") => Ok("am"),
+        _ => Err(IdeError::invalid("no merge, rebase, cherry-pick or revert is in progress")),
+    }
+}
+
+use crate::write::unmerged_paths;
+
+fn check_commits(commits: &[String]) -> IdeResult<()> {
+    if commits.is_empty() {
+        return Err(IdeError::invalid("no commits selected"));
+    }
+    if commits.iter().any(|c| c.trim().is_empty() || c.starts_with('-')) {
+        return Err(IdeError::invalid("invalid revision"));
+    }
+    Ok(())
+}
+
+/// Concludes the operation in progress once every conflict is resolved (staged).
+pub(crate) fn continue_op(r: &Repo, cancel: &CancellationToken, out: &dyn Fn(String)) -> IdeResult<()> {
+    let op = sequencer(r)?;
+    let unresolved = unmerged_paths(r)?;
+    if !unresolved.is_empty() {
+        return Err(IdeError::invalid(format!("resolve all conflicts before continuing: {}", unresolved.join(", "))));
+    }
+    let args: &[&str] = match op {
+        // `git merge --continue` commits with the prepared MERGE_MSG.
+        "merge" => &["merge", "--continue"],
+        "rebase" => &["rebase", "--continue"],
+        "cherry-pick" => &["cherry-pick", "--continue"],
+        "revert" => &["revert", "--continue"],
+        _ => &["am", "--continue"],
+    };
+    cli::run_streaming(r.root(), args, cancel, out)
+}
+
+pub(crate) fn abort_op(r: &Repo, cancel: &CancellationToken, out: &dyn Fn(String)) -> IdeResult<()> {
+    let op = sequencer(r)?;
+    cli::run_streaming(r.root(), &[op, "--abort"], cancel, out)
+}
+
+pub(crate) fn skip_op(r: &Repo, cancel: &CancellationToken, out: &dyn Fn(String)) -> IdeResult<()> {
+    let op = sequencer(r)?;
+    if op == "merge" {
+        return Err(IdeError::invalid("a merge cannot be skipped; abort it instead"));
+    }
+    cli::run_streaming(r.root(), &[op, "--skip"], cancel, out)
+}
+
+/// Merge commits need a mainline (`-m`), which IDEA doesn't offer for cherry-pick / revert.
+fn reject_merges(r: &Repo, commits: &[String], verb: &str) -> IdeResult<()> {
+    let repo = r.gix()?;
+    for c in commits {
+        let commit = repo.find_object(resolve(&repo, c)?).map_err(gx)?.peel_to_commit().map_err(gx)?;
+        if commit.parent_ids().count() > 1 {
+            let hex = commit.id.to_string();
+            return Err(IdeError::invalid(format!("cannot {verb} merge commit {}", &hex[..8])));
+        }
+    }
+    Ok(())
+}
+
+/// Applies `commits` on top of HEAD, in the given order (pass oldest first).
+pub(crate) fn cherry_pick(
+    r: &Repo,
+    commits: &[String],
+    cancel: &CancellationToken,
+    out: &dyn Fn(String),
+) -> IdeResult<()> {
+    check_commits(commits)?;
+    reject_merges(r, commits, "cherry-pick")?;
+    let mut args = vec!["cherry-pick"];
+    args.extend(commits.iter().map(String::as_str));
+    cli::run_streaming(r.root(), &args, cancel, out)
+}
+
+/// Creates commits undoing `commits`, in the given order (pass newest first).
+pub(crate) fn revert(r: &Repo, commits: &[String], cancel: &CancellationToken, out: &dyn Fn(String)) -> IdeResult<()> {
+    check_commits(commits)?;
+    reject_merges(r, commits, "revert")?;
+    let mut args = vec!["revert", "--no-edit"];
+    args.extend(commits.iter().map(String::as_str));
+    cli::run_streaming(r.root(), &args, cancel, out)
+}
+
+pub(crate) fn reset(
+    r: &Repo,
+    commit: &str,
+    mode: ResetMode,
+    cancel: &CancellationToken,
+    out: &dyn Fn(String),
+) -> IdeResult<()> {
+    check_commits(&[commit.to_string()])?;
+    let flag = match mode {
+        ResetMode::Soft => "--soft",
+        ResetMode::Mixed => "--mixed",
+        ResetMode::Hard => "--hard",
+        ResetMode::Keep => "--keep",
+    };
+    cli::run_streaming(r.root(), &["reset", flag, commit, "--"], cancel, out)
+}
+
+/// Interactive rebase of `base..HEAD` (`base == None`: the whole history) with the
+/// given todo list, oldest first. Every commit of the range must appear exactly once.
+/// Rewords and squash messages are applied by `exec git commit --amend` lines, so the
+/// rebase runs without an editor; conflicts stop it like any rebase.
+pub(crate) fn interactive_rebase(
+    r: &Repo,
+    base: Option<&str>,
+    entries: &[RebaseEntry],
+    cancel: &CancellationToken,
+    out: &dyn Fn(String),
+) -> IdeResult<()> {
+    if r.branch_info()?.operation.is_some() {
+        return Err(IdeError::invalid("another merge, rebase, cherry-pick or revert is in progress"));
+    }
+    if entries.is_empty() {
+        return Err(IdeError::invalid("no commits to rebase"));
+    }
+    let base = base.map(str::trim).filter(|b| !b.is_empty());
+    if let Some(b) = base {
+        check_commits(&[b.to_string()])?;
+    }
+    // The commits of the range, resolved to full ids.
+    let range = match base {
+        Some(b) => format!("{b}..HEAD"),
+        None => "HEAD".to_string(),
+    };
+    let listed = run(r.root(), &["rev-list", "--parents", "--end-of-options", &range], None)?.stdout_str();
+    let mut in_range = std::collections::HashSet::new();
+    for line in listed.lines() {
+        let mut ids = line.split_whitespace();
+        let Some(id) = ids.next() else { continue };
+        if ids.count() > 1 {
+            return Err(IdeError::invalid("interactive rebase of a range containing merge commits is not supported"));
+        }
+        in_range.insert(id.to_string());
+    }
+    let mut ids = Vec::with_capacity(entries.len());
+    {
+        let repo = r.gix()?;
+        for e in entries {
+            check_commits(std::slice::from_ref(&e.commit))?;
+            let id = repo.find_object(resolve(&repo, &e.commit)?).map_err(gx)?.peel_to_commit().map_err(gx)?.id;
+            ids.push(id.to_string());
+        }
+    }
+    let unique: std::collections::HashSet<&String> = ids.iter().collect();
+    if unique.len() != ids.len() || unique.len() != in_range.len() || ids.iter().any(|id| !in_range.contains(id)) {
+        return Err(IdeError::invalid("the commit list does not match the commits being rebased; refresh the log"));
+    }
+    let first_kept = entries.iter().position(|e| e.action != RebaseAction::Drop);
+    if let Some(i) = first_kept
+        && matches!(entries[i].action, RebaseAction::Squash | RebaseAction::Fixup)
+    {
+        return Err(IdeError::invalid("the first commit cannot be squashed or fixed up into a previous one"));
+    }
+
+    let work = r.git_dir.join("openidea-rebase");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work)?;
+    let quote = |p: &std::path::Path| format!("'{}'", p.to_string_lossy().replace('\\', "/").replace('\'', "'\\''"));
+    let mut todo = String::new();
+    for (i, (e, id)) in entries.iter().zip(&ids).enumerate() {
+        let verb = match e.action {
+            RebaseAction::Pick | RebaseAction::Reword => "pick",
+            RebaseAction::Edit => "edit",
+            RebaseAction::Squash => "squash",
+            RebaseAction::Fixup => "fixup",
+            RebaseAction::Drop => "drop",
+        };
+        todo.push_str(&format!("{verb} {id}\n"));
+        // A new message applies after the commit (and anything squashed into it).
+        let next_joins =
+            entries.get(i + 1).is_some_and(|n| matches!(n.action, RebaseAction::Squash | RebaseAction::Fixup));
+        let message = e.message.as_deref().map(str::trim).filter(|m| !m.is_empty());
+        let wants_message = matches!(e.action, RebaseAction::Reword | RebaseAction::Squash | RebaseAction::Pick);
+        if let Some(m) = message.filter(|_| wants_message) {
+            if next_joins {
+                return Err(IdeError::invalid(
+                    "set the message on the last commit of a squash group, not on the commit squashed into",
+                ));
+            }
+            let file = work.join(format!("msg-{i}"));
+            std::fs::write(&file, m)?;
+            todo.push_str(&format!(
+                "exec git commit --amend --allow-empty --no-verify --quiet --cleanup=strip -F {}\n",
+                quote(&file)
+            ));
+        }
+    }
+    let todo_file = work.join("todo");
+    std::fs::write(&todo_file, todo)?;
+    let editor = format!("cp {}", quote(&todo_file));
+    let mut args = vec!["rebase", "--interactive", "--autostash", "--no-autosquash"];
+    args.push(base.unwrap_or("--root"));
+    let env = [("GIT_SEQUENCE_EDITOR", std::ffi::OsStr::new(&editor))];
+    cli::run_streaming_env(r.root(), &args, &env, cancel, out)?;
+    // A stopped rebase still needs the message files for its remaining `exec` lines.
+    if r.branch_info()?.operation.is_none() {
+        let _ = std::fs::remove_dir_all(&work);
+    }
+    Ok(())
+}
+
+/// Creates a tag on `commit`: annotated when `message` is non-empty, else lightweight.
+pub(crate) fn create_tag(r: &Repo, name: &str, commit: &str, message: Option<&str>, force: bool) -> IdeResult<()> {
+    let name = name.trim();
+    let valid = !name.is_empty()
+        && !name.starts_with('-')
+        && cli::run_raw(r.root(), &["check-ref-format", &format!("refs/tags/{name}")], None)?.code == Some(0);
+    if !valid {
+        return Err(IdeError::invalid(format!("'{name}' is not a valid tag name")));
+    }
+    {
+        let repo = r.gix()?;
+        resolve(&repo, commit)?;
+    }
+    let mut args = vec!["tag"];
+    if force {
+        args.push("-f");
+    }
+    let message = message.map(str::trim).filter(|m| !m.is_empty());
+    if message.is_some() {
+        args.extend(["-a", "-F", "-"]);
+    }
+    args.extend(["--", name, commit]);
+    run(r.root(), &args, message.map(str::as_bytes)).map(|_| ())
+}
+
+/// Tag names, sorted.
+pub(crate) fn tags(r: &Repo) -> IdeResult<Vec<String>> {
+    let repo = r.gix()?;
+    let refs = repo.references().map_err(gx)?;
+    let mut out: Vec<String> =
+        refs.tags().map_err(gx)?.filter_map(Result::ok).map(|t| crate::repo::to_string(t.name().shorten())).collect();
+    out.sort();
+    Ok(out)
+}
+
+/// Tracked files that differ between `rev` and the working tree (Compare with Local).
+pub(crate) fn diff_with_worktree(r: &Repo, rev: &str) -> IdeResult<Vec<ChangedFile>> {
+    check_commits(&[rev.to_string()])?;
+    let out = run(r.root(), &["diff", "--name-status", "-z", "-M", "--no-ext-diff", rev, "--"], None)?;
+    Ok(parse_name_status(&out.stdout_str()))
+}
+
+/// Parses `git diff --name-status -z` output.
+pub(crate) fn parse_name_status(text: &str) -> Vec<ChangedFile> {
+    let mut parts = text.split('\0').filter(|s| !s.is_empty());
+    let mut out = Vec::new();
+    while let Some(status) = parts.next() {
+        let kind = match status.as_bytes()[0] {
+            b'A' => ChangeKind::Added,
+            b'D' => ChangeKind::Deleted,
+            b'R' => ChangeKind::Renamed,
+            b'C' => ChangeKind::Added,
+            b'U' => ChangeKind::Conflicted,
+            _ => ChangeKind::Modified,
+        };
+        let (path, old_path) = if matches!(status.as_bytes()[0], b'R' | b'C') {
+            let old = parts.next().unwrap_or_default().to_string();
+            (parts.next().unwrap_or_default().to_string(), Some(old))
+        } else {
+            (parts.next().unwrap_or_default().to_string(), None)
+        };
+        if !path.is_empty() {
+            out.push(ChangedFile { path, kind, old_path });
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn name_status_parsing() {
+        let files = parse_name_status("M\0a.txt\0R087\0old.rs\0new.rs\0A\0b c.txt\0D\0gone\0");
+        let got: Vec<(&str, ChangeKind, Option<&str>)> =
+            files.iter().map(|f| (f.path.as_str(), f.kind, f.old_path.as_deref())).collect();
+        assert_eq!(
+            got,
+            vec![
+                ("a.txt", ChangeKind::Modified, None),
+                ("b c.txt", ChangeKind::Added, None),
+                ("gone", ChangeKind::Deleted, None),
+                ("new.rs", ChangeKind::Renamed, Some("old.rs")),
+            ]
+        );
+    }
+}

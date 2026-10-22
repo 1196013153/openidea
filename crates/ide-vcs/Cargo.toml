@@ -1,0 +1,23 @@
+[package]
+name = "ide-vcs"
+description = "Git integration: gitoxide for fast reads, git CLI for writes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dunce.workspace = true
+ide-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+gix = { workspace = true, features = ["sha1", "status", "blob-diff", "revision", "index", "dirwalk", "parallel"] }
+tracing.workspace = true
+which = "8"
+regex-lite = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,142 @@
+/**
+ * "Rerun Failed Tests": derives a run configuration that runs only the failed
+ * tests of a previous run, using each framework's own filter syntax.
+ */
+import type { RunConfig } from "@/platform/ipc";
+import { frameworkFor } from "./index";
+import { nodeStatus, type TestNode, type TestResults } from "./results";
+
+/** Paths of failed tests: failed leaves, plus failed suites without any failed children reported. */
+export function failedTestPaths(results: Pick<TestResults, "roots">): string[][] {
+  const out: string[][] = [];
+  const visit = (n: TestNode) => {
+    if (n.children.length === 0) {
+      if (n.own === "failed") out.push(n.path);
+      return;
+    }
+    const failedChildren = n.children.filter((c) => nodeStatus(c) === "failed");
+    if (failedChildren.length === 0) {
+      if (n.own === "failed") out.push(n.path);
+      return;
+    }
+    failedChildren.forEach(visit);
+  };
+  results.roots.forEach(visit);
+  return out;
+}
+
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const unique = <T>(xs: T[]) => [...new Set(xs)];
+
+/** Splits `args` at the first `--` (args for the test binary / runner). */
+function splitDashDash(args: string[]): { before: string[]; after: string[] | null } {
+  const i = args.indexOf("--");
+  return i < 0 ? { before: args, after: null } : { before: args.slice(0, i), after: args.slice(i + 1) };
+}
+
+/** Removes `flag value` / `flag=value` pairs. */
+function dropFlag(args: string[], flags: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (flags.includes(a)) {
+      i++;
+      continue;
+    }
+    if (flags.some((f) => a.startsWith(f + "="))) continue;
+    out.push(a);
+  }
+  return out;
+}
+
+function cargoArgs(base: string[], paths: string[][]): string[] | null {
+  // Paths are [suite (src/lib.rs, tests/x.rs or a nextest binary id), ...module::name parts].
+  const names = unique(
+    paths.filter((p) => !p[0]?.startsWith("Doc-tests ")).map((p) => (p.length > 1 ? p.slice(1) : p).join("::")),
+  );
+  if (!names.length) return null;
+  const { before, after } = splitDashDash(base);
+  const rest = (after ?? []).filter((a) => a !== "--exact");
+  return [...before, "--", ...rest, ...names, "--exact"];
+}
+
+function jsArgs(config: RunConfig, paths: string[][]): string[] | null {
+  const base = config.args;
+  const files = unique(paths.map((p) => p[0]!).filter(Boolean));
+  const names = unique(paths.filter((p) => p.length > 1).map((p) => p.slice(1).join(" ")));
+  if (!files.length) return null;
+  const { before, after } = splitDashDash(base);
+  const rest = dropFlag(after ?? [], ["-t", "--testNamePattern"]);
+  const filter = names.length ? ["-t", `^(?:${names.map(escapeRegExp).join("|")})$`] : [];
+  // npm/pnpm/yarn/bun pass everything after `--` to the script; deno/npx take them directly.
+  const needsDashDash = after !== null || /(^|\/)(npm|pnpm|yarn|bun)$/.test(config.command);
+  return needsDashDash ? [...before, "--", ...rest, ...files, ...filter] : [...before, ...files, ...filter];
+}
+
+function pytestArgs(base: string[], paths: string[][]): string[] | null {
+  const ids = unique(paths.map((p) => p.join("::")));
+  if (!ids.length) return null;
+  // Drop explicit test paths / -k expressions of the original run; keep options and `-m pytest` prefixes.
+  const kept = dropFlag(base, ["-k"]).filter((a) => !/\.py(::|$)/.test(a) && !/^tests?\/?$/.test(a));
+  return [...kept, ...ids];
+}
+
+const isGoPkgPattern = (a: string) => a === "." || a === "./..." || a.startsWith("./");
+
+function goArgs(base: string[], paths: string[][]): string[] | null {
+  const pkgs = unique(paths.map((p) => p[0]!).filter(Boolean));
+  if (!pkgs.length) return null;
+  const tests = paths.filter((p) => p.length > 1);
+  const args = dropFlag(base, ["-run"]).filter((a) => !isGoPkgPattern(a));
+  const top = unique(tests.map((p) => p[1]!));
+  const run = top.length ? ["-run", `^(${top.map(escapeRegExp).join("|")})$`] : [];
+  return [...args, ...run, ...pkgs];
+}
+
+function jvmArgs(config: RunConfig, paths: string[][]): string[] | null {
+  const tests = paths
+    .filter((p) => p.length >= 2)
+    .map((p) => ({ cls: p[0]!, method: p[p.length - 1]!.replace(/\(\)$/, "") }));
+  const classes = unique(paths.filter((p) => p.length === 1).map((p) => p[0]!));
+  if (!tests.length && !classes.length) return null;
+  if (config.kind === "maven" || /\bmvnw?\b/.test(config.command)) {
+    const byClass = new Map<string, string[]>();
+    for (const t of tests) byClass.set(t.cls, [...(byClass.get(t.cls) ?? []), t.method]);
+    const specs = [
+      ...[...byClass].map(([cls, ms]) => `${cls}#${unique(ms).join("+")}`),
+      ...classes.filter((c) => !byClass.has(c)),
+    ];
+    return [...config.args.filter((a) => !a.startsWith("-Dtest=")), `-Dtest=${specs.join(",")}`];
+  }
+  const filters = [...unique(tests.map((t) => `${t.cls}.${t.method}`)), ...classes];
+  return [...dropFlag(config.args, ["--tests"]), ...filters.flatMap((f) => ["--tests", f])];
+}
+
+/** Config running only `paths` (failed test paths from the results tree), or null when unsupported. */
+export function rerunFailedConfig(config: RunConfig, paths: string[][]): RunConfig | null {
+  if (!paths.length) return null;
+  let args: string[] | null;
+  switch (frameworkFor(config)) {
+    case "cargo":
+      args = cargoArgs(config.args, paths);
+      break;
+    case "js":
+      args = jsArgs(config, paths);
+      break;
+    case "pytest":
+      args = pytestArgs(config.args, paths);
+      break;
+    case "go":
+      args = goArgs(config.args, paths);
+      break;
+    case "jvm":
+      args = jvmArgs(config, paths);
+      break;
+    default:
+      args = null;
+  }
+  if (!args) return null;
+  const baseName = config.name.replace(/^Failed: /, "");
+  return { ...config, args, name: `Failed: ${baseName}`, detected: true, env: { ...config.env } };
+}

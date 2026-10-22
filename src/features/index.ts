@@ -1,0 +1,106 @@
+/**
+ * Feature activation. Each feature exports `activate(): void | (() => void)`
+ * that registers actions, tool windows, status items and services, returning
+ * a disposer. The editor goes first because it provides the editor service.
+ */
+import { activate as editor } from "@/editor/core";
+import { activate as editorLsp } from "@/editor/lsp";
+import { activate as welcome } from "./welcome";
+import { activate as projectTree } from "./project-tree";
+import { activate as search } from "./search";
+import { activate as codeInsight } from "./code-insight";
+import { activate as vcs } from "./vcs";
+import { activate as terminal } from "./terminal";
+import { activate as run } from "./run";
+import { activate as debuggerFeature } from "./debugger";
+import { activate as coverage } from "./coverage";
+import { activate as profiler } from "./profiler";
+import { activate as buildTools } from "./build-tools";
+import { activate as build } from "./build";
+import { activate as templates, activateSettingsPages as templatesPages } from "./templates";
+import { activate as todo, activateSettingsPages as todoPages } from "./todo";
+import { activate as settings, activateSettingsWindow } from "./settings";
+import { activate as app } from "./app";
+import { activate as perf, activateSettingsPages as perfPages } from "./perf";
+import { activate as plugins, activateSettingsPages as pluginsPages } from "./plugins";
+import { activate as tools, activateSettingsPages as toolsPages } from "./tools";
+import { activate as scratch } from "./scratch";
+import { activate as viewers } from "./viewers";
+import { activate as analysis } from "./analysis";
+import { activate as services } from "./services";
+import { activate as github } from "./github";
+import { activate as httpClient } from "./http-client";
+import { activate as database } from "./database";
+
+type Activate = () => void | (() => void);
+
+const features: Array<[string, Activate]> = [
+  ["editor", editor],
+  ["editor-lsp", editorLsp],
+  ["welcome", welcome],
+  ["project-tree", projectTree],
+  ["search", search],
+  ["code-insight", codeInsight],
+  ["vcs", vcs],
+  ["terminal", terminal],
+  ["run", run],
+  ["debugger", debuggerFeature],
+  ["coverage", coverage],
+  ["profiler", profiler],
+  ["build-tools", buildTools],
+  ["build", build],
+  ["templates", templates],
+  ["todo", todo],
+  ["settings", settings],
+  ["app", app],
+  ["perf", perf],
+  ["plugins", plugins],
+  ["tools", tools],
+  ["scratch", scratch],
+  ["viewers", viewers],
+  ["analysis", analysis],
+  ["services", services],
+  ["github", github],
+  ["http-client", httpClient],
+  ["database", database],
+];
+
+export function activateFeatures(): () => void {
+  const disposers: Array<() => void> = [];
+  for (const [name, activate] of features) {
+    try {
+      const d = activate();
+      if (d) disposers.push(d);
+    } catch (e) {
+      console.error(`feature ${name} failed to activate`, e);
+    }
+  }
+  return () => disposers.reverse().forEach((d) => d());
+}
+
+export { SettingsWindow, settingsWindowParent } from "./settings";
+
+/**
+ * The native Settings window of project window `parent`: only the settings
+ * pages (no workbench, project, editors or background services).
+ */
+export function activateSettingsWindowFeatures(parent: string): () => void {
+  const pages: Array<[string, Activate]> = [
+    ["settings", () => activateSettingsWindow(parent)],
+    ["templates", templatesPages],
+    ["todo", todoPages],
+    ["plugins", pluginsPages],
+    ["perf", perfPages],
+    ["tools", toolsPages],
+  ];
+  const disposers: Array<() => void> = [];
+  for (const [name, activate] of pages) {
+    try {
+      const d = activate();
+      if (d) disposers.push(d);
+    } catch (e) {
+      console.error(`settings pages of ${name} failed to activate`, e);
+    }
+  }
+  return () => disposers.reverse().forEach((d) => d());
+}

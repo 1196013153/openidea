@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import type { OutlineItem } from "@/platform/ipc";
+import { allKeys, bestRow, flattenOutline, keyOutline, sortOutline, symbolPathAt } from "../structure/outline";
+
+const item = (name: string, kind: OutlineItem["kind"], from: number, to: number, children: OutlineItem[] = []): OutlineItem => ({
+  name,
+  detail: null,
+  kind,
+  range: { start: { line: from, col: 0 }, end: { line: to, col: 1 } },
+  selection_range: { start: { line: from, col: 4 }, end: { line: from, col: 4 + name.length } },
+  children,
+});
+
+const outline = [
+  item("OrderController", "class", 0, 20, [item("list", "method", 2, 6), item("create", "method", 8, 12), item("list", "method", 14, 16)]),
+  item("helper", "function", 22, 25),
+];
+
+describe("outline helpers", () => {
+  const nodes = keyOutline(outline);
+
+  it("gives stable unique keys to same-named siblings", () => {
+    const keys = nodes[0]!.children.map((c) => c.key);
+    expect(new Set(keys).size).toBe(3);
+    expect(keys[2]).toMatch(/#1$/);
+    expect(allKeys(nodes)).toEqual([nodes[0]!.key]);
+  });
+
+  it("finds the innermost symbol around a position", () => {
+    const path = symbolPathAt(nodes, { line: 9, col: 3 });
+    expect(path).toEqual([nodes[0]!.key, nodes[0]!.children[1]!.key]);
+    expect(symbolPathAt(nodes, { line: 21, col: 0 })).toEqual([]);
+  });
+
+  it("sorts alphabetically, recursively", () => {
+    const sorted = sortOutline(nodes, true);
+    expect(sorted.map((n) => n.item.name)).toEqual(["helper", "OrderController"]);
+    expect(sorted[1]!.children.map((n) => n.item.name)).toEqual(["create", "list", "list"]);
+    expect(sortOutline(nodes, false)).toBe(nodes);
+  });
+
+  it("filters keeping ancestors of matches", () => {
+    const rows = flattenOutline(nodes, "creat");
+    expect(rows.map((r) => [r.node.item.name, r.depth, r.matched])).toEqual([
+      ["OrderController", 0, false],
+      ["create", 1, true],
+    ]);
+    expect(bestRow(rows)).toBe(1);
+    expect(flattenOutline(nodes, "")).toHaveLength(5);
+  });
+});

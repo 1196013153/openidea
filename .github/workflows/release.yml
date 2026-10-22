@@ -1,0 +1,132 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0); must already exist"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  # Creates (or reuses) one draft release that every platform build uploads into.
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - name: Tag matches app version
+        run: |
+          app="v$(jq -r .version src-tauri/tauri.conf.json)"
+          if [ "$app" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match tauri.conf.json version $app"
+            exit 1
+          fi
+      - id: release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = process.env.TAG;
+            const { owner, repo } = context.repo;
+            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo });
+            const existing = releases.find((r) => r.tag_name === tag);
+            if (existing) {
+              if (!existing.draft) core.setFailed(`release ${tag} is already published`);
+              core.setOutput("id", existing.id);
+              return;
+            }
+            const { data } = await github.rest.repos.createRelease({
+              owner, repo, tag_name: tag, name: `OpenIDEA ${tag}`,
+              draft: true, prerelease: tag.includes("-"), generate_release_notes: true,
+            });
+            core.setOutput("id", data.id);
+
+  build:
+    needs: create-release
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "${{ matrix.target }}" }
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+      - run: pnpm install --frozen-lockfile
+      # Signing is optional: only secrets that are set get exported, so forks and
+      # unconfigured repos produce unsigned builds instead of failing.
+      - name: Signing env
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID \
+                   APPLE_PASSWORD APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            [ -n "${!v}" ] && { echo "$v<<__EOF__"; echo "${!v}"; echo "__EOF__"; } >> "$GITHUB_ENV"
+          done
+          true
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ env.TAG }}
+          args: --target ${{ matrix.target }}
+
+  publish:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              ...context.repo, release_id: Number(process.env.RELEASE_ID), draft: false,
+            });

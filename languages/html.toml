@@ -1,0 +1,15 @@
+id = "html"
+name = "HTML"
+extensions = ["html", "htm", "xhtml", "shtml", "html.tmpl"]
+first-line = "^\\s*<!(?i:doctype)\\s+html"
+block-comment = ["<!--", "-->"]
+indent = { tab-size = 2, insert-spaces = true }
+ui-mode = "HTML"
+tree-sitter = "html"
+
+[[language-servers]]
+name = "vscode-html-language-server"
+command = "vscode-html-language-server"
+args = ["--stdio"]
+initialization-options = { provideFormatter = true, embeddedLanguages = { css = true, javascript = true } }
+install-hint = "npm i -g vscode-langservers-extracted"

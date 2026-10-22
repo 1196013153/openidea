@@ -1,0 +1,135 @@
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  _resetI18nForTests,
+  formatMessage,
+  isValidMessage,
+  keysWithPrefix,
+  registerMessages,
+  resolveLocale,
+  setLocale,
+  t,
+  useI18n,
+} from "./i18n";
+import en from "./locales/en.json";
+import zh from "./locales/zh.json";
+
+afterEach(() => _resetI18nForTests());
+
+describe("formatMessage", () => {
+  it("substitutes parameters and leaves unknown ones", () => {
+    expect(formatMessage("Open {name}", { name: "openidea" })).toBe("Open openidea");
+    expect(formatMessage("Open {name} in {where}", { name: "openidea" })).toBe("Open openidea in {where}");
+    expect(formatMessage("plain text")).toBe("plain text");
+  });
+
+  it("formats numbers per locale", () => {
+    expect(formatMessage("{n} files", { n: 12345 }, "en")).toBe("12,345 files");
+    expect(formatMessage("{n, number}", { n: 1234.5 }, "en")).toBe("1,234.5");
+  });
+
+  it("selects plural categories, exact matches first", () => {
+    const m = "{count, plural, =0 {No files} one {# file} other {# files}}";
+    expect(formatMessage(m, { count: 0 })).toBe("No files");
+    expect(formatMessage(m, { count: 1 })).toBe("1 file");
+    expect(formatMessage(m, { count: 2 })).toBe("2 files");
+    expect(formatMessage(m, { count: 1000 })).toBe("1,000 files");
+  });
+
+  it("uses CLDR rules of the locale (Chinese has only `other`)", () => {
+    const m = "{count, plural, one {# one} other {# other}}";
+    expect(formatMessage(m, { count: 1 }, "zh")).toBe("1 other");
+    expect(formatMessage(m, { count: 1 }, "en")).toBe("1 one");
+  });
+
+  it("supports select and nesting", () => {
+    const m = "{os, select, macos {Finder} windows {Explorer} other {Files}}";
+    expect(formatMessage(m, { os: "macos" })).toBe("Finder");
+    expect(formatMessage(m, { os: "linux" })).toBe("Files");
+    const nested = "{count, plural, one {{who} has # file} other {{who} has # files}}";
+    expect(formatMessage(nested, { count: 3, who: "Ann" })).toBe("Ann has 3 files");
+    const deep = "{os, select, macos {{count, plural, one {# window} other {# windows}}} other {#}}";
+    expect(formatMessage(deep, { os: "macos", count: 2 })).toBe("2 windows");
+  });
+
+  it("falls back to `other` when the parameter is missing", () => {
+    expect(formatMessage("{n, plural, one {one} other {many}}")).toBe("many");
+  });
+
+  it("returns malformed messages unformatted", () => {
+    expect(formatMessage("{n, plural, one {x}", { n: 1 })).toBe("{n, plural, one {x}");
+    expect(formatMessage("{n, weird, a {b}}", { n: 1 })).toBe("{n, weird, a {b}}");
+    expect(isValidMessage("{n, plural, one {x}")).toBe(false);
+    expect(isValidMessage("{n, plural, one {x} other {y}}")).toBe(true);
+  });
+});
+
+describe("t / locales", () => {
+  it("resolves locale tags", () => {
+    expect(resolveLocale("zh-CN")).toBe("zh");
+    expect(resolveLocale("zh_Hans")).toBe("zh");
+    expect(resolveLocale("EN-us")).toBe("en");
+    expect(resolveLocale("fr")).toBe("en");
+    expect(resolveLocale(undefined)).toBe(resolveLocale(navigator.language));
+  });
+
+  it("translates with English fallback, then the key itself", async () => {
+    expect(t("common.cancel")).toBe("Cancel");
+    await setLocale("zh");
+    expect(useI18n.getState().locale).toBe("zh");
+    expect(t("common.cancel")).toBe("取消");
+    registerMessages("en", { "test.onlyEnglish": "Only English" });
+    expect(t("test.onlyEnglish")).toBe("Only English");
+    expect(t("test.missing.key")).toBe("test.missing.key");
+  });
+
+  it("applies params and plurals in the active locale", async () => {
+    expect(t("app.unsaved.body", { count: 1, project: "openidea" })).toBe(
+      "1 file has unsaved changes in openidea. Save before closing?",
+    );
+    await setLocale("zh-CN");
+    expect(t("app.keymap.count", { count: 1 })).toBe("1 个快捷键");
+  });
+
+  it("falls back to English for unsupported locales", async () => {
+    await setLocale("de");
+    expect(useI18n.getState().locale).toBe("en");
+  });
+
+  it("registerMessages adds and removes feature strings", async () => {
+    const off = registerMessages("zh", { "feature.hello": "你好" });
+    registerMessages("en", { "feature.hello": "Hello" });
+    expect(t("feature.hello")).toBe("Hello");
+    await setLocale("zh");
+    expect(t("feature.hello")).toBe("你好");
+    off();
+    expect(t("feature.hello")).toBe("Hello");
+  });
+
+  it("lists keys by prefix", () => {
+    const keys = keysWithPrefix("menu.");
+    expect(keys).toContain("menu.file.save");
+    expect(keys.every((k) => k.startsWith("menu."))).toBe(true);
+  });
+});
+
+describe("catalogs", () => {
+  const catalogs: Record<string, Record<string, string>> = { en, zh };
+
+  it("have the same keys", () => {
+    expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());
+  });
+
+  it("contain only well-formed messages", () => {
+    for (const [locale, catalog] of Object.entries(catalogs))
+      for (const [key, message] of Object.entries(catalog))
+        expect(isValidMessage(message), `${locale}:${key}`).toBe(true);
+  });
+
+  it("use the same parameters across locales", () => {
+    const params = (m: string) => [...m.matchAll(/\{\s*([a-z]\w*)\s*[,}]/g)].map((x) => x[1]).sort();
+    for (const key of Object.keys(en))
+      expect(params((zh as Record<string, string>)[key] ?? ""), key).toEqual(
+        params((en as Record<string, string>)[key]!),
+      );
+  });
+});

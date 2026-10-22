@@ -1,0 +1,198 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.intro {
+  margin: 0 0 4px;
+  max-width: 680px;
+  color: var(--fg-secondary);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search {
+  width: 240px;
+}
+.spacer {
+  flex: 1;
+}
+.segmented {
+  display: inline-flex;
+  height: var(--h-control-small);
+  border-radius: var(--radius-small);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  overflow: hidden;
+}
+.segment {
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+}
+.segment:hover {
+  background: var(--bg-hover);
+}
+.segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.segmentOn {
+  background: var(--bg-selected);
+  color: var(--fg-strong);
+}
+.error,
+.rowError {
+  color: var(--danger);
+}
+.error {
+  padding: 6px 0;
+}
+.tableWrap {
+  min-width: 0;
+  overflow: auto;
+  border-radius: var(--radius-small);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+.table th {
+  height: var(--h-header);
+  padding: 0 8px;
+  text-align: left;
+  font-weight: normal;
+  color: var(--fg-secondary);
+  background: var(--bg-island);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+.table td {
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+/* IDEA tables: no row rules, selection-like hover. */
+.row td {
+  border-top: 0;
+}
+.table th + th {
+  border-left: 1px solid var(--border);
+}
+.row:first-child td {
+  border-top: 0;
+}
+.row:hover {
+  background: var(--bg-hover);
+}
+.detailRow td {
+  padding-top: 0;
+  padding-bottom: 6px;
+}
+.toolName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--h-row);
+}
+.display {
+  color: var(--fg-strong);
+}
+.kindTag {
+  padding: 0 5px;
+  border-radius: var(--radius-small);
+  background: var(--bg-control);
+  color: var(--fg-muted);
+  font-size: var(--fs-tiny);
+  line-height: 16px;
+}
+.sub {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+.languages {
+  max-width: 200px;
+  color: var(--fg-secondary);
+}
+.version {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+/* Status, Version and actions take their content's width; Tool and Languages share the rest. */
+.fitHead,
+.actionsHead {
+  width: 1%;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jobBar {
+  width: 100%;
+}
+.jobLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.jobMessage {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+.hint {
+  color: var(--fg-muted);
+  font-size: var(--fs-small);
+}
+.log {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  max-height: 200px;
+  overflow: auto;
+  background: var(--bg-app);
+  color: var(--fg-secondary);
+  border-radius: var(--radius-small);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.empty {
+  padding: 12px;
+  color: var(--fg-muted);
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

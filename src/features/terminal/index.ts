@@ -1,0 +1,181 @@
+/**
+ * Integrated terminal: xterm.js sessions on backend PTYs in the bottom
+ * "Terminal" tool window (tabs, splits, links, IDEA-style shortcuts).
+ */
+import { registerActions } from "@/platform/actions";
+import { onIdeEvent } from "@/platform/ipc";
+import { useProject } from "@/platform/project";
+import { onWorkflowSettingsChange } from "@/platform/workflowSettings";
+import { registerToolWindow, toolWindowService } from "@/workbench/contributions";
+import { lazyComponent } from "@/ui";
+import { installTerminalKeys } from "./keys";
+import { loadTerminalRuntime, terminalRuntime } from "./loader";
+
+const WINDOW = "terminal";
+
+function projectRoot(): string | null {
+  return useProject.getState().project?.root ?? null;
+}
+
+function focusActiveSoon() {
+  // Wait for the tool window and pane to mount before focusing xterm.
+  requestAnimationFrame(() => requestAnimationFrame(() => terminalRuntime()?.activeSession()?.focus()));
+}
+
+async function openNewTab(dir?: string) {
+  const root = projectRoot();
+  const cwd = dir || root;
+  if (!cwd) return;
+  const rt = await loadTerminalRuntime();
+  if (dir) rt.newTabAt(dir);
+  else rt.newTab(rt.startDirectory(cwd));
+  toolWindowService().show(WINDOW, true);
+  focusActiveSoon();
+}
+
+export function activate(): () => void {
+  const disposers: Array<() => void> = [
+    registerToolWindow({
+      id: WINDOW,
+      title: "Terminal",
+      icon: "toolwindow-terminal",
+      anchor: "bottom",
+      order: 10,
+      secondary: true,
+      component: lazyComponent(() => loadTerminalRuntime().then((rt) => rt.TerminalView)),
+      headerContent: lazyComponent(() => loadTerminalRuntime().then((rt) => rt.TerminalTabs)),
+    }),
+    registerActions([
+      {
+        id: "terminal.new",
+        title: "New Terminal Tab",
+        category: "Terminal",
+        icon: "plus",
+        when: "projectOpen",
+        keywords: ["shell", "console"],
+        run: () => openNewTab(),
+      },
+      {
+        id: "terminal.openAt",
+        title: "Open in Terminal",
+        category: "Terminal",
+        icon: "terminal",
+        when: "projectOpen",
+        hidden: true,
+        run: ({ arg }) => openNewTab(typeof arg === "string" && arg ? arg : undefined),
+      },
+      {
+        id: "terminal.runCommand",
+        title: "Run Command in Terminal",
+        description: "Opens a terminal tab running `{ program, args, name?, cwd? }` instead of the shell.",
+        category: "Terminal",
+        icon: "terminal",
+        when: "projectOpen",
+        hidden: true,
+        run: async ({ arg }) => {
+          const a = arg as { program?: unknown; args?: unknown; name?: unknown; cwd?: unknown } | undefined;
+          if (!a || typeof a.program !== "string" || !a.program) return;
+          const args = Array.isArray(a.args) ? a.args.filter((x): x is string => typeof x === "string") : [];
+          const cwd = (typeof a.cwd === "string" && a.cwd) || projectRoot();
+          if (!cwd) return;
+          const rt = await loadTerminalRuntime();
+          rt.newTab(cwd, typeof a.name === "string" && a.name ? a.name : undefined, { program: a.program, args });
+          toolWindowService().show(WINDOW, true);
+          focusActiveSoon();
+        },
+      },
+      {
+        id: "terminal.splitRight",
+        title: "Split Right",
+        category: "Terminal",
+        icon: "split",
+        when: "projectOpen",
+        run: async () => {
+          const rt = await loadTerminalRuntime();
+          if (!rt.useTerminals.getState().activeTab) return openNewTab();
+          rt.splitActive("horizontal");
+          focusActiveSoon();
+        },
+      },
+      {
+        id: "terminal.splitDown",
+        title: "Split Down",
+        category: "Terminal",
+        icon: "split-horizontal",
+        when: "projectOpen",
+        run: async () => {
+          const rt = await loadTerminalRuntime();
+          if (!rt.useTerminals.getState().activeTab) return openNewTab();
+          rt.splitActive("vertical");
+          focusActiveSoon();
+        },
+      },
+      {
+        id: "terminal.find",
+        title: "Find in Terminal",
+        category: "Terminal",
+        icon: "search",
+        when: "terminalFocus || activeToolWindow == 'terminal'",
+        keywords: ["search", "scrollback"],
+        run: () => {
+          const rt = terminalRuntime();
+          if (!rt?.activeSession()) return;
+          toolWindowService().show(WINDOW);
+          rt.openTerminalFind();
+        },
+      },
+      {
+        id: "terminal.clear",
+        title: "Clear Terminal Buffer",
+        category: "Terminal",
+        when: "terminalFocus",
+        run: () => terminalRuntime()?.activeSession()?.clear(),
+      },
+      {
+        id: "terminal.closeSession",
+        title: "Close Terminal Session",
+        category: "Terminal",
+        when: "terminalFocus",
+        run: () => {
+          const rt = terminalRuntime();
+          const s = rt?.activeSession();
+          if (!rt || !s) return;
+          const { tabs } = rt.useTerminals.getState();
+          const last = tabs.length === 1 && tabs[0]!.panes.length === 1;
+          rt.closePane(s.key);
+          if (last) toolWindowService().hide(WINDOW);
+          else focusActiveSoon();
+        },
+      },
+    ]),
+    installTerminalKeys(),
+    onWorkflowSettingsChange(
+      (s) => s.terminal,
+      () => terminalRuntime()?.applySettingsToAll(),
+    ),
+    // Font "same as editor" follows Editor › Font.
+    useProject.subscribe((s, prev) => {
+      if (s.settings?.editor !== prev.settings?.editor) terminalRuntime()?.applySettingsToAll();
+    }),
+    onIdeEvent("terminalExited", (e) => terminalRuntime()?.sessionForTerminalId(e.terminal)?.exited(e.code)),
+    // Sessions belong to the project; closing / switching it ends them.
+    useProject.subscribe((s, prev) => {
+      const rt = terminalRuntime();
+      if (rt && s.project?.root !== prev.project?.root) {
+        if (rt.useTerminalFind.getState().open) rt.closeTerminalFind();
+        rt.closeAll();
+      }
+    }),
+  ];
+
+  if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
+    const observer = new MutationObserver(() => terminalRuntime()?.applyThemeToAll());
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
+    disposers.push(() => observer.disconnect());
+  }
+
+  return () => {
+    disposers.reverse().forEach((d) => d());
+    terminalRuntime()?.closeAll();
+  };
+}

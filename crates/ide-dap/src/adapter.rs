@@ -1,0 +1,519 @@
+//! Resolving and starting debug adapters.
+//!
+//! Adapters come from `languages/*.toml` `[debugger]` tables, with built-in
+//! fallbacks for the common ones. `${port}` in the arguments of a `tcp`
+//! adapter is replaced by a free local port; the client then connects to it.
+//! Adapters that run inside another process (java-debug inside jdtls) are
+//! reached through a `debugServer` port in the launch arguments instead.
+
+use ide_core::{IdeError, IdeResult};
+use ide_language::{DebuggerConfig, LanguageRegistry};
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::process::Stdio;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
+use tokio::process::{Child, Command};
+
+pub const PORT_PLACEHOLDER: &str = "${port}";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Transport {
+    Stdio,
+    Tcp,
+}
+
+/// A fully resolved adapter command line.
+#[derive(Clone, Debug)]
+pub struct AdapterSpec {
+    pub adapter: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub transport: Transport,
+    pub install_hint: Option<String>,
+    pub cwd: PathBuf,
+    /// Extra environment of the adapter process (debugpy's private copy on `PYTHONPATH`).
+    pub env: Vec<(String, String)>,
+}
+
+/// Built-in adapters used when no language definition names `adapter`.
+fn builtin(adapter: &str) -> Option<DebuggerConfig> {
+    let cfg = |command: &str, args: &[&str], transport: &str, hint: &str| DebuggerConfig {
+        adapter: adapter.to_owned(),
+        command: command.to_owned(),
+        args: args.iter().map(|a| (*a).to_owned()).collect(),
+        transport: transport.to_owned(),
+        install_hint: Some(hint.to_owned()),
+    };
+    Some(match adapter {
+        "codelldb" => cfg(
+            "codelldb",
+            &["--port", PORT_PLACEHOLDER],
+            "tcp",
+            "Install the CodeLLDB adapter (https://github.com/vadimcn/codelldb/releases) and put `codelldb` on PATH",
+        ),
+        "debugpy" => cfg("python3", &["-m", "debugpy.adapter"], "stdio", "pip install debugpy"),
+        "js-debug" => cfg(
+            "js-debug-adapter",
+            // Without a host it listens on `localhost`, which may resolve to ::1 only.
+            &[PORT_PLACEHOLDER, "127.0.0.1"],
+            "tcp",
+            "Install vscode-js-debug's DAP server (js-debug-dap-*.tar.gz from https://github.com/microsoft/vscode-js-debug/releases) as `js-debug-adapter`",
+        ),
+        "delve" => cfg(
+            "dlv",
+            &["dap", "--listen", "127.0.0.1:${port}"],
+            "tcp",
+            "go install github.com/go-delve/delve/cmd/dlv@latest",
+        ),
+        "netcoredbg" => cfg(
+            "netcoredbg",
+            &["--interpreter=vscode"],
+            "stdio",
+            "Install Samsung netcoredbg (https://github.com/Samsung/netcoredbg/releases)",
+        ),
+        "lldb-dap" => {
+            cfg("lldb-dap", &[], "stdio", "Install LLVM's lldb-dap (brew install llvm; on macOS `xcrun -f lldb-dap`)")
+        }
+        // A jdtls bundle: the session is started through jdtls and reached via `debugServer`.
+        "java-debug" => cfg(
+            "com.microsoft.java.debug.plugin.jar",
+            &[],
+            "tcp",
+            "Install Microsoft java-debug (Settings › Languages & Frameworks › Language Servers)",
+        ),
+        _ => return None,
+    })
+}
+
+/// The adapter definition for `adapter`: a language's `[debugger]` first, then built-ins.
+pub fn find_config(languages: &LanguageRegistry, adapter: &str) -> Option<DebuggerConfig> {
+    languages.all().into_iter().filter_map(|l| l.debugger).find(|d| d.adapter == adapter).or_else(|| builtin(adapter))
+}
+
+/// Default DAP `type` attribute per adapter (some adapters dispatch on it).
+pub fn default_type(adapter: &str) -> Option<&'static str> {
+    Some(match adapter {
+        "codelldb" => "lldb",
+        "debugpy" => "debugpy",
+        "js-debug" => "pwa-node",
+        "delve" => "go",
+        "netcoredbg" => "coreclr",
+        "lldb-dap" => "lldb-dap",
+        "java-debug" => "java",
+        _ => return None,
+    })
+}
+
+pub fn resolve(config: &DebuggerConfig, cwd: PathBuf) -> AdapterSpec {
+    AdapterSpec {
+        adapter: config.adapter.clone(),
+        command: config.command.clone(),
+        args: config.args.clone(),
+        transport: if config.transport.eq_ignore_ascii_case("tcp") { Transport::Tcp } else { Transport::Stdio },
+        install_hint: config.install_hint.clone(),
+        cwd,
+        env: Vec::new(),
+    }
+}
+
+/// Replaces every `${port}` occurrence (also inside larger arguments like `127.0.0.1:${port}`).
+pub fn substitute_port(args: &[String], port: u16) -> Vec<String> {
+    args.iter().map(|a| a.replace(PORT_PLACEHOLDER, &port.to_string())).collect()
+}
+
+/// A port that was free a moment ago on the loopback interface.
+pub fn free_port() -> std::io::Result<u16> {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
+    Ok(listener.local_addr()?.port())
+}
+
+static TOOLS_ROOT: parking_lot::RwLock<Option<PathBuf>> = parking_lot::RwLock::new(None);
+
+/// The IDE's managed tools directory (ide-tools); adapters installed there win over `PATH`.
+pub fn set_tools_root(root: PathBuf) {
+    *TOOLS_ROOT.write() = Some(root);
+}
+
+pub fn tools_root() -> Option<PathBuf> {
+    TOOLS_ROOT.read().clone()
+}
+
+/// Executable directories of managed installs, read at lookup time so tools installed
+/// after startup are found without a restart: `<tool>/bin`, `<tool>/venv/bin`, npm's `.bin`.
+fn managed_dirs(root: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![root.join("node_modules").join(".bin")];
+    if let Ok(entries) = std::fs::read_dir(root) {
+        let mut tools: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        tools.sort();
+        for t in tools {
+            dirs.push(t.join("bin"));
+            dirs.push(t.join("venv").join(if cfg!(windows) { "Scripts" } else { "bin" }));
+        }
+    }
+    dirs
+}
+
+/// Directories searched for adapter binaries: managed tools first, then `PATH` and the usual install spots.
+fn search_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = tools_root().map(|r| managed_dirs(&r)).unwrap_or_default();
+    dirs.extend(std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default());
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        for rel in [".cargo/bin", ".local/bin", "go/bin", ".dotnet/tools", ".bun/bin", ".npm-global/bin", ".volta/bin"]
+        {
+            dirs.push(home.join(rel));
+        }
+    }
+    for d in ["/opt/homebrew/bin", "/opt/homebrew/opt/llvm/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+        dirs.push(PathBuf::from(d));
+    }
+    dirs
+}
+
+fn is_executable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
+}
+
+/// Resolves `command` to an executable: paths are taken as-is (relative to `cwd`), bare names are looked up on PATH.
+pub fn find_binary(command: &str, cwd: &Path) -> Option<PathBuf> {
+    let p = Path::new(command);
+    if p.components().count() > 1 || p.is_absolute() {
+        let full = if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) };
+        return is_executable(&full).then_some(full);
+    }
+    let exts: &[&str] = if cfg!(windows) { &["", ".exe", ".cmd", ".bat"] } else { &[""] };
+    search_dirs()
+        .into_iter()
+        .flat_map(|d| exts.iter().map(move |e| d.join(format!("{command}{e}"))))
+        .find(|c| is_executable(c))
+}
+
+/// [`find_binary`], plus Xcode's toolchain on macOS (`xcrun -f lldb-dap`): Xcode ships
+/// lldb-dap without putting it on `PATH`.
+pub fn resolve_binary(command: &str, cwd: &Path) -> Option<PathBuf> {
+    find_binary(command, cwd).or_else(|| xcrun_tool(command))
+}
+
+#[cfg(target_os = "macos")]
+fn xcrun_tool(command: &str) -> Option<PathBuf> {
+    if command != "lldb-dap" {
+        return None;
+    }
+    let out = std::process::Command::new("/usr/bin/xcrun").args(["-f", command]).stderr(Stdio::null()).output().ok()?;
+    let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    (out.status.success() && is_executable(&path)).then_some(path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn xcrun_tool(_command: &str) -> Option<PathBuf> {
+    None
+}
+
+/// Name of the managed debugpy install (ide-tools `PipTarget`, unpacked into `<tools>/debugpy/lib`).
+pub const DEBUGPY_TOOL: &str = "debugpy";
+
+/// Message prefix of the "debugpy missing" error; the UI offers the one-click install on it.
+pub const DEBUGPY_MISSING: &str = "debugpy is not installed";
+
+/// Makes `spec` (`<python> -m debugpy.adapter`) runnable like PyCharm's bundled debugger:
+/// the interpreter's own debugpy when it has one (venvs), else OpenIDEA's private copy on
+/// `PYTHONPATH`. Neither: an `unavailable` error naming the interpreter.
+pub async fn prepare_debugpy(spec: &mut AdapterSpec) -> IdeResult<()> {
+    let (command, cwd) = (spec.command.clone(), spec.cwd.clone());
+    let Some(python) = tokio::task::spawn_blocking(move || resolve_binary(&command, &cwd)).await.ok().flatten() else {
+        return Ok(()); // Reported as a missing adapter when it is started.
+    };
+    let probe = Command::new(&python)
+        .args(["-c", "import debugpy.adapter"])
+        .current_dir(&spec.cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .status();
+    if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(15), probe).await
+        && status.success()
+    {
+        return Ok(());
+    }
+    let lib = tools_root().map(|r| r.join(DEBUGPY_TOOL).join("lib"));
+    if let Some(lib) = lib.filter(|l| l.join("debugpy").join("__init__.py").is_file()) {
+        let mut paths = vec![lib];
+        paths.extend(
+            std::env::var_os("PYTHONPATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default(),
+        );
+        let joined = std::env::join_paths(paths).map_err(|e| IdeError::internal(e.to_string()))?;
+        spec.env.push(("PYTHONPATH".into(), joined.to_string_lossy().into_owned()));
+        return Ok(());
+    }
+    Err(IdeError::unavailable(format!(
+        "{DEBUGPY_MISSING} for {}. Install OpenIDEA's copy (works with every interpreter) or run `{} -m pip install debugpy`",
+        python.display(),
+        python.display()
+    )))
+}
+
+pub fn missing(spec: &AdapterSpec) -> IdeError {
+    let mut msg = format!(
+        "debug adapter `{}` not found (`{}` is neither installed by OpenIDEA nor on PATH)",
+        spec.adapter, spec.command
+    );
+    if let Some(hint) = &spec.install_hint {
+        msg.push_str(". ");
+        msg.push_str(hint);
+    }
+    IdeError::unavailable(msg)
+}
+
+pub type BoxReader = Box<dyn AsyncRead + Unpin + Send>;
+pub type BoxWriter = Box<dyn AsyncWrite + Unpin + Send>;
+
+/// A connected adapter: byte streams plus the process (if we spawned one).
+pub struct AdapterIo {
+    pub reader: BoxReader,
+    pub writer: BoxWriter,
+    pub child: Option<Child>,
+    /// TCP port of a server-mode adapter; child sessions (`startDebugging`) connect to it again.
+    pub port: Option<u16>,
+    /// Recent stderr lines of the adapter process, for error messages.
+    pub stderr: Arc<parking_lot::Mutex<Vec<String>>>,
+}
+
+pub type LaunchFuture = Pin<Box<dyn Future<Output = IdeResult<AdapterIo>> + Send>>;
+
+/// Starts adapters. Tests substitute in-memory adapters.
+pub trait AdapterLauncher: Send + Sync + 'static {
+    /// Starts `spec`, or, when `reuse_port` is set, opens another connection to
+    /// an already running server-mode adapter.
+    fn launch(&self, spec: AdapterSpec, reuse_port: Option<u16>) -> LaunchFuture;
+}
+
+pub struct ProcessLauncher;
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
+impl AdapterLauncher for ProcessLauncher {
+    fn launch(&self, mut spec: AdapterSpec, reuse_port: Option<u16>) -> LaunchFuture {
+        Box::pin(async move {
+            let stderr = Arc::new(parking_lot::Mutex::new(Vec::new()));
+            if let Some(port) = reuse_port {
+                let stream = connect_with_retries(port, None, Duration::from_secs(5)).await?;
+                let (r, w) = stream.into_split();
+                return Ok(AdapterIo {
+                    reader: Box::new(r),
+                    writer: Box::new(w),
+                    child: None,
+                    port: Some(port),
+                    stderr,
+                });
+            }
+            if spec.adapter == DEBUGPY_TOOL {
+                prepare_debugpy(&mut spec).await?;
+            }
+            let (command, cwd) = (spec.command.clone(), spec.cwd.clone());
+            let binary = tokio::task::spawn_blocking(move || resolve_binary(&command, &cwd))
+                .await
+                .ok()
+                .flatten()
+                .ok_or_else(|| missing(&spec))?;
+            let port = match spec.transport {
+                Transport::Tcp => Some(free_port()?),
+                Transport::Stdio => None,
+            };
+            let args = match port {
+                Some(port) => substitute_port(&spec.args, port),
+                None => spec.args.clone(),
+            };
+            let mut cmd = Command::new(&binary);
+            cmd.args(&args)
+                .envs(spec.env.iter().map(|(k, v)| (k, v)))
+                .current_dir(&spec.cwd)
+                .stdin(if port.is_some() { Stdio::null() } else { Stdio::piped() })
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true);
+            let mut child =
+                cmd.spawn().map_err(|e| IdeError::unavailable(format!("failed to start {}: {e}", binary.display())))?;
+            if let Some(err) = child.stderr.take() {
+                pump_lines(err, spec.adapter.clone(), stderr.clone());
+            }
+            match port {
+                None => {
+                    let stdin = child.stdin.take().ok_or_else(|| IdeError::internal("adapter stdin unavailable"))?;
+                    let stdout = child.stdout.take().ok_or_else(|| IdeError::internal("adapter stdout unavailable"))?;
+                    Ok(AdapterIo {
+                        reader: Box::new(stdout),
+                        writer: Box::new(stdin),
+                        child: Some(child),
+                        port: None,
+                        stderr,
+                    })
+                }
+                Some(port) => {
+                    if let Some(out) = child.stdout.take() {
+                        pump_lines(out, spec.adapter.clone(), stderr.clone());
+                    }
+                    let stream = match connect_with_retries(port, Some(&mut child), CONNECT_TIMEOUT).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let _ = child.start_kill();
+                            let tail = stderr.lock().join("\n");
+                            return Err(if tail.is_empty() {
+                                e
+                            } else {
+                                IdeError::unavailable(format!("{}\n{tail}", e.message))
+                            });
+                        }
+                    };
+                    let (r, w) = stream.into_split();
+                    Ok(AdapterIo {
+                        reader: Box::new(r),
+                        writer: Box::new(w),
+                        child: Some(child),
+                        port: Some(port),
+                        stderr,
+                    })
+                }
+            }
+        })
+    }
+}
+
+fn pump_lines<R: AsyncRead + Unpin + Send + 'static>(
+    stream: R,
+    name: String,
+    sink: Arc<parking_lot::Mutex<Vec<String>>>,
+) {
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stream).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tracing::debug!(target: "ide_dap::adapter", "[{name}] {line}");
+            let mut buf = sink.lock();
+            if buf.len() >= 40 {
+                buf.remove(0);
+            }
+            buf.push(line);
+        }
+    });
+}
+
+async fn connect_with_retries(
+    port: u16,
+    mut child: Option<&mut Child>,
+    timeout: Duration,
+) -> IdeResult<tokio::net::TcpStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+            Ok(s) => {
+                let _ = s.set_nodelay(true);
+                return Ok(s);
+            }
+            Err(e) => {
+                if let Some(child) = child.as_deref_mut()
+                    && let Ok(Some(status)) = child.try_wait()
+                {
+                    return Err(IdeError::unavailable(format!(
+                        "debug adapter exited before accepting connections ({status})"
+                    )));
+                }
+                if Instant::now() >= deadline {
+                    return Err(IdeError::unavailable(format!(
+                        "could not connect to debug adapter on port {port}: {e}"
+                    )));
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Managed tools win over `PATH`, and debugpy falls back to the private copy.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn managed_tools_and_private_debugpy() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("openidea-dap-tools-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let exe = |p: &Path, body: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let adapter = root.join("js-debug").join("bin").join("openidea-test-js-debug-adapter");
+        exe(&adapter, "#!/bin/sh\n");
+        // An interpreter without debugpy.
+        let python = root.join("fake-python");
+        exe(&python, "#!/bin/sh\nexit 1\n");
+        set_tools_root(root.clone());
+        assert_eq!(find_binary("openidea-test-js-debug-adapter", &root), Some(adapter));
+
+        let mut spec = resolve(&builtin("debugpy").unwrap(), root.clone());
+        spec.command = python.to_string_lossy().into_owned();
+        let err = prepare_debugpy(&mut spec).await.unwrap_err();
+        assert!(err.message.starts_with(DEBUGPY_MISSING), "{}", err.message);
+
+        let lib = root.join(DEBUGPY_TOOL).join("lib");
+        std::fs::create_dir_all(lib.join("debugpy")).unwrap();
+        std::fs::write(lib.join("debugpy").join("__init__.py"), "").unwrap();
+        prepare_debugpy(&mut spec).await.unwrap();
+        let (k, v) = &spec.env[0];
+        assert_eq!(k, "PYTHONPATH");
+        assert!(v.starts_with(&*lib.to_string_lossy()), "{v}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn substitutes_port_everywhere() {
+        let args: Vec<String> = ["dap", "--listen", "127.0.0.1:${port}", "${port}"].map(String::from).into();
+        assert_eq!(substitute_port(&args, 4711), ["dap", "--listen", "127.0.0.1:4711", "4711"]);
+        assert_eq!(substitute_port(&["--x".into()], 1), ["--x"]);
+    }
+
+    #[test]
+    fn builtins_cover_common_adapters() {
+        for name in ["codelldb", "debugpy", "js-debug", "delve", "netcoredbg", "java-debug"] {
+            let cfg = builtin(name).unwrap();
+            assert!(cfg.install_hint.is_some());
+        }
+        let delve = resolve(&builtin("delve").unwrap(), PathBuf::from("/"));
+        assert_eq!(delve.transport, Transport::Tcp);
+        assert!(builtin("nope").is_none());
+    }
+
+    #[test]
+    fn free_port_is_nonzero() {
+        assert_ne!(free_port().unwrap(), 0);
+    }
+
+    #[test]
+    fn missing_binary_reports_hint() {
+        let spec = resolve(&builtin("netcoredbg").unwrap(), std::env::temp_dir());
+        assert!(find_binary("definitely-not-a-real-binary-openidea", &spec.cwd).is_none());
+        let err = missing(&spec);
+        assert_eq!(err.kind, ide_core::error::ErrorKind::Unavailable);
+        assert!(err.message.contains("netcoredbg/releases"));
+    }
+
+    #[tokio::test]
+    async fn process_launcher_reports_missing_binary() {
+        let mut spec = resolve(&builtin("netcoredbg").unwrap(), std::env::temp_dir());
+        spec.command = "definitely-not-a-real-binary-openidea".into();
+        let err = ProcessLauncher.launch(spec, None).await.err().unwrap();
+        assert_eq!(err.kind, ide_core::error::ErrorKind::Unavailable);
+    }
+}

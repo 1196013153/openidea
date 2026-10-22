@@ -1,0 +1,152 @@
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import clsx from "clsx";
+import { Icon, type IconName } from "./icons";
+import { Popup } from "./Popup";
+import { List, listNavigate } from "./List";
+import styles from "./Select.module.css";
+
+export interface SelectOption<V extends string = string> {
+  value: V;
+  label: string;
+  icon?: IconName | (string & {});
+  detail?: string;
+  disabled?: boolean;
+}
+
+export interface SelectProps<V extends string = string> {
+  value: V | null;
+  options: readonly SelectOption<V>[];
+  onChange: (value: V) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  /** `ghost` renders as plain text + chevron (title bar widgets). */
+  variant?: "framed" | "ghost";
+  className?: string;
+  "aria-label"?: string;
+  /** Custom trigger content. */
+  renderValue?: (option: SelectOption<V> | undefined) => ReactNode;
+}
+
+/** Dropdown select with a listbox popup (↑↓ Enter Esc, type-ahead). */
+export function Select<V extends string = string>({
+  value,
+  options,
+  onChange,
+  placeholder = "Select…",
+  disabled,
+  variant = "framed",
+  className,
+  renderValue,
+  ...aria
+}: SelectProps<V>) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const current = options.find((o) => o.value === value);
+  const [active, setActive] = useState(0);
+  const isSection = (o: SelectOption<V>) => !!o.disabled;
+
+  const openPopup = () => {
+    setActive(
+      Math.max(
+        0,
+        options.findIndex((o) => o.value === value),
+      ),
+    );
+    setOpen(true);
+  };
+
+  const choose = (o: SelectOption<V> | undefined) => {
+    if (!o || o.disabled) return;
+    onChange(o.value);
+    setOpen(false);
+  };
+
+  const onPopupKey = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      choose(options[active]);
+      return;
+    }
+    const next = listNavigate(e.key, { items: options, active, isSection, wrap: true });
+    if (next !== null) {
+      e.preventDefault();
+      setActive(next);
+      return;
+    }
+    if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
+      const ch = e.key.toLowerCase();
+      const n = options.length;
+      for (let s = 1; s <= n; s++) {
+        const i = (active + s) % n;
+        if (!options[i]!.disabled && options[i]!.label.toLowerCase().startsWith(ch)) {
+          setActive(i);
+          break;
+        }
+      }
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={aria["aria-label"]}
+        disabled={disabled}
+        className={clsx(styles.trigger, styles[variant], className)}
+        onClick={() => (open ? setOpen(false) : openPopup())}
+        onKeyDown={(e) => {
+          if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            openPopup();
+          }
+        }}
+      >
+        {renderValue ? (
+          renderValue(current)
+        ) : (
+          <>
+            {current?.icon && <Icon name={current.icon} size={14} />}
+            <span className={clsx(styles.value, !current && styles.placeholder)}>{current?.label ?? placeholder}</span>
+          </>
+        )}
+        <Icon name="chevron-down" size={14} className={styles.chevron} />
+      </button>
+      <Popup
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={triggerRef}
+        matchWidth
+        role="presentation"
+        className={styles.popup}
+      >
+        <div tabIndex={-1} data-autofocus onKeyDown={onPopupKey} className={styles.popupInner}>
+          <List
+            items={options}
+            getKey={(o) => o.value}
+            isSection={isSection}
+            renderSection={(o) => <span className={styles.disabled}>{o.label}</span>}
+            activeIndex={active}
+            onActiveChange={setActive}
+            onActivate={(o) => choose(o)}
+            focusable={false}
+            hoverSelects
+            rowHeight={24}
+            aria-label={aria["aria-label"]}
+            className={styles.list}
+            renderItem={(o) => (
+              <>
+                <span className={styles.check}>{o.value === value && <Icon name="check" size={12} />}</span>
+                {o.icon && <Icon name={o.icon} size={14} />}
+                <span className={styles.optionLabel}>{o.label}</span>
+                {o.detail && <span className={styles.detail}>{o.detail}</span>}
+              </>
+            )}
+          />
+        </div>
+      </Popup>
+    </>
+  );
+}

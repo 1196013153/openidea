@@ -1,0 +1,49 @@
+import { describe, expect, it } from "vitest";
+import { describeSummary, needsPreview, summarizeWorkspaceEdit } from "./workspaceEdit";
+
+const edit = (line: number) => ({ range: { start: { line, col: 0 }, end: { line, col: 3 } }, new_text: "new" });
+
+describe("summarizeWorkspaceEdit", () => {
+  it("counts files and occurrences", () => {
+    const s = summarizeWorkspaceEdit({
+      files: [
+        { kind: "edit", path: "/p/b.rs", edits: [edit(1), edit(2)] },
+        { kind: "edit", path: "/p/a.rs", edits: [edit(4)] },
+        { kind: "edit", path: "/p/b.rs", edits: [edit(9)] },
+        { kind: "edit", path: "/p/empty.rs", edits: [] },
+      ],
+    });
+    expect(s.files).toBe(2);
+    expect(s.occurrences).toBe(4);
+    expect(s.hasFileOperations).toBe(false);
+    expect(s.entries.map((e) => [e.path, e.edits])).toEqual([
+      ["/p/a.rs", 1],
+      ["/p/b.rs", 3],
+    ]);
+    expect(describeSummary(s)).toBe("4 occurrences in 2 files");
+    expect(needsPreview(s)).toBe(true);
+  });
+
+  it("previews file operations even in a single file", () => {
+    const s = summarizeWorkspaceEdit({
+      files: [
+        { kind: "edit", path: "/p/a.ts", edits: [edit(0)] },
+        { kind: "rename", from: "/p/a.ts", to: "/p/b.ts" },
+      ],
+    });
+    expect(s.files).toBe(1);
+    expect(s.entries[0]).toMatchObject({ operation: "rename", to: "/p/b.ts", edits: 1 });
+    expect(needsPreview(s)).toBe(true);
+    expect(describeSummary(s)).toBe("1 occurrence in 1 file");
+  });
+
+  it("applies single-file renames directly", () => {
+    const s = summarizeWorkspaceEdit({ files: [{ kind: "edit", path: "/p/a.ts", edits: [edit(0), edit(3)] }] });
+    expect(needsPreview(s)).toBe(false);
+  });
+
+  it("handles empty edits", () => {
+    const s = summarizeWorkspaceEdit({ files: [] });
+    expect(s).toMatchObject({ files: 0, occurrences: 0 });
+  });
+});

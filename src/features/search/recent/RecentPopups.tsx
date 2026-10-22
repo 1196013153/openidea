@@ -1,0 +1,390 @@
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import clsx from "clsx";
+import { editorsFor, getNavigationHistory } from "@/editor/api";
+import { call, commands } from "@/platform/ipc";
+import { shortcutLabel } from "@/platform/keymap";
+import { useProject } from "@/platform/project";
+import { Checkbox, Dialog, HighlightedText, Icon, List, fileIconName, listNavigate } from "@/ui";
+import {
+  maybeEditorService,
+  toolWindowService,
+  useContributions,
+  useFileDecoration,
+  type ToolWindowContribution,
+} from "@/workbench/contributions";
+import { basename, openLocation } from "../common/open";
+import { fromNavigationHistory, mergeLocations, type RecentLocation } from "../common/locations";
+import { useTracking } from "../common/tracking";
+import { filterLocations, filterRecentFiles, initialFileIndex, switcherToolWindows, type RecentFileItem } from "./model";
+import { cycleSwitcher, hideRecentPopup, showRecentPopup, useRecentPopup } from "./store";
+import styles from "./RecentPopups.module.css";
+
+export function RecentPopupsOverlay() {
+  const open = useRecentPopup((s) => s.open);
+  if (open === "files") return <RecentFilesDialog />;
+  if (open === "locations") return <RecentLocationsDialog />;
+  return null;
+}
+
+const NAV_KEYS = ["ArrowDown", "ArrowUp", "PageDown", "PageUp"];
+
+/** Defers work until the dialog unmounted and restored focus. */
+const afterClose = (fn: () => void) => {
+  hideRecentPopup();
+  setTimeout(fn, 0);
+};
+
+// ---------------------------------------------------------------------------
+// ⌘E — Switcher
+
+function RecentFilesDialog() {
+  const editedOnly = useRecentPopup((s) => s.editedOnly);
+  const switcher = useRecentPopup((s) => s.switcher);
+  const step = useRecentPopup((s) => s.step);
+  const edited = useTracking((s) => s.edited);
+  const root = useProject((s) => s.project?.root ?? null);
+  const toolWindows = useContributions((s) => s.toolWindows);
+  const [paths, setPaths] = useState<string[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [column, setColumn] = useState<"files" | "tools">("files");
+  const [fileIndex, setFileIndex] = useState<number | null>(null);
+  const [toolIndex, setToolIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const activePath = useMemo(() => maybeEditorService()?.activePath() ?? null, []);
+
+  useEffect(() => {
+    let alive = true;
+    call(commands.recentFiles())
+      .then((p) => alive && setPaths(p.map(String)))
+      .catch(() => alive && setPaths([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const files = useMemo(
+    () => filterRecentFiles(paths ?? [], query, { root, edited, editedOnly }),
+    [paths, query, root, edited, editedOnly],
+  );
+  const tools = useMemo(() => switcherToolWindows(toolWindows.values(), !!root, query), [toolWindows, root, query]);
+  const fIndex = files.length ? Math.min(fileIndex ?? initialFileIndex(files, activePath, query), files.length - 1) : -1;
+  const tIndex = tools.length ? Math.min(toolIndex, tools.length - 1) : -1;
+  const effectiveColumn = column === "files" && !files.length && tools.length ? "tools" : column;
+
+  const openFile = (item: RecentFileItem | undefined, side = false) => {
+    if (item) afterClose(() => void openLocation(item.path, null, { side }));
+  };
+
+  const openTool = (tw: ToolWindowContribution | undefined) => {
+    if (tw) afterClose(() => toolWindowService().show(tw.id, true));
+  };
+
+  // Switcher: each ⌃⇥ moves one row (wrapping); releasing Ctrl opens the selection.
+  const baseIndex = useRef<number | null>(null);
+  useEffect(() => {
+    if (!switcher || !files.length || query) return;
+    baseIndex.current ??= step < 0 ? 0 : initialFileIndex(files, activePath, "");
+    const n = files.length;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the switcher step is an external event
+    setColumn("files");
+    setFileIndex((((baseIndex.current + step) % n) + n) % n);
+  }, [switcher, step, files, activePath, query]);
+  const selected = effectiveColumn === "files" ? files[fIndex] : undefined;
+  const selectedTool = effectiveColumn === "tools" ? tools[tIndex]?.tw : undefined;
+  useEffect(() => {
+    if (!switcher) return;
+    const onKeyUp = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Control") return;
+      if (selected) openFile(selected);
+      else if (selectedTool) openTool(selectedTool);
+      else hideRecentPopup();
+    };
+    window.addEventListener("keyup", onKeyUp, true);
+    return () => window.removeEventListener("keyup", onKeyUp, true);
+  });
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (effectiveColumn === "files") openFile(files[fIndex], e.shiftKey);
+      else openTool(tools[tIndex]?.tw);
+      return;
+    }
+    if (e.key === "Tab" && e.ctrlKey) {
+      // Normally handled by the global ⌃⇥ binding; kept here for presets without it.
+      e.preventDefault();
+      cycleSwitcher(e.shiftKey ? -1 : 1);
+      return;
+    }
+    if (e.key === "Tab" || ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !query)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setColumn(e.key === "ArrowLeft" ? "tools" : e.key === "ArrowRight" ? "files" : effectiveColumn === "files" ? "tools" : "files");
+      return;
+    }
+    if (!NAV_KEYS.includes(e.key)) return;
+    e.preventDefault();
+    if (effectiveColumn === "files") {
+      const next = listNavigate(e.key, { items: files, active: fIndex, wrap: true });
+      if (next !== null) setFileIndex(next);
+    } else {
+      const next = listNavigate(e.key, { items: tools, active: tIndex, wrap: true });
+      if (next !== null) setToolIndex(next);
+    }
+  };
+
+  const recentShortcut = shortcutLabel("navigate.recentFiles");
+  const locationsShortcut = shortcutLabel("navigate.recentLocations");
+  const title = editedOnly ? "Recently Edited Files" : "Recent Files";
+  const footerPath = selected?.path ?? (selectedTool ? "" : root ?? "");
+  return (
+    <Dialog open onClose={hideRecentPopup} width={720} aria-label="Recent Files" className={styles.dialog}>
+      <header className={styles.header}>
+        <span className={styles.title}>{title}</span>
+        <span className={clsx(styles.speed, query && styles.speedActive)}>
+          <Icon name="search" size={14} className={styles.filterIcon} />
+          <input
+            ref={inputRef}
+            data-autofocus
+            className={styles.filter}
+            value={query}
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Filter recent files"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setFileIndex(null);
+              setToolIndex(0);
+            }}
+            onKeyDown={onKeyDown}
+          />
+        </span>
+        <Checkbox
+          checked={editedOnly}
+          onChange={() => {
+            showRecentPopup("files");
+            inputRef.current?.focus();
+          }}
+          label={
+            <>
+              Show edited only {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}
+            </>
+          }
+        />
+      </header>
+      <div className={styles.columns}>
+        <div className={styles.tools}>
+          <List
+            items={tools}
+            getKey={(t) => t.tw.id}
+            activeIndex={effectiveColumn === "tools" ? tIndex : -1}
+            onActiveChange={(i) => {
+              setToolIndex(i);
+              setColumn("tools");
+            }}
+            onActivate={(t) => openTool(t.tw)}
+            focusable={false}
+            rowHeight={24}
+            aria-label="Tool windows"
+            renderItem={(t) => <ToolRow tw={t.tw} indices={t.indices} />}
+          />
+          <button type="button" className={styles.locationsLink} onClick={() => afterClose(() => showRecentPopup("locations"))}>
+            <span className={styles.name}>Recent Locations</span>
+            {locationsShortcut && <span className={styles.shortcut}>{locationsShortcut}</span>}
+          </button>
+        </div>
+        <div className={styles.files}>
+          <List
+            items={files}
+            getKey={(f) => f.path}
+            activeIndex={effectiveColumn === "files" ? fIndex : -1}
+            onActiveChange={(i) => {
+              setFileIndex(i);
+              setColumn("files");
+            }}
+            onActivate={(f, _i, e) => openFile(f, e.shiftKey)}
+            focusable={false}
+            rowHeight={24}
+            aria-label="Recent files"
+            empty={paths && <span>{editedOnly ? "No edited files" : query ? "No matching files" : "No recent files"}</span>}
+            renderItem={(f) => <RecentFileRow item={f} current={f.path === activePath} />}
+          />
+        </div>
+      </div>
+      <footer className={styles.footer} title={footerPath}>
+        <span className={styles.footerPath}>
+          <bdi>{footerPath}</bdi>
+        </span>
+      </footer>
+    </Dialog>
+  );
+}
+
+function ToolRow({ tw, indices }: { tw: ToolWindowContribution; indices: number[] }) {
+  const shortcut = shortcutLabel(`toolwindow.${tw.id}`);
+  return (
+    <>
+      <Icon name={tw.icon} size={16} className={styles.icon} />
+      <HighlightedText className={styles.name} text={tw.title} indices={indices} tone="strong" />
+      {shortcut && <span className={styles.shortcut}>{shortcut}</span>}
+    </>
+  );
+}
+
+function RecentFileRow({ item, current }: { item: RecentFileItem; current: boolean }) {
+  const deco = useFileDecoration(item.path);
+  return (
+    <>
+      <Icon name={fileIconName(item.name)} size={16} className={styles.icon} />
+      <span className={clsx(styles.name, current && styles.current)} style={deco.color ? { color: deco.color } : undefined}>
+        <HighlightedText text={item.name} indices={item.indices} tone="strong" />
+      </span>
+      <span className={styles.dir}>{item.dir}</span>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ⇧⌘E — Recent Locations
+
+function navigationHistory(): RecentLocation[] {
+  try {
+    return fromNavigationHistory(getNavigationHistory()) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Fills missing snippets from open editors or locally recorded locations. */
+function withSnippets(list: RecentLocation[], recorded: readonly RecentLocation[]): RecentLocation[] {
+  return list.map((l) => {
+    if (l.snippet.length) return l;
+    const view = editorsFor(l.path)[0]?.view;
+    if (view && l.line < view.state.doc.lines) {
+      const start = Math.max(0, l.line - 1);
+      const end = Math.min(view.state.doc.lines - 1, l.line + 1);
+      const snippet: string[] = [];
+      for (let n = start; n <= end; n++) snippet.push(view.state.doc.line(n + 1).text.slice(0, 300));
+      return { ...l, snippet, snippetStart: start };
+    }
+    const near = recorded.find((r) => r.path === l.path && Math.abs(r.line - l.line) <= 1);
+    return near ? { ...l, snippet: near.snippet, snippetStart: near.snippetStart } : l;
+  });
+}
+
+const LOCATION_ROW = 78;
+
+/** Strips the common indentation so snippets line up at the left edge. */
+function dedent(lines: readonly string[]): string[] {
+  const indents = lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length);
+  const min = indents.length ? Math.min(...indents) : 0;
+  return lines.map((l) => l.slice(Math.min(min, l.length - l.trimStart().length)));
+}
+
+function RecentLocationsDialog() {
+  const changedOnly = useRecentPopup((s) => s.changedOnly);
+  const recorded = useTracking((s) => s.locations);
+  const root = useProject((s) => s.project?.root ?? null);
+  const [query, setQuery] = useState("");
+  const [index, setIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const source = useMemo(() => {
+    return withSnippets(mergeLocations(navigationHistory(), recorded), recorded);
+  }, [recorded]);
+  const items = useMemo(() => filterLocations(source, query, { changedOnly, root }), [source, query, changedOnly, root]);
+  const active = items.length ? Math.min(index, items.length - 1) : -1;
+
+  const open = (l: RecentLocation | undefined, side = false) => {
+    if (l) afterClose(() => void openLocation(l.path, { line: l.line, col: l.col }, { side }));
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      open(items[active], e.shiftKey);
+      return;
+    }
+    if (!NAV_KEYS.includes(e.key)) return;
+    e.preventDefault();
+    const next = listNavigate(e.key, { items, active, wrap: true, pageSize: 4 });
+    if (next !== null) setIndex(next);
+  };
+
+  return (
+    <Dialog open onClose={hideRecentPopup} width={720} aria-label="Recent Locations" className={styles.dialog}>
+      <header className={styles.header}>
+        <span className={styles.title}>{changedOnly ? "Recently Changed Locations" : "Recent Locations"}</span>
+        <span className={clsx(styles.speed, styles.speedWide, query && styles.speedActive)}>
+          <Icon name="search" size={14} className={styles.filterIcon} />
+          <input
+            ref={inputRef}
+            data-autofocus
+            className={styles.filter}
+            value={query}
+            placeholder="Type to filter by file name or code"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Filter recent locations"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setIndex(0);
+            }}
+            onKeyDown={onKeyDown}
+          />
+        </span>
+        <Checkbox
+          checked={changedOnly}
+          onChange={() => {
+            showRecentPopup("locations");
+            inputRef.current?.focus();
+          }}
+          label={
+            <>
+              Show changed only <span className={styles.hint}>{shortcutLabel("navigate.recentLocations")}</span>
+            </>
+          }
+        />
+      </header>
+      <div className={styles.locations}>
+        <List
+          items={items}
+          getKey={(l) => `${l.path}:${l.line}:${l.time}`}
+          activeIndex={active}
+          onActiveChange={setIndex}
+          onActivate={(l, _i, e) => open(l, e.shiftKey)}
+          focusable={false}
+          rowHeight={LOCATION_ROW}
+          aria-label="Recent locations"
+          empty={<span>{changedOnly ? "No changed locations" : "No recent locations"}</span>}
+          renderItem={(l) => (
+            <div className={styles.location}>
+              <div className={styles.locationHeader}>
+                <Icon name={fileIconName(basename(l.rel))} size={14} className={styles.icon} />
+                <HighlightedText
+                  className={styles.locationName}
+                  text={basename(l.rel)}
+                  indices={l.nameIndices}
+                  tone="strong"
+                />
+                <span className={styles.dir}>{l.rel}</span>
+                {l.changed && <span className={styles.changed}>changed</span>}
+              </div>
+              <pre className={styles.snippet}>
+                {dedent(l.snippet).map((text, i) => {
+                  const n = l.snippetStart + i;
+                  return (
+                    <div key={i} className={clsx(styles.snippetLine, n === l.line && styles.caretLine)}>
+                      <span className={styles.lineNo}>{n + 1}</span>
+                      <span>{text || " "}</span>
+                    </div>
+                  );
+                })}
+              </pre>
+            </div>
+          )}
+        />
+      </div>
+    </Dialog>
+  );
+}

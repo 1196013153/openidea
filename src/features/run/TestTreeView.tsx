@@ -1,0 +1,171 @@
+import { useMemo, useState } from "react";
+import clsx from "clsx";
+import { Icon, IconButton, Spinner, Tree } from "@/ui";
+import { openTarget } from "./navigate";
+import { nodeStatus, type TestNode, type TestResults, type TestStatus } from "./testing";
+import styles from "./Run.module.css";
+
+export function formatDuration(ms: number | undefined): string {
+  if (ms === undefined) return "";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1).replace(/\.?0+$/, "")} s`;
+  const m = Math.floor(ms / 60_000);
+  return `${m} m ${Math.round((ms % 60_000) / 1000)} s`;
+}
+
+function totalDuration(node: TestNode): number | undefined {
+  if (node.durationMs !== undefined) return node.durationMs;
+  let sum = 0;
+  let any = false;
+  for (const c of node.children) {
+    const d = totalDuration(c);
+    if (d !== undefined) {
+      sum += d;
+      any = true;
+    }
+  }
+  return any ? sum : undefined;
+}
+
+export function StatusIcon({ status }: { status: TestStatus | null }) {
+  switch (status) {
+    case "passed":
+      return <Icon name="check" size={13} className={styles.passed} label="Passed" />;
+    case "failed":
+      return <Icon name="close" size={13} className={styles.failed} label="Failed" />;
+    case "skipped":
+      return <Icon name="minus" size={13} className={styles.skipped} label="Ignored" />;
+    case "running":
+      return <Spinner size={11} />;
+    default:
+      return <Icon name="clock" size={13} className={styles.skipped} label="Pending" />;
+  }
+}
+
+function filterTree(nodes: readonly TestNode[], keep: (n: TestNode) => boolean): TestNode[] {
+  const out: TestNode[] = [];
+  for (const n of nodes) {
+    if (n.children.length === 0) {
+      if (keep(n)) out.push(n);
+      continue;
+    }
+    const children = filterTree(n.children, keep);
+    if (children.length > 0) out.push({ ...n, children });
+  }
+  return out;
+}
+
+export interface TestTreeViewProps {
+  results: TestResults;
+  version: number;
+  cwd: string;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  running: boolean;
+}
+
+export function TestTreeView({ results, version, cwd, selected, onSelect, running }: TestTreeViewProps) {
+  const [showPassed, setShowPassed] = useState(true);
+  const [showIgnored, setShowIgnored] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string> | null>(null);
+
+  const counts = useMemo(() => results.counts(), [results, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const roots = useMemo(() => {
+    const keep = (n: TestNode) =>
+      (showPassed || n.own !== "passed") && (showIgnored || n.own !== "skipped");
+    return showPassed && showIgnored ? [...results.roots] : filterTree(results.roots, keep);
+  }, [results, version, showPassed, showIgnored]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Expand failed suites by default (IDEA reveals failures); the user's toggles win afterwards.
+  const effectiveExpanded = useMemo(() => {
+    if (expanded) return expanded;
+    const set = new Set<string>();
+    const visit = (nodes: readonly TestNode[], depth: number) => {
+      for (const n of nodes) {
+        if (n.children.length === 0) continue;
+        if (depth === 0 || nodeStatus(n) === "failed") set.add(n.id);
+        visit(n.children, depth + 1);
+      }
+    };
+    visit(roots, 0);
+    return set;
+  }, [expanded, roots]);
+
+  const status = running ? "running" : counts.failed > 0 ? "failed" : counts.total > 0 ? "passed" : null;
+  const duration = results.summary.durationMs;
+
+  return (
+    <div className={styles.testPane}>
+      <div className={styles.testHeader}>
+        <StatusIcon status={status} />
+        <span className={styles.testCounts}>
+          {counts.failed > 0 && <span className={styles.failed}>{counts.failed} failed</span>}
+          {counts.passed > 0 && <span>{counts.passed} passed</span>}
+          {counts.skipped > 0 && <span className={styles.skipped}>{counts.skipped} ignored</span>}
+          {counts.total === 0 && <span className={styles.skipped}>{running ? "Running…" : "No tests"}</span>}
+          {duration !== undefined && <span className={styles.skipped}>{formatDuration(duration)}</span>}
+        </span>
+        <span className={styles.spacer} />
+        <IconButton
+          icon="check"
+          size="small"
+          iconSize={13}
+          title="Show Passed"
+          pressed={showPassed}
+          onClick={() => setShowPassed((v) => !v)}
+        />
+        <IconButton
+          icon="minus"
+          size="small"
+          iconSize={13}
+          title="Show Ignored"
+          pressed={showIgnored}
+          onClick={() => setShowIgnored((v) => !v)}
+        />
+      </div>
+      <Tree<TestNode>
+        aria-label="Test results"
+        className={styles.testTree}
+        roots={roots}
+        getKey={(n) => n.id}
+        getLabel={(n) => n.name}
+        getChildren={(n) => (n.children.length ? n.children : undefined)}
+        isExpandable={(n) => n.children.length > 0}
+        expanded={effectiveExpanded}
+        onExpandedChange={(next) => setExpanded(next)}
+        selected={selected ? new Set([selected]) : new Set()}
+        onSelectionChange={(_sel, lead) => {
+          onSelect(lead?.id ?? null);
+          if (lead && lead.location && nodeStatus(lead) === "failed") void openTarget(lead.location, cwd, false);
+        }}
+        activateExpandable
+        onActivate={(n) => {
+          const target = n.location ?? firstLocated(n)?.location;
+          if (target) void openTarget(target, cwd, true);
+        }}
+        renderNode={(n) => {
+          const s = nodeStatus(n);
+          const d = totalDuration(n);
+          return (
+            <span className={styles.testRow}>
+              <StatusIcon status={s} />
+              <span className={clsx(styles.testName, s === "skipped" && styles.skipped)}>{n.name}</span>
+              {d !== undefined && <span className={styles.testDuration}>{formatDuration(d)}</span>}
+            </span>
+          );
+        }}
+        empty={<div className={styles.testEmpty}>{running ? "Waiting for test results…" : "No test results"}</div>}
+      />
+    </div>
+  );
+}
+
+function firstLocated(node: TestNode): TestNode | undefined {
+  if (node.location) return node;
+  for (const c of node.children) {
+    if (nodeStatus(c) !== "failed") continue;
+    const hit = firstLocated(c);
+    if (hit) return hit;
+  }
+  return undefined;
+}

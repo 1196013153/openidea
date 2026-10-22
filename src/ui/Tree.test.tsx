@@ -1,0 +1,149 @@
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { Tree } from "./Tree";
+
+interface N {
+  id: string;
+  children?: N[];
+}
+
+const data: N[] = [
+  {
+    id: "src",
+    children: [{ id: "main", children: [{ id: "App.tsx" }, { id: "index.ts" }] }, { id: "util.ts" }],
+  },
+  { id: "README.md" },
+];
+
+function setup(props: Partial<React.ComponentProps<typeof Tree<N>>> = {}) {
+  const onActivate = vi.fn();
+  const utils = render(
+    <Tree<N>
+      aria-label="Files"
+      roots={data}
+      getKey={(n) => n.id}
+      getLabel={(n) => n.id}
+      getChildren={(n) => n.children}
+      isExpandable={(n) => !!n.children}
+      onActivate={onActivate}
+      {...props}
+    />,
+  );
+  const tree = screen.getByRole("tree");
+  tree.focus();
+  const lead = () => {
+    const id = tree.getAttribute("aria-activedescendant");
+    return id ? document.getElementById(id)?.textContent : null;
+  };
+  const key = (k: string, init: Partial<KeyboardEventInit> = {}) => fireEvent.keyDown(tree, { key: k, ...init });
+  return { ...utils, tree, lead, key, onActivate };
+}
+
+const labels = (tree: HTMLElement) =>
+  within(tree)
+    .queryAllByRole("treeitem")
+    .map((el) => el.textContent);
+
+describe("Tree keyboard navigation", () => {
+  it("moves with arrows, expands with Right and collapses / goes to parent with Left", () => {
+    const { tree, lead, key } = setup();
+    expect(labels(tree)).toEqual(["src", "README.md"]);
+    key("ArrowDown");
+    expect(lead()).toBe("src");
+    key("ArrowRight");
+    expect(labels(tree)).toEqual(["src", "main", "util.ts", "README.md"]);
+    key("ArrowRight");
+    expect(lead()).toBe("main");
+    key("ArrowRight");
+    key("ArrowDown");
+    expect(lead()).toBe("App.tsx");
+    key("ArrowLeft");
+    expect(lead()).toBe("main");
+    key("ArrowLeft");
+    expect(labels(tree)).toEqual(["src", "main", "util.ts", "README.md"]);
+    key("End");
+    expect(lead()).toBe("README.md");
+    key("Home");
+    expect(lead()).toBe("src");
+  });
+
+  it("Enter toggles folders and activates leaves", () => {
+    const { tree, lead, key, onActivate } = setup();
+    key("ArrowDown");
+    key("Enter");
+    expect(labels(tree)).toContain("main");
+    key("End");
+    expect(lead()).toBe("README.md");
+    key("Enter");
+    expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({ id: "README.md" }), expect.anything());
+  });
+
+  it("extends the selection with Shift+Arrow", () => {
+    const onSelectionChange = vi.fn();
+    const { key } = setup({ defaultExpanded: ["src"], onSelectionChange });
+    key("ArrowDown");
+    key("ArrowDown", { shiftKey: true });
+    key("ArrowDown", { shiftKey: true });
+    const last = onSelectionChange.mock.calls.at(-1)![0] as Set<string>;
+    expect([...last].sort()).toEqual(["main", "src", "util.ts"]);
+  });
+
+  it("lazy-loads children on expand", () => {
+    const loadChildren = vi.fn();
+    const { tree, key } = setup({ getChildren: () => undefined, loadChildren });
+    key("ArrowDown");
+    key("ArrowRight");
+    expect(loadChildren).toHaveBeenCalledWith(expect.objectContaining({ id: "src" }));
+    expect(tree.textContent).toContain("Loading");
+  });
+});
+
+describe("Tree speed search", () => {
+  it("jumps to and highlights matches, cycles with arrows and clears with Escape", () => {
+    const { tree, lead, key } = setup({ defaultExpanded: ["src", "main"] });
+    key("ArrowDown");
+    key("i");
+    key("n");
+    key("d");
+    expect(lead()).toBe("index.ts");
+    expect(screen.getByRole("status")).toHaveTextContent("ind");
+    expect([...tree.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["ind"]);
+    key("Backspace");
+    // "in" matches "main" (above) and "index.ts": arrows cycle between matches.
+    key("ArrowUp");
+    expect(lead()).toBe("main");
+    key("ArrowDown");
+    expect(lead()).toBe("index.ts");
+    key("ArrowDown");
+    expect(lead()).toBe("main");
+    key("Escape");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(tree.querySelectorAll("mark")).toHaveLength(0);
+  });
+
+  it("filter mode hides non-matching rows but keeps ancestors", () => {
+    const { tree, key } = setup({ defaultExpanded: ["src", "main"], speedSearchMode: "filter" });
+    key("ArrowDown");
+    for (const c of "App") key(c);
+    expect(labels(tree)).toEqual(["src", "main", "App.tsx"]);
+  });
+});
+
+describe("siblingPositions", () => {
+  it("numbers rows among siblings", async () => {
+    const { siblingPositions } = await import("./Tree");
+    expect(
+      siblingPositions([
+        { parentKey: null },
+        { parentKey: "a" },
+        { parentKey: "a" },
+        { parentKey: null },
+      ]),
+    ).toEqual([
+      [1, 2],
+      [1, 2],
+      [2, 2],
+      [2, 2],
+    ]);
+  });
+});

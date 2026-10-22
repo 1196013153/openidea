@@ -1,0 +1,303 @@
+/** Inspect Code, Locate Duplicates and Search / Replace Structurally dialogs. */
+import { useEffect, useMemo, useState } from "react";
+import {
+  call,
+  commands,
+  isTauri,
+  type DuplicateOptions,
+  type StructuralFile,
+  type StructuralLanguage,
+} from "@/platform/ipc";
+import { basename } from "@/platform/project";
+import { Checkbox, Dialog, Input, Select, Spinner } from "@/ui";
+import { ScopeFields, openDialog } from "./dialogs";
+import { locateDuplicates, loadDuplicateOptions } from "./duplicates";
+import { runInspection } from "./inspect";
+import { defaultScope, type ScopeChoice } from "./scope";
+import {
+  applyStructuralReplace,
+  buildReplaceEdit,
+  loadStructuralForm,
+  matchKey,
+  saveStructuralForm,
+  searchStructurally,
+  showStructuralResults,
+  type StructuralForm,
+} from "./structural";
+import styles from "./Analysis.module.css";
+
+function InspectCodeDialog({ onClose }: { onClose: () => void }) {
+  const [scope, setScope] = useState<ScopeChoice>(() => defaultScope());
+  const ok = () => {
+    onClose();
+    void runInspection(scope);
+  };
+  return (
+    <Dialog
+      open
+      title="Specify Inspection Scope"
+      onClose={onClose}
+      width={440}
+      buttons={[
+        { label: "Analyze", role: "default", onClick: ok },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <div className={styles.form}>
+        <ScopeFields name="inspect-scope" value={scope} onChange={setScope} />
+        <div className={styles.hint}>Files are checked by their language servers; files without one are skipped.</div>
+      </div>
+    </Dialog>
+  );
+}
+
+function DuplicatesDialog({ onClose }: { onClose: () => void }) {
+  const [scope, setScope] = useState<ScopeChoice>(() => defaultScope());
+  const [options, setOptions] = useState<DuplicateOptions>(loadDuplicateOptions);
+  const [minText, setMinText] = useState(String(options.minTokens));
+  const min = Number(minText);
+  const valid = Number.isInteger(min) && min >= 10 && min <= 10_000;
+  const ok = () => {
+    if (!valid) return;
+    onClose();
+    void locateDuplicates(scope, { ...options, minTokens: min });
+  };
+  return (
+    <Dialog
+      open
+      title="Locate Duplicates"
+      onClose={onClose}
+      width={440}
+      buttons={[
+        { label: "OK", role: "default", disabled: !valid, onClick: ok },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <div className={styles.form}>
+        <ScopeFields name="duplicates-scope" value={scope} onChange={setScope} />
+        <label className={styles.fieldRow}>
+          <span>Minimum size</span>
+          <Input
+            className={styles.number}
+            type="number"
+            min={10}
+            value={minText}
+            invalid={!valid}
+            onChange={(e) => setMinText(e.target.value)}
+            aria-label="Minimum duplicate size in tokens"
+          />
+          <span className={styles.hint}>tokens</span>
+        </label>
+        <Checkbox
+          checked={options.anonymizeIdentifiers}
+          onChange={(v) => setOptions({ ...options, anonymizeIdentifiers: v })}
+          label="Anonymize variables, fields, methods and types"
+        />
+        <Checkbox
+          checked={options.anonymizeLiterals}
+          onChange={(v) => setOptions({ ...options, anonymizeLiterals: v })}
+          label="Anonymize literals"
+        />
+      </div>
+    </Dialog>
+  );
+}
+
+function useStructuralLanguages(): StructuralLanguage[] | null {
+  const [langs, setLangs] = useState<StructuralLanguage[] | null>(() => (isTauri() ? null : []));
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    void call(commands.structuralLanguages()).then(
+      (l) => alive && setLangs(l),
+      () => alive && setLangs([]),
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return langs;
+}
+
+/** Template validation while typing (debounced). */
+function useTemplateError(pattern: string, language: string): string | null {
+  const key = `${language}\u0000${pattern}`;
+  const [result, setResult] = useState<{ key: string; error: string | null }>({ key: "", error: null });
+  const applicable = isTauri() && !!pattern.trim() && !!language;
+  useEffect(() => {
+    if (!applicable) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      void call(commands.structuralValidate({ pattern, language, replacement: null, maxMatches: 0 })).then(
+        () => alive && setResult({ key, error: null }),
+        (e) => alive && setResult({ key, error: e instanceof Error ? e.message : String(e) }),
+      );
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [applicable, key, pattern, language]);
+  return applicable && result.key === key ? result.error : null;
+}
+
+function StructuralDialog({ replace, onClose }: { replace: boolean; onClose: () => void }) {
+  const [form, setForm] = useState<StructuralForm>(loadStructuralForm);
+  const [scope, setScope] = useState<ScopeChoice>(() => defaultScope());
+  const [busy, setBusy] = useState(false);
+  const languages = useStructuralLanguages();
+  // The editor's language when it has a grammar, else the first supported one.
+  const language =
+    languages && languages.length && !languages.some((l) => l.id === form.language) ? languages[0]!.id : form.language;
+  const error = useTemplateError(form.pattern, language);
+  const options = useMemo(() => (languages ?? []).map((l) => ({ value: l.id, label: l.name })), [languages]);
+  const ready = !!form.pattern.trim() && !!language && !error && !busy;
+
+  const run = async () => {
+    if (!ready) return;
+    saveStructuralForm({ ...form, language });
+    setBusy(true);
+    const query = { pattern: form.pattern, language, replacement: replace ? form.replacement : null, maxMatches: 0 };
+    const result = await searchStructurally(query, scope);
+    setBusy(false);
+    if (!result) return;
+    onClose();
+    if (!replace) {
+      await showStructuralResults(form.pattern, result.files, result.summary);
+    } else if (!result.files.length) {
+      await showStructuralResults(form.pattern, result.files, result.summary);
+    } else {
+      showReplacePreview(result.files);
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      title={replace ? "Structural Replace" : "Structural Search"}
+      onClose={onClose}
+      width={620}
+      footerStart={busy ? <Spinner size={14} label="Searching" /> : undefined}
+      buttons={[
+        { label: replace ? "Find…" : "Find", role: "default", disabled: !ready, onClick: () => void run() },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <div className={styles.form}>
+        <div className={styles.fieldRow}>
+          <span>Language</span>
+          <Select
+            value={language || null}
+            options={options}
+            onChange={(language) => setForm({ ...form, language })}
+            placeholder={languages ? "No languages" : "Loading…"}
+            className={styles.languageSelect}
+            aria-label="Language"
+          />
+        </div>
+        <label className={styles.fieldLabel} htmlFor="ssr-template">
+          Search template
+        </label>
+        <textarea
+          id="ssr-template"
+          className={styles.template}
+          spellCheck={false}
+          value={form.pattern}
+          placeholder="$a$.equals($b$)"
+          onChange={(e) => setForm({ ...form, pattern: e.target.value })}
+          data-autofocus=""
+        />
+        {error && <div className={styles.error}>{error}</div>}
+        {replace && (
+          <>
+            <label className={styles.fieldLabel} htmlFor="ssr-replacement">
+              Replace template
+            </label>
+            <textarea
+              id="ssr-replacement"
+              className={styles.template}
+              spellCheck={false}
+              value={form.replacement}
+              placeholder="Objects.equals($a$, $b$)"
+              onChange={(e) => setForm({ ...form, replacement: e.target.value })}
+            />
+          </>
+        )}
+        <div className={styles.hint}>
+          Placeholders: <code>$name$</code> or <code>$NAME</code> match one node, <code>$$$NAME</code> any number of
+          nodes (arguments, statements). A placeholder used twice must match equal code.
+        </div>
+        <ScopeFields name="ssr-scope" value={scope} onChange={setScope} />
+      </div>
+    </Dialog>
+  );
+}
+
+function ReplacePreviewDialog({ files, onClose }: { files: StructuralFile[]; onClose: () => void }) {
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
+  const edit = useMemo(() => buildReplaceEdit(files, excluded), [files, excluded]);
+  const count = edit.files.reduce((n, f) => n + (f.kind === "edit" ? f.edits.length : 0), 0);
+  const toggle = (key: string, on: boolean) =>
+    setExcluded((s) => {
+      const next = new Set(s);
+      if (on) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return (
+    <Dialog
+      open
+      title="Replace Structurally: Preview"
+      onClose={onClose}
+      width={720}
+      footerStart={
+        <span
+          className={styles.hint}
+        >{`${count} replacement${count === 1 ? "" : "s"} in ${edit.files.length} file${edit.files.length === 1 ? "" : "s"}`}</span>
+      }
+      buttons={[
+        {
+          label: "Replace",
+          role: "default",
+          disabled: count === 0,
+          onClick: () => {
+            onClose();
+            void applyStructuralReplace(edit);
+          },
+        },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <ul className={styles.previewList} aria-label="Replacements">
+        {files.flatMap((f) =>
+          f.matches.map((m, i) => {
+            const key = matchKey(f.path, i);
+            return (
+              <li key={key} className={styles.previewItem}>
+                <Checkbox
+                  checked={!excluded.has(key)}
+                  onChange={(on) => toggle(key, on)}
+                  aria-label={`Replace in ${f.relPath}:${m.range.start.line + 1}`}
+                />
+                <div className={styles.previewBody}>
+                  <span className={styles.previewWhere}>
+                    {basename(f.path)}:{m.range.start.line + 1} · {f.relPath}
+                  </span>
+                  <pre className={styles.previewOld}>{m.text}</pre>
+                  <pre className={styles.previewNew}>{m.replacement ?? ""}</pre>
+                </div>
+              </li>
+            );
+          }),
+        )}
+      </ul>
+    </Dialog>
+  );
+}
+
+export const showInspectCodeDialog = () => openDialog((close) => <InspectCodeDialog onClose={close} />);
+export const showDuplicatesDialog = () => openDialog((close) => <DuplicatesDialog onClose={close} />);
+export const showStructuralDialog = (replace: boolean) =>
+  openDialog((close) => <StructuralDialog replace={replace} onClose={close} />);
+export const showReplacePreview = (files: StructuralFile[]) =>
+  openDialog((close) => <ReplacePreviewDialog files={files} onClose={close} />);

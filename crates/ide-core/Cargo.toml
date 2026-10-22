@@ -1,0 +1,14 @@
+[package]
+name = "ide-core"
+description = "Shared vocabulary of OpenIDEA: ids, text coordinates, events, errors, settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dunce.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+thiserror.workspace = true
+tokio-util.workspace = true

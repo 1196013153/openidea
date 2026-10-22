@@ -1,0 +1,13 @@
+id = "vue"
+name = "Vue"
+extensions = ["vue"]
+block-comment = ["<!--", "-->"]
+indent = { tab-size = 2, insert-spaces = true }
+ui-mode = "Vue"
+
+[[language-servers]]
+name = "vue-language-server"
+command = "vue-language-server"
+args = ["--stdio"]
+root-markers = ["package.json", "vite.config.ts", "vite.config.js", "nuxt.config.ts", "tsconfig.json"]
+install-hint = "npm i -g @vue/language-server (TypeScript support also needs @vue/typescript-plugin in vtsls)"

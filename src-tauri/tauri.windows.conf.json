@@ -1,0 +1,17 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "OpenIDEA",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 500,
+        "decorations": false,
+        "backgroundColor": "#E9EAEE",
+        "dragDropEnabled": true
+      }
+    ]
+  }
+}
