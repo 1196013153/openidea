@@ -9,15 +9,7 @@
   The IDE you know, rebuilt in Rust.
 </p>
 
-<p align="center">
-  <a href="docs/media/openidea-promo.mp4">
-    <img src="docs/media/openidea-promo-poster.jpg" alt="OpenIDEA in 50 seconds: search, completion, usages, tests, debugger, commit" width="720">
-  </a>
-  <br>
-  <sub><a href="docs/media/openidea-promo.mp4">▶ Watch the 50-second tour</a></sub>
-</p>
-
-<br>
+https://github.com/user-attachments/assets/234dd54c-1255-4b3a-b35c-533d78d737c0
 
 OpenIDEA brings the IntelliJ IDEA way of working — its keymap, its tool windows,
 its search-everything habits — to a native app with a Rust core.
