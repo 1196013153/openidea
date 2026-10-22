@@ -1,74 +1,41 @@
-<h1>
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="src-tauri/icons/source/openidea-wordmark-dark.svg">
-    <img src="src-tauri/icons/source/openidea-wordmark.svg" alt="OpenIDEA" height="64">
+    <img src="src-tauri/icons/source/openidea-wordmark.svg" alt="OpenIDEA" height="56">
   </picture>
-</h1>
+</p>
 
-An open-source desktop IDE in the spirit of IntelliJ IDEA, built with Rust and Tauri.
+<p align="center">
+  The IDE you know, rebuilt in Rust.
+</p>
 
-<sub>Not affiliated with JetBrains. IntelliJ IDEA is a trademark of JetBrains s.r.o.</sub>
+<p align="center">
+  <a href="docs/media/openidea-promo.mp4">
+    <img src="docs/media/openidea-promo-poster.jpg" alt="OpenIDEA in 50 seconds: search, completion, usages, tests, debugger, commit" width="720">
+  </a>
+  <br>
+  <sub><a href="docs/media/openidea-promo.mp4">▶ Watch the 50-second tour</a></sub>
+</p>
 
-> [!WARNING]
-> OpenIDEA is early-stage software (0.1). Expect rough edges and breaking changes.
+<br>
 
-## Features
+OpenIDEA brings the IntelliJ IDEA way of working — its keymap, its tool windows,
+its search-everything habits — to a native app with a Rust core.
 
-- **Editor** — CodeMirror 6 with tree-sitter highlighting, folding, multi-caret,
-  live templates and an IDEA-style keymap.
-- **Code insight** — LSP-backed completion, navigation, find usages, rename and
-  refactorings, diagnostics and inspections, plus a fast project-wide index.
-- **Search** — Search Everywhere, Go to File / Symbol / Action, Find in Files.
-- **Run & debug** — run configurations, DAP debugging, test runner, coverage and
-  a profiler.
-- **Build tools** — Maven and Gradle project sync and builds.
-- **Version control** — Git (status, diff, commit, history, branches, blame) and
-  GitHub pull requests.
-- **Tools** — integrated terminal, database client (PostgreSQL, MySQL, SQLite,
-  SSH tunnels), HTTP client, Docker, scratch files and TODO view.
-- **Languages** — 60+ languages via declarative definitions in
-  [`languages/`](languages): detection, comments, language server and debug
-  adapter in one TOML file each.
-- **Plugins** — sandboxed WebAssembly plugins against the [`wit/plugin.wit`](wit)
-  interface; see [`plugins/`](plugins) for examples.
+Editor, code insight, debugger, Git, terminal, database and HTTP clients,
+for 60+ languages.
 
-## Building from source
-
-Requirements: Rust 1.96+, Node.js 22+, pnpm, and the
-[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.
+## Build
 
 ```sh
 pnpm install
-pnpm tauri dev      # run the app in development mode
-pnpm tauri build    # produce a release bundle
+pnpm tauri dev
 ```
 
-Language servers and debug adapters are not bundled; OpenIDEA finds them on
-`PATH` or offers to download them on first use.
-
-## Development
-
-```sh
-pnpm typecheck && pnpm lint && pnpm test       # frontend
-cargo nextest run --workspace                  # backend tests
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all
-pnpm gen:bindings                              # regenerate src/bindings.ts after IPC changes
-pnpm perf && pnpm perf:rust                    # performance checks vs perf/budgets.json
-```
-
-Project layout:
-
-| Path | Contents |
-| --- | --- |
-| `crates/ide-*` | Backend crates, one domain each (VFS, index, LSP, DAP, VCS, run, …) |
-| `src-tauri/` | Tauri app: state and thin IPC command adapters |
-| `src/` | React UI: `platform/` (IPC, actions, keymaps), `workbench/`, `ui/` (design system), `features/` |
-| `languages/` | Language definitions |
-| `plugins/`, `wit/` | Example plugins and the plugin interface |
+Rust 1.96, Node 22, pnpm and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ## License
 
-[Apache License 2.0](LICENSE); see [`NOTICE`](NOTICE). Bundled third-party assets,
-including icons from the IntelliJ Platform, are listed in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+[Apache 2.0](LICENSE). Bundled third-party assets are listed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+
+<sub>Not affiliated with JetBrains. IntelliJ IDEA is a trademark of JetBrains s.r.o.</sub>
