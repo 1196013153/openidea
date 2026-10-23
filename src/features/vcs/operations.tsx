@@ -14,7 +14,7 @@ import { openDialog, promptText } from "./dialogs";
 import { KIND_COLOR, baseName, dirName } from "./model";
 import { runGitOperation, runOp } from "./ops";
 import { reloadLog, useGitLog } from "./logStore";
-import { conflictedFiles, currentRepo, refreshNow, repoOf, useVcs } from "./store";
+import { conflictedFiles, currentRepo, currentRepoRoot, refreshNow, repoOf, useVcs } from "./store";
 import styles from "./common.module.css";
 
 // ---------------------------------------------------------------------------
@@ -416,12 +416,14 @@ function CompareWithLocalDialog({ rev, label, onClose }: { rev: string; label: s
       alive = false;
     };
   }, [rev]);
-  const open = (f: ChangedFile) =>
+  const open = (f: ChangedFile) => {
+    const repoRoot = currentRepoRoot() ?? root;
     void openDiff({
-      path: `${root}/${f.path}`,
-      left: { type: "rev", rev, label, path: f.oldPath ? `${root}/${f.oldPath}` : undefined },
+      path: `${repoRoot}/${f.path}`,
+      left: { type: "rev", rev, label, path: f.oldPath ? `${repoRoot}/${f.oldPath}` : undefined },
       right: { type: "worktree" },
     });
+  };
   const current = files?.[active];
   return (
     <Dialog

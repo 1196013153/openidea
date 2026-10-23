@@ -72,6 +72,12 @@ export function currentRepo(): string | null {
   return useVcs.getState().repo;
 }
 
+/** Root of the selected repository, which its log's and diffs' repository-relative paths are relative to. */
+export function currentRepoRoot(): string | null {
+  const s = useVcs.getState();
+  return s.repo ?? s.roots[0] ?? s.root;
+}
+
 /** Root of the innermost repository containing `path`. */
 export function repoOf(path: string, roots: readonly string[] = useVcs.getState().roots): string | null {
   return rootOf(path, roots);
@@ -148,14 +154,28 @@ export function refreshNow(): Promise<void> {
     useVcs.setState({ loading: true });
     try {
       const s = useVcs.getState();
-      const [vcsRoots, status, branch, branches, stashes] = await Promise.all([
-        call(commands.vcsRoots()),
-        call(commands.vcsStatus()),
+      const scoped = Promise.all([
         call(commands.vcsBranchInfo(s.repo)),
         s.branchesLoaded ? call(commands.vcsBranches(s.repo)) : Promise.resolve(s.branches),
         s.stashesLoaded ? call(commands.vcsStashes(s.repo)) : Promise.resolve(s.stashes),
+      ]).then(
+        (values) => ({ values }),
+        (error: unknown) => ({ error }),
+      );
+      const [vcsRoots, status, selected] = await Promise.all([
+        call(commands.vcsRoots()),
+        call(commands.vcsStatus()),
+        scoped,
       ]);
       const roots = vcsRoots.map((r) => r.root);
+      if ("error" in selected) {
+        // The selected repository is gone (removed since the last scan): fall back to the primary one.
+        if (!s.repo || roots.includes(s.repo)) throw selected.error;
+        useVcs.setState({ roots, repo: null, branchesLoaded: false, stashesLoaded: false });
+        void refreshNow();
+        return;
+      }
+      const [branch, branches, stashes] = selected.values;
       const operations = Object.fromEntries(vcsRoots.filter((r) => r.operation).map((r) => [r.root, r.operation!]));
       // `null` (before the first refresh) is the primary repository, listed first.
       const shown = s.repo && roots.includes(s.repo) ? s.repo : (roots[0] ?? null);

@@ -92,12 +92,16 @@ export function relTo(root: string, path: string): string {
   return path.startsWith(root + "/") ? path.slice(root.length + 1) : path;
 }
 
-/** The innermost of `roots` (repository roots) containing `path`. */
+/**
+ * The innermost of `roots` (repository roots) containing `path`. A nested repository's root
+ * is an entry of the enclosing one (submodule, untracked folder), so it belongs there; to
+ * itself only when no root encloses it (as the backend routes it).
+ */
 export function rootOf(path: string, roots: readonly string[]): string | null {
   const p = stripSlash(path);
   let best: string | null = null;
-  for (const r of roots) if ((p === r || p.startsWith(`${r}/`)) && (!best || r.length > best.length)) best = r;
-  return best;
+  for (const r of roots) if (p.startsWith(`${r}/`) && (!best || r.length > best.length)) best = r;
+  return best ?? (roots.includes(p) ? p : null);
 }
 
 /** Repository name for display: its folder relative to the project, else its folder name. */

@@ -74,7 +74,7 @@ pub async fn vcs_branch_info(
 pub fn vcs_line_hunks(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<Vec<LineHunk>> {
     let project = state.project(window.label())?;
     let text = project.text_of(&path)?;
-    project.with_repo_at(Some(&path), |r| r.line_hunks(&path, &text, false))
+    project.with_repo_of(&path, |r| r.line_hunks(&path, &text, false))
 }
 
 #[tauri::command]
@@ -86,7 +86,7 @@ pub async fn vcs_file_at(
     rev: Option<String>,
 ) -> IdeResult<Option<String>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_at(Some(&path), |r| r.file_at(&path, rev.as_deref()))).await
+    blocking(move || project.with_repo_of(&path, |r| r.file_at(&path, rev.as_deref()))).await
 }
 
 #[tauri::command]
@@ -94,7 +94,7 @@ pub async fn vcs_file_at(
 pub async fn vcs_blame(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<Vec<BlameLine>> {
     let project = state.project(window.label())?;
     let text = project.documents.text_of(&path);
-    blocking(move || project.with_repo_at(Some(&path), |r| r.blame(&path, text.as_deref()))).await
+    blocking(move || project.with_repo_of(&path, |r| r.blame(&path, text.as_deref()))).await
 }
 
 #[tauri::command]
@@ -401,7 +401,7 @@ pub async fn vcs_conflict_versions(
 ) -> IdeResult<ConflictVersions> {
     let project = state.project(window.label())?;
     blocking(move || {
-        project.with_repo_at(Some(&path), |r| {
+        project.with_repo_of(&path, |r| {
             r.conflict_versions(&path).map(|(base, ours, theirs)| ConflictVersions { base, ours, theirs })
         })
     })
@@ -417,7 +417,7 @@ pub async fn vcs_diff_text(
     staged: bool,
 ) -> IdeResult<String> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_at(Some(&path), |r| r.diff_text(&path, staged))).await
+    blocking(move || project.with_repo_of(&path, |r| r.diff_text(&path, staged))).await
 }
 
 /// Line hunks between two arbitrary texts (diff viewer, commit dialog).
@@ -434,7 +434,7 @@ pub fn vcs_diff_hunks(old_text: String, new_text: String) -> Vec<LineHunk> {
 pub fn vcs_stage_hunks(window: Window, state: State<'_, AppState>, path: PathBuf, hunks: Vec<u32>) -> IdeResult<()> {
     let project = state.project(window.label())?;
     let current = ide_vfs::load_text(&path)?.text;
-    project.with_repo_at(Some(&path), |r| {
+    project.with_repo_of(&path, |r| {
         let index_text = r.file_at(&path, Some(":0"))?.unwrap_or_default();
         let rel = path.strip_prefix(r.root()).unwrap_or(&path).to_string_lossy().replace('\\', "/");
         let selected: Vec<usize> = hunks.iter().map(|&h| h as usize).collect();
@@ -639,6 +639,20 @@ fn per_repo(
     Ok(())
 }
 
+/// Shelf and patches work in the primary repository only: changes of a nested one
+/// fail instead of being left out silently.
+fn in_primary_repo(project: &Project, paths: &[PathBuf]) -> IdeResult<()> {
+    let repos = project.repos();
+    let primary = repos.primary().map(|r| r.root());
+    match paths.iter().find(|p| repos.for_path(p).map(|r| r.root()) != primary) {
+        Some(p) => Err(ide_core::IdeError::invalid(format!(
+            "{} is in another git repository; shelving and patches support the project's main repository only",
+            p.display()
+        ))),
+        None => Ok(()),
+    }
+}
+
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> IdeResult<T> + Send + 'static) -> IdeResult<T> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| ide_core::IdeError::internal(e.to_string()))?
 }
@@ -662,6 +676,7 @@ pub async fn vcs_create_patch(window: Window, state: State<'_, AppState>, source
         project.with_repo(|r| match source {
             PatchSource::Changes { paths, reverse } => {
                 let paths: Vec<PathBuf> = paths.into_iter().map(Into::into).collect();
+                in_primary_repo(&project, &paths)?;
                 r.create_patch(&paths, reverse)
             }
             PatchSource::Commits { commits, reverse } => r.create_commits_patch(&commits, reverse),
@@ -709,6 +724,7 @@ pub async fn vcs_shelve(
 ) -> IdeResult<ShelvedChangeList> {
     let project = state.project(window.label())?;
     blocking(move || {
+        in_primary_repo(&project, &paths)?;
         keep_private(&project.root);
         project.with_repo_recorded(None, Some("Shelve"), |r| r.shelve(&shelf_dir(&project.root), &name, &paths))
     })

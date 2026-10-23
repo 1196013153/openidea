@@ -310,9 +310,16 @@ impl AppState {
                             sink.emit(IdeEvent::ProjectRootsChanged { root: root.clone().into() });
                         }
                     }
-                    // A repository was cloned / initialised / removed below the project.
-                    let git_dirs =
-                        changed.iter().chain(&batch.removed).any(|p| p.file_name().is_some_and(|n| n == ".git"));
+                    // A repository was cloned / initialised / removed below the project: its
+                    // `.git/HEAD` (the watcher reports nothing else of `.git`) appeared or went.
+                    let known = repos.read().roots();
+                    let git_dirs = changed.iter().chain(&batch.removed).any(|p| {
+                        let Some(dir) = p.ends_with(".git/HEAD").then(|| p.parent().and_then(Path::parent)).flatten()
+                        else {
+                            return false;
+                        };
+                        known.iter().any(|r| r == dir) != p.is_file()
+                    });
                     if git_dirs {
                         scan_repositories(&root, &repos, &settings, &sink);
                     }
@@ -429,23 +436,38 @@ impl Project {
         self.repos.read().clone()
     }
 
-    /// Runs `f` with the repository containing `at` (a path in it or its root), the
-    /// project's primary repository when `None`; fails when there is none.
+    /// Runs `f` with the repository whose root is `at`, the project's primary repository
+    /// when `None`; fails when there is none (a repository-scoped command never falls back
+    /// to another repository).
     pub fn with_repo_at<T>(&self, at: Option<&Path>, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
+        let repos = self.repos();
+        match at {
+            Some(root) => match repos.at_root(root) {
+                Some(repo) => self.run_in(repo, f),
+                None => {
+                    Err(IdeError::unavailable(format!("{} is not a git repository of the project", root.display())))
+                }
+            },
+            None => match repos.primary() {
+                Some(repo) => self.run_in(repo, f),
+                None => Err(IdeError::unavailable("project is not a git repository")),
+            },
+        }
+    }
+
+    /// Runs `f` with the repository `path` (a file or folder) belongs to.
+    pub fn with_repo_of<T>(&self, path: &Path, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
+        match self.repos().for_path(path) {
+            Some(repo) => self.run_in(repo, f),
+            None => Err(IdeError::unavailable(format!("{} is not in a git repository", path.display()))),
+        }
+    }
+
+    fn run_in<T>(&self, repo: &Repo, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
         let settings = self.settings.effective();
         crate::commands::vcs::apply_git_executable(&settings);
-        let repos = self.repos();
-        let repo = match at {
-            Some(path) => repos.for_path(path),
-            None => repos.primary(),
-        };
-        match repo {
-            Some(repo) => {
-                repo.set_ignored_names(settings.ignored_names());
-                f(repo)
-            }
-            None => Err(IdeError::unavailable("project is not a git repository")),
-        }
+        repo.set_ignored_names(settings.ignored_names());
+        f(repo)
     }
 
     /// Runs `f` with the project's primary git repository, or fails when the project is not under git.
