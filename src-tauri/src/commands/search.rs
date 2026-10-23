@@ -29,9 +29,10 @@ pub async fn search_start(
     on_event: Channel<SearchEvent>,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    // Excluded roots (Project Structure marks and detected `target`, `node_modules`, …) are never searched.
+    // Excluded roots (Project Structure marks and detected `target`, `node_modules`, …) and
+    // ignored names are never searched.
+    query.exclude.extend(project.search_excludes());
     let roots = project.roots();
-    query.exclude.extend(roots.excluded_globs().iter().map(|d| format!("{}/**", d.trim_start_matches('/'))));
     let set = match query.scope {
         ide_search::SearchScope::FileSet { set } => Some(set),
         _ => None,

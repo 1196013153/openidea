@@ -2,6 +2,7 @@
 //! writes (commit, checkout, push/pull, stash, merge) shell out to `git` so
 //! hooks, credentials and signing behave exactly as on the command line.
 
+use ide_core::ignored::IgnoredNames;
 use ide_core::{CancellationToken, IdeResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -283,6 +284,7 @@ pub struct Repo {
     root: PathBuf,
     git_dir: PathBuf,
     inner: std::sync::Mutex<repo::Cache>,
+    ignored: std::sync::RwLock<IgnoredNames>,
 }
 
 impl Repo {
@@ -293,6 +295,10 @@ impl Repo {
     /// The worktree root.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+    /// Untracked files with one of these names (or under such a folder) are not reported.
+    pub fn set_ignored_names(&self, names: IgnoredNames) {
+        *self.ignored.write().unwrap_or_else(|p| p.into_inner()) = names;
     }
     /// Staged (HEAD↔index) and unstaged (index↔worktree, incl. untracked) changes,
     /// sorted by path. Conflicted files report `unstaged: Conflicted` and no staged kind.

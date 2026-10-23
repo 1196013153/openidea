@@ -1854,6 +1854,8 @@ export type FileSettings = {
 	/**  Save on focus loss / tab switch, like IDEA. */
 	autoSave?: boolean,
 	exclude?: string[],
+	/**  Ignored Files and Folders: name patterns hidden everywhere; see [`crate::ignored`]. */
+	ignoredNames?: string[],
 	trimTrailingWhitespace?: boolean,
 	ensureFinalNewline?: boolean,
 	/**  Local History keeps changes from this many working days (days with changes), like IDEA. */

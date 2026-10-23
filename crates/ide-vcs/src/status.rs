@@ -18,6 +18,7 @@ pub(crate) fn status(r: &Repo) -> IdeResult<Vec<FileStatus>> {
     let repo = r.gix()?;
     let mut map: BTreeMap<String, Entry> = BTreeMap::new();
     let mut conflicts: HashSet<String> = HashSet::new();
+    let ignored = r.ignored.read().unwrap_or_else(|p| p.into_inner()).clone();
 
     let platform = repo
         .status(gix::progress::Discard)
@@ -50,6 +51,9 @@ pub(crate) fn status(r: &Repo) -> IdeResult<Vec<FileStatus>> {
                         continue;
                     }
                     let mut path = to_string(entry.rela_path.as_ref());
+                    if ignored.is_ignored_path(&path) {
+                        continue;
+                    }
                     if entry.disk_kind.is_some_and(|k| k.is_dir()) && !path.ends_with('/') {
                         path.push('/');
                     }

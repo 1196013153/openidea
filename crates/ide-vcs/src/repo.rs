@@ -47,7 +47,7 @@ pub(crate) fn discover(path: &Path) -> IdeResult<Option<Repo>> {
     let common_dir = absolute(repo.common_dir())?;
     let files = config_files(&git_dir, &common_dir);
     let cache = Cache { config_stamp: stamp(&files), config_files: files, repo: ts };
-    Ok(Some(Repo { root, git_dir, inner: std::sync::Mutex::new(cache) }))
+    Ok(Some(Repo { root, git_dir, inner: std::sync::Mutex::new(cache), ignored: Default::default() }))
 }
 
 fn absolute(p: &Path) -> IdeResult<PathBuf> {

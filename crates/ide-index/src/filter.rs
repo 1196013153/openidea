@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
 
-/// VCS metadata directories are never indexed.
-const ALWAYS_SKIP: &[&str] = &[".git", ".hg", ".svn", ".jj", ".DS_Store"];
+/// VCS metadata directories are never indexed, whatever the ignored names say.
+const ALWAYS_SKIP: &[&str] = &[".git", ".hg", ".svn", ".jj"];
 
 pub(crate) struct PathFilter {
     root: PathBuf,

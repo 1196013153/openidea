@@ -4,6 +4,7 @@
  * so `validateSettings` never throws — anything unknown or malformed falls
  * back to the default (mirrors `ide-core::settings` defaults).
  */
+import { DEFAULT_IGNORED_NAMES } from "@/platform/ignoredNames";
 import type { Settings } from "@/platform/ipc";
 import {
   DEFAULT_LANGUAGES,
@@ -58,6 +59,7 @@ export interface ValidSettings extends WorkflowSettings {
   files: {
     autoSave: boolean;
     exclude: string[];
+    ignoredNames: string[];
     trimTrailingWhitespace: boolean;
     ensureFinalNewline: boolean;
     /** Local History keeps this many working days (days with changes). */
@@ -95,6 +97,7 @@ export const DEFAULT_SETTINGS: ValidSettings = {
   files: {
     autoSave: true,
     exclude: ["**/.git", "**/node_modules", "**/target"],
+    ignoredNames: [...DEFAULT_IGNORED_NAMES],
     trimTrailingWhitespace: true,
     ensureFinalNewline: true,
     localHistoryDays: 5,
@@ -188,6 +191,9 @@ export function validateSettings(raw: Settings | unknown): ValidSettings {
       exclude: Array.isArray(f.exclude)
         ? f.exclude.filter((x): x is string => typeof x === "string" && !!x.trim())
         : [...d.files.exclude],
+      ignoredNames: Array.isArray(f.ignoredNames)
+        ? f.ignoredNames.filter((x): x is string => typeof x === "string" && !!x.trim())
+        : [...d.files.ignoredNames],
       trimTrailingWhitespace: bool(f.trimTrailingWhitespace, d.files.trimTrailingWhitespace),
       ensureFinalNewline: bool(f.ensureFinalNewline, d.files.ensureFinalNewline),
       localHistoryDays: num(f.localHistoryDays, d.files.localHistoryDays, LIMITS.localHistoryDays, true),

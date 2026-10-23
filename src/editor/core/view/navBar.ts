@@ -2,6 +2,7 @@
  * Navigation bar popup (⌘↑) model: the path of the active file as segments
  * (project › dirs › file › symbols at the caret) and the child list of a segment.
  */
+import { isIgnoredName } from "@/platform/ignoredNames";
 import type { FileEntry, OutlineItem } from "@/platform/ipc";
 import { badgeKind, fileIconName } from "@/ui";
 
@@ -19,7 +20,11 @@ const parentOf = (p: string) => p.slice(0, Math.max(p.lastIndexOf("/"), 0)) || "
 const nameOf = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /** Segments for `path`; directories from the project root, or just the parent folder outside it. */
-export function navSegments(project: { root: string; name: string } | null, path: string, chain: readonly OutlineItem[]): NavSegment[] {
+export function navSegments(
+  project: { root: string; name: string } | null,
+  path: string,
+  chain: readonly OutlineItem[],
+): NavSegment[] {
   const out: NavSegment[] = [];
   const parent = parentOf(path);
   if (project && (parent === project.root || parent.startsWith(project.root + "/"))) {
@@ -42,12 +47,17 @@ export function navSegments(project: { root: string; name: string } | null, path
   return out;
 }
 
-const HIDDEN = new Set([".git", ".hg", ".svn", ".DS_Store", "__pycache__"]);
-
 export function dirChildren(entries: readonly FileEntry[]): NavChild[] {
   return entries
-    .filter((e) => !HIDDEN.has(e.name))
-    .map((e) => ({ kind: e.kind === "dir" || (e.kind === "symlink" && e.size === 0) ? "dir" : "file", path: e.path, label: e.name }) as NavChild);
+    .filter((e) => !isIgnoredName(e.name))
+    .map(
+      (e) =>
+        ({
+          kind: e.kind === "dir" || (e.kind === "symlink" && e.size === 0) ? "dir" : "file",
+          path: e.path,
+          label: e.name,
+        }) as NavChild,
+    );
 }
 
 /** Children of a file or symbol segment: its outline items (one level). */

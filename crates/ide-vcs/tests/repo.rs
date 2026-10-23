@@ -192,8 +192,12 @@ fn status_matrix() {
     fx.write("dir/nested/untracked2.txt", "u\n");
     fx.write("debug.log", "ignored\n");
     fx.write("build/out.bin", "ignored\n");
+    fx.write(".DS_Store", "junk");
+    fx.write("dir/.DS_Store", "junk");
+    fx.write("pkg/__pycache__/m.pyc", "junk");
 
     let repo = fx.repo();
+    repo.set_ignored_names(ide_core::settings::Settings::default().ignored_names());
     let st = repo.status().unwrap();
     let check = |rel: &str, staged: Option<ChangeKind>, unstaged: Option<ChangeKind>| {
         let s = status_of(&st, rel);
@@ -213,6 +217,7 @@ fn status_matrix() {
     assert_eq!(status_of(&st, "renamed.txt").renamed_from.as_deref(), Some("rename_me.txt"));
     assert!(!st.iter().any(|s| s.rel_path == "rename_me.txt"), "rename source listed: {st:#?}");
     assert!(!st.iter().any(|s| s.rel_path.contains("debug.log") || s.rel_path.contains("build")));
+    assert!(!st.iter().any(|s| s.rel_path.contains(".DS_Store") || s.rel_path.contains("pkg")), "{st:#?}");
     // Sorted by path.
     let paths: Vec<_> = st.iter().map(|s| s.rel_path.clone()).collect();
     let mut sorted = paths.clone();

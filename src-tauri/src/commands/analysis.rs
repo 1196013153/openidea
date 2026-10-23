@@ -23,11 +23,9 @@ use std::time::Instant;
 use tauri::ipc::Channel;
 use tauri::{State, Window};
 
-/// Files of `scope`, minus excluded roots.
+/// Files of `scope`, minus excluded roots and ignored names.
 fn files_in_scope(project: &Project, scope: &SearchScope, cancel: &CancellationToken) -> IdeResult<Vec<SourceFile>> {
-    let excluded: Vec<String> =
-        project.roots().excluded_globs().iter().map(|d| format!("{}/**", d.trim_start_matches('/'))).collect();
-    let mask = FileMask::new(&[], &excluded)?;
+    let mask = FileMask::new(&[], &project.search_excludes())?;
     Ok(ide_search::scope_files(&project.root, scope, &mask, None, cancel)?
         .into_iter()
         .map(|f| SourceFile { path: f.path, rel_path: f.rel_path })

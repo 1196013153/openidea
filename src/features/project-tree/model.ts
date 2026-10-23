@@ -4,10 +4,11 @@
  * incremental refresh for `fsChanged` events. No React, no IPC.
  */
 import type { FileEntry } from "@/bindings";
+import { isIgnoredName } from "@/platform/ignoredNames";
 import { isSameOrInside, nameOf, parentOf, relativeTo } from "./paths";
 
 export interface TreeOptions {
-  /** Show IDE-hidden names (`.git`, `.DS_Store`, …). Dotfiles are always shown. */
+  /** Show ignored names (`files.ignoredNames`: `.git`, `.DS_Store`, …). Dotfiles are always shown. */
   showHidden: boolean;
   /** Show entries matched by .gitignore / exclude settings (dimmed). */
   showExcluded: boolean;
@@ -53,16 +54,9 @@ export interface TreeModel {
 
 export type Listings = ReadonlyMap<string, readonly FileEntry[]>;
 
-/** Names IDEA hides by default ("Ignored Files and Folders"). */
-const IDE_HIDDEN = new Set([".git", ".hg", ".svn", "CVS", "_svn", ".DS_Store", "__pycache__", "vssver.scc", "vssver2.scc"]);
-const IDE_HIDDEN_EXT = /\.(pyc|pyo|rbc|yarb)$|~$/;
-
-export function isIdeHidden(name: string): boolean {
-  return IDE_HIDDEN.has(name) || IDE_HIDDEN_EXT.test(name);
-}
-
 export function isVisible(entry: FileEntry, opts: TreeOptions): boolean {
-  if (!opts.showHidden && isIdeHidden(entry.name)) return false;
+  // Ignored names are also excluded on the backend; only "Show Hidden" brings them back.
+  if (isIgnoredName(entry.name)) return opts.showHidden;
   if (!opts.showExcluded && entry.ignored) return false;
   return true;
 }

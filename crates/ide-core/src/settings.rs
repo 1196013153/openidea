@@ -303,6 +303,8 @@ pub struct FileSettings {
     /// Save on focus loss / tab switch, like IDEA.
     pub auto_save: bool,
     pub exclude: Vec<String>,
+    /// Ignored Files and Folders: name patterns hidden everywhere; see [`crate::ignored`].
+    pub ignored_names: Vec<String>,
     pub trim_trailing_whitespace: bool,
     pub ensure_final_newline: bool,
     /// Local History keeps changes from this many working days (days with changes), like IDEA.
@@ -316,6 +318,7 @@ impl Default for FileSettings {
         Self {
             auto_save: true,
             exclude: vec!["**/.git".into(), "**/node_modules".into(), "**/target".into()],
+            ignored_names: crate::ignored::DEFAULT_IGNORED_NAMES.iter().map(|s| (*s).into()).collect(),
             trim_trailing_whitespace: true,
             ensure_final_newline: true,
             local_history_days: 5,
@@ -423,9 +426,9 @@ pub struct ProjectStructureSettings {
 }
 
 impl Settings {
-    /// `files.exclude` plus the Project Structure excluded folders as globs.
+    /// `files.exclude`, the ignored names and the Project Structure excluded folders as globs.
     pub fn exclude_globs(&self) -> Vec<String> {
-        let mut out = self.files.exclude.clone();
+        let mut out = self.file_excludes();
         for dir in &self.project_structure.excluded {
             let dir = dir.trim().trim_matches('/');
             if !dir.is_empty() {
@@ -433,6 +436,17 @@ impl Settings {
             }
         }
         out
+    }
+
+    /// `files.exclude` plus `files.ignoredNames` (a bare name matches at any depth).
+    pub fn file_excludes(&self) -> Vec<String> {
+        let mut out = self.files.exclude.clone();
+        out.extend(self.files.ignored_names.iter().filter(|n| !n.trim().is_empty()).cloned());
+        out
+    }
+
+    pub fn ignored_names(&self) -> crate::ignored::IgnoredNames {
+        crate::ignored::IgnoredNames::new(&self.files.ignored_names)
     }
 }
 

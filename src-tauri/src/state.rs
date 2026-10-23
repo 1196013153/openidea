@@ -376,9 +376,13 @@ impl AppState {
 impl Project {
     /// Runs `f` with the git repository, or fails when the project is not under git.
     pub fn with_repo<T>(&self, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
-        crate::commands::vcs::apply_git_executable(&self.settings.effective());
+        let settings = self.settings.effective();
+        crate::commands::vcs::apply_git_executable(&settings);
         match self.repo.lock().as_ref() {
-            Some(repo) => f(repo),
+            Some(repo) => {
+                repo.set_ignored_names(settings.ignored_names());
+                f(repo)
+            }
             None => Err(IdeError::unavailable("project is not a git repository")),
         }
     }
@@ -436,7 +440,22 @@ impl Project {
         self.cache_dir.join("build")
     }
 
-    /// `files.exclude` plus the effective excluded roots (user-marked and detected).
+    /// File masks (`ide_search::FileMask`) for Find in Files and inspections: the
+    /// excluded roots and the ignored names (files, and everything under such folders).
+    pub fn search_excludes(&self) -> Vec<String> {
+        let mut out: Vec<String> =
+            self.roots().excluded_globs().iter().map(|d| format!("{}/**", d.trim_start_matches('/'))).collect();
+        for name in &self.settings.effective().files.ignored_names {
+            let name = name.trim();
+            if !name.is_empty() && !name.contains(['/', ',']) {
+                out.push(name.to_owned());
+                out.push(format!("**/{name}/**"));
+            }
+        }
+        out
+    }
+
+    /// `files.exclude`, the ignored names and the effective excluded roots (user-marked and detected).
     pub fn exclude_globs(&self) -> Vec<String> {
         exclude_globs(&self.settings.effective(), &self.detected_roots.read())
     }
@@ -509,7 +528,7 @@ pub fn history_retention(settings: &ide_core::settings::Settings) -> ide_workspa
 }
 
 fn exclude_globs(settings: &ide_core::settings::Settings, detected: &[SourceFolder]) -> Vec<String> {
-    let mut globs = settings.files.exclude.clone();
+    let mut globs = settings.file_excludes();
     globs.extend(ProjectRoots::compute(detected.to_vec(), &settings.project_structure).excluded_globs());
     globs
 }

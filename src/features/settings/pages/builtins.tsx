@@ -20,6 +20,19 @@ function ExcludeRow() {
   );
 }
 
+function IgnoredNamesRow() {
+  const [names, setNames] = useSetting<string[]>("files.ignoredNames");
+  return (
+    <Row
+      label="Ignore files and folders"
+      stacked
+      hint="Names (e.g. .DS_Store, *.pyc) hidden from the project tree, navigation bar, search, indexing and Git changes."
+    >
+      <GlobListEditor value={names} onChange={setNames} placeholder="*.ext" aria-label="Ignored names" />
+    </Row>
+  );
+}
+
 export const BUILTIN_PAGES: PageSpec[] = [
   {
     id: "keymap",
@@ -39,7 +52,10 @@ export const BUILTIN_PAGES: PageSpec[] = [
     sections: [
       {
         title: "Ignored Files and Folders",
-        options: [{ kind: "custom", label: "Exclude patterns", component: ExcludeRow }],
+        options: [
+          { kind: "custom", label: "Ignore files and folders", component: IgnoredNamesRow },
+          { kind: "custom", label: "Exclude patterns", component: ExcludeRow },
+        ],
       },
     ],
   },
