@@ -126,6 +126,18 @@ pub struct Branch {
     pub commit: String,
 }
 
+/// Commit Options (IDEA's commit options popup).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitOptions {
+    pub amend: bool,
+    pub sign_off: bool,
+    /// `--author`, e.g. `Name <mail@example.com>`; `None` or blank uses the configured user.
+    pub author: Option<String>,
+    /// False skips the pre-commit and commit-msg hooks (`--no-verify`).
+    pub run_hooks: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangedFile {
@@ -398,7 +410,12 @@ impl Repo {
     /// Commits the index; returns the new HEAD commit id. An empty message with
     /// `amend` keeps the previous message.
     pub fn commit(&self, message: &str, amend: bool, sign_off: bool) -> IdeResult<String> {
-        write::commit(self, message, amend, sign_off)
+        let options = CommitOptions { amend, sign_off, author: None, run_hooks: true };
+        write::commit(self, message, &options)
+    }
+    /// Commits with the Commit Options popup's choices.
+    pub fn commit_with(&self, message: &str, options: &CommitOptions) -> IdeResult<String> {
+        write::commit(self, message, options)
     }
     /// Switches to `branch`. With `create`, creates it at HEAD. Without, a remote branch
     /// (`origin/x`) gets a local tracking branch and any other revision is checked out

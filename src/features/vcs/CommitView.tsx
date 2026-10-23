@@ -34,6 +34,7 @@ import {
   type ChangeNode,
 } from "./changes";
 import { applyStash, commitChanges, dropStash, stashChanges } from "./changeOps";
+import { CommitOptionsPopup } from "./CommitOptions";
 import { useChangelists, withListDefaults } from "./changelists";
 import { moveToChangelist } from "./changelistsUi";
 import { messageHistory, setGroupByDir, useCommit, type CommitTab } from "./commitStore";
@@ -48,7 +49,7 @@ import styles from "./CommitView.module.css";
 /** MIME type of changed files dragged between change lists (absolute paths, newline-separated). */
 const CHANGES_MIME = "application/x-openidea-changes";
 
-/** "Changes" / "Stashes" tabs in the tool window header. */
+/** "Commit" / "Shelf" / "Stash" content tabs; they stand in for the tool window title. */
 export function CommitTabs() {
   const available = useVcs((s) => s.available);
   const tab = useCommit((s) => s.tab);
@@ -57,7 +58,6 @@ export function CommitTabs() {
   useEffect(() => {
     if (available) void loadShelves().catch(() => undefined);
   }, [available]);
-  if (!available) return null;
   return (
     <Tabs
       variant="compact"
@@ -66,21 +66,27 @@ export function CommitTabs() {
       onSelect={(id) => useCommit.setState({ tab: id as CommitTab })}
       aria-label="Commit"
       items={[
-        { id: "changes", label: "Changes" },
-        ...(shelfCount || tab === "shelf"
+        { id: "changes", label: "Commit" },
+        ...(!available
+          ? []
+          : shelfCount || tab === "shelf"
+            ? [
+                {
+                  id: "shelf",
+                  label: "Shelf",
+                  trailing: shelfCount ? <span className={styles.count}>{shelfCount}</span> : undefined,
+                },
+              ]
+            : []),
+        ...(available
           ? [
               {
-                id: "shelf",
-                label: "Shelf",
-                trailing: shelfCount ? <span className={styles.count}>{shelfCount}</span> : undefined,
+                id: "stashes",
+                label: "Stash",
+                trailing: stashCount ? <span className={styles.count}>{stashCount}</span> : undefined,
               },
             ]
           : []),
-        {
-          id: "stashes",
-          label: "Stashes",
-          trailing: stashCount ? <span className={styles.count}>{stashCount}</span> : undefined,
-        },
       ]}
     />
   );
@@ -103,6 +109,11 @@ export function CommitToolWindow() {
 }
 
 // ---------------------------------------------------------------------------
+
+const bottomLeft = (el: HTMLElement) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.bottom + 2 };
+};
 
 function openNode(n: ChangeNode) {
   if (n.type !== "file" || !n.path) return;
@@ -226,21 +237,36 @@ function ChangesPanel() {
   const lists = useChangelists((s) => s.state);
   const checks = useMemo(() => withListDefaults(status, root, lists, userChecks), [status, root, lists, userChecks]);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // IDEA starts with Unversioned Files collapsed.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(["group:unversioned"]));
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const treeRef = useRef<TreeHandle>(null);
+  const viewRef = useRef<HTMLButtonElement>(null);
 
   const roots = useMemo(() => buildChangeTree(status, root, groupByDir, lists), [status, root, groupByDir, lists]);
-  const byKey = useMemo(() => {
+  const [byKey, parents] = useMemo(() => {
     const m = new Map<string, ChangeNode>();
-    const walk = (ns: ChangeNode[]) =>
+    const up = new Map<string, string>();
+    const walk = (ns: ChangeNode[], parent?: string) =>
       ns.forEach((n) => {
         m.set(n.key, n);
-        if (n.children) walk(n.children);
+        if (parent) up.set(n.key, parent);
+        if (n.children) walk(n.children, n.key);
       });
     walk(roots);
-    return m;
+    return [m, up] as const;
   }, [roots]);
+
+  /** Select Opened File: reveals the focused editor's file in the tree. */
+  const selectOpened = () => {
+    const path = editorService().activePath();
+    const node = path ? [...byKey.values()].find((n) => n.type === "file" && n.path === path) : undefined;
+    if (!node) return;
+    const ancestors: string[] = [];
+    for (let k = parents.get(node.key); k; k = parents.get(k)) ancestors.push(k);
+    setCollapsed((c) => new Set([...c].filter((k) => !ancestors.includes(k))));
+    requestAnimationFrame(() => treeRef.current?.reveal(node.key));
+  };
   const expanded = useMemo(() => {
     const s = new Set<string>();
     for (const k of byKey.keys()) if (!collapsed.has(k)) s.add(k);
@@ -278,28 +304,32 @@ function ChangesPanel() {
           <div className={styles.toolbar} role="toolbar" aria-label="Changes">
             <IconButton icon="refresh" title="Refresh" size="small" onClick={() => void refreshNow()} />
             <IconButton icon="undo" action="vcs.rollback" size="small" />
-            <IconButton icon="diff" action="vcs.showDiff" size="small" />
-            <span className={styles.sep} />
+            <IconButton icon="git-pull" action="vcs.update" size="small" />
             <IconButton
-              icon="folder"
-              title="Group by Directory"
+              ref={viewRef}
+              icon="eye"
+              title="View Options"
               size="small"
-              pressed={groupByDir}
-              onClick={() => setGroupByDir(!groupByDir)}
+              aria-haspopup="menu"
+              onClick={() =>
+                viewRef.current &&
+                showContextMenu(bottomLeft(viewRef.current), [
+                  { kind: "header", label: "Group By" },
+                  { label: "Directory", checked: groupByDir, run: () => setGroupByDir(!groupByDir) },
+                ])
+              }
             />
+            <span className={styles.sep} />
+            <IconButton icon="locate" title="Select Opened File" size="small" onClick={selectOpened} />
             <IconButton icon="expand-all" title="Expand All" size="small" onClick={() => setCollapsed(new Set())} />
             <IconButton
               icon="collapse-all"
               title="Collapse All"
               size="small"
               onClick={() =>
-                setCollapsed(new Set([...byKey.values()].filter((n) => n.type === "dir").map((n) => n.key)))
+                setCollapsed(new Set([...byKey.values()].filter((n) => n.type !== "file").map((n) => n.key)))
               }
             />
-            <span className={styles.sep} />
-            <IconButton icon="changelist" action="vcs.changelist.new" size="small" />
-            <IconButton icon="shelve" action="vcs.shelve" size="small" />
-            <IconButton icon="stash" action="vcs.stash" size="small" />
           </div>
           <OperationBanner />
           <div
@@ -498,13 +528,15 @@ export function wrapAtMargin(text: string, caret: number, limit: number): { text
 function CommitMessage({ included }: { included: number }) {
   const message = useCommit((s) => s.message);
   const amend = useCommit((s) => s.amend);
-  const signOff = useCommit((s) => s.signOff);
   const focusTick = useCommit((s) => s.focusTick);
   const remoteBusy = useVcs((s) => s.remoteBusy);
   const merging = useVcs((s) => s.branch?.operation === "merge");
   const ref = useRef<HTMLTextAreaElement>(null);
   const historyRef = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [emptyError, setEmptyError] = useState(false);
   const [busy, setBusy] = useState(false);
   const amendMessage = useRef<string | null>(null);
 
@@ -541,6 +573,12 @@ function CommitMessage({ included }: { included: number }) {
 
   const commit = async (push: boolean) => {
     if (busy) return;
+    // IDEA keeps Commit enabled and reports an empty message at the field.
+    if (!useCommit.getState().message.trim() && !useCommit.getState().amend) {
+      setEmptyError(true);
+      ref.current?.focus();
+      return;
+    }
     setBusy(true);
     try {
       const id = await commitChanges();
@@ -552,18 +590,12 @@ function CommitMessage({ included }: { included: number }) {
   };
 
   const history = messageHistory();
-  const canCommit = (included > 0 || amend || merging) && (!!message.trim() || amend) && !busy;
+  const canCommit = (included > 0 || amend || merging) && !busy;
 
   return (
     <div className={styles.commit}>
       <div className={styles.commitBar}>
         <Checkbox checked={amend} onChange={(v) => void setAmend(v)} label="Amend" />
-        <span className={styles.grow} />
-        {tooLong && (
-          <span className={clsx(styles.lineLen, styles.lineLenWarn)} title="Subject line length">
-            {first.length}/{cfg.subjectLimit}
-          </span>
-        )}
         <IconButton
           ref={historyRef}
           icon="history"
@@ -589,10 +621,17 @@ function CommitMessage({ included }: { included: number }) {
             },
           }))}
         />
+        <span className={styles.grow} />
+        {tooLong && (
+          <span className={clsx(styles.lineLen, styles.lineLenWarn)} title="Subject line length">
+            {first.length}/{cfg.subjectLimit}
+          </span>
+        )}
       </div>
       <textarea
         ref={ref}
-        className={clsx(styles.message, !showMargin && styles.noMargin)}
+        className={clsx(styles.message, !showMargin && styles.noMargin, emptyError && styles.messageError)}
+        aria-invalid={emptyError || undefined}
         style={{ ["--guide" as string]: `${margin}ch` }}
         value={message}
         placeholder="Commit Message"
@@ -603,6 +642,7 @@ function CommitMessage({ included }: { included: number }) {
           const wrapped =
             cfg.limitBody && cfg.wrapAtMargin ? wrapAtMargin(el.value, el.selectionStart, cfg.bodyLimit) : null;
           useCommit.setState({ message: wrapped?.text ?? el.value });
+          setEmptyError(false);
           if (wrapped) requestAnimationFrame(() => el.setSelectionRange(wrapped.caret, wrapped.caret));
         }}
         onKeyDown={(e) => {
@@ -614,6 +654,11 @@ function CommitMessage({ included }: { included: number }) {
           }
         }}
       />
+      {emptyError && (
+        <div className={clsx(styles.inspections, styles.inspectionError)} role="alert">
+          <T>Specify commit message</T>
+        </div>
+      )}
       {problems.length > 0 && (
         <div className={styles.inspections} role="status">
           {problems.join(" · ")}
@@ -623,28 +668,27 @@ function CommitMessage({ included }: { included: number }) {
         <Button variant="primary" disabled={!canCommit} onClick={() => void commit(false)} title="⌘↩">
           {amend ? "Amend Commit" : "Commit"}
         </Button>
-        <Button disabled={!canCommit || !!remoteBusy} onClick={() => void commit(true)} title="⌥⌘↩">
-          {amend ? "Amend and Push…" : "Commit and Push…"}
+        <Button
+          className={styles.pushButton}
+          disabled={!canCommit || !!remoteBusy}
+          onClick={() => void commit(true)}
+          title="⌥⌘↩"
+        >
+          <span>
+            <T>{amend ? "Amend and Push…" : "Commit and Push…"}</T>
+          </span>
         </Button>
         <span className={styles.grow} />
         <IconButton
+          ref={optionsRef}
           icon="settings"
           title="Commit Options"
           size="small"
-          aria-haspopup="menu"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            showContextMenu({ x: r.left, y: r.top - 4 }, [
-              { kind: "header", label: "Git" },
-              {
-                label: "Sign-off Commit",
-                checked: signOff,
-                run: () => useCommit.setState({ signOff: !signOff }),
-              },
-              { kind: "header", label: `${included} file${included === 1 ? "" : "s"} included` },
-            ]);
-          }}
+          aria-haspopup="dialog"
+          aria-expanded={optionsOpen}
+          onClick={() => setOptionsOpen((o) => !o)}
         />
+        {optionsOpen && <CommitOptionsPopup anchor={optionsRef} onClose={() => setOptionsOpen(false)} />}
       </div>
     </div>
   );

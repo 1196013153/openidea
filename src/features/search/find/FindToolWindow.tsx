@@ -6,7 +6,6 @@ import type { FileMatches } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import {
   Button,
-  Dialog,
   EmptyState,
   Icon,
   IconButton,
@@ -19,6 +18,7 @@ import {
   T,
 } from "@/ui";
 import { notifications } from "@/workbench/contributions";
+import { confirm } from "@/workbench/messages";
 import { basename, openLocation, relDir } from "../common/open";
 import { MatchText } from "./parts";
 import {
@@ -171,7 +171,6 @@ function FindTabView({ tab }: { tab: FindTab }) {
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState<ReplaceRun | null>(null);
   const [progress, setProgress] = useState<ReplaceProgress | null>(null);
-  const [confirm, setConfirm] = useState<Usage[] | null>(null);
   const busy = !!running;
   const allGroups = useMemo(() => roots.flatMap(nodeGroups), [roots]);
   const byKey = useMemo(() => {
@@ -263,6 +262,24 @@ function FindTabView({ tab }: { tab: FindTab }) {
 
   const replaceMode = tab.replacement !== null;
   const allPending = pendingUsages(allGroups, marks);
+  const confirmReplaceAll = async () => {
+    const ok = await confirm({
+      title: "Replace All",
+      ok: "Replace",
+      message: (
+        <>
+          {confirmText(countUsages(allPending), tab.query.pattern, tab.replacement ?? "")}
+          {marks.excluded.size > 0 && (
+            <>
+              {" "}
+              <T>Excluded usages are skipped.</T>
+            </>
+          )}
+        </>
+      ),
+    });
+    if (ok) void replace(allPending);
+  };
   const selectedPending = pendingUsages(selectedGroups(), marks);
 
   return (
@@ -303,7 +320,7 @@ function FindTabView({ tab }: { tab: FindTab }) {
             <Button
               size="small"
               disabled={busy || !allPending.length || st.status === "searching"}
-              onClick={() => setConfirm(allPending)}
+              onClick={() => void confirmReplaceAll()}
             >
               <T>Replace All</T>
             </Button>
@@ -368,31 +385,6 @@ function FindTabView({ tab }: { tab: FindTab }) {
           </span>
         }
       />
-      <Dialog
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        width={460}
-        title="Replace All"
-        icon="question"
-        buttons={[
-          {
-            label: "Replace",
-            role: "default",
-            autoFocus: true,
-            onClick: () => {
-              const usages = confirm ?? [];
-              setConfirm(null);
-              void replace(usages);
-            },
-          },
-          { label: "Cancel", role: "cancel" },
-        ]}
-      >
-        <p className={styles.confirm}>
-          {confirm && confirmText(countUsages(confirm), tab.query.pattern, tab.replacement ?? "")}
-          {marks.excluded.size > 0 && " Excluded usages are skipped."}
-        </p>
-      </Dialog>
     </div>
   );
 }

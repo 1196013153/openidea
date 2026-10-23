@@ -25,6 +25,7 @@ import { useProject } from "@/platform/project";
 import { LocalHistoryEditor, localHistoryInput, snapshotsBefore } from "../LocalHistory";
 import { putLabel } from "../localHistoryActions";
 import { VcsDialogHost } from "../dialogs";
+import { MessagesHost } from "@/workbench/messages";
 
 const id = (c: string) => c.repeat(64);
 const snap = (path: string, t: number, label: string, c: string): HistoryEntry => ({
@@ -67,6 +68,7 @@ describe("Local History", () => {
       <>
         <LocalHistoryEditor input={localHistoryInput("/p/src")} />
         <VcsDialogHost />
+        <MessagesHost />
       </>,
     );
     const list = await screen.findByRole("listbox", { name: "Revisions" });

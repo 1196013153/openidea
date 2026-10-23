@@ -20,7 +20,7 @@ export function firstLine(message: string): string {
 
 /** Stages the included changes and commits them. Returns the new commit id. */
 export async function commitChanges(): Promise<string | undefined> {
-  const { message, amend, signOff } = useCommit.getState();
+  const { message, amend, signOff, author, runHooks } = useCommit.getState();
   if (!message.trim() && !amend) {
     notifications().notify({ group: "vcs", level: "warning", title: "Commit message is empty" });
     return undefined;
@@ -53,7 +53,7 @@ export async function commitChanges(): Promise<string | undefined> {
     async () => {
       if (plan.unstage.length) await call(commands.vcsUnstage(plan.unstage));
       if (plan.stage.length) await call(commands.vcsStage(plan.stage));
-      return call(commands.vcsCommit(message.trim(), amend, signOff));
+      return call(commands.vcsCommit(message.trim(), { amend, signOff, author: author.trim() || null, runHooks }));
     },
     {
       success: () => {

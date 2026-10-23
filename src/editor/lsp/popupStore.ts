@@ -61,26 +61,7 @@ export type LspPopup =
       warnings?: string[];
       /** Individual occurrences with line previews (single-file syntax-based renames). */
       occurrences?: PreviewOccurrence[];
-    }
-  | {
-      /** Modal question with several answers, e.g. Safe Delete's "Usages Detected". */
-      kind: "choice";
-      title: string;
-      message: string;
-      detail?: string;
-      /** Defaults to `question`. */
-      icon?: "question" | "warning" | "error" | "info";
-      choices: PopupChoice[];
-      /** Escape / close button / replaced by another popup. */
-      onDismiss?: () => void;
     };
-
-export interface PopupChoice {
-  label: string;
-  /** The default button (Enter). */
-  primary?: boolean;
-  run: () => void;
-}
 
 export interface PreviewOccurrence {
   line: number;

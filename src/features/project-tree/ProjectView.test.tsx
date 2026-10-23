@@ -5,7 +5,7 @@ import { getContext } from "@/platform/context";
 import { provideEditorService, type EditorService } from "@/workbench/contributions";
 import { activate } from "./index";
 import { MemoryFs, setProjectFsForTests } from "./fs";
-import { ConfirmDialogHost } from "./ConfirmDialog";
+import { MessagesHost } from "@/workbench/messages";
 import { FileRefactorDialogHost } from "./FileRefactorDialogs";
 import { setRefactorBackendForTests } from "./fileRefactor";
 import { ProjectView } from "./ProjectView";
@@ -46,7 +46,7 @@ function setup() {
   render(
     <>
       <ProjectView />
-      <ConfirmDialogHost />
+      <MessagesHost />
       <FileRefactorDialogHost />
     </>,
   );

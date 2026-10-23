@@ -121,6 +121,7 @@ export function activate(): () => void {
       order: 1,
       component: lazyComponent(() => import("./CommitView").then((m) => m.CommitToolWindow)),
       headerContent: lazyComponent(() => import("./CommitView").then((m) => m.CommitTabs)),
+      tabsReplaceTitle: true,
       useBadge: () => {
         const n = useVcs((s) => s.status.length);
         return n || null;

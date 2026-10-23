@@ -2,6 +2,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import { Checkbox, Dialog, Input } from "@/ui";
+import { confirm } from "@/workbench/messages";
 import styles from "./common.module.css";
 
 interface DialogEntry {
@@ -121,27 +122,10 @@ export interface ConfirmOptions {
 }
 
 export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
-  return new Promise((resolve) => {
-    const close = openDialog(() => {
-      const done = (ok: boolean) => {
-        close();
-        resolve(ok);
-      };
-      return (
-        <Dialog
-          open
-          title={opts.title}
-          icon={opts.danger ? "warning" : "question"}
-          onClose={() => done(false)}
-          width={460}
-          buttons={[
-            { label: opts.okLabel ?? "OK", role: "default", autoFocus: true, onClick: () => done(true) },
-            { label: "Cancel", role: "cancel" },
-          ]}
-        >
-          {opts.message}
-        </Dialog>
-      );
-    });
+  return confirm({
+    title: opts.title,
+    message: opts.message,
+    ok: opts.okLabel ?? "OK",
+    icon: opts.danger ? "warning" : "question",
   });
 }

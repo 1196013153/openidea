@@ -2,7 +2,7 @@
 
 use crate::cli::{self, run};
 use crate::repo::{gx, resolve};
-use crate::{BlameLine, Repo};
+use crate::{BlameLine, CommitOptions, Repo};
 use gix::bstr::{BStr, ByteSlice};
 use ide_core::{CancellationToken, IdeError, IdeResult};
 use std::path::{Path, PathBuf};
@@ -222,15 +222,22 @@ pub(crate) fn discard(r: &Repo, paths: &[PathBuf]) -> IdeResult<()> {
     Ok(())
 }
 
-pub(crate) fn commit(r: &Repo, message: &str, amend: bool, sign_off: bool) -> IdeResult<String> {
+pub(crate) fn commit(r: &Repo, message: &str, options: &CommitOptions) -> IdeResult<String> {
     let mut args = vec!["commit", "-q", "--cleanup=whitespace"];
-    if amend {
+    if options.amend {
         args.push("--amend");
     }
-    if sign_off {
+    if options.sign_off {
         args.push("--signoff");
     }
-    let stdin = if amend && message.trim().is_empty() {
+    if !options.run_hooks {
+        args.push("--no-verify");
+    }
+    let author = options.author.as_deref().map(str::trim).filter(|a| !a.is_empty()).map(|a| format!("--author={a}"));
+    if let Some(a) = &author {
+        args.push(a.as_str());
+    }
+    let stdin = if options.amend && message.trim().is_empty() {
         args.push("--no-edit");
         None
     } else {

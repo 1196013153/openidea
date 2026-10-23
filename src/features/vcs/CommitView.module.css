@@ -154,18 +154,25 @@
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
 }
+/* IDEA: Commit and Commit and Push… on one row under the message, the gear at its end. */
 .commitActions {
   flex: none;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 8px;
-  padding: 8px 6px 10px 12px;
+  gap: 8px;
+  padding: 8px 6px 10px 10px;
   white-space: nowrap;
-  overflow: hidden;
 }
 .commitActions > button {
   flex: none;
+}
+.commitActions > .pushButton {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.pushButton > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hint {
   margin-left: auto;
@@ -218,4 +225,71 @@
 /* Only the active change list is bold, as in IDEA. */
 .inactiveList {
   font-weight: 400;
+}
+.messageError {
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+.inspectionError {
+  color: var(--danger);
+}
+/* Commit Options popup (gear next to Commit). */
+.options {
+  width: 340px;
+  max-height: min(560px, 80vh);
+  overflow: auto;
+  padding: 4px 16px 12px;
+}
+.optFocus {
+  outline: none;
+}
+.optSection + .optSection {
+  margin-top: 6px;
+}
+.optTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+  color: var(--fg-strong);
+  font-size: var(--fs-ui);
+  font-weight: 400;
+}
+.optTitle::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.optBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 16px;
+}
+.optRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.optField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+}
+.optField > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+.optLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+.optLink:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
 }

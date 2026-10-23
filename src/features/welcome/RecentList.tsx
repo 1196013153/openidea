@@ -12,9 +12,20 @@ import {
   showContextMenu,
   type MenuItem,
 } from "@/ui";
+import { confirm } from "@/workbench/messages";
 import { projectColorVars, projectInitials } from "@/workbench/projectColor";
 import { filterRecent, openRecent, removeRecent, useRecent, type RecentMatch } from "./recent";
 import styles from "./Welcome.module.css";
+
+/** IDEA's "Remove Recent Project" confirmation, then removes it from the list. */
+export async function askRemoveRecent(project: RecentProject) {
+  const ok = await confirm({
+    title: "Remove Recent Project",
+    message: `Remove '${project.name}' from the list of recent projects?`,
+    ok: "Remove",
+  });
+  if (ok) await removeRecent(project.path);
+}
 
 /** Rounded-square project avatar; same colour slot and initials as the title bar's project widget. */
 export function ProjectBadge({ name, className }: { name: string; className?: string }) {
@@ -53,7 +64,7 @@ export function recentMenu(project: RecentProject, onOpened?: () => void): MenuI
       label: "Remove from Recent Projects…",
       icon: "close",
       danger: true,
-      run: () => void removeRecent(project.path),
+      run: () => void askRemoveRecent(project),
     },
   ];
 }
@@ -153,7 +164,7 @@ export function RecentList({ exclude, compact, autoFocus, onOpened, className, t
     }
     if ((e.key === "Delete" || (e.key === "Backspace" && e.metaKey)) && items[current]) {
       e.preventDefault();
-      void removeRecent(items[current]!.project.path);
+      void askRemoveRecent(items[current]!.project);
       return;
     }
     if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {

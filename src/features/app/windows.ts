@@ -9,7 +9,7 @@ import { call, commands, isTauri } from "@/platform/ipc";
 import { basename, confirmLeaveProject, openProject, provideStartupLaunch, useProject } from "@/platform/project";
 import { holdSplash } from "@/platform/splash";
 import { notifications } from "@/workbench/contributions";
-import { ask } from "./prompt";
+import { ask } from "@/workbench/messages";
 
 export const LAUNCH_EVENT = "openidea://launch";
 

@@ -327,6 +327,9 @@
   margin-left: 6px;
   overflow: hidden;
 }
+.headerContentOnly {
+  margin-left: 0;
+}
 .headerSpacer {
   flex: 1;
 }

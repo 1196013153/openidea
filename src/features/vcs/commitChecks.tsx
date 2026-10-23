@@ -9,9 +9,8 @@ import type { Diagnostic } from "@/bindings";
 import { call, commands, isTauri, onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { workflowSettings } from "@/platform/workflowSettings";
-import { Dialog } from "@/ui";
 import { maybeEditorService, toolWindowService } from "@/workbench/contributions";
-import { openDialog } from "./dialogs";
+import { ask } from "@/workbench/messages";
 import { baseName, relTo } from "./model";
 import { logConsole } from "./ops";
 import { useVcs } from "./store";
@@ -165,39 +164,19 @@ async function modifyFile(path: string, mods: Modifications) {
 
 type Choice = "commit" | "review" | "cancel";
 
-function choiceDialog(title: string, body: ReactNode, reviewLabel?: string): Promise<Choice> {
-  return new Promise((resolve) => {
-    const close = openDialog(() => {
-      const done = (c: Choice) => {
-        close();
-        resolve(c);
-      };
-      return (
-        <Dialog
-          open
-          title={title}
-          icon="warning"
-          onClose={() => done("cancel")}
-          width={520}
-          buttons={[
-            // IDEA's check-in handlers default to Review when there is something to review.
-            ...(reviewLabel
-              ? [{ label: reviewLabel, role: "default" as const, autoFocus: true, onClick: () => done("review") }]
-              : []),
-            {
-              label: "Commit Anyway",
-              role: reviewLabel ? ("extra" as const) : ("default" as const),
-              autoFocus: !reviewLabel,
-              onClick: () => done("commit"),
-            },
-            { label: "Cancel", role: "cancel", onClick: () => done("cancel") },
-          ]}
-        >
-          {body}
-        </Dialog>
-      );
-    });
+async function choiceDialog(title: string, body: ReactNode, reviewLabel?: string): Promise<Choice> {
+  const r = await ask({
+    title,
+    body,
+    icon: "warning",
+    width: 520,
+    buttons: [
+      // IDEA's check-in handlers default to Review when there is something to review.
+      ...(reviewLabel ? [{ id: "review", label: reviewLabel, primary: true }] : []),
+      { id: "commit", label: "Commit Anyway", primary: !reviewLabel },
+    ],
   });
+  return r.button as Choice;
 }
 
 function plural(n: number, word: string) {

@@ -3,59 +3,43 @@ import { useState } from "react";
 import { create } from "zustand";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { loadSettings } from "@/platform/project";
-import { Checkbox, Dialog, Input } from "@/ui";
+import { Dialog, Input } from "@/ui";
+import { confirmChecked } from "@/workbench/messages";
 import styles from "./Run.module.css";
 
-type Pending =
-  | { kind: "rerun"; name: string; resolve: (ok: boolean) => void }
-  | { kind: "prompt"; title: string; resolve: (value: string | null) => void };
+interface Pending {
+  title: string;
+  resolve: (value: string | null) => void;
+}
 
 const useRunDialog = create<{ pending: Pending | null }>(() => ({ pending: null }));
 
 /** IDEA's "Process 'x' Is Running" dialog. Resolves true for Stop and Rerun. */
-export function confirmRerun(name: string): Promise<boolean> {
-  return new Promise((resolve) => useRunDialog.setState({ pending: { kind: "rerun", name, resolve } }));
+export async function confirmRerun(name: string): Promise<boolean> {
+  const answer = await confirmChecked({
+    title: `Process '${name}' Is Running`,
+    message: `Do you want to stop the process '${name}' and run it again?`,
+    ok: "Stop and Rerun",
+    checkbox: "Do not ask again",
+  });
+  if (answer?.checked && isTauri()) {
+    try {
+      await call(commands.settingsSet("global", "run.confirmRerun", "false"));
+      await loadSettings();
+    } catch {
+      /* keep asking */
+    }
+  }
+  return answer !== null;
 }
 
 /** Asks for the value of `$Prompt$`; null when cancelled. */
 export function promptValue(title: string): Promise<string | null> {
-  return new Promise((resolve) => useRunDialog.setState({ pending: { kind: "prompt", title, resolve } }));
+  return new Promise((resolve) => useRunDialog.setState({ pending: { title, resolve } }));
 }
 
 function close() {
   useRunDialog.setState({ pending: null });
-}
-
-function RerunDialog({ name, resolve }: { name: string; resolve: (ok: boolean) => void }) {
-  const [dontAsk, setDontAsk] = useState(false);
-  const done = async (ok: boolean) => {
-    close();
-    if (ok && dontAsk && isTauri()) {
-      try {
-        await call(commands.settingsSet("global", "run.confirmRerun", "false"));
-        await loadSettings();
-      } catch {
-        /* keep asking */
-      }
-    }
-    resolve(ok);
-  };
-  return (
-    <Dialog
-      open
-      title={`Process '${name}' Is Running`}
-      icon="question"
-      onClose={() => void done(false)}
-      width={460}
-      footerStart={<Checkbox checked={dontAsk} onChange={setDontAsk} label="Do not ask again" />}
-      buttons={[
-        { label: "Stop and Rerun", role: "default", autoFocus: true, onClick: () => void done(true) },
-        { label: "Cancel", role: "cancel" },
-      ]}
-    >
-      Do you want to stop the process &apos;{name}&apos; and run it again?
-    </Dialog>
-  );
 }
 
 function PromptDialog({ title, resolve }: { title: string; resolve: (v: string | null) => void }) {
@@ -85,6 +69,5 @@ function PromptDialog({ title, resolve }: { title: string; resolve: (v: string |
 export function RunDialogsOverlay() {
   const pending = useRunDialog((s) => s.pending);
   if (!pending) return null;
-  if (pending.kind === "rerun") return <RerunDialog name={pending.name} resolve={pending.resolve} />;
   return <PromptDialog title={pending.title} resolve={pending.resolve} />;
 }

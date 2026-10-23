@@ -33,6 +33,7 @@ import {
   tablesKey,
   useDatabase,
   withConnection,
+  removeSource,
 } from "./store";
 import { tableInput } from "./tableInput";
 
@@ -257,7 +258,7 @@ export function registerDatabaseTreeActions(): () => void {
         const n = nodeFrom(arg);
         if (!n) return;
         const id = nodeTarget(n);
-        if (n.kind === "source") return openDialog({ kind: "removeSource", source: n.source });
+        if (n.kind === "source") return void removeSource(n.source);
         const o = objectOf(n);
         if (id && o && canDrop(driverOf(id), o)) openDialog({ kind: "drop", id, object: o });
       },

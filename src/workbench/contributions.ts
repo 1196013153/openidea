@@ -33,6 +33,8 @@ export interface ToolWindowContribution {
    * Run sessions…). The header then gets a bottom divider.
    */
   headerContent?: ComponentType<{ id: string }>;
+  /** The content tabs name the window themselves (IDEA's Commit | Shelf | Stash): no title. */
+  tabsReplaceTitle?: boolean;
   /**
    * Window-specific entries of the header's "⋮" options menu, shown above the
    * generic ones (Move to, Maximize, Hide). Either static items or a React

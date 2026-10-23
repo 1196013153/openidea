@@ -319,32 +319,6 @@ function PreviewDialog({ popup }: { popup: Extract<LspPopup, { kind: "preview" }
   );
 }
 
-function ChoiceDialog({ popup }: { popup: Extract<LspPopup, { kind: "choice" }> }) {
-  // Answer first, then close (unless the answer opened another popup).
-  const answer = (run?: () => void) => {
-    run?.();
-    if (useLspPopup.getState().popup === popup) closePopup();
-  };
-  return (
-    <Dialog
-      open
-      onClose={() => answer(popup.onDismiss)}
-      title={popup.title}
-      icon={popup.icon ?? "question"}
-      width={460}
-      buttons={popup.choices.map((c) => ({
-        label: c.label,
-        role: c.primary ? "default" : c.label === "Cancel" ? "cancel" : "extra",
-        autoFocus: c.primary,
-        onClick: () => answer(c.run),
-      }))}
-    >
-      {popup.message}
-      {popup.detail && <div className={styles.choiceDetail}>{popup.detail}</div>}
-    </Dialog>
-  );
-}
-
 /** Overlay host: renders the current LSP popup, if any. */
 export function LspPopups() {
   const popup = useLspPopup((s) => s.popup);
@@ -361,7 +335,5 @@ export function LspPopups() {
       return <DefinitionPopup key={seq} popup={popup} />;
     case "preview":
       return <PreviewDialog key={seq} popup={popup} />;
-    case "choice":
-      return <ChoiceDialog key={seq} popup={popup} />;
   }
 }

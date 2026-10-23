@@ -8,6 +8,10 @@ interface CommitState {
   message: string;
   amend: boolean;
   signOff: boolean;
+  /** Commit Options › Author (`Name <mail>`); blank uses the configured user. */
+  author: string;
+  /** Commit Options › Run Git hooks. */
+  runHooks: boolean;
   groupByDir: boolean;
   /** User overrides of the inclusion checkboxes (absolute path → state). */
   checks: Map<string, CheckState>;
@@ -28,6 +32,8 @@ export const useCommit = create<CommitState>(() => ({
   message: "",
   amend: false,
   signOff: false,
+  author: "",
+  runHooks: true,
   groupByDir: readBool("openidea.vcs.groupByDir", false),
   checks: new Map(),
   selection: [],

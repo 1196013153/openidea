@@ -6,7 +6,8 @@ import { useState } from "react";
 import type { Commit, RebaseAction, RebaseEntry } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { Dialog, IconButton, Select, T } from "@/ui";
-import { notifications, toolWindowService } from "@/workbench/contributions";
+import { toolWindowService } from "@/workbench/contributions";
+import { showError } from "@/workbench/messages";
 import { useCommit } from "./commitStore";
 import { confirmDialog, openDialog } from "./dialogs";
 import { conflictsInstead, inProgress } from "./operations";
@@ -30,8 +31,9 @@ import styles from "./common.module.css";
 
 const short = (id: string) => id.slice(0, 8);
 
-function warn(title: string, body?: string) {
-  notifications().notify({ group: "vcs", level: "warning", title, body });
+/** IDEA reports a refused history rewrite in an error dialog. */
+function refuse(title: string, body: string) {
+  void showError(title, body);
 }
 
 const pushedWarning = (what: string) =>
@@ -44,7 +46,7 @@ export async function undoCommit(commit: Commit) {
   await refreshNow();
   const branch = useVcs.getState().branch;
   const problem = undoCommitProblem(commit, branch);
-  if (problem) return warn("Cannot undo commit", problem);
+  if (problem) return refuse("Cannot undo commit", problem);
   if (headPushed(branch)) {
     const ok = await confirmDialog({
       title: "Undo Commit",
@@ -70,7 +72,7 @@ async function rangeFrom(target: Commit, verb: string): Promise<RebaseRange | nu
   const branch = useVcs.getState().branch;
   const op = inProgress(branch?.operation);
   if (op) {
-    warn(`Cannot ${verb}`, `A ${op} is in progress`);
+    refuse(`Cannot ${verb}`, `A ${op} is in progress`);
     return null;
   }
   const parent = target.parents[0];
@@ -88,7 +90,7 @@ async function rangeFrom(target: Commit, verb: string): Promise<RebaseRange | nu
     );
     const range = rebaseRange(target, history);
     if ("error" in range) {
-      warn(`Cannot ${verb}`, range.error);
+      refuse(`Cannot ${verb}`, range.error);
       return null;
     }
     if (headPushed(branch)) {
@@ -102,7 +104,7 @@ async function rangeFrom(target: Commit, verb: string): Promise<RebaseRange | nu
     }
     return range;
   } catch (e) {
-    warn(`Cannot ${verb}`, e instanceof Error ? e.message : String(e));
+    refuse(`Cannot ${verb}`, e instanceof Error ? e.message : String(e));
     return null;
   }
 }
@@ -141,7 +143,7 @@ export async function dropCommits(commits: Commit[]) {
   if (!range) return;
   const ids = new Set(commits.map((c) => c.id));
   if (range.commits.every((c) => ids.has(c.id)) && !range.base)
-    return warn("Cannot drop commits", "At least one commit of the branch must be kept");
+    return refuse("Cannot drop commits", "At least one commit of the branch must be kept");
   const ok = await confirmDialog({
     title: "Drop Commits",
     message: `Drop ${commits.length} commits from the current branch? Their changes are removed.`,
@@ -161,7 +163,7 @@ async function dropCommit(commit: Commit) {
   const range = await rangeFrom(commit, "drop commit");
   if (!range) return;
   if (range.commits.length === 1 && !range.base)
-    return warn("Cannot drop commit", "It is the only commit of the branch");
+    return refuse("Cannot drop commit", "It is the only commit of the branch");
   const ok = await confirmDialog({
     title: "Drop Commit",
     message: `Drop commit ${short(commit.id)} “${commit.summary}” from the current branch? Its changes are removed.`,
@@ -180,7 +182,7 @@ async function rangeFor(commits: Commit[], verb: string): Promise<RebaseRange | 
   if (!range) return null;
   const inRange = new Set(range.commits.map((c) => c.id));
   if (!commits.every((c) => inRange.has(c.id))) {
-    warn(`Cannot ${verb}`, "All selected commits must be on the current branch");
+    refuse(`Cannot ${verb}`, "All selected commits must be on the current branch");
     return null;
   }
   return range;

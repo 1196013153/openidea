@@ -168,16 +168,6 @@
   color: var(--fg-faint);
   font-size: var(--fs-small);
 }
-.confirm {
-  margin: 0;
-}
-.confirm code {
-  font-family: var(--font-mono);
-  color: var(--fg-strong);
-}
-.warn {
-  color: var(--warning);
-}
 .rowDone {
   opacity: 0.55;
 }

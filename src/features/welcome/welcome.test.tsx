@@ -34,6 +34,7 @@ import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
 import { ContextMenuHost } from "@/ui";
 import { registerSettingsPage } from "@/workbench/contributions";
+import { MessagesHost } from "@/workbench/messages";
 import { projectInitials } from "@/workbench/projectColor";
 import { handleListKey } from "./ProjectsPage";
 import { customizeView } from "./CustomizePage";
@@ -52,6 +53,7 @@ async function renderWelcome() {
     <>
       <WelcomeView />
       <ContextMenuHost />
+      <MessagesHost />
     </>,
   );
   await act(async () => {});
@@ -106,6 +108,9 @@ describe("Welcome › Projects", () => {
     expect(openProject).toHaveBeenCalledWith("/Users/me/repo/delta");
 
     fireEvent.keyDown(search, { key: "Delete" });
+    const ask = screen.getByRole("dialog", { name: "Remove Recent Project" });
+    expect(removeRecentProject).not.toHaveBeenCalled();
+    fireEvent.click(within(ask).getByRole("button", { name: "Remove" }));
     await act(async () => {});
     expect(removeRecentProject).toHaveBeenCalledWith("/Users/me/repo/delta");
     expect(screen.getAllByRole("option")).toHaveLength(2);

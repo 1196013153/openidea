@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileEntry } from "@/bindings";
 import { registerProjectViewRoot } from "@/workbench/contributions";
 
-vi.mock("./ConfirmDialog", () => ({ confirmDialog: async () => true, ConfirmDialogHost: () => null }));
+vi.mock("@/workbench/messages", () => ({ confirm: async () => true }));
 vi.mock("@/editor/refactor", () => ({
   fileUsages: async () => ({ status: "ok", usages: [] }),
   askUsagesDetected: async () => "cancel",

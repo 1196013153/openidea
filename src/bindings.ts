@@ -263,7 +263,7 @@ export const commands = {
 	vcsUnstage: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_unstage", { paths })),
 	vcsStagePatch: (patch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stage_patch", { patch })),
 	vcsDiscard: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_discard", { paths })),
-	vcsCommit: (message: string, amend: boolean, signOff: boolean) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_commit", { message, amend, signOff })),
+	vcsCommit: (message: string, options: CommitOptions) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_commit", { message, options })),
 	vcsCheckout: (branch: string, create: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_checkout", { branch, create })),
 	vcsDeleteBranch: (branch: string, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_delete_branch", { branch, force })),
 	/**  New Branch: creates `name` at `start` (HEAD when absent), optionally checking it out. */
@@ -1027,6 +1027,16 @@ export type Commit = {
 	summary: string,
 	message: string,
 	refs: string[],
+};
+
+/**  Commit Options (IDEA's commit options popup). */
+export type CommitOptions = {
+	amend: boolean,
+	signOff: boolean,
+	/**  `--author`, e.g. `Name <mail@example.com>`; `None` or blank uses the configured user. */
+	author: string | null,
+	/**  False skips the pre-commit and commit-msg hooks (`--no-verify`). */
+	runHooks: boolean,
 };
 
 /**  Version Control › Commit: commit checks and commit-message inspections. */

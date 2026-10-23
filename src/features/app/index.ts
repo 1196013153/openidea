@@ -11,7 +11,6 @@ import { buildInfo } from "./host";
 import { KeymapReferenceOverlay } from "./KeymapReference";
 import { installLocaleSync, registerLocalizedActions } from "./locale";
 import { installMenuBridge } from "./menuBridge";
-import { PromptOverlay } from "./prompt";
 import { installWindowTitle } from "./title";
 import { installLaunchHandling, windowActions } from "./windows";
 
@@ -24,7 +23,6 @@ export function activate(): () => void {
     registerLocalizedActions(() => [...appActions(), ...windowActions()]),
     registerOverlay({ id: "app.about", component: AboutOverlay }),
     registerOverlay({ id: "app.keymapReference", component: KeymapReferenceOverlay }),
-    registerOverlay({ id: "app.prompt", component: PromptOverlay }),
     registerOverlay({ id: "app.invalidateCaches", component: InvalidateCachesOverlay }),
     registerInvalidateCachesActions(),
     installMenuBridge(),

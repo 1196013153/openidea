@@ -5,7 +5,7 @@ import type { Action } from "@/platform/actions";
 import { keymapReference, KeymapReferenceOverlay, showKeymapReference } from "../KeymapReference";
 import { windowTitle } from "../title";
 import { aboutRows } from "../AboutDialog";
-import { ask, PromptOverlay } from "../prompt";
+import { ask, MessagesHost as PromptOverlay } from "@/workbench/messages";
 import { usePlatform } from "@/platform/platformInfo";
 
 describe("window title", () => {

@@ -5,8 +5,8 @@
  */
 import { call, commands, isTauri } from "@/platform/ipc";
 import { basename } from "@/platform/project";
-import { openPopup } from "@/editor/lsp/popupStore";
 import { notifications } from "@/workbench/contributions";
+import { confirm } from "@/workbench/messages";
 import type { DocModel } from "./model/document";
 
 export function readOnlyQuestion(name: string, readOnly: boolean) {
@@ -36,13 +36,7 @@ export function toggleReadOnly(model: DocModel) {
   const meta = model.getMeta();
   if (meta.banner === "binary" || meta.banner === "tooLarge") return;
   const q = readOnlyQuestion(basename(model.path), meta.readOnly);
-  openPopup({
-    kind: "choice",
-    title: q.title,
-    message: q.message,
-    choices: [
-      { label: q.confirm, primary: true, run: () => void setFileWritable(model, meta.readOnly) },
-      { label: "Cancel", run: () => {} },
-    ],
-  });
+  void confirm({ title: q.title, message: q.message, ok: q.confirm }).then(
+    (ok) => ok && void setFileWritable(model, meta.readOnly),
+  );
 }

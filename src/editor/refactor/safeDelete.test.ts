@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState, Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo } from "@codemirror/commands";
+import type { MessageRequest } from "@/workbench/messages";
 import type { LocalSymbol, Location, Locals, OutlineItem, Range, StructuralRanges, SyntaxNode } from "@/bindings";
 
 // --- backend fakes ---------------------------------------------------------
@@ -56,9 +57,13 @@ const showHint = vi.fn();
 vi.mock("@/editor/lsp/hint", () => ({ showHint }));
 const executeAction = vi.fn();
 vi.mock("@/platform/actions", () => ({ executeAction }));
+let answer = "cancel";
+const ask = vi.fn(async (_request: MessageRequest) => ({ button: answer, checked: false }));
+vi.mock("@/workbench/messages", () => ({ ask }));
 
-const { deletionRange, localDeclaration, outlineItemAt, safeDelete, fileUsages, usagesMessage } = await import("./safeDelete");
-const { useLspPopup, closePopup } = await import("@/editor/lsp/popupStore");
+const { deletionRange, localDeclaration, outlineItemAt, safeDelete, fileUsages, usagesMessage } =
+  await import("./safeDelete");
+const { closePopup } = await import("@/editor/lsp/popupStore");
 const { lspDoc } = await import("@/editor/lsp/lsp");
 
 // --- helpers ----------------------------------------------------------------
@@ -100,8 +105,6 @@ function item(text: string, name: string, decl: string, kind: OutlineItem["kind"
     children: [],
   };
 }
-
-const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   goto = ok([]);
@@ -223,26 +226,23 @@ describe("safeDelete in the editor", () => {
     outline = ok([item(text, "used", "fn used() {}")]);
     references = ok([usage]);
 
-    const run = async (choice: string) => {
+    const run = async (button: string) => {
       const v = editor(text, "used() {}");
-      const done = safeDelete(v);
-      for (let i = 0; i < 20 && useLspPopup.getState().popup?.kind !== "choice"; i++) await flush();
-      const popup = useLspPopup.getState().popup;
-      if (popup?.kind !== "choice") throw new Error("no dialog");
-      expect(popup.title).toBe("Usages Detected");
-      expect(popup.message).toBe("1 usage found");
-      expect(popup.choices.map((c) => c.label)).toEqual(["View Usages", "Delete Anyway", "Cancel"]);
-      popup.choices.find((c) => c.label === choice)!.run();
-      closePopup();
-      await done;
+      answer = button;
+      ask.mockClear();
+      await safeDelete(v);
+      const request = ask.mock.calls[0]![0];
+      expect(request.title).toBe("Usages Detected");
+      expect(request.body).toBe("1 usage found\nFunction 'used' has 1 usage that is not safe to delete.");
+      expect(request.buttons.map((b) => b.label)).toEqual(["View Usages", "Delete Anyway"]);
       return v;
     };
 
-    expect((await run("Cancel")).state.doc.toString()).toBe(text);
+    expect((await run("cancel")).state.doc.toString()).toBe(text);
     expect(executeAction).not.toHaveBeenCalled();
-    expect((await run("View Usages")).state.doc.toString()).toBe(text);
+    expect((await run("view")).state.doc.toString()).toBe(text);
     expect(executeAction).toHaveBeenCalledWith("find.showUsageResults", { symbol: "used", locations: [usage] });
-    expect((await run("Delete Anyway")).state.doc.toString()).toBe("fn unused() {\n    unused();\n}\n\nfn main() {}\n");
+    expect((await run("delete")).state.doc.toString()).toBe("fn unused() {\n    unused();\n}\n\nfn main() {}\n");
   });
 
   it("refuses a declaration in another file instead of doing something else", async () => {

@@ -7,9 +7,9 @@ import { useMemo, useState } from "react";
 import { Checkbox, Dialog, Icon, Kbd, T } from "@/ui";
 import type { Action } from "@/platform/actions";
 import { normalizeBinding } from "@/platform/keymap";
+import { ask } from "@/workbench/messages";
 import { findConflicts, resolveBindings, type Conflict, type KeymapDraft } from "./model";
 import { groupPath } from "./groups";
-import { ConfirmDialog } from "./KeymapDialogs";
 import { StrokeRecorder } from "./StrokeRecorder";
 import styles from "./Keymap.module.css";
 
@@ -37,95 +37,90 @@ export function RecordShortcutDialog({ action, actions, draft, onCancel, onSubmi
     [binding, draft, action.id],
   );
 
-  const [asking, setAsking] = useState(false);
-  const submit = (remove: boolean) => {
-    if (binding) onSubmit(binding, conflicts, remove);
-  };
-  const ok = () => {
+  const ok = async () => {
     if (!binding || already) return;
-    if (conflicts.length) setAsking(true);
-    else submit(false);
+    if (!conflicts.length) return onSubmit(binding, conflicts, false);
+    const { button } = await ask({
+      title: "Warning",
+      icon: "warning",
+      body: (
+        <>
+          <T>The shortcut is already assigned to other actions. Do you want to remove other assignments?</T>
+          <ConflictList conflicts={conflicts} />
+        </>
+      ),
+      buttons: [
+        { id: "remove", label: "Remove", primary: true },
+        { id: "leave", label: "Leave" },
+      ],
+    });
+    if (button !== "cancel") onSubmit(binding, conflicts, button === "remove");
   };
 
   return (
-    <>
-      <Dialog
-        open
-        onClose={onCancel}
-        title={`Keyboard Shortcut: ${action.title}`}
-        width={440}
-        buttons={[
-          { label: "OK", role: "default", disabled: !binding || already, onClick: ok },
-          { label: "Cancel", role: "cancel" },
-        ]}
-      >
-        <div className={styles.recordBody}>
-          <div className={styles.recordRow}>
-            <span className={styles.recordLabel}>
-              <T>First stroke:</T>
-            </span>
-            <StrokeRecorder autoFocus value={first} onChange={setFirst} aria-label="First stroke" />
-          </div>
-          <div className={styles.recordRow}>
-            <Checkbox checked={useSecond} onChange={setUseSecond} label="Second stroke:" />
-            <StrokeRecorder
-              value={second}
-              onChange={setSecond}
-              disabled={!useSecond}
-              placeholder={useSecond ? "Press a shortcut" : ""}
-              aria-label="Second stroke"
-            />
-          </div>
-          <div className={styles.recordHint}>
-            <T>Keys are recorded as pressed, including Tab and Esc. Use the buttons to finish.</T>
-          </div>
-          <div className={styles.conflictsLabel}>
-            <T>Conflicts:</T>
-          </div>
-          <div className={styles.conflicts} aria-live="polite">
-            {already && (
-              <span className={styles.noConflicts}>
-                <T>The action already has this shortcut</T>
-              </span>
-            )}
-            {!already && binding && conflicts.length === 0 && (
-              <span className={styles.noConflicts}>
-                <T>No conflicts</T>
-              </span>
-            )}
-            {!binding && (
-              <span className={styles.noConflicts}>
-                <T>Press a shortcut</T>
-              </span>
-            )}
-            {conflicts.length > 0 && (
-              <>
-                <div className={styles.conflictTitle}>
-                  <Icon name="warning" size={14} className={styles.conflictIcon} />
-                  <span>
-                    <Kbd binding={binding} /> <T>is already assigned to:</T>
-                  </span>
-                </div>
-                <ConflictList conflicts={conflicts} />
-              </>
-            )}
-          </div>
+    <Dialog
+      open
+      onClose={onCancel}
+      title={`Keyboard Shortcut: ${action.title}`}
+      width={440}
+      buttons={[
+        { label: "OK", role: "default", disabled: !binding || already, onClick: () => void ok() },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <div className={styles.recordBody}>
+        <div className={styles.recordRow}>
+          <span className={styles.recordLabel}>
+            <T>First stroke:</T>
+          </span>
+          <StrokeRecorder autoFocus value={first} onChange={setFirst} aria-label="First stroke" />
         </div>
-      </Dialog>
-      {asking && (
-        <ConfirmDialog
-          title="Warning"
-          icon="warning"
-          message="The shortcut is already assigned to other actions. Do you want to remove other assignments?"
-          confirm="Remove"
-          extra={{ label: "Leave", run: () => submit(false) }}
-          onCancel={() => setAsking(false)}
-          onConfirm={() => submit(true)}
-        >
-          <ConflictList conflicts={conflicts} />
-        </ConfirmDialog>
-      )}
-    </>
+        <div className={styles.recordRow}>
+          <Checkbox checked={useSecond} onChange={setUseSecond} label="Second stroke:" />
+          <StrokeRecorder
+            value={second}
+            onChange={setSecond}
+            disabled={!useSecond}
+            placeholder={useSecond ? "Press a shortcut" : ""}
+            aria-label="Second stroke"
+          />
+        </div>
+        <div className={styles.recordHint}>
+          <T>Keys are recorded as pressed, including Tab and Esc. Use the buttons to finish.</T>
+        </div>
+        <div className={styles.conflictsLabel}>
+          <T>Conflicts:</T>
+        </div>
+        <div className={styles.conflicts} aria-live="polite">
+          {already && (
+            <span className={styles.noConflicts}>
+              <T>The action already has this shortcut</T>
+            </span>
+          )}
+          {!already && binding && conflicts.length === 0 && (
+            <span className={styles.noConflicts}>
+              <T>No conflicts</T>
+            </span>
+          )}
+          {!binding && (
+            <span className={styles.noConflicts}>
+              <T>Press a shortcut</T>
+            </span>
+          )}
+          {conflicts.length > 0 && (
+            <>
+              <div className={styles.conflictTitle}>
+                <Icon name="warning" size={14} className={styles.conflictIcon} />
+                <span>
+                  <Kbd binding={binding} /> <T>is already assigned to:</T>
+                </span>
+              </div>
+              <ConflictList conflicts={conflicts} />
+            </>
+          )}
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

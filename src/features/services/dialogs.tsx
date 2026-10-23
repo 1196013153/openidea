@@ -1,7 +1,7 @@
-/** Imperative prompt / confirm dialogs of the Services view, rendered by one overlay. */
+/** Imperative prompt dialogs of the Services view, rendered by one overlay. */
 import { Fragment, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import { Checkbox, Dialog, Input } from "@/ui";
+import { Dialog, Input } from "@/ui";
 import styles from "./Services.module.css";
 
 interface Entry {
@@ -81,50 +81,6 @@ function PromptDialog(props: {
           onChange={(e) => setValue(e.target.value)}
         />
       </form>
-    </Dialog>
-  );
-}
-
-/** Confirmation with an optional checkbox; resolves `null` when cancelled, else the checkbox state. */
-export function confirm(opts: {
-  title: string;
-  message: ReactNode;
-  ok: string;
-  checkbox?: string;
-}): Promise<{ checked: boolean } | null> {
-  return new Promise((resolve) =>
-    open((close) => {
-      const done = (r: { checked: boolean } | null) => {
-        close();
-        resolve(r);
-      };
-      return <ConfirmDialog {...opts} onDone={done} />;
-    }),
-  );
-}
-
-function ConfirmDialog(props: {
-  title: string;
-  message: ReactNode;
-  ok: string;
-  checkbox?: string;
-  onDone: (r: { checked: boolean } | null) => void;
-}) {
-  const [checked, setChecked] = useState(false);
-  return (
-    <Dialog
-      open
-      title={props.title}
-      icon="question"
-      onClose={() => props.onDone(null)}
-      width={460}
-      footerStart={props.checkbox && <Checkbox checked={checked} onChange={setChecked} label={props.checkbox} />}
-      buttons={[
-        { label: props.ok, role: "default", autoFocus: true, onClick: () => props.onDone({ checked }) },
-        { label: "Cancel", role: "cancel" },
-      ]}
-    >
-      {props.message}
     </Dialog>
   );
 }

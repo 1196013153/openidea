@@ -16,8 +16,8 @@ import {
   showContextMenu,
   T,
 } from "@/ui";
-import { ProjectBadge, recentMenu } from "./RecentList";
-import { filterRecent, openRecent, removeRecent, useRecent, type RecentMatch } from "./recent";
+import { askRemoveRecent, ProjectBadge, recentMenu } from "./RecentList";
+import { filterRecent, openRecent, useRecent, type RecentMatch } from "./recent";
 import styles from "./Welcome.module.css";
 
 function HeaderButtons() {
@@ -205,7 +205,7 @@ export function ProjectsPage() {
     e.preventDefault();
     if (r.kind === "move") setActive(r.index);
     else if (r.kind === "open") void openRecent(r.match.project);
-    else if (r.kind === "remove") void removeRecent(r.match.project.path);
+    else if (r.kind === "remove") void askRemoveRecent(r.match.project);
     else {
       const el = document.getElementById(optionId(current))?.getBoundingClientRect();
       showContextMenu({ x: (el?.right ?? 0) - 40, y: (el?.top ?? 0) + 24 }, recentMenu(r.match.project));

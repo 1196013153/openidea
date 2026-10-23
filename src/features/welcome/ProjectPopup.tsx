@@ -4,8 +4,8 @@ import { executeAction, useActions } from "@/platform/actions";
 import { call, commands, isTauri, type OpenProject, type RecentProject } from "@/platform/ipc";
 import { HighlightedText, Icon, Popup, showContextMenu, type IconName, T } from "@/ui";
 import type { ProjectPopupProps } from "@/workbench/contributions";
-import { ProjectBadge, recentMenu } from "./RecentList";
-import { filterRecent, loadRecent, openRecent, removeRecent, useRecent, type RecentMatch } from "./recent";
+import { askRemoveRecent, ProjectBadge, recentMenu } from "./RecentList";
+import { filterRecent, loadRecent, openRecent, useRecent, type RecentMatch } from "./recent";
 import styles from "./ProjectPopup.module.css";
 
 type Entry =
@@ -97,7 +97,7 @@ export function ProjectPopup({ anchor, onClose }: ProjectPopupProps) {
       const entry = entries[current];
       if (entry?.kind === "project" && !entry.open) {
         e.preventDefault();
-        void removeRecent(entry.m.project.path);
+        void askRemoveRecent(entry.m.project);
       }
     } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && (query || e.key !== " ")) {
       e.preventDefault();

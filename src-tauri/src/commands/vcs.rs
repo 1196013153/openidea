@@ -122,12 +122,11 @@ pub async fn vcs_commit(
     window: Window,
     state: State<'_, AppState>,
     message: String,
-    amend: bool,
-    sign_off: bool,
+    options: CommitOptions,
 ) -> IdeResult<String> {
     // Commit hooks may run for a long time.
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.commit(&message, amend, sign_off))).await
+    blocking(move || project.with_repo(|r| r.commit_with(&message, &options))).await
 }
 
 #[tauri::command]

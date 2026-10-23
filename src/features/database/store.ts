@@ -21,6 +21,7 @@ import {
 } from "@/platform/ipc";
 import { editorsFor } from "@/editor/api";
 import { editorService, notifications, showServiceView, toolWindowService } from "@/workbench/contributions";
+import { ask, confirm } from "@/workbench/messages";
 import { connectRemedy, databaseKey, newSourceId, splitTarget } from "./model";
 import type { DbNode } from "./nodes";
 import type { DbObjectRef } from "./objects";
@@ -66,7 +67,6 @@ export type DialogState =
   | { kind: "source"; source: DataSource | null; preset?: Partial<DataSource>; password?: string | null }
   /** Data Source from URL. */
   | { kind: "sourceUrl" }
-  | { kind: "removeSource"; source: DataSource }
   /** Rename a data source (`object` null) or a schema object of target `id`. */
   | { kind: "rename"; id: string; object: DbObjectRef | null }
   /** Confirm Drop / Truncate, with a preview of the statement. */
@@ -79,12 +79,8 @@ export type DialogState =
   | { kind: "password"; source: DataSource; resolve: (ok: boolean) => void }
   /** SSH password or key passphrase (`prompt` is the backend's reason). */
   | { kind: "sshSecret"; source: DataSource; prompt: string; resolve: (ok: boolean) => void }
-  /** Confirm an unknown SSH host key (`prompt` names it with its fingerprint). */
-  | { kind: "hostKey"; source: DataSource; prompt: string; resolve: (ok: boolean) => void }
   /** Values of query parameters (`null`: cancelled). */
-  | { kind: "params"; names: string[]; resolve: (values: Record<string, string> | null) => void }
-  /** Leaving manual commit with changes pending: commit, roll back or stay. */
-  | { kind: "endTransaction"; source: DataSource; resolve: (commit: boolean | null) => void };
+  | { kind: "params"; names: string[]; resolve: (values: Record<string, string> | null) => void };
 
 interface DatabaseState {
   sources: DataSource[];
@@ -258,6 +254,19 @@ export async function renameSource(id: string, name: string): Promise<void> {
   await loadSources();
 }
 
+/** Removes the data source after asking (Database tree › Drop on a source). */
+export async function removeSource(source: DataSource): Promise<void> {
+  const ok = await confirm({
+    title: "Remove Data Source",
+    message: `Remove data source '${source.name}'? Its query console file stays on disk.`,
+    ok: "Remove",
+  });
+  if (!ok) return;
+  const id = source.id ?? "";
+  if (connectedTargets(id).length) await disconnect(id);
+  await deleteSource(id);
+}
+
 export async function deleteSource(id: string): Promise<void> {
   await call(commands.dbSaveSources(useDatabase.getState().sources.filter((s) => s.id !== id)));
   forget(id);
@@ -281,8 +290,18 @@ function askPassword(source: DataSource): Promise<boolean> {
   return new Promise((resolve) => useDatabase.setState({ dialog: { kind: "password", source, resolve } }));
 }
 
-function ask(kind: "sshSecret" | "hostKey", source: DataSource, prompt: string): Promise<boolean> {
-  return new Promise((resolve) => useDatabase.setState({ dialog: { kind, source, prompt, resolve } }));
+function askSshSecret(source: DataSource, prompt: string): Promise<boolean> {
+  return new Promise((resolve) => useDatabase.setState({ dialog: { kind: "sshSecret", source, prompt, resolve } }));
+}
+
+/** First connection to an SSH host: trust its key (added to ~/.ssh/known_hosts)? */
+function askTrustHost(prompt: string): Promise<boolean> {
+  return confirm({
+    title: "Unknown SSH Host",
+    icon: "warning",
+    message: `${prompt}. The authenticity of the host cannot be established. Trust it and add the key to ~/.ssh/known_hosts?`,
+    ok: "Trust and Connect",
+  });
 }
 
 /** Asks the user what a failed connection needs (password, SSH secret, host key trust); false = give up. */
@@ -292,9 +311,9 @@ export async function resolveConnectError(e: unknown, source: DataSource): Promi
     case "password":
       return askPassword(source);
     case "sshSecret":
-      return ask("sshSecret", source, e.message);
+      return askSshSecret(source, e.message);
     case "trustHostKey":
-      if (!(await ask("hostKey", source, e.message))) return false;
+      if (!(await askTrustHost(e.message))) return false;
       await call(commands.dbTrustSshHost(source.id ?? ""));
       return true;
     default:
@@ -753,6 +772,19 @@ export async function finishTransaction(id: string, commit: boolean): Promise<bo
   }
 }
 
+/** Leaving manual commit with changes pending (IDEA asks the same); null when cancelled. */
+async function askEndTransaction(source: DataSource): Promise<boolean | null> {
+  const { button } = await ask({
+    title: "Switch to Auto-Commit",
+    body: `${source.name} has uncommitted changes. Commit or roll them back before switching to auto-commit?`,
+    buttons: [
+      { id: "rollback", label: "Roll Back" },
+      { id: "commit", label: "Commit", primary: true },
+    ],
+  });
+  return button === "cancel" ? null : button === "commit";
+}
+
 /**
  * IDEA's Tx: Auto / Manual. Leaving manual mode with changes pending asks
  * whether to commit or roll them back.
@@ -762,9 +794,7 @@ export async function setManualCommit(id: string, manual: boolean): Promise<void
   if (manual === st.manualCommit.has(id)) return;
   if (!manual && st.pendingTx.has(id)) {
     const source = sourceById(id);
-    const commit = source
-      ? await new Promise<boolean | null>((resolve) => useDatabase.setState({ dialog: { kind: "endTransaction", source, resolve } }))
-      : false;
+    const commit = source ? await askEndTransaction(source) : false;
     if (commit === null || !(await finishTransaction(id, commit))) return;
   }
   await call(commands.dbSetManualCommit(id, manual));

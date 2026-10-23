@@ -6,7 +6,7 @@ import { createElement, Fragment } from "react";
 import { askUsagesDetected, fileUsages, viewUsages } from "@/editor/refactor";
 import { executeAction, getAction } from "@/platform/actions";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
-import { confirmDialog } from "./ConfirmDialog";
+import { confirm } from "@/workbench/messages";
 import { runFileRefactoring } from "./fileRefactor";
 import { openFileRefactorDialog, rememberedOptions } from "./FileRefactorDialogs";
 import { projectFs } from "./fs";
@@ -368,9 +368,9 @@ export async function deleteSelection(nodes: ProjectNode[] = selectedNodes()) {
   // Invoked from the tree (or its context menu): give the tree its focus back afterwards.
   const refocus = typeof document !== "undefined" && !!document.activeElement?.closest('[role="tree"], [role="menu"]');
   const folders = nodes.filter((n) => n.dir && paths.includes(n.path)).length;
-  const ok = await confirmDialog({
+  const ok = await confirm({
     title: "Delete",
-    okLabel: "Delete",
+    ok: "Delete",
     message: createElement(
       Fragment,
       null,
@@ -501,7 +501,7 @@ export async function dropPaths(paths: string[], target: string, copy: boolean) 
   }
   const { root } = get();
   const where = root && target === root ? (get().name ?? nameOf(target)) : relativeTo(root ?? "", target) || target;
-  const ok = await confirmDialog({ title: "Copy", okLabel: "Copy", message: `Copy ${describe(movable)} to '${where}'?` });
+  const ok = await confirm({ title: "Copy", ok: "Copy", message: `Copy ${describe(movable)} to '${where}'?` });
   if (ok) await transfer(movable, target, "copy");
 }
 

@@ -276,8 +276,3 @@
   color: var(--fg-search-match, inherit);
   border-radius: 2px;
 }
-
-.choiceDetail {
-  margin-top: 4px;
-  color: var(--fg-muted);
-}

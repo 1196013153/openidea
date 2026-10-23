@@ -5,7 +5,6 @@ import { useProject } from "@/platform/project";
 import { initProjectRoots, useProjectRoots } from "@/platform/projectRoots";
 import { registerOverlay, registerToolWindow, useProjectViewRoots } from "@/workbench/contributions";
 import { registerProjectActions } from "./actions";
-import { ConfirmDialogHost } from "./ConfirmDialog";
 import { FileRefactorDialogHost } from "./FileRefactorDialogs";
 import { RefactoringPreviewHost } from "./RefactoringPreview";
 import { ProjectHeaderActions, useProjectHeaderMenu } from "./HeaderActions";
@@ -60,7 +59,6 @@ export function activate(): () => void {
       headerActions: ProjectHeaderActions,
       headerMenu: useProjectHeaderMenu,
     }),
-    registerOverlay({ id: "project.confirm", component: ConfirmDialogHost }),
     registerOverlay({ id: "project.fileRefactor", component: FileRefactorDialogHost }),
     registerOverlay({ id: "project.refactoringPreview", component: RefactoringPreviewHost }),
     registerProjectActions(),

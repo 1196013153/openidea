@@ -531,7 +531,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
         className={clsx(styles.header, Tabs && styles.headerTabbed)}
         onDoubleClick={(e) => e.target === e.currentTarget && toggleMaximizeToolWindow(tw.id)}
       >
-        {own.length > 0 ? (
+        {Tabs && tw.tabsReplaceTitle ? null : own.length > 0 ? (
           <>
             <button
               ref={titleRef}
@@ -560,7 +560,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
           </span>
         )}
         {Tabs && (
-          <div className={styles.headerContent}>
+          <div className={clsx(styles.headerContent, tw.tabsReplaceTitle && styles.headerContentOnly)}>
             <Tabs id={tw.id} />
           </div>
         )}

@@ -708,6 +708,28 @@ fn commit_amend_and_signoff() {
 }
 
 #[test]
+fn commit_with_author_and_without_hooks() {
+    let fx = Fixture::new();
+    fx.write("a", "1\n");
+    fx.commit_all("init");
+    let hook = fx.path(".git/hooks/pre-commit");
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let repo = fx.repo();
+    fx.write("a", "2\n");
+    repo.stage(&[fx.path("a")]).unwrap();
+    let hooked = CommitOptions { run_hooks: true, ..Default::default() };
+    assert!(repo.commit_with("blocked", &hooked).is_err(), "the failing pre-commit hook runs");
+    let options = CommitOptions { author: Some(" Other <other@example.com> ".into()), ..Default::default() };
+    repo.commit_with("by other", &options).unwrap();
+    assert_eq!(fx.git(&["log", "-1", "--format=%an <%ae>"]), "Other <other@example.com>");
+}
+
+#[test]
 fn checkout_create_detached_delete_rebase() {
     let fx = Fixture::new();
     fx.write("a", "1\n");

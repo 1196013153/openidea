@@ -10,6 +10,7 @@ import { useMemo, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { useActions, allActions, type Action } from "@/platform/actions";
 import { defaultPreset, formatBinding, type Keymap, PRESET_TITLES, PRESETS } from "@/platform/keymap";
+import { confirm } from "@/workbench/messages";
 import {
   HighlightedText,
   Icon,
@@ -47,7 +48,7 @@ import {
   type KeymapDraft,
 } from "./model";
 import { groupIcon, groupPath, groupRank } from "./groups";
-import { ConfirmDialog, KeymapNameDialog } from "./KeymapDialogs";
+import { KeymapNameDialog } from "./KeymapDialogs";
 import { RecordShortcutDialog } from "./RecordShortcutDialog";
 import { StrokeRecorder } from "./StrokeRecorder";
 import styles from "./Keymap.module.css";
@@ -169,7 +170,6 @@ export function KeymapPage() {
   const [lead, setLead] = useState<string | null>(null);
   const [recordFor, setRecordFor] = useState<Action | null>(null);
   const [nameDialog, setNameDialog] = useState<NameDialog>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const gearRef = useRef<HTMLButtonElement>(null);
 
   const roots = useMemo(
@@ -209,6 +209,20 @@ export function KeymapPage() {
       .map(([id, k]) => ({ value: id, label: k.name, detail: `based on ${PRESET_TITLES[k.parent] ?? k.parent}` })),
   ];
 
+  const confirmDelete = async () => {
+    if (
+      !(await confirm({
+        title: "Delete Keymap",
+        message: `Delete keymap '${keymapName(selectedId, customs)}'?`,
+        ok: "Delete",
+      }))
+    )
+      return;
+    const next = deleteKeymap(customs, selectedId);
+    setCustoms(next.customs);
+    setSelected(next.selected);
+  };
+
   const gearMenu = (): MenuItem[] => [
     {
       label: "Duplicate…",
@@ -226,7 +240,7 @@ export function KeymapPage() {
     ...(isCustom
       ? ([
           { kind: "separator" },
-          { label: "Delete", icon: "trash", danger: true, run: () => setConfirmDelete(true) },
+          { label: "Delete", icon: "trash", danger: true, run: () => void confirmDelete() },
         ] satisfies MenuItem[])
       : []),
   ];
@@ -429,21 +443,6 @@ export function KeymapPage() {
               setCustoms(renameKeymap(customs, selectedId, name));
             }
             setNameDialog(null);
-          }}
-        />
-      )}
-
-      {confirmDelete && (
-        <ConfirmDialog
-          title="Delete Keymap"
-          message={`Delete keymap '${keymapName(selectedId, customs)}'?`}
-          confirm="Delete"
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            const next = deleteKeymap(customs, selectedId);
-            setCustoms(next.customs);
-            setSelected(next.selected);
-            setConfirmDelete(false);
           }}
         />
       )}

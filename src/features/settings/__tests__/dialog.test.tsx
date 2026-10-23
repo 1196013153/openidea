@@ -26,6 +26,7 @@ import { DEFAULT_SETTINGS, setAt } from "../model/schema";
 import { useSettingsDialog } from "../model/staging";
 import { SettingsDialog } from "../dialog/SettingsDialog";
 import { activate } from "..";
+import { MessagesHost } from "@/workbench/messages";
 
 let current: Settings;
 let dispose: () => void = () => {};
@@ -47,7 +48,12 @@ afterEach(() => {
 });
 
 async function openDialog(page?: string) {
-  render(<SettingsDialog />);
+  render(
+    <>
+      <SettingsDialog />
+      <MessagesHost />
+    </>,
+  );
   await act(async () => {
     await executeAction("file.settings", page);
   });
@@ -112,7 +118,9 @@ describe("Settings dialog", () => {
     fireEvent.click(within(recorder).getByRole("button", { name: "OK" }));
     const warning = await screen.findByRole("dialog", { name: "Warning" });
     expect(within(warning).getByText(/already assigned to other actions/)).toBeInTheDocument();
-    fireEvent.click(within(warning).getByRole("button", { name: "Leave" }));
+    await act(async () => {
+      fireEvent.click(within(warning).getByRole("button", { name: "Leave" }));
+    });
     expect(useSettingsDialog.getState().staged["global|keymapOverrides"]?.value).toEqual({ "t.mine": ["Meta+D"] });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "OK" }));

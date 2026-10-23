@@ -11,7 +11,7 @@ import { commands, isTauri, onIdeEvent, type Settings } from "@/platform/ipc";
 import { t } from "@/platform/i18n";
 import { provideLeaveProjectGuard, useProject } from "@/platform/project";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
-import { ask, type Ask } from "./prompt";
+import { ask, type Ask } from "@/workbench/messages";
 
 /** Document ids the backend reports dirty in this window. */
 const dirtyDocs = new Set<number>();

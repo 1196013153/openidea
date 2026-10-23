@@ -19,6 +19,7 @@ import {
   T,
 } from "@/ui";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
+import { confirm } from "@/workbench/messages";
 import { basename, dirname, openLocation } from "../common/open";
 import { CodePreview, MatchText, ReplaceDiffPreview } from "./parts";
 import { clearPreviewCache } from "./preview";
@@ -100,7 +101,6 @@ function FindInFilesDialog() {
   const [index, setIndex] = useState(0);
   const [recentPaths, setRecentPaths] = useState<string[] | null>(null);
   const [maskMenu, setMaskMenu] = useState(false);
-  const [confirm, setConfirm] = useState<{ usages: Usage[]; partial: boolean } | null>(null);
   const [previewVersion, setPreviewVersion] = useState(0);
   const [marks, setMarks] = useState<ReplaceMarks>(NO_MARKS);
   const [running, setRunning] = useState<ReplaceRun | null>(null);
@@ -204,6 +204,33 @@ function FindInFilesDialog() {
     const pinned = buildQuery(options, scope, 0);
     close();
     openInFindWindow(pinned, describeQuery(pinned, root), s.replace ? s.replacement : null, undefined, s.preserveCase);
+  };
+
+  const confirmReplaceAll = async () => {
+    const usages = pendingUsages(rows, marks);
+    if (!usages.length) return;
+    const ok = await confirm({
+      title: "Replace All",
+      ok: "Replace",
+      message: (
+        <>
+          {confirmText(countUsages(usages), s.pattern, s.replacement || "")}
+          {marks.excluded.size > 0 && (
+            <>
+              {" "}
+              <T>Excluded usages are skipped.</T>
+            </>
+          )}
+          {state.summary?.limitHit && (
+            <>
+              {"\n"}
+              <T>The search hit its limit; only usages found so far are replaced.</T>
+            </>
+          )}
+        </>
+      ),
+    });
+    if (ok) void replaceAll(usages);
   };
 
   /** Replaces `usages` in the backend, then marks them done (IDEA's Replace / Replace All). */
@@ -570,7 +597,7 @@ function FindInFilesDialog() {
               <Button
                 size="small"
                 disabled={!rows.length || busy || state.status === "searching"}
-                onClick={() => setConfirm({ usages: pendingUsages(rows, marks), partial: !!state.summary?.limitHit })}
+                onClick={() => void confirmReplaceAll()}
               >
                 <T>Replace All</T>
               </Button>
@@ -588,43 +615,6 @@ function FindInFilesDialog() {
         placement="bottom-end"
         onClose={() => setMaskMenu(false)}
       />
-      <Dialog
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        width={460}
-        title="Replace All"
-        icon="question"
-        buttons={[
-          {
-            label: "Replace",
-            role: "default",
-            autoFocus: true,
-            disabled: !confirm?.usages.length,
-            onClick: () => {
-              const usages = confirm?.usages ?? [];
-              setConfirm(null);
-              void replaceAll(usages);
-            },
-          },
-          { label: "Cancel", role: "cancel" },
-        ]}
-      >
-        <p className={styles.confirm}>
-          {confirm && confirmText(countUsages(confirm.usages), s.pattern, s.replacement || "")}
-          {confirm && marks.excluded.size > 0 && (
-            <span>
-              {" "}
-              <T>Excluded usages are skipped.</T>
-            </span>
-          )}
-          {confirm?.partial && (
-            <span className={styles.warn}>
-              {" "}
-              <T>The search hit its limit; only usages found so far are replaced.</T>
-            </span>
-          )}
-        </p>
-      </Dialog>
     </Dialog>
   );
 }

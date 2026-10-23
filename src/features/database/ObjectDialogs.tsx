@@ -4,7 +4,7 @@
  * run), Remove Data Source, Data Source from URL, and the Quick Documentation popup.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { call, commands, type DataSource, type DbColumnInfo, type DbDriver } from "@/platform/ipc";
+import { call, commands, type DbColumnInfo, type DbDriver } from "@/platform/ipc";
 import { highlightInto } from "@/editor/lsp/markdown";
 import { Button, Checkbox, Dialog, IconButton, Input, Popup, Icon, T } from "@/ui";
 import { parseSourceUrl, sourceLabel, splitTarget } from "./model";
@@ -24,9 +24,7 @@ import {
 } from "./objects";
 import {
   closeDialog,
-  deleteSource,
   detailsKey,
-  disconnect,
   connectedTargets,
   loadDetails,
   openSourceDialog,
@@ -481,33 +479,6 @@ function ModifyTableForm({
 
 // ---- Data sources -------------------------------------------------------------
 
-function RemoveSourceDialog({ source }: { source: DataSource }) {
-  const remove = async () => {
-    const id = source.id ?? "";
-    closeDialog();
-    if (connectedTargets(id).length) await disconnect(id);
-    await deleteSource(id);
-  };
-  return (
-    <Dialog
-      open
-      onClose={closeDialog}
-      title="Remove Data Source"
-      icon="question"
-      width={460}
-      buttons={[
-        { label: "Cancel", role: "cancel" },
-        { label: "Remove", role: "default", onClick: () => void remove() },
-      ]}
-    >
-      <>
-        <T>Remove data source</T> <strong>{source.name}</strong>
-        <T>? Its query console file stays on disk.</T>
-      </>
-    </Dialog>
-  );
-}
-
 function SourceUrlDialog() {
   const [url, setUrl] = useState("");
   const parsed = url.trim() ? parseSourceUrl(url) : null;
@@ -668,8 +639,6 @@ export function ObjectDialogs() {
           addColumn={dialog.addColumn}
         />
       );
-    case "removeSource":
-      return <RemoveSourceDialog source={dialog.source} />;
     case "sourceUrl":
       return <SourceUrlDialog />;
     case "quickDoc":

@@ -20,7 +20,7 @@ import { structure } from "@/editor/structure";
 import { docOf, isUnavailable, lspRequest } from "@/editor/lsp/lsp";
 import { comparePos, offsetToPos, rangeContains, rangeToOffsets } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
-import { openPopup, useLspPopup } from "@/editor/lsp/popupStore";
+import { ask } from "@/workbench/messages";
 import { cannotPerform } from "./catalog";
 import { cancelled, languageName } from "./query";
 
@@ -274,35 +274,23 @@ export function usagesMessage(
   };
 }
 
-/** IDEA's "Usages Detected" question; resolves "cancel" when dismissed or replaced. */
-export function askUsagesDetected(subject: string, usages: readonly Location[], plural = false): Promise<UsagesAnswer> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (a: UsagesAnswer) => {
-      if (done) return;
-      done = true;
-      unsub();
-      resolve(a);
-    };
-    const { message, detail } = usagesMessage(subject, usages, plural);
-    openPopup({
-      kind: "choice",
-      title: "Usages Detected",
-      icon: "warning",
-      message,
-      detail,
-      choices: [
-        { label: "View Usages", primary: true, run: () => finish("view") },
-        { label: "Delete Anyway", run: () => finish("delete") },
-        { label: "Cancel", run: () => finish("cancel") },
-      ],
-      onDismiss: () => finish("cancel"),
-    });
-    const mine = useLspPopup.getState().popup;
-    const unsub = useLspPopup.subscribe((s) => {
-      if (s.popup !== mine) finish("cancel");
-    });
+/** IDEA's "Usages Detected" question; resolves "cancel" when dismissed. */
+export async function askUsagesDetected(
+  subject: string,
+  usages: readonly Location[],
+  plural = false,
+): Promise<UsagesAnswer> {
+  const { message, detail } = usagesMessage(subject, usages, plural);
+  const { button } = await ask({
+    title: "Usages Detected",
+    icon: "warning",
+    body: `${message}\n${detail}`,
+    buttons: [
+      { id: "view", label: "View Usages", primary: true },
+      { id: "delete", label: "Delete Anyway" },
+    ],
   });
+  return button === "view" || button === "delete" ? button : "cancel";
 }
 
 /** Opens the Find Usages tool window with `usages` (code-insight's `find.showUsageResults`). */

@@ -495,30 +495,6 @@ function SshSecretDialog({
   );
 }
 
-/** First connection to an SSH host: trust its key (added to ~/.ssh/known_hosts)? */
-function HostKeyDialog({ prompt, resolve }: { prompt: string; resolve: (ok: boolean) => void }) {
-  const done = (ok: boolean) => {
-    closeDialog();
-    resolve(ok);
-  };
-  return (
-    <Dialog
-      open
-      onClose={() => done(false)}
-      title="Unknown SSH Host"
-      icon="warning"
-      width={480}
-      buttons={[
-        { label: "Cancel", role: "cancel" },
-        { label: "Trust and Connect", role: "default", onClick: () => done(true) },
-      ]}
-    >
-      {prompt}. The authenticity of the host cannot be established. Trust it and add the key to ~/.ssh/known_hosts?
-    </Dialog>
-  );
-}
-
-/** Overlay host: whichever dialog the store asks for. */
 /** IDEA's parameter dialog: one SQL value per query parameter, remembered for the next run. */
 function ParamsDialog({
   names,
@@ -578,30 +554,7 @@ function ParamsDialog({
   );
 }
 
-/** Leaving manual commit with changes pending (IDEA asks the same). */
-function EndTransactionDialog({ source, resolve }: { source: DataSource; resolve: (commit: boolean | null) => void }) {
-  const done = (v: boolean | null) => {
-    closeDialog();
-    resolve(v);
-  };
-  return (
-    <Dialog
-      open
-      onClose={() => done(null)}
-      title="Switch to Auto-Commit"
-      icon="question"
-      width={460}
-      buttons={[
-        { label: "Cancel", role: "cancel" },
-        { label: "Roll Back", onClick: () => done(false) },
-        { label: "Commit", role: "default", onClick: () => done(true) },
-      ]}
-    >
-      {source.name} has uncommitted changes. Commit or roll them back before switching to auto-commit?
-    </Dialog>
-  );
-}
-
+/** Overlay host: whichever dialog the store asks for. */
 export function DatabaseDialogs() {
   const dialog = useDatabase((s) => s.dialog);
   if (!dialog) return null;
@@ -615,12 +568,10 @@ export function DatabaseDialogs() {
       />
     );
   if (dialog.kind === "params") return <ParamsDialog names={dialog.names} resolve={dialog.resolve} />;
-  if (dialog.kind === "endTransaction") return <EndTransactionDialog source={dialog.source} resolve={dialog.resolve} />;
   if (dialog.kind === "sshSecret")
     return (
       <SshSecretDialog key={dialog.source.id} source={dialog.source} prompt={dialog.prompt} resolve={dialog.resolve} />
     );
-  if (dialog.kind === "hostKey") return <HostKeyDialog prompt={dialog.prompt} resolve={dialog.resolve} />;
   if (dialog.kind === "password")
     return <PasswordDialog key={dialog.source.id} source={dialog.source} resolve={dialog.resolve} />;
   return <ObjectDialogs />;

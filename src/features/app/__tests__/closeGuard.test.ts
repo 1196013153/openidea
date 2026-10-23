@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { confirmExitEnabled, decideClose, type CloseDeps, type CloseInput } from "../closeGuard";
-import type { PromptRequest, PromptResult } from "../prompt";
+import type { MessageRequest as PromptRequest, MessageResult as PromptResult } from "@/workbench/messages";
 
 function deps(answers: PromptResult[]) {
   const asked: PromptRequest[] = [];

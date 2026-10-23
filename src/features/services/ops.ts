@@ -3,7 +3,8 @@ import type { PruneTarget } from "@/platform/ipc";
 import { executeAction } from "@/platform/actions";
 import { showServiceView } from "@/workbench/contributions";
 import type { MenuItem } from "@/ui";
-import { confirm, promptText } from "./dialogs";
+import { confirm, confirmChecked } from "@/workbench/messages";
+import { promptText } from "./dialogs";
 import { isRunning, nodeContainers, nodeLabel, shortId, type ServiceNode } from "./model";
 import { composeOp, containerOp, prune, pullImage, refresh, removeObjects, selectedNode, useServices } from "./store";
 
@@ -60,7 +61,7 @@ export async function remove(n: ServiceNode | null) {
   if (n.kind !== "container" && n.kind !== "image" && n.kind !== "volume" && n.kind !== "network") return;
   const what = n.kind;
   const running = n.kind === "container" && isRunning(n.container);
-  const answer = await confirm({
+  const answer = await confirmChecked({
     title: `Delete ${what[0]!.toUpperCase()}${what.slice(1)}`,
     message: `Delete ${what} '${label}'?${running ? " It is running and will be stopped." : ""}`,
     ok: "Delete",
