@@ -71,7 +71,7 @@ function CreateDialog(props: {
   useEffect(() => {
     let alive = true;
     // Base candidates: branches of the remotes (without `origin/`), the default first.
-    call(commands.vcsBranches())
+    call(commands.vcsBranches(null))
       .then((branches) => {
         const names = new Set<string>();
         if (props.defaultBase) names.add(props.defaultBase);

@@ -19,7 +19,7 @@ import { buildBranchRows, type BranchRow, type PopupAction } from "./branches";
 import { branchMenu } from "./branchMenu";
 import { recentBranches } from "./branchOps";
 import { inProgress, operationTitle, type InProgress } from "./operations";
-import { loadBranches, useVcs } from "./store";
+import { loadBranches, repoName, selectRepo, useVcs } from "./store";
 import styles from "./BranchWidget.module.css";
 
 export const useBranchesPopup = create<{ open: boolean }>(() => ({ open: false }));
@@ -34,6 +34,8 @@ export function headLabel(branch: { head: string | null; headCommit: string | nu
 export function BranchWidget() {
   const available = useVcs((s) => s.available);
   const branch = useVcs((s) => s.branch);
+  // With several repositories the widget names the selected one, like IDEA's.
+  const repo = useVcs((s) => (s.roots.length > 1 && s.repo ? repoName(s.repo) : null));
   const open = useBranchesPopup((s) => s.open);
   const ref = useRef<HTMLButtonElement>(null);
   if (!available || !branch) return null;
@@ -43,6 +45,7 @@ export function BranchWidget() {
     branch.ahead > 0 ? `${branch.ahead} outgoing` : "",
   ].filter(Boolean);
   const tooltip =
+    (repo ? `Repository: ${repo}\n` : "") +
     (branch.upstream
       ? `Git branch: ${headLabel(branch)}${op}\nTracking ${branch.upstream}`
       : `Git branch: ${headLabel(branch)}${op}`) + (sync.length ? `\n${sync.join(", ")} commits` : "");
@@ -58,6 +61,7 @@ export function BranchWidget() {
         onClick={() => useBranchesPopup.setState({ open: !open })}
       >
         <Icon name={branch.head ? "branch" : "commit"} size={16} className={styles.icon} />
+        {repo && <span className={styles.repo}>{repo}</span>}
         <span className={styles.name}>
           {inProgress(branch.operation) ? operationTitle(inProgress(branch.operation)!, branch.head) : headLabel(branch)}
         </span>
@@ -179,6 +183,7 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
       aria-label="Git Branches"
       className={styles.popup}
     >
+      <RepositoryBar />
       <div className={styles.search}>
         <SearchField
           data-autofocus
@@ -234,6 +239,29 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
         </Popup>
       )}
     </Popup>
+  );
+}
+
+/** Repository switcher (several repositories): branches, log and push act on the selected one. */
+function RepositoryBar() {
+  const roots = useVcs((s) => s.roots);
+  const repo = useVcs((s) => s.repo);
+  if (roots.length < 2) return null;
+  return (
+    <div className={styles.repos} role="group" aria-label="Repository">
+      {roots.map((r) => (
+        <button
+          key={r}
+          type="button"
+          className={clsx(styles.repoButton, r === repo && styles.repoSelected)}
+          aria-pressed={r === repo}
+          title={r}
+          onClick={() => void selectRepo(r).then(() => loadBranches().catch(() => undefined))}
+        >
+          {repoName(r)}
+        </button>
+      ))}
+    </div>
   );
 }
 

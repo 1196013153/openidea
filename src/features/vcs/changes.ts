@@ -1,6 +1,6 @@
 /** Commit tool window model: change groups, directory tree, inclusion (pure). */
 import type { ChangelistState, FileStatus } from "@/bindings";
-import { baseName, dirName, effectiveKind, relTo, stripSlash, type EffectiveKind } from "./model";
+import { baseName, dirName, effectiveKind, relTo, repoLabel, rootOf, stripSlash, type EffectiveKind } from "./model";
 
 export type GroupId = "conflicts" | "changes" | "unversioned";
 
@@ -156,6 +156,37 @@ function childNodes(files: readonly FileStatus[], root: string, group: GroupId, 
     .map((f) => fileNode(f, root, group, true, scope));
 }
 
+/** With several repositories, a node per repository (IDEA's "Group by Repository") above the files. */
+function repoNodes(
+  files: readonly FileStatus[],
+  root: string,
+  group: GroupId,
+  groupByDir: boolean,
+  scope: string,
+  repos: readonly string[],
+): ChangeNode[] {
+  if (repos.length < 2) return childNodes(files, root, group, groupByDir, scope);
+  const byRepo = new Map<string, FileStatus[]>();
+  for (const f of files) {
+    const repo = rootOf(f.path, repos) ?? root;
+    let list = byRepo.get(repo);
+    if (!list) byRepo.set(repo, (list = []));
+    list.push(f);
+  }
+  const order = (r: string) => (repos.includes(r) ? repos.indexOf(r) : repos.length);
+  return [...byRepo]
+    .sort(([a], [b]) => order(a) - order(b))
+    .map(([repo, own]) => ({
+      key: `${scope}:repo:${repo}`,
+      type: "dir" as const,
+      label: repoLabel(repo, root),
+      group,
+      children: childNodes(own, repo, group, groupByDir, `${scope}@${repo}`),
+      files: own,
+      path: repo,
+    }));
+}
+
 function tagList(nodes: ChangeNode[], id: string): ChangeNode[] {
   for (const n of nodes) {
     n.changelist = id;
@@ -167,13 +198,15 @@ function tagList(nodes: ChangeNode[], id: string): ChangeNode[] {
 /**
  * Group roots (Merge Conflicts / Changes / Unversioned Files) with flat or directory
  * children. With change lists, "Changes" is split into one group per list
- * (`ChangelistState.files` keys are project-relative paths).
+ * (`ChangelistState.files` keys are project-relative paths). With several
+ * repositories (`repos`), each group's files are grouped by repository first.
  */
 export function buildChangeTree(
   status: readonly FileStatus[],
   root: string,
   groupByDir: boolean,
   lists?: ChangelistState,
+  repos: readonly string[] = [],
 ): ChangeNode[] {
   const byGroup = new Map<GroupId, FileStatus[]>();
   for (const fs of status) {
@@ -202,7 +235,7 @@ export function buildChangeTree(
           type: "group",
           label: l.name,
           group: g,
-          children: tagList(childNodes(own, root, g, groupByDir, scope), l.id),
+          children: tagList(repoNodes(own, root, g, groupByDir, scope, repos), l.id),
           files: own,
           changelist: l.id,
           active: l.id === lists.active,
@@ -212,7 +245,7 @@ export function buildChangeTree(
       continue;
     }
     if (!files.length) continue;
-    const children = childNodes(files, root, g, groupByDir, g);
+    const children = repoNodes(files, root, g, groupByDir, g, repos);
     roots.push({ key: `group:${g}`, type: "group", label: GROUP_LABEL[g], group: g, children, files });
   }
   return roots;
@@ -223,6 +256,20 @@ export interface CommitPlan {
   unstage: string[];
   /** Files that end up in the commit. */
   included: FileStatus[];
+}
+
+/**
+ * Repositories to commit: those holding `included` files (the selected one last, so its
+ * commit id is returned), else just the selected one (amend, concluding a merge).
+ */
+export function commitRepos(
+  included: readonly FileStatus[],
+  roots: readonly string[],
+  selected: string | null,
+): Array<string | null> {
+  const repos = [...new Set(included.map((f) => rootOf(f.path, roots)).filter((r): r is string => !!r))];
+  if (!repos.length) return [selected];
+  return selected && repos.includes(selected) ? [...repos.filter((r) => r !== selected), selected] : repos;
 }
 
 /** Absolute path of the source of a staged rename (`renamedFrom` is repository-relative). */

@@ -11,6 +11,7 @@ vi.mock("@/platform/ipc", async (importOriginal) => {
       ...real.commands,
       vcsStatus: () => vcsStatus(),
       vcsBranchInfo: async () => ({ status: "ok", data: info() }),
+      vcsRoots: async () => ({ status: "ok", data: [{ root: "/p", operation: null }] }),
     },
   };
 });

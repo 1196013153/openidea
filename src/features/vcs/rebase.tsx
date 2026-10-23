@@ -26,7 +26,7 @@ import {
   type RebaseRange,
   type RebaseRow,
 } from "./rebasePlan";
-import { refreshNow, useVcs } from "./store";
+import { currentRepo, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
 
 const short = (id: string) => id.slice(0, 8);
@@ -56,7 +56,8 @@ export async function undoCommit(commit: Commit) {
     });
     if (!ok) return;
   }
-  const message = await runOp(`Undo commit ${short(commit.id)}`, () => call(commands.vcsUndoCommit(commit.id)), {
+  const undo = () => call(commands.vcsUndoCommit(currentRepo(), commit.id));
+  const message = await runOp(`Undo commit ${short(commit.id)}`, undo, {
     success: `Undid commit ${short(commit.id)} “${commit.summary}”; its changes are staged`,
   });
   // IDEA offers the undone message for the next commit.
@@ -78,7 +79,7 @@ async function rangeFrom(target: Commit, verb: string): Promise<RebaseRange | nu
   const parent = target.parents[0];
   try {
     const history = await call(
-      commands.vcsLog({
+      commands.vcsLog(currentRepo(), {
         branch: "HEAD",
         path: null,
         author: null,

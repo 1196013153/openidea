@@ -5,7 +5,7 @@ import { call, commands } from "@/platform/ipc";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { computeGraph, emptyGraphState, type GraphRow, type GraphState } from "./graph";
 import { clearConsole, errorMessage } from "./ops";
-import { useVcs } from "./store";
+import { currentRepo, repoOf, selectRepo, useVcs } from "./store";
 
 export interface LogFilters {
   branch: string | null;
@@ -71,19 +71,33 @@ export const useGitLog = create<LogState>(() => ({ ...initialLog(), generation: 
 
 let loadPromise: Promise<void> | null = null;
 
-/** Another repository (the window switched projects): forget its commits, filters, selection and console. */
+/**
+ * Another project (the window switched projects): forget its commits, filters, selection
+ * and console. Another repository of the project selected: show its log.
+ */
 export function installGitLog(): () => void {
   return useVcs.subscribe((s, prev) => {
-    if (s.root === prev.root) return;
-    loadPromise = null;
-    useGitLog.setState((l) => ({ ...initialLog(), tab: l.tab, generation: l.generation + 1 }));
-    clearConsole();
+    if (s.root !== prev.root) {
+      loadPromise = null;
+      useGitLog.setState((l) => ({ ...initialLog(), tab: l.tab, generation: l.generation + 1 }));
+      clearConsole();
+    } else if (s.repo !== prev.repo && prev.repo !== null) {
+      const l = useGitLog.getState();
+      if (l.generation === 0 && !l.filters.path) return;
+      const { path } = useGitLog.getState().filters;
+      // A path filter belongs to the repository it is in.
+      if (path && repoOf(path) !== s.repo) useGitLog.setState((l) => ({ filters: { ...l.filters, path: null } }));
+      void reloadLog();
+    }
   });
 }
 
 export function setLogFilters(patch: Partial<LogFilters>) {
   useGitLog.setState((s) => ({ filters: { ...s.filters, ...patch } }));
-  void reloadLog();
+  // History of a file in another repository: that repository's log.
+  const repo = patch.path ? repoOf(patch.path) : null;
+  if (repo && repo !== currentRepo()) void selectRepo(repo);
+  else void reloadLog();
 }
 
 /** Drops loaded commits and loads the first page. */
@@ -106,7 +120,15 @@ async function loadOutgoing() {
   if (!upstream) return useGitLog.setState({ outgoing: null });
   try {
     const commits = await call(
-      commands.vcsLog({ branch: "HEAD", path: null, author: null, text: null, range: "@{u}..HEAD", skip: 0, limit: 0 }),
+      commands.vcsLog(currentRepo(), {
+        branch: "HEAD",
+        path: null,
+        author: null,
+        text: null,
+        range: "@{u}..HEAD",
+        skip: 0,
+        limit: 0,
+      }),
     );
     useGitLog.setState({ outgoing: new Set(commits.map((c) => c.id)) });
   } catch {
@@ -137,7 +159,7 @@ export function loadMore(): Promise<void> {
   const p = (async () => {
     try {
       const page = await call(
-        commands.vcsLog({
+        commands.vcsLog(currentRepo(), {
           branch: f.branch,
           path: f.path,
           author: f.author.trim() || null,

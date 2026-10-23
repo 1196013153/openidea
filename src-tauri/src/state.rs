@@ -8,7 +8,7 @@ use ide_run::ProcessManager;
 use ide_syntax::StructureService;
 use ide_terminal::TerminalManager;
 use ide_text::{AppliedChange, ByteEdit};
-use ide_vcs::Repo;
+use ide_vcs::{Repo, Repos};
 use ide_vfs::Watcher;
 use ide_workspace::documents::DocumentObserver;
 use ide_workspace::{
@@ -56,7 +56,8 @@ pub struct Project {
     pub moves: FileMoves,
     pub index: Arc<ProjectIndex>,
     pub lsp: Arc<LspManager>,
-    pub repo: Mutex<Option<Repo>>,
+    /// Git repositories: the one containing the project root and those nested below it.
+    pub repos: Arc<RwLock<Repos>>,
     /// Incrementally maintained syntax trees of the open documents.
     pub syntax: Arc<SyntaxCache>,
     /// Tree-sitter structure queries (LSP fallback) over `syntax`.
@@ -279,7 +280,10 @@ impl AppState {
         documents.add_observer(Arc::new(LspObserver(lsp.clone())));
         documents.add_observer(Arc::new(HistoryObserver(history.clone())));
 
+        let repos = Arc::new(RwLock::new(Repos::enclosing(&root)?));
         let watcher = {
+            let repos = repos.clone();
+            let settings = settings.clone();
             let index = index.clone();
             let documents = documents.clone();
             let sink = sink.clone();
@@ -304,6 +308,12 @@ impl AppState {
                             *detected_roots.write() = fresh;
                             sink.emit(IdeEvent::ProjectRootsChanged { root: root.clone().into() });
                         }
+                    }
+                    // A repository was cloned / initialised / removed below the project.
+                    let git_dirs =
+                        changed.iter().chain(&batch.removed).any(|p| p.file_name().is_some_and(|n| n == ".git"));
+                    if git_dirs {
+                        scan_repositories(&root, &repos, &settings, &sink);
                     }
                     sink.emit(IdeEvent::VcsChanged { root: root.clone().into() });
                 }),
@@ -331,8 +341,13 @@ impl AppState {
         };
 
         mark("watcher");
-        let repo = Repo::discover(&root)?;
-        let branch = repo.as_ref().and_then(|r| r.branch_info().ok()).and_then(|b| b.head);
+        let branch = repos.read().primary().and_then(|r| r.branch_info().ok()).and_then(|b| b.head);
+        {
+            let (root, repos, settings, sink) = (root.clone(), repos.clone(), settings.clone(), sink.clone());
+            std::thread::Builder::new()
+                .name("openidea-vcs-roots".into())
+                .spawn(move || scan_repositories(&root, &repos, &settings, &sink))?;
+        }
         mark("git");
         self.recent.touch(&root, branch)?;
         mark("recent");
@@ -349,7 +364,7 @@ impl AppState {
             moves: FileMoves::new(),
             index,
             lsp,
-            repo: Mutex::new(repo),
+            repos,
             structure: Arc::new(StructureService::new(syntax.clone())),
             syntax,
             detected_roots,
@@ -391,12 +406,39 @@ impl AppState {
     }
 }
 
+/// Looks for repositories nested below the project (and the one containing it);
+/// emits `VcsChanged` when the set of roots changed.
+fn scan_repositories(root: &Path, repos: &RwLock<Repos>, settings: &SettingsStore, sink: &SharedSink) {
+    let ignored = settings.effective().ignored_names();
+    let skip = |p: &Path| p.file_name().is_some_and(|n| ignored.is_ignored_name(&n.to_string_lossy()));
+    match Repos::discover(root, &skip) {
+        Ok(found) => {
+            if found.roots() != repos.read().roots() {
+                *repos.write() = found;
+                sink.emit(IdeEvent::VcsChanged { root: root.to_path_buf().into() });
+            }
+        }
+        Err(e) => tracing::warn!("looking for git repositories: {e}"),
+    }
+}
+
 impl Project {
-    /// Runs `f` with the git repository, or fails when the project is not under git.
-    pub fn with_repo<T>(&self, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
+    /// The project's git repositories.
+    pub fn repos(&self) -> Repos {
+        self.repos.read().clone()
+    }
+
+    /// Runs `f` with the repository containing `at` (a path in it or its root), the
+    /// project's primary repository when `None`; fails when there is none.
+    pub fn with_repo_at<T>(&self, at: Option<&Path>, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
         let settings = self.settings.effective();
         crate::commands::vcs::apply_git_executable(&settings);
-        match self.repo.lock().as_ref() {
+        let repos = self.repos();
+        let repo = match at {
+            Some(path) => repos.for_path(path),
+            None => repos.primary(),
+        };
+        match repo {
             Some(repo) => {
                 repo.set_ignored_names(settings.ignored_names());
                 f(repo)
@@ -405,25 +447,31 @@ impl Project {
         }
     }
 
+    /// Runs `f` with the project's primary git repository, or fails when the project is not under git.
+    pub fn with_repo<T>(&self, f: impl FnOnce(&Repo) -> IdeResult<T>) -> IdeResult<T> {
+        self.with_repo_at(None, f)
+    }
+
     /// Runs a VCS operation that rewrites the working tree (checkout, merge,
     /// rebase, pull, reset, stash, rollback): Local History gets a label and a
     /// snapshot of every locally changed file before, and a label after.
     /// `None` runs `f` like [`with_repo`](Self::with_repo) (operations that keep the working tree).
     pub fn with_repo_recorded<T>(
         &self,
+        at: Option<&Path>,
         operation: Option<&str>,
         f: impl FnOnce(&Repo) -> IdeResult<T>,
     ) -> IdeResult<T> {
-        let Some(name) = operation else { return self.with_repo(f) };
+        let Some(name) = operation else { return self.with_repo_at(at, f) };
         self.history_label(&format!("Before {name}"));
-        if let Ok(changed) = self.with_repo(|r| r.status()) {
+        if let Ok(changed) = self.with_repo_at(at, |r| r.status()) {
             for file in changed.iter().take(HISTORY_BATCH_LIMIT) {
                 if let Err(e) = self.history.record_file(&file.path, &format!("Before {name}"), false) {
                     tracing::debug!("local history: {e}");
                 }
             }
         }
-        let result = self.with_repo(f);
+        let result = self.with_repo_at(at, f);
         self.history_label(&format!("After {name}"));
         result
     }

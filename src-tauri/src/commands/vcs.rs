@@ -1,4 +1,4 @@
-use crate::state::AppState;
+use crate::state::{AppState, Project};
 use ide_core::{IdeResult, RequestId};
 use ide_vcs::*;
 use serde::{Deserialize, Serialize};
@@ -13,18 +13,59 @@ pub(crate) fn apply_git_executable(settings: &ide_core::settings::Settings) {
     ide_vcs::set_git_executable((!exe.is_empty()).then(|| Path::new(exe)));
 }
 
+/// Changes of every repository of the project.
 #[tauri::command]
 #[specta::specta]
 pub async fn vcs_status(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<FileStatus>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.status())).await
+    blocking(move || {
+        let settings = project.settings.effective();
+        apply_git_executable(&settings);
+        let repos = project.repos();
+        if repos.is_empty() {
+            return Err(ide_core::IdeError::unavailable("project is not a git repository"));
+        }
+        for r in repos.all() {
+            r.set_ignored_names(settings.ignored_names());
+        }
+        repos.status()
+    })
+    .await
+}
+
+/// A repository of the project (IDEA's VCS root).
+#[derive(Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct VcsRoot {
+    /// Worktree root.
+    pub root: ide_core::IpcPath,
+    /// Merge / rebase / cherry-pick / revert in progress.
+    pub operation: Option<String>,
+}
+
+/// The project's repositories, the primary one first.
+#[tauri::command]
+#[specta::specta]
+pub fn vcs_roots(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<VcsRoot>> {
+    let repos = state.project(window.label())?.repos();
+    let primary = repos.primary().map(|r| r.root().to_path_buf());
+    let mut all: Vec<&std::sync::Arc<Repo>> = repos.all().iter().collect();
+    all.sort_by_key(|r| Some(r.root()) != primary.as_deref());
+    Ok(all
+        .into_iter()
+        .map(|r| VcsRoot { root: r.root().to_path_buf().into(), operation: r.operation().ok().flatten() })
+        .collect())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_branch_info(window: Window, state: State<'_, AppState>) -> IdeResult<BranchInfo> {
+pub async fn vcs_branch_info(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+) -> IdeResult<BranchInfo> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.branch_info())).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.branch_info())).await
 }
 
 /// Gutter change markers for a file, computed against its current (unsaved) text.
@@ -33,7 +74,7 @@ pub async fn vcs_branch_info(window: Window, state: State<'_, AppState>) -> IdeR
 pub fn vcs_line_hunks(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<Vec<LineHunk>> {
     let project = state.project(window.label())?;
     let text = project.text_of(&path)?;
-    project.with_repo(|r| r.line_hunks(&path, &text, false))
+    project.with_repo_at(Some(&path), |r| r.line_hunks(&path, &text, false))
 }
 
 #[tauri::command]
@@ -45,7 +86,7 @@ pub async fn vcs_file_at(
     rev: Option<String>,
 ) -> IdeResult<Option<String>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.file_at(&path, rev.as_deref()))).await
+    blocking(move || project.with_repo_at(Some(&path), |r| r.file_at(&path, rev.as_deref()))).await
 }
 
 #[tauri::command]
@@ -53,14 +94,19 @@ pub async fn vcs_file_at(
 pub async fn vcs_blame(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<Vec<BlameLine>> {
     let project = state.project(window.label())?;
     let text = project.documents.text_of(&path);
-    blocking(move || project.with_repo(|r| r.blame(&path, text.as_deref()))).await
+    blocking(move || project.with_repo_at(Some(&path), |r| r.blame(&path, text.as_deref()))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_log(window: Window, state: State<'_, AppState>, query: LogQuery) -> IdeResult<Vec<Commit>> {
+pub async fn vcs_log(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    query: LogQuery,
+) -> IdeResult<Vec<Commit>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.log(&query))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.log(&query))).await
 }
 
 #[tauri::command]
@@ -68,38 +114,39 @@ pub async fn vcs_log(window: Window, state: State<'_, AppState>, query: LogQuery
 pub async fn vcs_commit_files(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     commit: String,
 ) -> IdeResult<Vec<ChangedFile>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.commit_files(&commit))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.commit_files(&commit))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_branches(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<Branch>> {
+pub async fn vcs_branches(window: Window, state: State<'_, AppState>, repo: Option<PathBuf>) -> IdeResult<Vec<Branch>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.branches())).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.branches())).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_stashes(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<Stash>> {
+pub async fn vcs_stashes(window: Window, state: State<'_, AppState>, repo: Option<PathBuf>) -> IdeResult<Vec<Stash>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.stashes())).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.stashes())).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn vcs_stage(window: Window, state: State<'_, AppState>, paths: Vec<PathBuf>) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.stage(&paths))).await
+    blocking(move || per_repo(&project, &paths, None, |r, paths| r.stage(paths))).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn vcs_unstage(window: Window, state: State<'_, AppState>, paths: Vec<PathBuf>) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.unstage(&paths))).await
+    blocking(move || per_repo(&project, &paths, None, |r, paths| r.unstage(paths))).await
 }
 
 #[tauri::command]
@@ -113,7 +160,7 @@ pub async fn vcs_stage_patch(window: Window, state: State<'_, AppState>, patch: 
 #[specta::specta]
 pub async fn vcs_discard(window: Window, state: State<'_, AppState>, paths: Vec<PathBuf>) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(Some("Rollback"), |r| r.discard(&paths))).await
+    blocking(move || per_repo(&project, &paths, Some("Rollback"), |r, paths| r.discard(paths))).await
 }
 
 #[tauri::command]
@@ -121,19 +168,27 @@ pub async fn vcs_discard(window: Window, state: State<'_, AppState>, paths: Vec<
 pub async fn vcs_commit(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     message: String,
     options: CommitOptions,
 ) -> IdeResult<String> {
     // Commit hooks may run for a long time.
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.commit_with(&message, &options))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.commit_with(&message, &options))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_checkout(window: Window, state: State<'_, AppState>, branch: String, create: bool) -> IdeResult<()> {
+pub async fn vcs_checkout(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    branch: String,
+    create: bool,
+) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(Some("Git checkout"), |r| r.checkout(&branch, create))).await
+    blocking(move || project.with_repo_recorded(repo.as_deref(), Some("Git checkout"), |r| r.checkout(&branch, create)))
+        .await
 }
 
 /// New Branch: creates `name` at `start` (HEAD when absent), optionally checking it out.
@@ -142,22 +197,31 @@ pub async fn vcs_checkout(window: Window, state: State<'_, AppState>, branch: St
 pub async fn vcs_create_branch(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     name: String,
     start: Option<String>,
     checkout: bool,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
     let recorded = checkout.then_some("Git checkout");
-    blocking(move || project.with_repo_recorded(recorded, |r| r.create_branch(&name, start.as_deref(), checkout))).await
+    blocking(move || {
+        project.with_repo_recorded(repo.as_deref(), recorded, |r| r.create_branch(&name, start.as_deref(), checkout))
+    })
+    .await
 }
 
 /// Undo Commit: moves HEAD back to the commit's parent, keeping its changes staged.
 /// Returns the undone commit's message.
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_undo_commit(window: Window, state: State<'_, AppState>, commit: String) -> IdeResult<String> {
+pub async fn vcs_undo_commit(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    commit: String,
+) -> IdeResult<String> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.undo_commit(&commit))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.undo_commit(&commit))).await
 }
 
 #[tauri::command]
@@ -165,32 +229,49 @@ pub async fn vcs_undo_commit(window: Window, state: State<'_, AppState>, commit:
 pub async fn vcs_delete_branch(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     branch: String,
     force: bool,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.delete_branch(&branch, force))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.delete_branch(&branch, force))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_rename_branch(window: Window, state: State<'_, AppState>, from: String, to: String) -> IdeResult<()> {
+pub async fn vcs_rename_branch(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    from: String,
+    to: String,
+) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.rename_branch(&from, &to))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.rename_branch(&from, &to))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_merge(window: Window, state: State<'_, AppState>, branch: String) -> IdeResult<()> {
+pub async fn vcs_merge(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    branch: String,
+) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(Some("Git merge"), |r| r.merge(&branch))).await
+    blocking(move || project.with_repo_recorded(repo.as_deref(), Some("Git merge"), |r| r.merge(&branch))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_rebase(window: Window, state: State<'_, AppState>, onto: String) -> IdeResult<()> {
+pub async fn vcs_rebase(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    onto: String,
+) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(Some("Git rebase"), |r| r.rebase(&onto))).await
+    blocking(move || project.with_repo_recorded(repo.as_deref(), Some("Git rebase"), |r| r.rebase(&onto))).await
 }
 
 #[tauri::command]
@@ -198,28 +279,43 @@ pub async fn vcs_rebase(window: Window, state: State<'_, AppState>, onto: String
 pub async fn vcs_stash_push(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     message: Option<String>,
     include_untracked: bool,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
     blocking(move || {
-        project.with_repo_recorded(Some("Git stash"), |r| r.stash_push(message.as_deref(), include_untracked))
+        project.with_repo_recorded(repo.as_deref(), Some("Git stash"), |r| {
+            r.stash_push(message.as_deref(), include_untracked)
+        })
     })
     .await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_stash_apply(window: Window, state: State<'_, AppState>, index: u32, pop: bool) -> IdeResult<()> {
+pub async fn vcs_stash_apply(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    index: u32,
+    pop: bool,
+) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(Some("Git unstash"), |r| r.stash_apply(index, pop))).await
+    blocking(move || project.with_repo_recorded(repo.as_deref(), Some("Git unstash"), |r| r.stash_apply(index, pop)))
+        .await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_stash_drop(window: Window, state: State<'_, AppState>, index: u32) -> IdeResult<()> {
+pub async fn vcs_stash_drop(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    index: u32,
+) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.stash_drop(index))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.stash_drop(index))).await
 }
 
 #[derive(Clone, Serialize, Deserialize, Type)]
@@ -258,6 +354,7 @@ pub enum RemoteOp {
 pub async fn vcs_remote(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     request: RequestId,
     op: RemoteOp,
     on_output: Channel<String>,
@@ -269,7 +366,7 @@ pub async fn vcs_remote(
             let _ = on_output.send(line);
         };
         let recorded = matches!(op, RemoteOp::Pull { .. }).then_some("Git pull");
-        project.with_repo_recorded(recorded, |r| match op {
+        project.with_repo_recorded(repo.as_deref(), recorded, |r| match op {
             RemoteOp::Fetch => r.fetch(&cancel, &out),
             RemoteOp::Pull { rebase } => r.pull(rebase, &cancel, &out),
             RemoteOp::Push { force_with_lease, set_upstream, tags } => {
@@ -304,7 +401,7 @@ pub async fn vcs_conflict_versions(
 ) -> IdeResult<ConflictVersions> {
     let project = state.project(window.label())?;
     blocking(move || {
-        project.with_repo(|r| {
+        project.with_repo_at(Some(&path), |r| {
             r.conflict_versions(&path).map(|(base, ours, theirs)| ConflictVersions { base, ours, theirs })
         })
     })
@@ -320,7 +417,7 @@ pub async fn vcs_diff_text(
     staged: bool,
 ) -> IdeResult<String> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.diff_text(&path, staged))).await
+    blocking(move || project.with_repo_at(Some(&path), |r| r.diff_text(&path, staged))).await
 }
 
 /// Line hunks between two arbitrary texts (diff viewer, commit dialog).
@@ -337,7 +434,7 @@ pub fn vcs_diff_hunks(old_text: String, new_text: String) -> Vec<LineHunk> {
 pub fn vcs_stage_hunks(window: Window, state: State<'_, AppState>, path: PathBuf, hunks: Vec<u32>) -> IdeResult<()> {
     let project = state.project(window.label())?;
     let current = ide_vfs::load_text(&path)?.text;
-    project.with_repo(|r| {
+    project.with_repo_at(Some(&path), |r| {
         let index_text = r.file_at(&path, Some(":0"))?.unwrap_or_default();
         let rel = path.strip_prefix(r.root()).unwrap_or(&path).to_string_lossy().replace('\\', "/");
         let selected: Vec<usize> = hunks.iter().map(|&h| h as usize).collect();
@@ -408,9 +505,14 @@ pub fn vcs_detected_git() -> Option<String> {
 /// `git config --get <key>` in the project repository; `None` when unset.
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_config_get(window: Window, state: State<'_, AppState>, key: String) -> IdeResult<Option<String>> {
+pub async fn vcs_config_get(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    key: String,
+) -> IdeResult<Option<String>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.config_get(&key))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.config_get(&key))).await
 }
 
 // ---- in-progress operations, history rewriting (Git Log actions) ----
@@ -448,6 +550,7 @@ pub enum GitOperation {
 pub async fn vcs_operation(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     request: RequestId,
     op: GitOperation,
     on_output: Channel<String>,
@@ -465,7 +568,7 @@ pub async fn vcs_operation(
             GitOperation::InteractiveRebase { .. } => Some("Git rebase"),
             _ => None,
         };
-        project.with_repo_recorded(recorded, |r| match op {
+        project.with_repo_recorded(repo.as_deref(), recorded, |r| match op {
             GitOperation::Continue => r.continue_operation(&cancel, &out),
             GitOperation::Abort => r.abort_operation(&cancel, &out),
             GitOperation::Skip => r.skip_operation(&cancel, &out),
@@ -488,20 +591,22 @@ pub async fn vcs_operation(
 pub async fn vcs_create_tag(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     name: String,
     commit: String,
     message: Option<String>,
     force: bool,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.create_tag(&name, &commit, message.as_deref(), force))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.create_tag(&name, &commit, message.as_deref(), force)))
+        .await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn vcs_tags(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<String>> {
+pub async fn vcs_tags(window: Window, state: State<'_, AppState>, repo: Option<PathBuf>) -> IdeResult<Vec<String>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.tags())).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.tags())).await
 }
 
 /// Compare with Local: tracked files that differ between `rev` and the working tree.
@@ -510,10 +615,28 @@ pub async fn vcs_tags(window: Window, state: State<'_, AppState>) -> IdeResult<V
 pub async fn vcs_diff_with_worktree(
     window: Window,
     state: State<'_, AppState>,
+    repo: Option<PathBuf>,
     rev: String,
 ) -> IdeResult<Vec<ChangedFile>> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo(|r| r.diff_with_worktree(&rev))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.diff_with_worktree(&rev))).await
+}
+
+/// Runs `f` once per repository with the `paths` that belong to it.
+fn per_repo(
+    project: &Project,
+    paths: &[PathBuf],
+    recorded: Option<&str>,
+    f: impl Fn(&Repo, &[PathBuf]) -> IdeResult<()>,
+) -> IdeResult<()> {
+    let groups = project.repos().group(paths);
+    if groups.is_empty() {
+        return project.with_repo_recorded(None, recorded, |r| f(r, paths));
+    }
+    for (repo, paths) in groups {
+        project.with_repo_recorded(Some(repo.root()), recorded, |r| f(r, &paths))?;
+    }
+    Ok(())
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> IdeResult<T> + Send + 'static) -> IdeResult<T> {
@@ -587,7 +710,7 @@ pub async fn vcs_shelve(
     let project = state.project(window.label())?;
     blocking(move || {
         keep_private(&project.root);
-        project.with_repo_recorded(Some("Shelve"), |r| r.shelve(&shelf_dir(&project.root), &name, &paths))
+        project.with_repo_recorded(None, Some("Shelve"), |r| r.shelve(&shelf_dir(&project.root), &name, &paths))
     })
     .await
 }
@@ -611,7 +734,7 @@ pub async fn vcs_unshelve(
 ) -> IdeResult<ApplyOutcome> {
     let project = state.project(window.label())?;
     blocking(move || {
-        project.with_repo_recorded(Some("Unshelve"), |r| r.unshelve(&shelf_dir(&project.root), &id, remove))
+        project.with_repo_recorded(None, Some("Unshelve"), |r| r.unshelve(&shelf_dir(&project.root), &id, remove))
     })
     .await
 }

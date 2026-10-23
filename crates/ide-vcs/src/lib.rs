@@ -268,6 +268,7 @@ mod patch;
 mod refs;
 mod remotes;
 mod repo;
+mod roots;
 pub mod shelf;
 mod status;
 mod write;
@@ -275,6 +276,7 @@ mod write;
 pub use cli::{detected_git_executable, git_version, set_git_executable};
 pub use diff::build_partial_patch;
 pub use remotes::Remote;
+pub use roots::Repos;
 
 /// Clones `url` into `dest` (which must not exist or be empty), streaming progress.
 pub fn clone(url: &str, dest: &Path, cancel: &CancellationToken, on_output: &dyn Fn(String)) -> IdeResult<()> {
@@ -319,6 +321,10 @@ impl Repo {
     }
     pub fn branch_info(&self) -> IdeResult<BranchInfo> {
         refs::branch_info(self)
+    }
+    /// Merge / rebase / cherry-pick… in progress (cheap: no ref walking).
+    pub fn operation(&self) -> IdeResult<Option<String>> {
+        Ok(refs::operation(&self.gix()?))
     }
     /// Content of `path` at `rev` (default HEAD); `None` if absent there.
     /// `rev` may be any revision git understands, or `":"` / `":0"` for the index.

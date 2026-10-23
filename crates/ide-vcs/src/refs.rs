@@ -30,7 +30,7 @@ pub(crate) fn branch_info(r: &Repo) -> IdeResult<BranchInfo> {
     Ok(info)
 }
 
-fn operation(repo: &gix::Repository) -> Option<String> {
+pub(crate) fn operation(repo: &gix::Repository) -> Option<String> {
     use gix::state::InProgress::*;
     let op = match repo.state()? {
         ApplyMailbox | ApplyMailboxRebase => "am",

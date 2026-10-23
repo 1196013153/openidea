@@ -8,7 +8,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { call, commands, isTauri, nextRequestId } from "@/platform/ipc";
 import { onWorkflowSettingsChange, workflowSettings } from "@/platform/workflowSettings";
 import { logConsole } from "./ops";
-import { loadBranches, refreshNow, useVcs } from "./store";
+import { currentRepo, loadBranches, refreshNow, useVcs } from "./store";
 
 const FIRST_DELAY = 20_000;
 const INTERVAL = 15 * 60_000;
@@ -32,7 +32,7 @@ export function installIncomingCheck(): () => void {
     const channel = new Channel<string>();
     channel.onmessage = () => undefined;
     try {
-      await call(commands.vcsRemote(nextRequestId(), { op: "fetch" }, channel));
+      await call(commands.vcsRemote(currentRepo(), nextRequestId(), { op: "fetch" }, channel));
       await refreshNow();
       if (useVcs.getState().branchesLoaded) void loadBranches().catch(() => undefined);
     } catch (e) {

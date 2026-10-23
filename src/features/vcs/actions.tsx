@@ -16,7 +16,7 @@ import { openDialog } from "./dialogs";
 import { gotoChange } from "./gutter";
 import { openLocalHistory } from "./localHistoryKind";
 import { revealCommit, setLogFilters, useGitLog, emptyFilters } from "./logStore";
-import { runRemote } from "./ops";
+import { allRepos, runRemote } from "./ops";
 import { showPushDialog, showUpdateDialog, type PushTarget } from "./remoteUi";
 import { chooseRevision } from "./RevisionChooser";
 import { showCloneDialog } from "./clone";
@@ -150,7 +150,7 @@ export function registerVcsActions(): () => void {
       category: "Git",
       icon: "git-fetch",
       when: VCS,
-      run: () => void runRemote({ op: "fetch" }),
+      run: () => void runRemote({ op: "fetch" }, undefined, allRepos()),
     },
     {
       id: "vcs.refresh",
