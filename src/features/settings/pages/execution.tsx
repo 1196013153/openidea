@@ -1,11 +1,12 @@
 /**
- * Build, Execution, Deployment pages: Console, Debugger (+ Data Views,
+ * Build, Execution, Deployment pages: Maven, Console, Debugger (+ Data Views,
  * Stepping), Python Debugger and Run/Debug. Consumed by the run and debugger
  * features (and `ide-run` for encoding / termination timeout).
  */
 import { WORKFLOW_LIMITS } from "@/platform/workflowSettings";
 import type { SelectOption } from "@/ui";
 import { GlobListEditor, NumberInput, Row } from "../components/Form";
+import { MavenPage } from "../languages/LanguagePages";
 import { useSetting } from "../components/context";
 import type { PageSpec } from "./spec";
 import { Indented, ToggleNumber } from "./workflowControls";
@@ -89,6 +90,15 @@ function TooltipDelayRow() {
 }
 
 export const EXECUTION_PAGES: PageSpec[] = [
+  {
+    id: "build.maven",
+    title: "Maven",
+    group: BUILD_GROUP,
+    // IntelliJ IDEA: Build Tools › Maven, before Console / Debugger.
+    order: 359,
+    keywords: ["maven home", "mvn", "mvnw", "wrapper", "settings.xml", "user settings", "local repository", "m2"],
+    component: MavenPage,
+  },
   {
     id: "build.console",
     title: "Console",

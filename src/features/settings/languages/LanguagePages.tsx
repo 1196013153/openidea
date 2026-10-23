@@ -1,7 +1,7 @@
 /**
- * Settings › Languages & Frameworks › Go / Java / Node.js / Rust / TypeScript: the
- * toolchain each language's server and run configurations use (applied by
- * `ide-sdk` when language servers start and when run configurations load).
+ * Settings › Languages & Frameworks › Go / Java / Node.js / Rust / TypeScript and
+ * Build Tools › Maven: the toolchain each language's server and run configurations
+ * use (applied by `ide-sdk` when language servers start and when run configurations load).
  */
 import { useId, useMemo } from "react";
 import { IconButton, Input, type SelectOption } from "@/ui";
@@ -16,12 +16,15 @@ function PathInput({
   placeholder,
   hint,
   title,
+  file,
 }: {
   k: string;
   label: string;
   placeholder: string;
   hint?: string;
   title: string;
+  /** Browse for a file instead of a directory. */
+  file?: boolean;
 }) {
   const [value, set] = useProjectSetting<string>(k);
   const id = useId();
@@ -41,7 +44,7 @@ function PathInput({
           size="small"
           title="Browse…"
           onClick={async () => {
-            const p = await choosePath({ directory: true, title, defaultPath: value || undefined });
+            const p = await choosePath({ directory: !file, title, defaultPath: value || undefined });
             if (p) set(p);
           }}
         />
@@ -217,6 +220,19 @@ export function JavaPage() {
   const id = useId();
   return (
     <div className={styles.page}>
+      <Section title="Project JDK">
+        <SdkRow
+          k="languages.java.jdk"
+          label="SDK"
+          kind="jdk"
+          emptyLabel="Auto"
+          emptyDetail="per module, the JDK of its Java version"
+          directory
+          browseTitle="Select JDK Home Directory"
+          aria-label="Project JDK"
+          hint="Compiles and runs the project: the default jdtls runtime, Run/Debug, and JAVA_HOME for Maven and Gradle."
+        />
+      </Section>
       <Section title="Language Server">
         <Row
           label="JVM options"
@@ -232,6 +248,44 @@ export function JavaPage() {
             onChange={(e) => setVmArgs(e.target.value)}
           />
         </Row>
+      </Section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Build Tools › Maven
+
+export function MavenPage() {
+  return (
+    <div className={styles.page}>
+      <Section>
+        <SdkRow
+          k="languages.java.maven.home"
+          label="Maven home path"
+          kind="maven"
+          emptyLabel="Auto"
+          emptyDetail="Maven wrapper, else mvn on PATH"
+          directory
+          browseTitle="Select Maven Home Directory"
+          aria-label="Maven home path"
+          hint="Runs sync, builds and Maven run configurations. A chosen home is used instead of the project's mvnw."
+        />
+        <PathInput
+          k="languages.java.maven.userSettings"
+          label="User settings file"
+          placeholder="~/.m2/settings.xml"
+          title="Select Maven settings.xml"
+          file
+          hint="Passed as -s (mirrors, servers, proxies)."
+        />
+        <PathInput
+          k="languages.java.maven.localRepository"
+          label="Local repository"
+          placeholder="From settings.xml, else ~/.m2/repository"
+          title="Select Local Repository"
+          hint="Passed as -Dmaven.repo.local."
+        />
       </Section>
     </div>
   );

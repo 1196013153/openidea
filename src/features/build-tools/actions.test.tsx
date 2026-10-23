@@ -27,6 +27,7 @@ const mavenModel: BuildModel = {
         profiles: ["ci"],
         javaVersion: 21,
         command: "/p/mvnw",
+        options: [],
         env: {},
       },
     ],

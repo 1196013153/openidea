@@ -95,6 +95,10 @@ export function activate(): () => void {
       if ([...e.created, ...e.modified, ...e.removed].some((p) => BUILD_FILE.test(p))) scheduleLoad();
     }),
     onIdeEvent("projectRootsChanged", scheduleLoad),
+    // Project JDK / Maven home and options are applied to the model's launchers.
+    onIdeEvent("settingsChanged", (e) => {
+      if (e.key === "languages" || e.key.startsWith("languages.java")) scheduleLoad();
+    }),
     registerActions([
       {
         id: "maven.reload",

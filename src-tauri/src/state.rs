@@ -242,7 +242,8 @@ impl AppState {
             let root = root.clone();
             let data_dir = self.data_dir.clone();
             lsp.set_config_hook(Box::new(move |cfg, server_root| {
-                ide_sdk::apply::configure_server(cfg, &root, server_root, &settings.effective());
+                let effective = settings.effective();
+                ide_sdk::apply::configure_server(cfg, &root, server_root, &effective);
                 if cfg.name == "jdtls" {
                     let bundles: Vec<PathBuf> =
                         ide_tools::managed_bundle(&data_dir, "java-debug").into_iter().collect();
@@ -261,6 +262,7 @@ impl AppState {
                         server_root,
                         &data_dir,
                         &jdks,
+                        ide_sdk::apply::project_jdk(&root, &effective).as_ref(),
                         min_java,
                         &bundles,
                         lombok.jar(),

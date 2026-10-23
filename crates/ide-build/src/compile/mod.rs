@@ -225,6 +225,7 @@ fn maven_steps(root: &Path, model: &BuildModel, kind: BuildKind, module: Option<
     }
     let step = |p: &maven::MavenProject, extra: &[String]| {
         let mut s = BuildStep::new(&p.command, &["-B", "-Dstyle.color=never"], &subdir(root, &p.dir), Format::Maven);
+        s.args.extend(p.options.iter().cloned());
         s.args.extend(extra.iter().cloned());
         s.args.extend(goals.iter().map(|g| (*g).to_owned()));
         s.env = p.env.clone();

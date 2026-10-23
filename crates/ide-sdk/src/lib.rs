@@ -31,6 +31,10 @@ pub enum SdkKind {
     Rust,
     Go,
     TypeScript,
+    /// JDK homes.
+    Jdk,
+    /// Maven homes.
+    Maven,
 }
 
 /// One installed interpreter / toolchain.

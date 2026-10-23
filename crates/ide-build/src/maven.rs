@@ -92,6 +92,8 @@ pub struct MavenProject {
     pub java_version: Option<u32>,
     /// Maven launcher: the nearest `mvnw` up to the project root (absolute), else `mvn`.
     pub command: String,
+    /// Options before the goals (`-s`, `-Dmaven.repo.local=`); filled in by the shell from settings.
+    pub options: Vec<String>,
     /// Environment for runs (`JAVA_HOME` of the matching JDK); filled in by the shell.
     pub env: BTreeMap<String, String>,
 }
@@ -924,6 +926,7 @@ pub(crate) fn load_with_repo(root: &Path, local_repo: Option<PathBuf>) -> MavenM
             profiles: pom.profiles.iter().map(|p| p.id.clone()).collect(),
             java_version: jv,
             command: wrapper(root, &dir),
+            options: Vec::new(),
             env: BTreeMap::new(),
         });
         for m in modules.into_iter().rev() {

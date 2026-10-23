@@ -401,7 +401,7 @@ export function mavenGoalConfig(
   model: Pick<MavenModel, "profiles">,
   options: MavenRunOptions,
 ): RunConfig {
-  const args = mavenArgs(goals, model, options);
+  const args = [...project.options, ...mavenArgs(goals, model, options)];
   return {
     id: `maven:goal:${project.pom}:${goals.join(" ")}`,
     name: mavenConfigName(project, goals),

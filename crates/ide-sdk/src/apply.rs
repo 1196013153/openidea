@@ -56,6 +56,42 @@ fn goroot(root: &Path, s: &Settings) -> Option<PathBuf> {
     setting_path(root, &s.languages.go.goroot)
 }
 
+/// The project JDK (`languages.java.jdk`): a JDK home, or its `bin/java`.
+pub fn project_jdk(root: &Path, s: &Settings) -> Option<crate::java::Jdk> {
+    let p = setting_path(root, &s.languages.java.jdk)?;
+    let jdk = crate::java::jdk_at(&p).or_else(|| crate::java::jdk_at(p.parent()?.parent()?));
+    if jdk.is_none() {
+        tracing::warn!("project JDK {} is not a JDK home", p.display());
+    }
+    jdk
+}
+
+/// `mvn` of the configured Maven home (`languages.java.maven.home`): the
+/// executable itself, `<home>/bin/mvn` or `<bin>/mvn`.
+pub fn maven_command(root: &Path, s: &Settings) -> Option<PathBuf> {
+    let p = setting_path(root, &s.languages.java.maven.home)?;
+    let name = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
+    let found = [p.clone(), p.join("bin").join(name), p.join(name)].into_iter().find(|c| c.is_file());
+    if found.is_none() {
+        tracing::warn!("Maven home {} has no {name}", p.display());
+    }
+    found
+}
+
+/// Maven options from settings, placed before the goals: `-s <settings.xml>`
+/// and `-Dmaven.repo.local=<dir>`.
+pub fn maven_options(root: &Path, s: &Settings) -> Vec<String> {
+    let m = &s.languages.java.maven;
+    let mut out = Vec::new();
+    if let Some(file) = setting_path(root, &m.user_settings) {
+        out.extend(["-s".to_owned(), file.to_string_lossy().into_owned()]);
+    }
+    if let Some(dir) = setting_path(root, &m.local_repository) {
+        out.push(format!("-Dmaven.repo.local={}", dir.to_string_lossy()));
+    }
+    out
+}
+
 /// TypeScript `lib` directory for the selected version; `None` = the server's bundled one.
 pub fn tsdk(root: &Path, s: &Settings) -> Option<PathBuf> {
     match s.languages.typescript.version.trim() {
@@ -206,7 +242,8 @@ const PY_RUNNERS: [&str; 3] = ["uv", "poetry", "pdm"];
 
 /// Points run configurations at the selected toolchains: Python configs use the
 /// project interpreter, npm scripts the chosen package manager and Node.js,
-/// cargo / go configs the selected toolchain.
+/// cargo / go configs the selected toolchain, Maven / Gradle the project JDK
+/// (and Maven the configured home and options).
 pub fn apply_to_run_configs(configs: &mut [RunConfig], root: &Path, s: &Settings) {
     let explicit_python = setting_path(root, &s.languages.python.interpreter);
     let python = python_interpreter(root, s);
@@ -215,6 +252,9 @@ pub fn apply_to_run_configs(configs: &mut [RunConfig], root: &Path, s: &Settings
     let rust = rust_bin(root, s);
     let go = goroot(root, s);
     let gopath = setting_path(root, &s.languages.go.gopath);
+    let jdk = project_jdk(root, s);
+    let mvn = maven_command(root, s);
+    let mvn_options = maven_options(root, s);
 
     for c in configs.iter_mut() {
         let mut path_dirs: Vec<PathBuf> = Vec::new();
@@ -279,6 +319,19 @@ pub fn apply_to_run_configs(configs: &mut [RunConfig], root: &Path, s: &Settings
                 }
                 if let Some(gopath) = &gopath {
                     c.env.entry("GOPATH".into()).or_insert_with(|| gopath.to_string_lossy().into_owned());
+                }
+            }
+            "maven" | "gradle" => {
+                if let Some(jdk) = &jdk {
+                    c.env.entry("JAVA_HOME".into()).or_insert_with(|| jdk.home.to_string_lossy().into_owned());
+                }
+                if c.kind == "maven" && c.detected {
+                    if let Some(mvn) = &mvn {
+                        c.command = mvn.to_string_lossy().into_owned();
+                    }
+                    if !c.args.starts_with(&mvn_options) {
+                        c.args.splice(0..0, mvn_options.iter().cloned());
+                    }
                 }
             }
             _ => {}

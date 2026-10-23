@@ -249,6 +249,7 @@ export const commands = {
 	 *  follow-up command. Edits the server requests arrive via `workspace/applyEdit`.
 	 */
 	lspExecuteCommand: (doc: DocId, command: Command) => typedError<null, IdeError>(__TAURI_INVOKE("lsp_execute_command", { doc, command })),
+	/**  Changes of every repository of the project. */
 	vcsStatus: () => typedError<FileStatus[], IdeError>(__TAURI_INVOKE("vcs_status")),
 	vcsBranchInfo: () => typedError<BranchInfo, IdeError>(__TAURI_INVOKE("vcs_branch_info")),
 	/**  Gutter change markers for a file, computed against its current (unsaved) text. */
@@ -2342,10 +2343,17 @@ export type JavaLaunchInfo = {
 
 export type JavaSettings = {
 	/**
+	 *  Project JDK home; empty = per module, the installed JDK matching the
+	 *  Java version it targets.
+	 */
+	jdk?: string,
+	/**
 	 *  Extra JVM options for the Java language server (jdtls), space-separated
 	 *  (VS Code's `java.jdt.ls.vmargs`).
 	 */
 	jdtlsVmArgs?: string,
+	/**  Build Tools › Maven. */
+	maven?: MavenSettings,
 };
 
 /**  Editor › Code Style › <Language> › Tabs and Indents (unset fields inherit). */
@@ -2635,8 +2643,20 @@ export type MavenProject = {
 	javaVersion: number | null,
 	/**  Maven launcher: the nearest `mvnw` up to the project root (absolute), else `mvn`. */
 	command: string,
+	/**  Options before the goals (`-s`, `-Dmaven.repo.local=`); filled in by the shell from settings. */
+	options: string[],
 	/**  Environment for runs (`JAVA_HOME` of the matching JDK); filled in by the shell. */
 	env: { [key in string]: string },
+};
+
+/**  Build Tools › Maven. */
+export type MavenSettings = {
+	/**  Maven home (or its `mvn` executable); empty = the project's `mvnw`, else `mvn` on `PATH`. */
+	home?: string,
+	/**  User `settings.xml` (`-s`); empty = `~/.m2/settings.xml`. */
+	userSettings?: string,
+	/**  Local repository (`-Dmaven.repo.local`); empty = from `settings.xml`. */
+	localRepository?: string,
 };
 
 export type MemoryCategory = 
@@ -3281,7 +3301,11 @@ export type Sdk = {
 /**  What [`detect`] looks for. */
 export type SdkKind = "python" | "node" | 
 /**  npm / pnpm / yarn executables. */
-"packageManager" | "rust" | "go" | "typeScript";
+"packageManager" | "rust" | "go" | "typeScript" | 
+/**  JDK homes. */
+"jdk" | 
+/**  Maven homes. */
+"maven";
 
 export type SearchEvent = { type: "file"; file: FileMatches } | { type: "done"; summary: SearchSummary };
 
