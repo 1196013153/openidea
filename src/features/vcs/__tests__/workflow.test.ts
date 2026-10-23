@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { messageProblems, wrapAtMargin } from "../CommitView";
 import { linkifyIssues } from "../issueLinks";
-import { isProtectedBranch, isPushRejected } from "../remoteUi";
+import { defaultPushChecked, isProtectedBranch, isPushRejected, pushCandidates, type RepoPush } from "../remoteUi";
+import { attentionRepo } from "../store";
 import { statusDecorations } from "../model";
 
 const cfg = { blankLineAfterSubject: true, limitSubject: true, subjectLimit: 10, limitBody: true, bodyLimit: 8 };
@@ -57,5 +58,36 @@ describe("git settings helpers", () => {
     const status = [{ path: "/p/src/a.ts", relPath: "src/a.ts", staged: null, unstaged: "modified" as const, renamedFrom: null }];
     expect(statusDecorations(status).get("/p/src/a.ts")?.propagate).toBe(true);
     expect(statusDecorations(status, false).get("/p/src/a.ts")?.propagate).toBeUndefined();
+  });
+});
+
+describe("several repositories", () => {
+  it("selects a repository that just stopped in an operation", () => {
+    expect(attentionRepo("/p", {}, { "/p/lib": "merge" })).toBe("/p/lib");
+    expect(attentionRepo("/p", { "/p/lib": "merge" }, { "/p/lib": "merge" })).toBeNull();
+    expect(attentionRepo("/p", {}, { "/p": "rebase", "/p/lib": "merge" })).toBeNull();
+    expect(attentionRepo("/p", {}, {})).toBeNull();
+  });
+
+  it("lists repositories with something to push", () => {
+    const branch = (head: string | null, upstream: string | null) => ({
+      head,
+      headCommit: "c1",
+      upstream,
+      ahead: 0,
+      behind: 0,
+      operation: null,
+    });
+    const commit = { id: "c1", shortId: "c1" } as RepoPush["commits"][number];
+    const repos: RepoPush[] = [
+      { root: "/p", branch: branch("main", "origin/main"), commits: [commit] },
+      { root: "/p/a", branch: branch("main", "origin/main"), commits: [] },
+      { root: "/p/b", branch: branch("feature", null), commits: [commit] },
+      { root: "/p/c", branch: branch(null, null), commits: [] },
+    ];
+    const candidates = pushCandidates(repos);
+    expect(candidates.map((r) => r.root)).toEqual(["/p", "/p/b"]);
+    expect([...defaultPushChecked(candidates, "/p")]).toEqual(["/p"]);
+    expect([...defaultPushChecked(candidates, "/p/b")]).toEqual(["/p", "/p/b"]);
   });
 });

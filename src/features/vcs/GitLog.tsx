@@ -48,7 +48,7 @@ import {
 } from "./logStore";
 import { KIND_COLOR, baseName, formatTime, relTo, type EffectiveKind } from "./model";
 import { clearConsole, useVcsConsole } from "./ops";
-import { loadBranches, useVcs } from "./store";
+import { currentRepo, loadBranches, useVcs } from "./store";
 import { checkoutBranch, loadFavoriteBranches, newBranch, useFavoriteBranches } from "./branchOps";
 import { branchMenu } from "./branchMenu";
 import { branchFolderKeys, branchGroupKeys, buildBranchTree, filterBranchTree, type BranchTreeNode } from "./branches";
@@ -711,7 +711,7 @@ function CommitDetails({ commits }: { commits: Commit[] }) {
   useEffect(() => {
     if (!selected) return;
     let alive = true;
-    call(commands.vcsCommitFiles(selected))
+    call(commands.vcsCommitFiles(currentRepo(), selected))
       .then((f) => alive && setFiles(f))
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {

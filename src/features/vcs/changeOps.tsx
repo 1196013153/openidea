@@ -4,14 +4,14 @@ import type { FileStatus } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { Checkbox, Dialog, Icon, fileIconName } from "@/ui";
 import { notifications } from "@/workbench/contributions";
-import { groupOf, planCommit, renamedFromPath } from "./changes";
+import { commitRepos, groupOf, planCommit, renamedFromPath } from "./changes";
 import { useChangelists, withListDefaults } from "./changelists";
 import { runCommitChecks } from "./commitChecks";
 import { rememberMessage, useCommit } from "./commitStore";
 import { confirmDialog, openDialog, promptText } from "./dialogs";
 import { KIND_COLOR, baseName, dirName, effectiveKind, relTo, stripSlash } from "./model";
 import { logConsole, runOp, saveAll } from "./ops";
-import { loadStashes, refreshNow, useVcs } from "./store";
+import { currentRepo, loadStashes, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
 
 export function firstLine(message: string): string {
@@ -48,18 +48,24 @@ export async function commitChanges(): Promise<string | undefined> {
   }
   const candidates = plan.included.map((f) => ({ path: stripSlash(f.path), exists: effectiveKind(f) !== "deleted" }));
   if (!(await runCommitChecks(candidates, amend))) return undefined;
+  // Like IDEA, every repository with included changes gets a commit with the same message.
+  const repos = commitRepos(plan.included, useVcs.getState().roots, currentRepo());
   const id = await runOp(
     amend ? "Amend commit" : "Commit",
     async () => {
       if (plan.unstage.length) await call(commands.vcsUnstage(plan.unstage));
       if (plan.stage.length) await call(commands.vcsStage(plan.stage));
-      return call(commands.vcsCommit(message.trim(), { amend, signOff, author: author.trim() || null, runHooks }));
+      const options = { amend, signOff, author: author.trim() || null, runHooks };
+      let id = "";
+      for (const repo of repos) id = await call(commands.vcsCommit(repo, message.trim(), options));
+      return id;
     },
     {
       success: () => {
         const n = plan.included.length;
         const summary = firstLine(message);
-        return `${n} file${n === 1 ? "" : "s"} ${amend ? "amended" : "committed"}${summary ? `: ${summary}` : ""}`;
+        const where = repos.length > 1 ? ` in ${repos.length} repositories` : "";
+        return `${n} file${n === 1 ? "" : "s"} ${amend ? "amended" : "committed"}${where}${summary ? `: ${summary}` : ""}`;
       },
     },
   );
@@ -221,7 +227,7 @@ export async function stashChanges() {
   });
   if (!r) return;
   await saveAll();
-  await runOp("Stash changes", () => call(commands.vcsStashPush(r.value || null, r.checked)), {
+  await runOp("Stash changes", () => call(commands.vcsStashPush(currentRepo(), r.value || null, r.checked)), {
     success: "Changes stashed",
   });
   void loadStashes().catch(() => undefined);
@@ -229,7 +235,7 @@ export async function stashChanges() {
 
 export async function applyStash(index: number, pop: boolean) {
   await saveAll();
-  await runOp(`${pop ? "Pop" : "Apply"} stash@{${index}}`, () => call(commands.vcsStashApply(index, pop)), {
+  await runOp(`${pop ? "Pop" : "Apply"} stash@{${index}}`, () => call(commands.vcsStashApply(currentRepo(), index, pop)), {
     success: pop ? `Unstashed stash@{${index}}` : `Applied stash@{${index}}`,
   });
   void loadStashes().catch((e) => logConsole("err", String(e)));
@@ -243,7 +249,7 @@ export async function dropStash(index: number, message: string) {
     danger: true,
   });
   if (!ok) return;
-  await runOp(`Drop stash@{${index}}`, () => call(commands.vcsStashDrop(index)), {
+  await runOp(`Drop stash@{${index}}`, () => call(commands.vcsStashDrop(currentRepo(), index)), {
     success: `Dropped stash@{${index}}`,
   });
   void loadStashes().catch((e) => logConsole("err", String(e)));

@@ -13,7 +13,7 @@ import { maybeEditorService, toolWindowService } from "@/workbench/contributions
 import { ask } from "@/workbench/messages";
 import { baseName, relTo } from "./model";
 import { logConsole } from "./ops";
-import { useVcs } from "./store";
+import { currentRepo, useVcs } from "./store";
 import styles from "./common.module.css";
 
 // ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
   }
 
   if (git.warnCrlf) {
-    const autocrlf = (await call(commands.vcsConfigGet("core.autocrlf")).catch(() => null))?.toLowerCase();
+    const autocrlf = (await call(commands.vcsConfigGet(currentRepo(), "core.autocrlf")).catch(() => null))?.toLowerCase();
     if (autocrlf !== "true" && autocrlf !== "input") {
       const crlf: string[] = [];
       for (const p of existing) {

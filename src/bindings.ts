@@ -251,37 +251,39 @@ export const commands = {
 	lspExecuteCommand: (doc: DocId, command: Command) => typedError<null, IdeError>(__TAURI_INVOKE("lsp_execute_command", { doc, command })),
 	/**  Changes of every repository of the project. */
 	vcsStatus: () => typedError<FileStatus[], IdeError>(__TAURI_INVOKE("vcs_status")),
-	vcsBranchInfo: () => typedError<BranchInfo, IdeError>(__TAURI_INVOKE("vcs_branch_info")),
+	/**  The project's repositories, the primary one first. */
+	vcsRoots: () => typedError<VcsRoot[], IdeError>(__TAURI_INVOKE("vcs_roots")),
+	vcsBranchInfo: (repo: string | null) => typedError<BranchInfo, IdeError>(__TAURI_INVOKE("vcs_branch_info", { repo })),
 	/**  Gutter change markers for a file, computed against its current (unsaved) text. */
 	vcsLineHunks: (path: string) => typedError<LineHunk[], IdeError>(__TAURI_INVOKE("vcs_line_hunks", { path })),
 	vcsFileAt: (path: string, rev: string | null) => typedError<string | null, IdeError>(__TAURI_INVOKE("vcs_file_at", { path, rev })),
 	vcsBlame: (path: string) => typedError<BlameLine[], IdeError>(__TAURI_INVOKE("vcs_blame", { path })),
-	vcsLog: (query: LogQuery) => typedError<Commit[], IdeError>(__TAURI_INVOKE("vcs_log", { query })),
-	vcsCommitFiles: (commit: string) => typedError<ChangedFile[], IdeError>(__TAURI_INVOKE("vcs_commit_files", { commit })),
-	vcsBranches: () => typedError<Branch[], IdeError>(__TAURI_INVOKE("vcs_branches")),
-	vcsStashes: () => typedError<Stash[], IdeError>(__TAURI_INVOKE("vcs_stashes")),
+	vcsLog: (repo: string | null, query: LogQuery) => typedError<Commit[], IdeError>(__TAURI_INVOKE("vcs_log", { repo, query })),
+	vcsCommitFiles: (repo: string | null, commit: string) => typedError<ChangedFile[], IdeError>(__TAURI_INVOKE("vcs_commit_files", { repo, commit })),
+	vcsBranches: (repo: string | null) => typedError<Branch[], IdeError>(__TAURI_INVOKE("vcs_branches", { repo })),
+	vcsStashes: (repo: string | null) => typedError<Stash[], IdeError>(__TAURI_INVOKE("vcs_stashes", { repo })),
 	vcsStage: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stage", { paths })),
 	vcsUnstage: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_unstage", { paths })),
 	vcsStagePatch: (patch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stage_patch", { patch })),
 	vcsDiscard: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_discard", { paths })),
-	vcsCommit: (message: string, options: CommitOptions) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_commit", { message, options })),
-	vcsCheckout: (branch: string, create: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_checkout", { branch, create })),
-	vcsDeleteBranch: (branch: string, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_delete_branch", { branch, force })),
+	vcsCommit: (repo: string | null, message: string, options: CommitOptions) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_commit", { repo, message, options })),
+	vcsCheckout: (repo: string | null, branch: string, create: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_checkout", { repo, branch, create })),
+	vcsDeleteBranch: (repo: string | null, branch: string, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_delete_branch", { repo, branch, force })),
 	/**  New Branch: creates `name` at `start` (HEAD when absent), optionally checking it out. */
-	vcsCreateBranch: (name: string, start: string | null, checkout: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_create_branch", { name, start, checkout })),
+	vcsCreateBranch: (repo: string | null, name: string, start: string | null, checkout: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_create_branch", { repo, name, start, checkout })),
 	/**
 	 *  Undo Commit: moves HEAD back to the commit's parent, keeping its changes staged.
 	 *  Returns the undone commit's message.
 	 */
-	vcsUndoCommit: (commit: string) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_undo_commit", { commit })),
-	vcsRenameBranch: (from: string, to: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_rename_branch", { from, to })),
-	vcsMerge: (branch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_merge", { branch })),
-	vcsRebase: (onto: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_rebase", { onto })),
-	vcsStashPush: (message: string | null, includeUntracked: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_push", { message, includeUntracked })),
-	vcsStashApply: (index: number, pop: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_apply", { index, pop })),
-	vcsStashDrop: (index: number) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_drop", { index })),
+	vcsUndoCommit: (repo: string | null, commit: string) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_undo_commit", { repo, commit })),
+	vcsRenameBranch: (repo: string | null, from: string, to: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_rename_branch", { repo, from, to })),
+	vcsMerge: (repo: string | null, branch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_merge", { repo, branch })),
+	vcsRebase: (repo: string | null, onto: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_rebase", { repo, onto })),
+	vcsStashPush: (repo: string | null, message: string | null, includeUntracked: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_push", { repo, message, includeUntracked })),
+	vcsStashApply: (repo: string | null, index: number, pop: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_apply", { repo, index, pop })),
+	vcsStashDrop: (repo: string | null, index: number) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_drop", { repo, index })),
 	/**  Network operation; progress lines stream through `on_output`. Cancellable. */
-	vcsRemote: (request: RequestId, op: RemoteOp, onOutput: Channel<string>) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_remote", { request, op, onOutput })),
+	vcsRemote: (repo: string | null, request: RequestId, op: RemoteOp, onOutput: Channel<string>) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_remote", { repo, request, op, onOutput })),
 	vcsConflictVersions: (path: string) => typedError<ConflictVersions, IdeError>(__TAURI_INVOKE("vcs_conflict_versions", { path })),
 	vcsDiffText: (path: string, staged: boolean) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_diff_text", { path, staged })),
 	/**  Line hunks between two arbitrary texts (diff viewer, commit dialog). */
@@ -301,16 +303,16 @@ export const commands = {
 	/**  The auto-detected git executable (shown as the field's placeholder). */
 	vcsDetectedGit: () => __TAURI_INVOKE<string | null>("vcs_detected_git"),
 	/**  `git config --get <key>` in the project repository; `None` when unset. */
-	vcsConfigGet: (key: string) => typedError<string | null, IdeError>(__TAURI_INVOKE("vcs_config_get", { key })),
+	vcsConfigGet: (repo: string | null, key: string) => typedError<string | null, IdeError>(__TAURI_INVOKE("vcs_config_get", { repo, key })),
 	/**
 	 *  Local history operation that may take a while (hooks, large checkouts); git's
 	 *  output streams through `on_output`. Cancellable.
 	 */
-	vcsOperation: (request: RequestId, op: GitOperation, onOutput: Channel<string>) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_operation", { request, op, onOutput })),
-	vcsCreateTag: (name: string, commit: string, message: string | null, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_create_tag", { name, commit, message, force })),
-	vcsTags: () => typedError<string[], IdeError>(__TAURI_INVOKE("vcs_tags")),
+	vcsOperation: (repo: string | null, request: RequestId, op: GitOperation, onOutput: Channel<string>) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_operation", { repo, request, op, onOutput })),
+	vcsCreateTag: (repo: string | null, name: string, commit: string, message: string | null, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_create_tag", { repo, name, commit, message, force })),
+	vcsTags: (repo: string | null) => typedError<string[], IdeError>(__TAURI_INVOKE("vcs_tags", { repo })),
 	/**  Compare with Local: tracked files that differ between `rev` and the working tree. */
-	vcsDiffWithWorktree: (rev: string) => typedError<ChangedFile[], IdeError>(__TAURI_INVOKE("vcs_diff_with_worktree", { rev })),
+	vcsDiffWithWorktree: (repo: string | null, rev: string) => typedError<ChangedFile[], IdeError>(__TAURI_INVOKE("vcs_diff_with_worktree", { repo, rev })),
 	vcsCreatePatch: (source: PatchSource) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_create_patch", { source })),
 	vcsPatchPreview: (patch: string) => typedError<PatchFile[], IdeError>(__TAURI_INVOKE("vcs_patch_preview", { patch })),
 	vcsApplyPatch: (patch: string) => typedError<ApplyOutcome, IdeError>(__TAURI_INVOKE("vcs_apply_patch", { patch })),
@@ -3896,6 +3898,14 @@ export type Variable = {
 export type VcsConfirmationSettings = {
 	onCreate?: string,
 	onDelete?: string,
+};
+
+/**  A repository of the project (IDEA's VCS root). */
+export type VcsRoot = {
+	/**  Worktree root. */
+	root: IpcPath,
+	/**  Merge / rebase / cherry-pick / revert in progress. */
+	operation: string | null,
 };
 
 /**  Version Control (main page) and its sub-pages. */

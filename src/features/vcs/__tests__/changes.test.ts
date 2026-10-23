@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { FileStatus } from "@/bindings";
-import { aggregateCheck, buildChangeTree, initialCheck, planCommit, type CheckState, type ChangeNode } from "../changes";
+import {
+  aggregateCheck,
+  buildChangeTree,
+  commitRepos,
+  initialCheck,
+  planCommit,
+  type CheckState,
+  type ChangeNode,
+} from "../changes";
 
 const fs = (rel: string, staged: FileStatus["staged"], unstaged: FileStatus["unstaged"]): FileStatus => ({
   path: `/r/${rel}`,
@@ -51,6 +59,48 @@ describe("buildChangeTree", () => {
       "  README.md",
     ]);
     expect(changes.children![0]!.files).toHaveLength(3);
+  });
+});
+
+describe("several repositories", () => {
+  const nested = [...status, fs("libs/core/Lib.kt", null, "modified"), fs("libs/core/new.txt", null, "untracked")];
+  const repos = ["/r", "/r/libs/core"];
+
+  it("groups each change group by repository", () => {
+    expect(shape(buildChangeTree(nested, "/r", false, undefined, repos))).toEqual([
+      "Merge Conflicts",
+      "  r",
+      "    conf.yml",
+      "Changes",
+      "  r",
+      "    App.kt",
+      "    AppTest.kt",
+      "    Partial.kt",
+      "    README.md",
+      "  libs/core",
+      "    Lib.kt",
+      "Unversioned Files",
+      "  r",
+      "    notes.txt",
+      "  libs/core",
+      "    new.txt",
+    ]);
+    const changes = buildChangeTree(nested, "/r", true, undefined, repos)[1]!;
+    expect(changes.children!.map((n) => [n.label, n.path])).toEqual([
+      ["r", "/r"],
+      ["libs/core", "/r/libs/core"],
+    ]);
+    expect(shape(changes.children![1]!.children!)).toEqual(["Lib.kt"]);
+    // One repository: no repository level.
+    const single = buildChangeTree(status, "/r", false, undefined, ["/r"]);
+    expect(shape(single)).toEqual(shape(buildChangeTree(status, "/r", false)));
+  });
+
+  it("commits every repository with included changes, the selected one last", () => {
+    const included = [nested[0]!, nested[7]!];
+    expect(commitRepos(included, repos, "/r")).toEqual(["/r/libs/core", "/r"]);
+    expect(commitRepos(included.slice(0, 1), repos, "/r/libs/core")).toEqual(["/r"]);
+    expect(commitRepos([], repos, "/r/libs/core")).toEqual(["/r/libs/core"]);
   });
 });
 

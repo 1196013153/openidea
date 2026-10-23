@@ -43,7 +43,7 @@ import { KIND_COLOR, KIND_LABEL, formatTime, stashLabel, stripSlash } from "./mo
 import { call, commands } from "@/platform/ipc";
 import { OperationBanner } from "./operations";
 import { ShelfPanel, loadShelves, useShelf } from "./shelf";
-import { loadStashes, refreshNow, useVcs } from "./store";
+import { currentRepo, loadStashes, refreshNow, useVcs } from "./store";
 import styles from "./CommitView.module.css";
 
 /** MIME type of changed files dragged between change lists (absolute paths, newline-separated). */
@@ -243,7 +243,11 @@ function ChangesPanel() {
   const treeRef = useRef<TreeHandle>(null);
   const viewRef = useRef<HTMLButtonElement>(null);
 
-  const roots = useMemo(() => buildChangeTree(status, root, groupByDir, lists), [status, root, groupByDir, lists]);
+  const repos = useVcs((s) => s.roots);
+  const roots = useMemo(
+    () => buildChangeTree(status, root, groupByDir, lists, repos),
+    [status, root, groupByDir, lists, repos],
+  );
   const [byKey, parents] = useMemo(() => {
     const m = new Map<string, ChangeNode>();
     const up = new Map<string, string>();
@@ -556,7 +560,15 @@ function CommitMessage({ included }: { included: number }) {
     if (v && !useCommit.getState().message.trim()) {
       try {
         const [last] = await call(
-          commands.vcsLog({ branch: "HEAD", path: null, author: null, text: null, range: null, skip: 0, limit: 1 }),
+          commands.vcsLog(currentRepo(), {
+            branch: "HEAD",
+            path: null,
+            author: null,
+            text: null,
+            range: null,
+            skip: 0,
+            limit: 1,
+          }),
         );
         if (last && !useCommit.getState().message.trim()) {
           amendMessage.current = last.message;

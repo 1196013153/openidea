@@ -92,6 +92,20 @@ export function relTo(root: string, path: string): string {
   return path.startsWith(root + "/") ? path.slice(root.length + 1) : path;
 }
 
+/** The innermost of `roots` (repository roots) containing `path`. */
+export function rootOf(path: string, roots: readonly string[]): string | null {
+  const p = stripSlash(path);
+  let best: string | null = null;
+  for (const r of roots) if ((p === r || p.startsWith(`${r}/`)) && (!best || r.length > best.length)) best = r;
+  return best;
+}
+
+/** Repository name for display: its folder relative to the project, else its folder name. */
+export function repoLabel(root: string, projectRoot: string | null): string {
+  if (projectRoot && root.startsWith(`${projectRoot}/`)) return root.slice(projectRoot.length + 1);
+  return baseName(root) || root;
+}
+
 export function baseName(path: string): string {
   const p = stripSlash(path);
   const i = p.lastIndexOf("/");

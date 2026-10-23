@@ -129,6 +129,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         lsp::apply_workspace_edit,
         lsp::lsp_execute_command,
         vcs::vcs_status,
+        vcs::vcs_roots,
         vcs::vcs_branch_info,
         vcs::vcs_line_hunks,
         vcs::vcs_file_at,

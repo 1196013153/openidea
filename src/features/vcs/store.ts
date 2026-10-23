@@ -2,6 +2,11 @@
  * Repository state shared by all VCS views: working tree status, HEAD /
  * upstream info, branches and stashes. Refreshed (debounced) on `vcsChanged`
  * and `fsChanged` events and after every operation.
+ *
+ * A project may hold several repositories (IDEA's VCS roots: nested clones,
+ * submodules). Status covers all of them; branch info, branches and stashes are
+ * those of the selected repository (`repo`), which branch / log / remote
+ * operations act on.
  */
 import { onWorkflowSettingsChange, workflowSettings } from "@/platform/workflowSettings";
 import { create } from "zustand";
@@ -10,12 +15,18 @@ import { call, commands, isTauri, onIdeEvent } from "@/platform/ipc";
 import { setContext } from "@/platform/context";
 import { useProject } from "@/platform/project";
 import { setFileDecorations } from "@/workbench/contributions";
-import { effectiveKind, statusDecorations, stripSlash } from "./model";
+import { effectiveKind, repoLabel, rootOf, statusDecorations, stripSlash } from "./model";
 
 export interface VcsState {
   /** The open project is a git repository. */
   available: boolean;
   root: string | null;
+  /** Repository roots, the project's own repository first. */
+  roots: string[];
+  /** Root → merge / rebase / cherry-pick / revert in progress there. */
+  operations: Record<string, string>;
+  /** The selected repository's root (branch widget, log, push…). */
+  repo: string | null;
   status: FileStatus[];
   /** `status` reflects the repository (false until the first refresh). */
   statusLoaded: boolean;
@@ -37,6 +48,9 @@ export interface VcsState {
 const initial: VcsState = {
   available: false,
   root: null,
+  roots: [],
+  operations: {},
+  repo: null,
   status: [],
   statusLoaded: false,
   byPath: new Map(),
@@ -52,6 +66,42 @@ const initial: VcsState = {
 };
 
 export const useVcs = create<VcsState>(() => ({ ...initial }));
+
+/** Root of the selected repository; `null` = the project's primary one. */
+export function currentRepo(): string | null {
+  return useVcs.getState().repo;
+}
+
+/** Root of the innermost repository containing `path`. */
+export function repoOf(path: string, roots: readonly string[] = useVcs.getState().roots): string | null {
+  return rootOf(path, roots);
+}
+
+/** Repository name for display. */
+export function repoName(root: string): string {
+  return repoLabel(root, useVcs.getState().root);
+}
+
+/**
+ * A repository that just stopped in a merge / rebase / cherry-pick / revert (e.g. on
+ * conflicts after Update Project) while `shown` has none in progress: it is selected so
+ * the banner, the branch widget and Continue / Abort act on it.
+ */
+export function attentionRepo(
+  shown: string | null,
+  before: Record<string, string>,
+  now: Record<string, string>,
+): string | null {
+  if (shown && now[shown]) return null;
+  return Object.keys(now).find((root) => !before[root]) ?? null;
+}
+
+/** Selects the repository branch / log / remote operations act on. */
+export function selectRepo(root: string): Promise<void> {
+  if (useVcs.getState().repo === root) return Promise.resolve();
+  useVcs.setState({ repo: root, branches: [], branchesLoaded: false, stashes: [], stashesLoaded: false });
+  return refreshNow();
+}
 
 export function conflictedFiles(status: readonly FileStatus[] = useVcs.getState().status): FileStatus[] {
   return status.filter((f) => effectiveKind(f) === "conflicted");
@@ -98,14 +148,27 @@ export function refreshNow(): Promise<void> {
     useVcs.setState({ loading: true });
     try {
       const s = useVcs.getState();
-      const [status, branch, branches, stashes] = await Promise.all([
+      const [vcsRoots, status, branch, branches, stashes] = await Promise.all([
+        call(commands.vcsRoots()),
         call(commands.vcsStatus()),
-        call(commands.vcsBranchInfo()),
-        s.branchesLoaded ? call(commands.vcsBranches()) : Promise.resolve(s.branches),
-        s.stashesLoaded ? call(commands.vcsStashes()) : Promise.resolve(s.stashes),
+        call(commands.vcsBranchInfo(s.repo)),
+        s.branchesLoaded ? call(commands.vcsBranches(s.repo)) : Promise.resolve(s.branches),
+        s.stashesLoaded ? call(commands.vcsStashes(s.repo)) : Promise.resolve(s.stashes),
       ]);
+      const roots = vcsRoots.map((r) => r.root);
+      const operations = Object.fromEntries(vcsRoots.filter((r) => r.operation).map((r) => [r.root, r.operation!]));
+      // `null` (before the first refresh) is the primary repository, listed first.
+      const shown = s.repo && roots.includes(s.repo) ? s.repo : (roots[0] ?? null);
+      const repo = attentionRepo(shown, s.operations, operations) ?? shown;
+      useVcs.setState({ operations });
+      if (repo !== s.repo || roots.join("\n") !== s.roots.join("\n")) useVcs.setState({ roots, repo });
       applyStatus(status, branch);
       useVcs.setState({ branches, stashes, error: null });
+      // Branch info and branches above are of another repository: load the selected one's.
+      if (repo !== shown || (s.repo && repo !== s.repo)) {
+        useVcs.setState({ branchesLoaded: false, stashesLoaded: false });
+        void refreshNow();
+      }
     } catch (e) {
       useVcs.setState({ error: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -127,19 +190,30 @@ export function applyStatus(status: FileStatus[], branch: BranchInfo | null) {
 }
 
 export async function loadBranches(): Promise<Branch[]> {
-  const branches = await call(commands.vcsBranches());
+  const branches = await call(commands.vcsBranches(currentRepo()));
   useVcs.setState({ branches, branchesLoaded: true });
   return branches;
 }
 
 export async function loadStashes(): Promise<Stash[]> {
-  const stashes = await call(commands.vcsStashes());
+  const stashes = await call(commands.vcsStashes(currentRepo()));
   useVcs.setState({ stashes, stashesLoaded: true });
   return stashes;
 }
 
 export function statusOf(path: string): FileStatus | undefined {
   return useVcs.getState().byPath.get(stripSlash(path));
+}
+
+/** Repositories found below a project that is not itself under git (scanned in the background). */
+async function discoverRoots() {
+  const root = useVcs.getState().root;
+  if (!root || !isTauri()) return;
+  const roots = await call(commands.vcsRoots()).catch(() => []);
+  if (!roots.length || useVcs.getState().root !== root || useVcs.getState().available) return;
+  useVcs.setState({ available: true });
+  setContext("vcsAvailable", true);
+  void refreshNow();
 }
 
 /** Tracks the open project and backend events. Returns a disposer. */
@@ -154,12 +228,16 @@ export function installVcsStore(): () => void {
     setContext("vcsAvailable", available);
     setFileDecorations("vcs", new Map());
     if (available && isTauri()) void refreshNow();
+    else if (project) void discoverRoots();
   };
   onProject();
   const unsubProject = useProject.subscribe((s, prev) => {
     if (s.project !== prev.project) onProject();
   });
-  const offVcs = onIdeEvent("vcsChanged", () => scheduleRefresh(200));
+  const offVcs = onIdeEvent("vcsChanged", () => {
+    if (useVcs.getState().available) scheduleRefresh(200);
+    else void discoverRoots();
+  });
   const offFs = onIdeEvent("fsChanged", () => scheduleRefresh(250));
   const offSettings = onWorkflowSettingsChange(
     (s) => s.vcs.showDirtyDirectories,

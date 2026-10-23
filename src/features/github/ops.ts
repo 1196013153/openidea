@@ -89,7 +89,7 @@ export async function createPullRequest() {
   let needsPush = true;
   let title = "";
   try {
-    const info = await call(commands.vcsBranchInfo());
+    const info = await call(commands.vcsBranchInfo(null));
     head = info.head;
     needsPush = !info.upstream || info.ahead > 0;
     if (head) title = head.replace(/^[^/]+\//, "").replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());

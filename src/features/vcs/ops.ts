@@ -9,7 +9,7 @@ import { call, commands, emitLocalIdeEvent, isCancelled, nextRequestId } from "@
 import { editorsFor } from "@/editor/api";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
 import { progressFraction } from "./model";
-import { refreshNow, useVcs } from "./store";
+import { currentRepo, refreshNow, repoName, useVcs } from "./store";
 
 // ---------------------------------------------------------------------------
 // Console (Git tool window → Console tab)
@@ -130,8 +130,21 @@ export function cancelRemote() {
   if (activeRemote !== null) void commands.cancelRequest(activeRemote);
 }
 
-/** Runs fetch / pull / push with progress in the status bar and output in the console. */
-export async function runRemote(op: RemoteOp, detail?: string): Promise<boolean> {
+/** Every repository of the project (Fetch and Update Project act on all of them, as in IDEA). */
+export function allRepos(): Array<string | null> {
+  const roots = useVcs.getState().roots;
+  return roots.length ? roots : [null];
+}
+
+/**
+ * Runs fetch / pull / push with progress in the status bar and output in the console,
+ * in each of `repos` (default: the selected repository) in turn.
+ */
+export async function runRemote(
+  op: RemoteOp,
+  detail?: string,
+  repos: ReadonlyArray<string | null> = [currentRepo()],
+): Promise<boolean> {
   if (useVcs.getState().remoteBusy) {
     notifications().notify({ group: "vcs", level: "warning", title: "Another remote operation is in progress" });
     return false;
@@ -163,7 +176,10 @@ export async function runRemote(op: RemoteOp, detail?: string): Promise<boolean>
     task(text || null, progressFraction(text), false);
   };
   try {
-    await call(commands.vcsRemote(request, op, channel));
+    for (const repo of repos) {
+      if (repos.length > 1 && repo) logConsole("info", repoName(repo));
+      await call(commands.vcsRemote(repo, request, op, channel));
+    }
     lastRemoteError = null;
     notifications().notify({
       group: "vcs",
@@ -239,7 +255,7 @@ export async function runGitOperation(op: GitOperation, opts: GitOperationOption
     task(line.trim() || null, false);
   };
   try {
-    await call(commands.vcsOperation(request, op, channel));
+    await call(commands.vcsOperation(currentRepo(), request, op, channel));
     let success = opts.success;
     if (typeof success === "function") {
       await refreshNow();

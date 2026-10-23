@@ -42,7 +42,7 @@ import {
 } from "./rebase";
 import { showApplyPatch, showCreatePatchForChanges, showCreatePatchForCommits } from "./patches";
 import { deleteShelf, renameShelf, shelveChanges, showShelf, unshelve, useShelf } from "./shelf";
-import { useVcs } from "./store";
+import { currentRepo, useVcs } from "./store";
 
 const VCS = "vcsAvailable";
 const IN_GIT_LOG = "vcsAvailable && activeToolWindow == git";
@@ -83,7 +83,7 @@ function withCommits(fn: (cs: Commit[]) => unknown) {
 async function openCommitInBrowser(c: Commit) {
   const upstream = useVcs.getState().branch?.upstream;
   const remote = upstream ? upstream.slice(0, upstream.indexOf("/")) : "origin";
-  const url = await call(commands.vcsConfigGet(`remote.${remote}.url`)).catch(() => null);
+  const url = await call(commands.vcsConfigGet(currentRepo(), `remote.${remote}.url`)).catch(() => null);
   const page = url ? commitWebUrl(url, c.id) : null;
   if (page) await openUrl(page);
   else notifications().notify({ group: "vcs", level: "warning", title: `No web URL for remote '${remote}'` });
@@ -122,7 +122,7 @@ function shelfArg(arg: unknown) {
 
 async function checkoutCommit(c: Commit) {
   await saveAll();
-  await runOp(`Checkout ${c.shortId}`, () => call(commands.vcsCheckout(c.id, false)), {
+  await runOp(`Checkout ${c.shortId}`, () => call(commands.vcsCheckout(currentRepo(), c.id, false)), {
     success: `Checked out ${c.shortId} (detached HEAD)`,
   });
 }

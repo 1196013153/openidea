@@ -14,7 +14,7 @@ import { openDialog, promptText } from "./dialogs";
 import { KIND_COLOR, baseName, dirName } from "./model";
 import { runGitOperation, runOp } from "./ops";
 import { reloadLog, useGitLog } from "./logStore";
-import { conflictedFiles, refreshNow, useVcs } from "./store";
+import { conflictedFiles, currentRepo, refreshNow, repoOf, useVcs } from "./store";
 import styles from "./common.module.css";
 
 // ---------------------------------------------------------------------------
@@ -84,7 +84,10 @@ export async function controlOperation(control: "continue" | "skip" | "abort", e
   await refreshNow();
   const op = inProgress();
   if (!op || (expected && op !== expected)) return notInProgress(expected);
-  if (control === "continue" && conflictedFiles().length) {
+  // Only the selected repository's conflicts block it (others may be in their own merge).
+  const repo = currentRepo();
+  const conflicts = conflictedFiles().filter((f) => !repo || repoOf(f.path) === repo);
+  if (control === "continue" && conflicts.length) {
     notifications().notify({ group: "vcs", level: "warning", title: "Resolve all conflicts before continuing" });
     void executeAction("vcs.resolveConflicts");
     return;
@@ -301,7 +304,7 @@ export function validateTagName(name: string, existing: readonly string[] = []):
 
 /** Log › New Tag…: a lightweight tag on the selected commit. */
 export async function newTagOn(commit: Commit) {
-  const existing = await call(commands.vcsTags()).catch(() => [] as string[]);
+  const existing = await call(commands.vcsTags(currentRepo())).catch(() => [] as string[]);
   const r = await promptText({
     title: `Create New Tag On ${short(commit.id)}`,
     label: "Enter the name of new tag:",
@@ -310,7 +313,8 @@ export async function newTagOn(commit: Commit) {
     validate: (v) => validateTagName(v, existing),
   });
   if (!r) return;
-  const ok = await runOp(`Create tag ${r.value}`, () => call(commands.vcsCreateTag(r.value, commit.id, null, false)), {
+  const create = () => call(commands.vcsCreateTag(currentRepo(), r.value, commit.id, null, false));
+  const ok = await runOp(`Create tag ${r.value}`, create, {
     success: `Created tag ${r.value} on ${short(commit.id)}`,
   });
   // Tags are not part of the refs signature that reloads the log.
@@ -329,7 +333,7 @@ function TagDialog({ onClose }: { onClose: () => void }) {
   const [force, setForce] = useState(false);
   const [existing, setExisting] = useState<string[]>([]);
   useEffect(() => {
-    void call(commands.vcsTags()).then(setExisting, () => undefined);
+    void call(commands.vcsTags(currentRepo())).then(setExisting, () => undefined);
   }, []);
   const error = validateTagName(name, force ? [] : existing);
   const run = async () => {
@@ -338,7 +342,7 @@ function TagDialog({ onClose }: { onClose: () => void }) {
     const tag = name.trim();
     const ok = await runOp(
       `Create tag ${tag}`,
-      () => call(commands.vcsCreateTag(tag, commit.trim() || "HEAD", message || null, force)),
+      () => call(commands.vcsCreateTag(currentRepo(), tag, commit.trim() || "HEAD", message || null, force)),
       { success: `Created tag ${tag}` },
     );
     if (ok !== undefined && useGitLog.getState().commits.length) void reloadLog();
@@ -405,7 +409,7 @@ function CompareWithLocalDialog({ rev, label, onClose }: { rev: string; label: s
   const [active, setActive] = useState(0);
   useEffect(() => {
     let alive = true;
-    call(commands.vcsDiffWithWorktree(rev))
+    call(commands.vcsDiffWithWorktree(currentRepo(), rev))
       .then((f) => alive && setFiles(f))
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {

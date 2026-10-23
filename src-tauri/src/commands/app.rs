@@ -71,7 +71,7 @@ pub async fn open_project(window: Window, path: PathBuf) -> IdeResult<ProjectInf
 fn project_info(project: &crate::state::Project) -> ProjectInfo {
     ProjectInfo {
         name: project.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-        is_git: project.repo.lock().is_some(),
+        is_git: !project.repos.read().is_empty(),
         settings: project.settings.effective(),
         root: project.root.clone().into(),
     }

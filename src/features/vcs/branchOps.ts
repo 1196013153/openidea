@@ -7,7 +7,7 @@ import { notifications } from "@/workbench/contributions";
 import { isFavoriteBranch, pushRecent, shortRemoteName } from "./branches";
 import { confirmDialog, promptText } from "./dialogs";
 import { runOp, runRemote, saveAll } from "./ops";
-import { conflictedFiles, refreshNow, useVcs } from "./store";
+import { conflictedFiles, currentRepo, refreshNow, useVcs } from "./store";
 
 const recentKey = () => `openidea.vcs.recentBranches:${useVcs.getState().root ?? ""}`;
 
@@ -46,7 +46,7 @@ export function validateBranchName(name: string): string | null {
 export async function checkoutBranch(name: string) {
   const previous = useVcs.getState().branch?.head;
   await saveAll();
-  const ok = await runOp(`Checkout ${name}`, () => call(commands.vcsCheckout(name, false)), {
+  const ok = await runOp(`Checkout ${name}`, () => call(commands.vcsCheckout(currentRepo(), name, false)), {
     success: () => `Checked out ${useVcs.getState().branch?.head ?? name}`,
   });
   if (ok !== undefined) {
@@ -72,7 +72,8 @@ export async function newBranch(from?: string) {
   const checkout = r.checked;
   const previous = useVcs.getState().branch?.head;
   if (checkout) await saveAll();
-  const ok = await runOp(`Create branch ${r.value}`, () => call(commands.vcsCreateBranch(r.value, from ?? null, checkout)), {
+  const create = () => call(commands.vcsCreateBranch(currentRepo(), r.value, from ?? null, checkout));
+  const ok = await runOp(`Create branch ${r.value}`, create, {
     success: checkout ? `Created and checked out ${r.value}` : `Created branch ${r.value}`,
   });
   if (ok !== undefined && checkout) {
@@ -91,7 +92,7 @@ export async function checkoutRevision() {
   });
   if (!r) return;
   await saveAll();
-  await runOp(`Checkout ${r.value}`, () => call(commands.vcsCheckout(r.value, false)), {
+  await runOp(`Checkout ${r.value}`, () => call(commands.vcsCheckout(currentRepo(), r.value, false)), {
     success: `Checked out ${r.value}`,
   });
 }
@@ -116,7 +117,7 @@ async function openConflictsInstead(): Promise<boolean> {
 export async function mergeIntoCurrent(branch: string) {
   const current = useVcs.getState().branch?.head ?? "HEAD";
   await saveAll();
-  await runOp(`Merge ${branch} into ${current}`, () => call(commands.vcsMerge(branch)), {
+  await runOp(`Merge ${branch} into ${current}`, () => call(commands.vcsMerge(currentRepo(), branch)), {
     success: `Merged ${branch} into ${current}`,
     errorActions: conflictActions,
     onError: openConflictsInstead,
@@ -126,7 +127,7 @@ export async function mergeIntoCurrent(branch: string) {
 export async function rebaseOnto(branch: string) {
   const current = useVcs.getState().branch?.head ?? "HEAD";
   await saveAll();
-  await runOp(`Rebase ${current} onto ${branch}`, () => call(commands.vcsRebase(branch)), {
+  await runOp(`Rebase ${current} onto ${branch}`, () => call(commands.vcsRebase(currentRepo(), branch)), {
     success: `Rebased ${current} onto ${branch}`,
     errorActions: conflictActions,
     onError: openConflictsInstead,
@@ -144,7 +145,7 @@ export async function renameBranch(name: string) {
   });
   if (!r) return;
   const to = r.value.trim();
-  const ok = await runOp(`Rename branch ${name}`, () => call(commands.vcsRenameBranch(name, to)), {
+  const ok = await runOp(`Rename branch ${name}`, () => call(commands.vcsRenameBranch(currentRepo(), name, to)), {
     success: `Renamed branch ${name} to ${to}`,
   });
   if (ok !== undefined) {
@@ -164,7 +165,7 @@ export async function deleteBranch(name: string) {
     danger: true,
   });
   if (!ok) return;
-  await runOp(`Delete branch ${name}`, () => call(commands.vcsDeleteBranch(name, false)), {
+  await runOp(`Delete branch ${name}`, () => call(commands.vcsDeleteBranch(currentRepo(), name, false)), {
     success: `Deleted branch ${name}`,
     errorActions: (m) =>
       /not fully merged/i.test(m)
@@ -172,7 +173,7 @@ export async function deleteBranch(name: string) {
             {
               label: "Force Delete",
               run: () =>
-                void runOp(`Force delete ${name}`, () => call(commands.vcsDeleteBranch(name, true)), {
+                void runOp(`Force delete ${name}`, () => call(commands.vcsDeleteBranch(currentRepo(), name, true)), {
                   success: `Deleted branch ${name}`,
                 }),
             },
@@ -198,7 +199,7 @@ export async function checkoutAndRebase(name: string) {
   const current = useVcs.getState().branch?.head;
   if (!current) return;
   await saveAll();
-  const ok = await runOp(`Checkout ${name}`, () => call(commands.vcsCheckout(name, false)));
+  const ok = await runOp(`Checkout ${name}`, () => call(commands.vcsCheckout(currentRepo(), name, false)));
   if (ok === undefined) return;
   rememberBranch(current);
   rememberBranch(name);

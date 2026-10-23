@@ -6,7 +6,7 @@ import { call, commands } from "@/platform/ipc";
 import { Dialog, List, Spinner, Tabs, T } from "@/ui";
 import { openDialog } from "./dialogs";
 import { formatTime } from "./model";
-import { useVcs } from "./store";
+import { currentRepo, useVcs } from "./store";
 import styles from "./common.module.css";
 
 const LIMIT = 2000;
@@ -14,7 +14,7 @@ const LIMIT = 2000;
 /** Commits reachable from `to` but not from `from` (git's `from..to`), computed by git, unbounded by any window. */
 const commitsBetween = (from: string, to: string) =>
   call(
-    commands.vcsLog({
+    commands.vcsLog(currentRepo(), {
       branch: null,
       path: null,
       author: null,
