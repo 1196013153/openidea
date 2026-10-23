@@ -254,6 +254,7 @@ impl AppState {
                         server_root,
                         ide_sdk::lombok::agent_in_args(cfg.args.iter().map(String::as_str)),
                         ide_tools::managed_bundle(&data_dir, "lombok"),
+                        ide_sdk::apply::maven_local_repository(&root, &effective),
                     );
                     if let Some(problem) = lombok.problem() {
                         tracing::warn!("{problem}");

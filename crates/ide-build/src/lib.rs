@@ -18,7 +18,7 @@ pub use sync::{SyncOptions, SyncProgress, sync_gradle, sync_maven};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -36,9 +36,10 @@ pub struct BuildModel {
 }
 
 /// Static model of the builds under `root`, merged with the sync results cached in `cache_dir`.
-pub fn load(root: &Path, cache_dir: &Path) -> BuildModel {
+/// Parent POMs are looked up in `maven_repo` (the configured local repository), else the default one.
+pub fn load(root: &Path, cache_dir: &Path, maven_repo: Option<PathBuf>) -> BuildModel {
     let maven = maven::is_maven_project(root).then(|| {
-        let mut m = maven::load(root);
+        let mut m = maven::load_with_repo(root, maven_repo.or_else(maven::default_local_repo));
         sync::apply_maven_cache(root, cache_dir, &mut m);
         m
     });
@@ -68,10 +69,10 @@ mod tests {
         let cache = tmp.path().join("cache");
         let root = tmp.path().join("p");
         std::fs::create_dir_all(root.join("svc")).unwrap();
-        assert_eq!(load(&root, &cache), BuildModel::default());
+        assert_eq!(load(&root, &cache, None), BuildModel::default());
         std::fs::write(root.join("svc/pom.xml"), "<project><artifactId>svc</artifactId></project>").unwrap();
         std::fs::write(root.join("build.gradle"), "").unwrap();
-        let m = load(&root, &cache);
+        let m = load(&root, &cache, None);
         assert_eq!(m.maven.unwrap().projects[0].pom, "svc/pom.xml");
         assert_eq!(m.gradle.unwrap().projects[0].path, ":");
         assert!(affects_build(Path::new("a/pom.xml")) && affects_build(Path::new("settings.gradle.kts")));

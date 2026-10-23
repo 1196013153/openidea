@@ -56,10 +56,10 @@ fn goroot(root: &Path, s: &Settings) -> Option<PathBuf> {
     setting_path(root, &s.languages.go.goroot)
 }
 
-/// The project JDK (`languages.java.jdk`): a JDK home, or its `bin/java`.
+/// The project JDK (`languages.java.jdk`): a JDK home, its `bin` or its `bin/java`.
 pub fn project_jdk(root: &Path, s: &Settings) -> Option<crate::java::Jdk> {
     let p = setting_path(root, &s.languages.java.jdk)?;
-    let jdk = crate::java::jdk_at(&p).or_else(|| crate::java::jdk_at(p.parent()?.parent()?));
+    let jdk = p.ancestors().take(3).find_map(crate::java::jdk_at);
     if jdk.is_none() {
         tracing::warn!("project JDK {} is not a JDK home", p.display());
     }
@@ -90,6 +90,19 @@ pub fn maven_options(root: &Path, s: &Settings) -> Vec<String> {
         out.push(format!("-Dmaven.repo.local={}", dir.to_string_lossy()));
     }
     out
+}
+
+/// The Maven local repository from settings: the configured one, else
+/// `<localRepository>` of the configured user `settings.xml`; `None` = Maven's default.
+pub fn maven_local_repository(root: &Path, s: &Settings) -> Option<PathBuf> {
+    let m = &s.languages.java.maven;
+    setting_path(root, &m.local_repository).or_else(|| {
+        let text = std::fs::read_to_string(setting_path(root, &m.user_settings)?).ok()?;
+        let repo = crate::java::xml_value(&crate::lombok::strip_xml_comments(&text), "localRepository")?;
+        let home = crate::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
+        let repo = repo.replace("${user.home}", &home);
+        (!repo.is_empty() && !repo.contains("${")).then(|| PathBuf::from(repo))
+    })
 }
 
 /// TypeScript `lib` directory for the selected version; `None` = the server's bundled one.
@@ -206,6 +219,14 @@ pub fn configure_server(cfg: &mut LanguageServerConfig, root: &Path, server_root
         // The jdtls launcher forwards `--jvm-arg=` values to the JVM it starts.
         let args = s.languages.java.jdtls_vm_args.split_whitespace().map(|a| format!("--jvm-arg={a}"));
         cfg.args.extend(args);
+        // m2e (the Maven import) reads mirrors, servers and `<localRepository>` from it.
+        if let Some(file) = setting_path(root, &s.languages.java.maven.user_settings) {
+            let file = file.to_string_lossy();
+            merge_init_options(
+                cfg,
+                json!({ "settings": { "java": { "configuration": { "maven": { "userSettings": file } } } } }),
+            );
+        }
     }
 
     if let Some(lib) = tsdk(server_root, s).or_else(|| tsdk(root, s)) {

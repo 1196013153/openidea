@@ -19,7 +19,7 @@ fn main() {
         eprintln!("synced in {:?}: {r:?}", started.elapsed());
     }
     let started = std::time::Instant::now();
-    let model = ide_build::load(&root, &cache);
+    let model = ide_build::load(&root, &cache, None);
     println!("{}", serde_json::to_string_pretty(&model).unwrap());
     eprintln!("loaded in {:?}", started.elapsed());
 }
