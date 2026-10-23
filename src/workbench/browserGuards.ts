@@ -1,9 +1,9 @@
 /**
- * Makes the webview behave like a desktop app: no browser context menu
- * outside text fields/editors, no reload/print/save-page/history shortcuts,
- * no navigation on file drop. Copy/paste/undo stay untouched.
+ * Makes the webview behave like a desktop app: never the browser context menu
+ * (its Reload/AutoFill items would act on the webview), no reload/print/
+ * save-page/history shortcuts, no navigation on file drop. Copy/paste/undo
+ * shortcuts stay untouched.
  */
-const EDITABLE = "input, textarea, [contenteditable=''], [contenteditable='true'], .cm-editor, .xterm";
 
 const BLOCKED = new Set([
   "Meta+P",
@@ -35,12 +35,7 @@ function keyId(e: KeyboardEvent) {
 
 export function installBrowserGuards(opts: { blockReload?: boolean } = {}): () => void {
   const blockReload = opts.blockReload ?? import.meta.env.PROD;
-  const onContextMenu = (e: MouseEvent) => {
-    if (e.defaultPrevented) return;
-    const target = e.target as Element | null;
-    if (target?.closest?.(EDITABLE)) return;
-    e.preventDefault();
-  };
+  const onContextMenu = (e: MouseEvent) => e.preventDefault();
   const onKeyDown = (e: KeyboardEvent) => {
     const id = keyId(e);
     if (BLOCKED.has(id) || (blockReload && RELOAD.has(id))) e.preventDefault();
