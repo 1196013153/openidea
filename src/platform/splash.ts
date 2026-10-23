@@ -6,6 +6,19 @@
 const holds: Promise<unknown>[] = [];
 /** Never keep the splash longer than this; a slow open shows its own progress. */
 const MAX_WAIT_MS = 4000;
+const FILL_MS = 120;
+
+/** Runs the fake progress bar to 100% from wherever its animation has got to; false if nothing shows yet. */
+function completeBar(el: HTMLElement): boolean {
+  const fill = el.querySelector<HTMLElement>(".splash-bar > i");
+  if (!fill || getComputedStyle(el).opacity === "0") return false;
+  fill.style.transform = getComputedStyle(fill).transform;
+  fill.style.animation = "none";
+  void fill.offsetWidth;
+  fill.style.transition = `transform ${FILL_MS}ms ease-out`;
+  fill.style.transform = "scaleX(1)";
+  return true;
+}
 
 /** Keeps the splash up until `work` settles. Call before `hideSplash()`. */
 export function holdSplash(work: Promise<unknown>): void {
@@ -21,8 +34,13 @@ export function hideSplash(): void {
     // Two frames: let React commit the state the holds produced before uncovering it.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        el.classList.add("splash-out");
-        setTimeout(() => el.remove(), 200);
+        setTimeout(
+          () => {
+            el.classList.add("splash-out");
+            setTimeout(() => el.remove(), 200);
+          },
+          completeBar(el) ? FILL_MS : 0,
+        );
       }),
     ),
   );
