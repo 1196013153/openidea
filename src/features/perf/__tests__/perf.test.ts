@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProcessMemory } from "@/platform/ipc";
-import { formatBytes, formatCount, formatMs, formatSize, formatUptime, memoryRatio } from "../format";
+import { formatBytes, formatCount, formatMs, formatSize, formatUptime } from "../format";
 import { indicatorLabel, indicatorTooltip, memorySections, summarizeMemory } from "../memory";
 import { RollingWindow, percentile } from "../stats";
 import { isEditorTypingEntry, keystrokeLatencies, supportsEntryType } from "../events";
@@ -26,9 +26,6 @@ describe("format", () => {
     expect(formatSize(1.1 * GB)).toBe("1.1 GB");
     expect(formatSize(12 * 1024)).toBe("12 KB");
     expect(formatSize(null)).toBe("–");
-    expect(memoryRatio(GB, 2 * GB)).toBe(0.5);
-    expect(memoryRatio(3 * GB, 2 * GB)).toBe(1);
-    expect(memoryRatio(null, 2 * GB)).toBe(0);
   });
 
   it("formats durations and counts", () => {

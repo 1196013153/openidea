@@ -21,7 +21,7 @@ import { activate as templates, activateSettingsPages as templatesPages } from "
 import { activate as todo, activateSettingsPages as todoPages } from "./todo";
 import { activate as settings, activateSettingsWindow } from "./settings";
 import { activate as app } from "./app";
-import { activate as perf, activateSettingsPages as perfPages } from "./perf";
+import { activate as perf } from "./perf";
 import { activate as plugins, activateSettingsPages as pluginsPages } from "./plugins";
 import { activate as tools, activateSettingsPages as toolsPages } from "./tools";
 import { activate as scratch } from "./scratch";
@@ -90,7 +90,6 @@ export function activateSettingsWindowFeatures(parent: string): () => void {
     ["templates", templatesPages],
     ["todo", todoPages],
     ["plugins", pluginsPages],
-    ["perf", perfPages],
     ["tools", toolsPages],
   ];
   const disposers: Array<() => void> = [];

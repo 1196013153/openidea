@@ -29,12 +29,6 @@ export function formatSize(bytes: number | null | undefined): string {
   return `${trim(bytes / GB)} GB`;
 }
 
-/** Share (0..1) of `total`, clamped. */
-export function memoryRatio(used: number | null | undefined, total: number | null | undefined): number {
-  if (!used || !total || total <= 0) return 0;
-  return Math.min(1, Math.max(0, used / total));
-}
-
 /** `0.4 ms`, `16 ms`, `2.3 s`. */
 export function formatMs(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return "–";
