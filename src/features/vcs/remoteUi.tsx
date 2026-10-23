@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { BranchInfo, Commit, PushTags, RemoteOp } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
+import { tx } from "@/platform/i18n";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { notifications } from "@/workbench/contributions";
 import { Checkbox, Dialog, List, Select, Spinner, T } from "@/ui";
@@ -129,21 +130,26 @@ function MultiPushDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let alive = true;
-    Promise.all(
+    // A repository that cannot be read (e.g. its upstream branch was deleted) is left out.
+    Promise.allSettled(
       roots.map(async (root) => {
         const branch = await call(commands.vcsBranchInfo(root));
         const q = outgoingQuery(branch.upstream);
         const commits = branch.head ? await logOf(q.branch, q.limit, q.range, root) : [];
         return { root, branch, commits };
       }),
-    )
-      .then((all) => {
-        if (!alive) return;
-        const list = pushCandidates(all);
-        setRepos(list);
-        setChecked(defaultPushChecked(list, currentRepo()));
-      })
-      .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
+    ).then((results) => {
+      if (!alive) return;
+      const loaded = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (!loaded.length && failed) {
+        setError(failed.reason instanceof Error ? failed.reason.message : String(failed.reason));
+        return;
+      }
+      const list = pushCandidates(loaded);
+      setRepos(list);
+      setChecked(defaultPushChecked(list, currentRepo()));
+    });
     return () => {
       alive = false;
     };
@@ -240,7 +246,7 @@ function MultiPushDialog({ onClose }: { onClose: () => void }) {
                     label={repoName(r.repo.root)}
                   />
                   <span className={styles.commitMeta}>
-                    {r.repo.branch.head} → {r.repo.branch.upstream ?? "new remote branch"}
+                    {r.repo.branch.head} → {r.repo.branch.upstream ?? tx("new remote branch")}
                   </span>
                 </span>
               ) : (

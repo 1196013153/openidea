@@ -176,10 +176,28 @@ export async function runRemote(
     task(text || null, progressFraction(text), false);
   };
   try {
+    // Every repository is tried; the failures are reported together. A pull skips the
+    // repositories that have nothing to pull from (detached HEAD, e.g. submodules; no upstream).
+    const failures: string[] = [];
     for (const repo of repos) {
-      if (repos.length > 1 && repo) logConsole("info", repoName(repo));
-      await call(commands.vcsRemote(repo, request, op, channel));
+      const name = repos.length > 1 && repo ? repoName(repo) : null;
+      if (name) logConsole("info", name);
+      if (op.op === "pull" && repos.length > 1) {
+        const info = await call(commands.vcsBranchInfo(repo)).catch(() => null);
+        if (info && (!info.head || !info.upstream)) {
+          logConsole("info", info.head ? "No upstream branch, skipped" : "Detached HEAD, skipped");
+          continue;
+        }
+      }
+      try {
+        await call(commands.vcsRemote(repo, request, op, channel));
+      } catch (e) {
+        if (isCancelled(e) || !name) throw e;
+        logConsole("err", errorMessage(e));
+        failures.push(`${name}: ${errorMessage(e)}`);
+      }
     }
+    if (failures.length) throw new Error(failures.join("\n"));
     lastRemoteError = null;
     notifications().notify({
       group: "vcs",

@@ -4,7 +4,8 @@ import { call, commands } from "@/platform/ipc";
 import { editorService, type EditorInput } from "@/workbench/contributions";
 import { baseName, effectiveKind } from "./model";
 import { readWorkingText } from "./ops";
-import { statusOf, useVcs } from "./store";
+import { renamedFromPath } from "./changes";
+import { currentRepoRoot, statusOf } from "./store";
 
 export type DiffSide =
   /** File content at a git revision (`HEAD`, `:0` = index, a commit id, `<id>^`). */
@@ -104,15 +105,16 @@ export function workingDiffData(path: string, line?: number): DiffData {
     kind === "untracked" || kind === "added"
       ? { type: "text", text: "", label: "(does not exist)" }
       : st?.renamedFrom
-        ? { type: "rev", rev: "HEAD", path: joinRoot(st.renamedFrom), label: `HEAD (${st.renamedFrom})` }
+        ? { type: "rev", rev: "HEAD", path: renamedFromPath(st) ?? undefined, label: `HEAD (${st.renamedFrom})` }
         : { type: "rev", rev: "HEAD" };
   const right: DiffSide =
     kind === "deleted" ? { type: "text", text: "", label: "(deleted)" } : { type: "worktree" };
   return { path, left, right, line };
 }
 
+/** A path of the selected repository's log (repository-relative) made absolute. */
 function joinRoot(rel: string): string {
-  const root = useVcs.getState().root;
+  const root = currentRepoRoot();
   return root ? `${root}/${rel}` : rel;
 }
 

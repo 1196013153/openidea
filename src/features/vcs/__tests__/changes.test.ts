@@ -9,6 +9,7 @@ import {
   type CheckState,
   type ChangeNode,
 } from "../changes";
+import { rootOf } from "../model";
 
 const fs = (rel: string, staged: FileStatus["staged"], unstaged: FileStatus["unstaged"]): FileStatus => ({
   path: `/r/${rel}`,
@@ -101,6 +102,14 @@ describe("several repositories", () => {
     expect(commitRepos(included, repos, "/r")).toEqual(["/r/libs/core", "/r"]);
     expect(commitRepos(included.slice(0, 1), repos, "/r/libs/core")).toEqual(["/r"]);
     expect(commitRepos([], repos, "/r/libs/core")).toEqual(["/r/libs/core"]);
+  });
+
+  it("routes a nested repository's own entry (submodule) to the enclosing repository", () => {
+    expect(rootOf("/r/libs/core/Lib.kt", repos)).toBe("/r/libs/core");
+    expect(rootOf("/r/libs/core", repos)).toBe("/r");
+    expect(rootOf("/r/libs/core/", repos)).toBe("/r");
+    expect(rootOf("/r", repos)).toBe("/r");
+    expect(rootOf("/other", repos)).toBeNull();
   });
 });
 

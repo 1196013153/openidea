@@ -69,17 +69,9 @@ impl Repos {
     fn new(mut repos: Vec<Repo>, project_root: &Path) -> Self {
         repos.sort_by(|a, b| a.root().cmp(b.root()));
         let repos: Vec<Arc<Repo>> = repos.into_iter().map(Arc::new).collect();
-        let primary = Self::innermost(&repos, project_root).or((!repos.is_empty()).then_some(0));
+        let roots: Vec<&Path> = repos.iter().map(|r| r.root()).collect();
+        let primary = innermost(&roots, project_root, false).or((!repos.is_empty()).then_some(0));
         Self { repos, primary }
-    }
-
-    fn innermost(repos: &[Arc<Repo>], path: &Path) -> Option<usize> {
-        repos
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| path.starts_with(r.root()))
-            .max_by_key(|(_, r)| r.root().as_os_str().len())
-            .map(|(i, _)| i)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -95,15 +87,27 @@ impl Repos {
         self.primary.map(|i| &self.repos[i])
     }
 
-    /// The innermost repository containing `path` (a file, folder or repository root).
+    /// The innermost repository containing `path` (a file or folder). A nested repository's
+    /// root is an entry of the enclosing repository (a submodule or untracked folder there), so
+    /// it belongs to that one; to the repository itself only when nothing encloses it.
     pub fn for_path(&self, path: &Path) -> Option<&Arc<Repo>> {
-        Self::innermost(&self.repos, path).map(|i| &self.repos[i]).or_else(|| {
+        let roots: Vec<&Path> = self.repos.iter().map(|r| r.root()).collect();
+        let found = innermost(&roots, path, true).or_else(|| {
             // Another spelling of the same location (symlinks, /var vs /private/var).
             let canon = dunce::canonicalize(path).ok()?;
-            self.repos
-                .iter()
-                .filter(|r| dunce::canonicalize(r.root()).is_ok_and(|root| canon.starts_with(root)))
-                .max_by_key(|r| r.root().as_os_str().len())
+            let roots: Vec<PathBuf> =
+                roots.iter().map(|r| dunce::canonicalize(r).unwrap_or_else(|_| r.to_path_buf())).collect();
+            innermost(&roots.iter().map(PathBuf::as_path).collect::<Vec<_>>(), &canon, true)
+        });
+        found.map(|i| &self.repos[i])
+    }
+
+    /// The repository whose worktree root is `root` (the repository a repository-scoped
+    /// command was given).
+    pub fn at_root(&self, root: &Path) -> Option<&Arc<Repo>> {
+        self.repos.iter().find(|r| r.root() == root).or_else(|| {
+            let canon = dunce::canonicalize(root).ok()?;
+            self.repos.iter().find(|r| dunce::canonicalize(r.root()).is_ok_and(|r| r == canon))
         })
     }
 
@@ -121,9 +125,12 @@ impl Repos {
     }
 
     /// Changes of every repository. A nested repository reports its own files, so the
-    /// enclosing one's "untracked folder" entry for it is dropped.
+    /// enclosing one's "untracked folder" entry for it is dropped. A repository that cannot
+    /// be read (e.g. deleted since the last scan) is left out; fails only when all fail.
     pub fn status(&self) -> IdeResult<Vec<FileStatus>> {
         let mut out = Vec::new();
+        let mut first_error = None;
+        let mut read = 0;
         for repo in &self.repos {
             let nested: Vec<&Path> = self
                 .repos
@@ -131,14 +138,42 @@ impl Repos {
                 .map(|r| r.root())
                 .filter(|r| *r != repo.root() && r.starts_with(repo.root()))
                 .collect();
-            out.extend(repo.status()?.into_iter().filter(|f| {
+            let status = match repo.status() {
+                Ok(status) => {
+                    read += 1;
+                    status
+                }
+                Err(e) => {
+                    tracing::warn!("git status of {}: {e}", repo.root().display());
+                    first_error.get_or_insert(e);
+                    continue;
+                }
+            };
+            out.extend(status.into_iter().filter(|f| {
                 let untracked_root =
                     f.unstaged == Some(crate::ChangeKind::Untracked) && nested.iter().any(|n| f.path.0 == *n);
                 !untracked_root
             }));
         }
-        Ok(out)
+        match first_error {
+            Some(e) if read == 0 => Err(e),
+            _ => Ok(out),
+        }
     }
+}
+
+/// Index of the innermost of `roots` containing `path`. With `strict`, a root equal to
+/// `path` counts only when no other root contains it.
+fn innermost(roots: &[&Path], path: &Path, strict: bool) -> Option<usize> {
+    let best = |strict: bool| {
+        roots
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| path.starts_with(r) && !(strict && **r == path))
+            .max_by_key(|(_, r)| r.as_os_str().len())
+            .map(|(i, _)| i)
+    };
+    best(strict).or_else(|| best(false))
 }
 
 #[cfg(test)]
@@ -170,10 +205,15 @@ mod tests {
         assert_eq!(repos.primary().unwrap().root(), root);
         assert_eq!(repos.for_path(&root.join("services/api/main.rs")).unwrap().root(), root.join("services/api"));
         assert_eq!(repos.for_path(&root.join("services/other.txt")).unwrap().root(), root);
+        // A nested root is the enclosing repository's entry (submodule / untracked folder).
+        assert_eq!(repos.for_path(&root.join("services/api")).unwrap().root(), root);
+        assert_eq!(repos.for_path(&root).unwrap().root(), root);
+        assert_eq!(repos.at_root(&root.join("services/api")).unwrap().root(), root.join("services/api"));
+        assert!(repos.at_root(&root.join("services")).is_none());
 
         let status = repos.status().unwrap();
         let paths: Vec<String> =
-            status.iter().map(|f| f.path.0.strip_prefix(&root).unwrap().to_string_lossy().into_owned()).collect();
+            status.iter().map(|f| f.path.0.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/")).collect();
         assert!(paths.contains(&"README.md".to_owned()), "{paths:?}");
         assert!(paths.contains(&"services/api/main.rs".to_owned()), "{paths:?}");
         assert!(
