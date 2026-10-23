@@ -52,11 +52,12 @@ pub async fn java_resolve_launch(
     });
     info.java_exec = Some(java.map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "java".to_owned()));
     if info.error_count > 0 {
-        let vm_args = settings.languages.java.jdtls_vm_args;
+        let vm_args = &settings.languages.java.jdtls_vm_args;
         let lombok = ide_sdk::lombok::lombok_agent(
             &project.root,
             ide_sdk::lombok::agent_in_args(vm_args.split_whitespace()),
             ide_tools::managed_bundle(&state.data_dir, "lombok"),
+            ide_sdk::apply::maven_local_repository(&project.root, &settings),
         );
         info.hints.extend(lombok.problem());
     }

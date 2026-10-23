@@ -64,8 +64,14 @@ pub fn agent_in_args<'a>(args: impl IntoIterator<Item = &'a str>) -> Option<Path
 }
 
 /// The Lombok agent for the project at `root`: the user's own (`own`, from the JVM
-/// options) wins, then `managed` (the IDE-installed jar), then the build caches.
-pub fn lombok_agent(root: &Path, own: Option<PathBuf>, managed: Option<PathBuf>) -> LombokAgent {
+/// options) wins, then `managed` (the IDE-installed jar), then the build caches
+/// (`maven_repo`, the configured Maven local repository, else the default one).
+pub fn lombok_agent(
+    root: &Path,
+    own: Option<PathBuf>,
+    managed: Option<PathBuf>,
+    maven_repo: Option<PathBuf>,
+) -> LombokAgent {
     if let Some(jar) = own {
         let version = jar
             .file_stem()
@@ -82,7 +88,7 @@ pub fn lombok_agent(root: &Path, own: Option<PathBuf>, managed: Option<PathBuf>)
     }
     let home = home_dir();
     let mut dirs = Vec::new();
-    if let Some(repo) = maven_repository(home.as_deref()) {
+    if let Some(repo) = maven_repo.or_else(|| maven_repository(home.as_deref())) {
         dirs.push(repo.join("org").join("projectlombok").join("lombok"));
     }
     if let Some(gradle) =
@@ -137,7 +143,7 @@ fn maven_repository(home: Option<&Path>) -> Option<PathBuf> {
     Some(custom.unwrap_or_else(|| m2.join("repository")))
 }
 
-fn strip_xml_comments(text: &str) -> String {
+pub(crate) fn strip_xml_comments(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(i) = rest.find("<!--") {
@@ -249,10 +255,10 @@ mod tests {
         let own = agent_in_args(["--jvm-arg=-Xmx2g", "--jvm-arg=-javaagent:/opt/lombok-1.18.26.jar"]);
         assert_eq!(own.as_deref(), Some(Path::new("/opt/lombok-1.18.26.jar")));
         assert_eq!(agent_in_args(["-javaagent:/opt/other.jar"]), None);
-        let agent = lombok_agent(tmp.path(), own, Some("/managed/lombok.jar".into()));
+        let agent = lombok_agent(tmp.path(), own, Some("/managed/lombok.jar".into()), None);
         assert_eq!(agent.jar(), Some(Path::new("/opt/lombok-1.18.26.jar")));
         assert!(agent.outdated(), "its version is read from the file name");
-        let plain = lombok_agent(tmp.path(), agent_in_args(["-javaagent:/opt/lombok.jar"]), None);
+        let plain = lombok_agent(tmp.path(), agent_in_args(["-javaagent:/opt/lombok.jar"]), None, None);
         assert_eq!(plain.problem(), None, "a user agent is never reported missing");
     }
 

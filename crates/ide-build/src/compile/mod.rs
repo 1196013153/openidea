@@ -672,7 +672,7 @@ mod tests {
         );
         write(&root, "core/pom.xml", "<project><artifactId>core</artifactId></project>");
         write(&root, "core/src/main/java/A.java", "class A {}");
-        let model = crate::load(&root, &tmp.path().join("cache"));
+        let model = crate::load(&root, &tmp.path().join("cache"), None);
         let p = plan(&root, &model, BuildKind::Build, None).unwrap();
         assert_eq!(p.system, BuildSystem::Maven);
         assert_eq!(p.title, "demo");
@@ -686,7 +686,7 @@ mod tests {
         let g = tmp.path().join("g");
         write(&g, "settings.gradle", "include 'app'");
         write(&g, "app/build.gradle", "apply plugin: 'java'");
-        let model = crate::load(&g, &tmp.path().join("cache2"));
+        let model = crate::load(&g, &tmp.path().join("cache2"), None);
         let p = plan(&g, &model, BuildKind::Build, Some(&g.join("app/src/A.java"))).unwrap();
         assert_eq!(p.system, BuildSystem::Gradle);
         assert_eq!(p.steps[0].args, ["--console=plain", ":app:classes", ":app:testClasses"]);

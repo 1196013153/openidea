@@ -26,7 +26,7 @@ fn java_env(project_jdk: Option<&ide_sdk::java::Jdk>, release: Option<u32>) -> B
 /// The build model with the launch settings applied: the JDK (`JAVA_HOME`), and
 /// the Maven home and options from Settings › Maven.
 pub(crate) fn load(root: &Path, cache: &Path, settings: &Settings) -> BuildModel {
-    let mut model = ide_build::load(root, cache);
+    let mut model = ide_build::load(root, cache, ide_sdk::apply::maven_local_repository(root, settings));
     let jdk = ide_sdk::apply::project_jdk(root, settings);
     if let Some(m) = &mut model.maven {
         let mvn = ide_sdk::apply::maven_command(root, settings);

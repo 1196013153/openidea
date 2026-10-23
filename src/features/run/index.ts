@@ -386,6 +386,10 @@ export function activate(): () => void {
       const paths = [...e.created, ...e.modified, ...e.removed];
       if (paths.some((p) => CONFIG_FILES.test(p))) scheduleReload();
     }),
+    // Detected configs carry the selected toolchains (interpreter, JDK, Maven home and options).
+    onIdeEvent("settingsChanged", (e) => {
+      if (e.key === "languages" || e.key.startsWith("languages.")) scheduleReload();
+    }),
   );
 
   return () => {

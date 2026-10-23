@@ -412,7 +412,7 @@ struct Resolver {
 }
 
 /// `~/.m2/repository`, or `<localRepository>` from `~/.m2/settings.xml`.
-fn default_local_repo() -> Option<PathBuf> {
+pub(crate) fn default_local_repo() -> Option<PathBuf> {
     let m2 = dirs::home_dir()?.join(".m2");
     if let Some(settings) = std::fs::read_to_string(m2.join("settings.xml")).ok().and_then(|t| xml::parse(&t))
         && let Some(repo) = settings.text_of("localRepository")

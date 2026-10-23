@@ -437,7 +437,13 @@ fn maven_home(dir: &Path) -> Option<PathBuf> {
 
 fn maven() -> Vec<Sdk> {
     let mut found: Vec<(PathBuf, &'static str)> = Vec::new();
-    if let Some(mvn) = which("mvn").and_then(|p| dunce::canonicalize(p).ok())
+    // Windows' Maven ships `mvn.cmd` only (`which` looks for `mvn.exe`).
+    let on_path = if cfg!(windows) {
+        std::env::split_paths(&search_path()).map(|d| d.join("mvn.cmd")).find(|p| p.is_file())
+    } else {
+        which("mvn")
+    };
+    if let Some(mvn) = on_path.and_then(|p| dunce::canonicalize(p).ok())
         && let Some(home) = mvn.parent().and_then(Path::parent)
     {
         found.push((home.to_path_buf(), "path"));
@@ -454,10 +460,12 @@ fn maven() -> Vec<Sdk> {
         for d in subdirs(&home.join(".sdkman/candidates/maven")) {
             found.push((d, "sdkman"));
         }
-        // Distributions the Maven wrapper downloaded: `dists/apache-maven-3.9.6-bin/<hash>/apache-maven-3.9.6`.
+        // Distributions the Maven wrapper downloaded: `dists/apache-maven-3.9.6-bin/<hash>/apache-maven-3.9.6`,
+        // or since wrapper 3.3 the home itself, `dists/apache-maven-3.9.6/<hash>`.
         for dist in subdirs(&home.join(".m2/wrapper/dists")) {
             for hash in subdirs(&dist) {
                 found.extend(subdirs(&hash).into_iter().map(|d| (d, "wrapper")));
+                found.push((hash, "wrapper"));
             }
         }
     }
