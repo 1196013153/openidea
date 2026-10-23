@@ -57,9 +57,12 @@
   overflow: hidden;
 }
 .popupInner {
-  outline: none;
   display: flex;
   flex-direction: column;
+}
+/* Focus only carries keystrokes; the active row is the indicator. */
+.popupInner:focus-visible {
+  outline: none;
 }
 .list {
   max-height: 320px;

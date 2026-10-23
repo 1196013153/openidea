@@ -1,8 +1,10 @@
 .popup {
   z-index: var(--z-popup);
-  outline: none;
   overflow: auto;
   opacity: 0;
+}
+.popup:focus-visible {
+  outline: none;
 }
 .popup[data-positioned] {
   opacity: 1;
