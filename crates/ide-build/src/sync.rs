@@ -29,6 +29,10 @@ pub struct SyncOptions {
     pub profiles: Vec<String>,
     /// Extra environment (`JAVA_HOME`).
     pub env: BTreeMap<String, String>,
+    /// Maven launcher replacing the project's `mvnw` / `mvn` (Settings › Maven home).
+    pub maven_command: Option<String>,
+    /// Maven options before the goals (`-s`, `-Dmaven.repo.local=`).
+    pub maven_options: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -184,6 +188,7 @@ pub fn sync_maven(
         let effective = cache_dir.join(format!("effective-pom-{n}.xml"));
         let _ = std::fs::remove_file(&effective);
         let mut args: Vec<String> = vec!["-B".into(), "-fae".into(), "-Dstyle.color=never".into()];
+        args.extend(options.maven_options.iter().cloned());
         if options.offline {
             args.push("-o".into());
         }
@@ -194,7 +199,8 @@ pub fn sync_maven(
         args.push(format!("-Doutput={}", effective.to_string_lossy()));
         args.push("dependency:tree".into());
         progress(SyncProgress { message: format!("Reading {}", top.display_name), fraction: None });
-        let out = run(&top.command, &args, &root.join(&top.dir), &options.env, cancel, |line| {
+        let command = options.maven_command.as_deref().unwrap_or(&top.command);
+        let out = run(command, &args, &root.join(&top.dir), &options.env, cancel, |line| {
             if let Some((name, i, total)) = maven_building(line) {
                 let fraction = (i.saturating_sub(1) as f32 / total.max(1) as f32).min(1.0);
                 progress(SyncProgress { message: format!("Building model of {name}"), fraction: Some(fraction) });

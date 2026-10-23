@@ -37,6 +37,7 @@ function project(over: Partial<MavenProject>): MavenProject {
     profiles: [],
     javaVersion: 21,
     command: "/p/mvnw",
+    options: [],
     env: { JAVA_HOME: "/jdk21" },
     ...over,
   };
@@ -184,6 +185,11 @@ describe("Maven runs", () => {
     const root = mavenGoalConfig(maven.projects[0]!, ["clean"], maven, { offline: false, skipTests: false, profiles: {} });
     expect(root.cwd).toBeNull();
     expect(root.isTest).toBe(false);
+    // Settings › Maven options go before the goals.
+    const configured = { ...core, options: ["-s", "/m2/settings.xml"] };
+    expect(mavenGoalConfig(configured, ["test"], maven, { offline: false, skipTests: true, profiles: {} }).args).toEqual(
+      ["-s", "/m2/settings.xml", "test", "-DskipTests"],
+    );
   });
 
   it("parses typed command lines", () => {

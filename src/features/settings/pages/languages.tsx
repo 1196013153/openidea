@@ -52,7 +52,17 @@ export const LANGUAGE_PAGES: PageSpec[] = [
     title: "Java",
     group: LANGUAGES_GROUP,
     order: 395,
-    keywords: ["jdtls", "jvm options", "vmargs", "lombok", "javaagent", "eclipse jdt"],
+    keywords: [
+      "jdk",
+      "project sdk",
+      "java home",
+      "jdtls",
+      "jvm options",
+      "vmargs",
+      "lombok",
+      "javaagent",
+      "eclipse jdt",
+    ],
     component: JavaPage,
   },
   {

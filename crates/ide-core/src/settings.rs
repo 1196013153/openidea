@@ -401,9 +401,26 @@ pub struct GoSettings {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 #[serde(default, rename_all = "camelCase")]
 pub struct JavaSettings {
+    /// Project JDK home; empty = per module, the installed JDK matching the
+    /// Java version it targets.
+    pub jdk: String,
     /// Extra JVM options for the Java language server (jdtls), space-separated
     /// (VS Code's `java.jdt.ls.vmargs`).
     pub jdtls_vm_args: String,
+    /// Build Tools › Maven.
+    pub maven: MavenSettings,
+}
+
+/// Build Tools › Maven.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MavenSettings {
+    /// Maven home (or its `mvn` executable); empty = the project's `mvnw`, else `mvn` on `PATH`.
+    pub home: String,
+    /// User `settings.xml` (`-s`); empty = `~/.m2/settings.xml`.
+    pub user_settings: String,
+    /// Local repository (`-Dmaven.repo.local`); empty = from `settings.xml`.
+    pub local_repository: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]

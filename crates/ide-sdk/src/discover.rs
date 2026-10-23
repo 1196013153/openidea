@@ -18,6 +18,8 @@ pub fn detect(kind: SdkKind, root: Option<&Path>) -> Vec<Sdk> {
         SdkKind::Rust => rust(),
         SdkKind::Go => go(),
         SdkKind::TypeScript => typescript(root),
+        SdkKind::Jdk => jdk(),
+        SdkKind::Maven => maven(),
     }
 }
 
@@ -377,6 +379,103 @@ fn typescript(root: Option<&Path>) -> Vec<Sdk> {
             version,
             source: "workspace".into(),
             home: lib.parent().map(Into::into),
+            extra: None,
+        });
+    }
+    out
+}
+
+// ------------------------------------------------------------------ jdk
+
+/// `KEY="value"` of a JDK `release` file.
+fn release_value(release: &str, key: &str) -> Option<String> {
+    let line = release.lines().find_map(|l| l.trim().strip_prefix(key)?.strip_prefix('='))?;
+    Some(line.trim().trim_matches('"').to_owned()).filter(|v| !v.is_empty())
+}
+
+fn jdk() -> Vec<Sdk> {
+    let java_home = std::env::var_os("JAVA_HOME").and_then(|h| dunce::canonicalize(h).ok());
+    crate::java::rescan_jdks()
+        .iter()
+        .map(|j| {
+            let release = std::fs::read_to_string(j.home.join("release")).unwrap_or_default();
+            let version = release_value(&release, "JAVA_VERSION").unwrap_or_else(|| j.major.to_string());
+            let name = match release_value(&release, "IMPLEMENTOR") {
+                Some(vendor) => format!("{vendor} {version}"),
+                None => format!("JDK {version}"),
+            };
+            let source = if java_home.as_ref() == Some(&j.home) { "JAVA_HOME" } else { "system" };
+            Sdk {
+                path: j.home.clone().into(),
+                name,
+                version: Some(version),
+                source: source.to_owned(),
+                home: Some(j.home.clone().into()),
+                extra: None,
+            }
+        })
+        .collect()
+}
+
+// ------------------------------------------------------------------ maven
+
+/// Maven version from `lib/maven-core-<version>.jar`.
+fn maven_version(home: &Path) -> Option<String> {
+    std::fs::read_dir(home.join("lib")).ok()?.flatten().find_map(|e| {
+        let name = e.file_name().to_string_lossy().into_owned();
+        Some(name.strip_prefix("maven-core-")?.strip_suffix(".jar")?.to_owned())
+    })
+}
+
+/// A Maven home (`bin/mvn` and `lib/`); Homebrew's formula keeps it in `libexec`.
+fn maven_home(dir: &Path) -> Option<PathBuf> {
+    let mvn = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
+    [dir.join("libexec"), dir.to_path_buf()]
+        .into_iter()
+        .find(|h| h.join("bin").join(mvn).is_file() && h.join("lib").is_dir())
+}
+
+fn maven() -> Vec<Sdk> {
+    let mut found: Vec<(PathBuf, &'static str)> = Vec::new();
+    if let Some(mvn) = which("mvn").and_then(|p| dunce::canonicalize(p).ok())
+        && let Some(home) = mvn.parent().and_then(Path::parent)
+    {
+        found.push((home.to_path_buf(), "path"));
+    }
+    for var in ["MAVEN_HOME", "M2_HOME"] {
+        if let Some(h) = std::env::var_os(var) {
+            found.push((PathBuf::from(h), "env"));
+        }
+    }
+    for p in ["/opt/homebrew/opt/maven", "/usr/local/opt/maven", "/usr/share/maven", "/opt/maven"] {
+        found.push((PathBuf::from(p), "system"));
+    }
+    if let Some(home) = home_dir() {
+        for d in subdirs(&home.join(".sdkman/candidates/maven")) {
+            found.push((d, "sdkman"));
+        }
+        // Distributions the Maven wrapper downloaded: `dists/apache-maven-3.9.6-bin/<hash>/apache-maven-3.9.6`.
+        for dist in subdirs(&home.join(".m2/wrapper/dists")) {
+            for hash in subdirs(&dist) {
+                found.extend(subdirs(&hash).into_iter().map(|d| (d, "wrapper")));
+            }
+        }
+    }
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for (dir, source) in found {
+        let Some(home) = maven_home(&dir) else { continue };
+        let home = dunce::canonicalize(&home).unwrap_or(home);
+        if !seen.insert(home.clone()) {
+            continue;
+        }
+        let version = maven_version(&home);
+        out.push(Sdk {
+            path: home.clone().into(),
+            name: format!("Maven {}", version.clone().unwrap_or_default()).trim().to_owned(),
+            version,
+            source: source.to_owned(),
+            home: Some(home.into()),
             extra: None,
         });
     }

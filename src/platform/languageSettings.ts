@@ -11,7 +11,11 @@ export interface LanguagesValid {
   rust: { toolchain: string; stdlib: string; checkOnSave: boolean; checkCommand: "check" | "clippy"; rustfmtArgs: string };
   go: { goroot: string; gopath: string };
   typescript: { version: string };
-  java: { jdtlsVmArgs: string };
+  java: {
+    jdk: string;
+    jdtlsVmArgs: string;
+    maven: { home: string; userSettings: string; localRepository: string };
+  };
 }
 
 export interface ProjectStructureValid {
@@ -30,7 +34,7 @@ export const DEFAULT_LANGUAGES: LanguagesValid = {
   rust: { toolchain: "", stdlib: "", checkOnSave: true, checkCommand: "check", rustfmtArgs: "" },
   go: { goroot: "", gopath: "" },
   typescript: { version: "bundled" },
-  java: { jdtlsVmArgs: "" },
+  java: { jdk: "", jdtlsVmArgs: "", maven: { home: "", userSettings: "", localRepository: "" } },
 };
 
 export const DEFAULT_PROJECT_STRUCTURE: ProjectStructureValid = {
@@ -76,6 +80,7 @@ export function validateLanguages(raw: unknown): LanguagesValid {
   const go = obj(l.go);
   const ts = obj(l.typescript);
   const java = obj(l.java);
+  const maven = obj(java.maven);
   return {
     python: {
       interpreter: text(py.interpreter, d.python.interpreter),
@@ -94,7 +99,15 @@ export function validateLanguages(raw: unknown): LanguagesValid {
     },
     go: { goroot: text(go.goroot, d.go.goroot), gopath: text(go.gopath, d.go.gopath) },
     typescript: { version: text(ts.version, d.typescript.version) || d.typescript.version },
-    java: { jdtlsVmArgs: text(java.jdtlsVmArgs, d.java.jdtlsVmArgs) },
+    java: {
+      jdk: text(java.jdk, d.java.jdk),
+      jdtlsVmArgs: text(java.jdtlsVmArgs, d.java.jdtlsVmArgs),
+      maven: {
+        home: text(maven.home, d.java.maven.home),
+        userSettings: text(maven.userSettings, d.java.maven.userSettings),
+        localRepository: text(maven.localRepository, d.java.maven.localRepository),
+      },
+    },
   };
 }
 

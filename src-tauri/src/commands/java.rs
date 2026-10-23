@@ -22,10 +22,12 @@ pub async fn java_resolve_launch(
 ) -> IdeResult<JavaLaunchInfo> {
     let project = state.project(window.label())?;
     let module = project.root.join(module);
+    let settings = project.settings.effective();
     let built = if build && compile::has_non_java_sources(&module) {
-        let (root, cache, module) = (project.root.clone(), project.build_cache_dir(), module.clone());
+        let (root, cache, module, settings) =
+            (project.root.clone(), project.build_cache_dir(), module.clone(), settings.clone());
         tauri::async_runtime::spawn_blocking(move || {
-            compile::build_for_launch(&root, &load(&root, &cache), &module, test, &CancellationToken::new())
+            compile::build_for_launch(&root, &load(&root, &cache, &settings), &module, test, &CancellationToken::new())
         })
         .await
         .map_err(|e| IdeError::internal(e.to_string()))??
@@ -40,15 +42,17 @@ pub async fn java_resolve_launch(
         }
     }
     info.class_paths = class_paths;
+    // The project JDK, else the JDK jdtls compiles the module against, else one matching its Java version.
+    let project_jdk = ide_sdk::apply::project_jdk(&project.root, &settings);
     let from_jdtls = info.java_home.as_deref().map(ide_sdk::java::java_executable).filter(|p| p.is_file());
-    let java = from_jdtls.or_else(|| {
+    let java = project_jdk.map(|j| ide_sdk::java::java_executable(&j.home)).or(from_jdtls).or_else(|| {
         let release = ide_sdk::java::project_java_version(&module);
         let jdks = ide_sdk::java::installed_jdks();
         ide_sdk::java::pick_jdk(&jdks, release).map(|j| ide_sdk::java::java_executable(&j.home))
     });
     info.java_exec = Some(java.map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "java".to_owned()));
     if info.error_count > 0 {
-        let vm_args = project.settings.effective().languages.java.jdtls_vm_args;
+        let vm_args = settings.languages.java.jdtls_vm_args;
         let lombok = ide_sdk::lombok::lombok_agent(
             &project.root,
             ide_sdk::lombok::agent_in_args(vm_args.split_whitespace()),

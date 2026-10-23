@@ -25,7 +25,8 @@ pub fn parse_release(release: &str) -> Option<u32> {
     if first == 1 { parts.next()?.parse().ok() } else { Some(first) }
 }
 
-fn jdk_at(home: &Path) -> Option<Jdk> {
+/// The JDK at `home`, if it is one (a `release` file and `bin/java`).
+pub fn jdk_at(home: &Path) -> Option<Jdk> {
     let release = std::fs::read_to_string(home.join("release")).ok()?;
     if !home.join("bin").join(crate::exe("java")).is_file() {
         return None;
@@ -115,6 +116,11 @@ static JDKS: Mutex<Option<Scan>> = Mutex::new(None);
 
 fn rescan(slot: &mut Option<Scan>) -> Arc<[Jdk]> {
     slot.insert(Scan { at: Instant::now(), jdks: scan().into() }).jdks.clone()
+}
+
+/// Scans for installed JDKs again (Settings › Detect again).
+pub fn rescan_jdks() -> Arc<[Jdk]> {
+    rescan(&mut JDKS.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 /// Installed JDKs (scanned on first use; [`jdtls_jdks`] may refresh them).
@@ -258,12 +264,15 @@ const METADATA_PROPERTY: &str = "java.import.generatesMetadataFilesAtProjectRoot
 /// directory, one per server root, and no Eclipse metadata is written into
 /// the project; it runs on a JDK `min_java`+ (via `JAVA_HOME`, which its
 /// launcher reads), installed JDKs are registered as runtimes and `bundles`
-/// (e.g. the java-debug plugin jar) are loaded into the server.
+/// (e.g. the java-debug plugin jar) are loaded into the server. The project
+/// JDK, when set, is the default runtime and preferred for running the server.
+#[allow(clippy::too_many_arguments)]
 pub fn configure_jdtls(
     cfg: &mut LanguageServerConfig,
     server_root: &Path,
     data_dir: &Path,
     jdks: &[Jdk],
+    project_jdk: Option<&Jdk>,
     min_java: u32,
     bundles: &[PathBuf],
     lombok: Option<&Path>,
@@ -294,6 +303,9 @@ pub fn configure_jdtls(
     {
         cfg.args.push(format!("--jvm-arg=-javaagent:{}", jar.to_string_lossy()));
     }
+    let jdks: Vec<Jdk> =
+        project_jdk.into_iter().chain(jdks.iter().filter(|j| Some(*j) != project_jdk)).cloned().collect();
+    let jdks = jdks.as_slice();
     if !cfg.env.contains_key("JAVA_HOME") {
         match jdtls_runtime(jdks, min_java) {
             Some(jdk) => {
@@ -302,7 +314,15 @@ pub fn configure_jdtls(
             None => cfg.launch_error = Some(missing_runtime_message(jdks, min_java)),
         }
     }
-    let runtimes = runtimes(jdks);
+    let mut runtimes = runtimes(jdks);
+    if let Some(project) = project_jdk {
+        let home = project.home.to_string_lossy();
+        for r in &mut runtimes {
+            if r["path"] == *home {
+                r["default"] = json!(true);
+            }
+        }
+    }
     if !runtimes.is_empty() {
         merge_init_options(cfg, json!({ "settings": { "java": { "configuration": { "runtimes": runtimes } } } }));
     }
@@ -424,7 +444,16 @@ mod tests {
             Jdk { major: 8, home: PathBuf::from("/jdk8") },
         ];
         let bundles = [PathBuf::from("/tools/java-debug/bin/com.microsoft.java.debug.plugin.jar")];
-        configure_jdtls(&mut cfg, Path::new("/p/demo"), Path::new("/data"), &jdks, JDTLS_MIN_JAVA, &bundles, None);
+        configure_jdtls(
+            &mut cfg,
+            Path::new("/p/demo"),
+            Path::new("/data"),
+            &jdks,
+            None,
+            JDTLS_MIN_JAVA,
+            &bundles,
+            None,
+        );
         assert_eq!(cfg.args[0], "-data");
         assert!(cfg.args[1].starts_with("/data/lsp/jdtls/"), "{}", cfg.args[1]);
         assert_eq!(cfg.args[2], "--jvm-arg=-Djava.import.generatesMetadataFilesAtProjectRoot=false");
@@ -439,11 +468,38 @@ mod tests {
 
         // Deterministic (reconfigure compares configs) and idempotent.
         let before = cfg.clone();
-        configure_jdtls(&mut cfg, Path::new("/p/demo"), Path::new("/data"), &jdks, JDTLS_MIN_JAVA, &bundles, None);
+        configure_jdtls(
+            &mut cfg,
+            Path::new("/p/demo"),
+            Path::new("/data"),
+            &jdks,
+            None,
+            JDTLS_MIN_JAVA,
+            &bundles,
+            None,
+        );
         assert_eq!(cfg, before);
 
+        // The project JDK is the default runtime, and runs the server when new enough.
+        let project = Jdk { major: 21, home: PathBuf::from("/jdk21b") };
+        let mut cfg: LanguageServerConfig = toml::from_str("name = \"jdtls\"\ncommand = \"jdtls\"").unwrap();
+        configure_jdtls(
+            &mut cfg,
+            Path::new("/p"),
+            Path::new("/data"),
+            &jdks,
+            Some(&project),
+            JDTLS_MIN_JAVA,
+            &[],
+            None,
+        );
+        let opts = serde_json::to_value(cfg.initialization_options.clone().unwrap()).unwrap();
+        let rt = &opts["settings"]["java"]["configuration"]["runtimes"];
+        assert_eq!(rt[1], json!({ "name": "JavaSE-21", "path": "/jdk21b", "default": true }));
+        assert_eq!(cfg.env["JAVA_HOME"], "/jdk21b");
+
         let mut other: LanguageServerConfig = toml::from_str("name = \"pyright\"\ncommand = \"x\"").unwrap();
-        configure_jdtls(&mut other, Path::new("/p"), Path::new("/data"), &jdks, JDTLS_MIN_JAVA, &bundles, None);
+        configure_jdtls(&mut other, Path::new("/p"), Path::new("/data"), &jdks, None, JDTLS_MIN_JAVA, &bundles, None);
         assert!(other.args.is_empty() && other.initialization_options.is_none());
     }
 
@@ -452,23 +508,23 @@ mod tests {
         let jdtls = || -> LanguageServerConfig { toml::from_str("name = \"jdtls\"\ncommand = \"jdtls\"").unwrap() };
         let jar = Path::new("/m2/lombok-1.18.48.jar");
         let mut cfg = jdtls();
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], JDTLS_MIN_JAVA, &[], Some(jar));
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], None, JDTLS_MIN_JAVA, &[], Some(jar));
         let agent = format!("--jvm-arg=-javaagent:{}", jar.to_string_lossy());
         assert!(cfg.args.contains(&agent), "{:?}", cfg.args);
         let mut plain = jdtls();
-        configure_jdtls(&mut plain, Path::new("/p"), Path::new("/data"), &[], JDTLS_MIN_JAVA, &[], None);
+        configure_jdtls(&mut plain, Path::new("/p"), Path::new("/data"), &[], None, JDTLS_MIN_JAVA, &[], None);
         assert_ne!(cfg.args[1], plain.args[1], "a separate workspace, so everything is rebuilt with the agent");
         let before = cfg.clone();
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], JDTLS_MIN_JAVA, &[], Some(jar));
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], None, JDTLS_MIN_JAVA, &[], Some(jar));
         assert_eq!(cfg, before, "idempotent");
 
         let mut cfg = jdtls();
         cfg.args.push("--jvm-arg=-javaagent:/own/lombok.jar".into());
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], JDTLS_MIN_JAVA, &[], Some(jar));
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], None, JDTLS_MIN_JAVA, &[], Some(jar));
         assert!(!cfg.args.contains(&agent), "the user's agent wins");
         let mut own = jdtls();
         own.args.push("--jvm-arg=-javaagent:/own/lombok.jar".into());
-        configure_jdtls(&mut own, Path::new("/p"), Path::new("/data"), &[], JDTLS_MIN_JAVA, &[], None);
+        configure_jdtls(&mut own, Path::new("/p"), Path::new("/data"), &[], None, JDTLS_MIN_JAVA, &[], None);
         assert_eq!(cfg.args, own.args, "its workspace follows the agent in use");
     }
 
@@ -477,19 +533,19 @@ mod tests {
         let jdtls = || -> LanguageServerConfig { toml::from_str("name = \"jdtls\"\ncommand = \"jdtls\"").unwrap() };
         let old = [Jdk { major: 17, home: PathBuf::from("/jdk17") }, Jdk { major: 8, home: PathBuf::from("/jdk8") }];
         let mut cfg = jdtls();
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &old, JDTLS_MIN_JAVA, &[], None);
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &old, None, JDTLS_MIN_JAVA, &[], None);
         assert!(!cfg.env.contains_key("JAVA_HOME"));
         let err = cfg.launch_error.unwrap();
         assert!(err.contains("JDK 21 or newer") && err.contains("found JDK 8, 17"), "{err}");
 
         let mut cfg = jdtls();
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], JDTLS_MIN_JAVA, &[], None);
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &[], None, JDTLS_MIN_JAVA, &[], None);
         assert!(cfg.launch_error.unwrap().contains("no JDK was found"));
 
         // An explicit JAVA_HOME is the user's call.
         let mut cfg = jdtls();
         cfg.env.insert("JAVA_HOME".into(), "/custom".into());
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &old, JDTLS_MIN_JAVA, &[], None);
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &old, None, JDTLS_MIN_JAVA, &[], None);
         assert_eq!((cfg.env["JAVA_HOME"].as_str(), cfg.launch_error), ("/custom", None));
 
         let mixed = [old[0].clone(), Jdk { major: 21, home: PathBuf::from("/jdk21") }];
@@ -497,7 +553,7 @@ mod tests {
 
         // A jdtls whose bundles need 25 doesn't start on 21, and says what it needs.
         let mut cfg = jdtls();
-        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &mixed, 25, &[], None);
+        configure_jdtls(&mut cfg, Path::new("/p"), Path::new("/data"), &mixed, None, 25, &[], None);
         let err = cfg.launch_error.unwrap();
         assert!(err.contains("JDK 25 or newer") && err.contains("found JDK 17, 21"), "{err}");
     }

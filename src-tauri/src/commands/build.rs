@@ -4,6 +4,7 @@
 use crate::state::AppState;
 use ide_build::compile::{self, BuildEvent, BuildKind, BuildResult};
 use ide_build::{BuildModel, BuildTool, SyncOptions, SyncProgress};
+use ide_core::settings::Settings;
 use ide_core::{IdeError, IdeEvent, IdeResult, RequestId};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -14,22 +15,32 @@ fn join_err(e: tauri::Error) -> IdeError {
     IdeError::internal(e.to_string())
 }
 
-/// `JAVA_HOME` of the installed JDK matching `release` (none when the project names no version).
-fn java_env(release: Option<u32>) -> BTreeMap<String, String> {
+/// `JAVA_HOME`: the project JDK, else the installed JDK matching `release` (none
+/// when the project names no version).
+fn java_env(project_jdk: Option<&ide_sdk::java::Jdk>, release: Option<u32>) -> BTreeMap<String, String> {
     let jdks = ide_sdk::java::installed_jdks();
-    let jdk = release.and_then(|r| ide_sdk::java::pick_jdk(&jdks, Some(r)));
+    let jdk = project_jdk.or_else(|| release.and_then(|r| ide_sdk::java::pick_jdk(&jdks, Some(r))));
     jdk.map(|j| BTreeMap::from([("JAVA_HOME".to_owned(), j.home.to_string_lossy().into_owned())])).unwrap_or_default()
 }
 
-pub(crate) fn load(root: &Path, cache: &Path) -> BuildModel {
+/// The build model with the launch settings applied: the JDK (`JAVA_HOME`), and
+/// the Maven home and options from Settings › Maven.
+pub(crate) fn load(root: &Path, cache: &Path, settings: &Settings) -> BuildModel {
     let mut model = ide_build::load(root, cache);
+    let jdk = ide_sdk::apply::project_jdk(root, settings);
     if let Some(m) = &mut model.maven {
+        let mvn = ide_sdk::apply::maven_command(root, settings);
+        let options = ide_sdk::apply::maven_options(root, settings);
         for p in &mut m.projects {
-            p.env = java_env(p.java_version);
+            p.env = java_env(jdk.as_ref(), p.java_version);
+            if let Some(mvn) = &mvn {
+                p.command = mvn.to_string_lossy().into_owned();
+            }
+            p.options = options.clone();
         }
     }
     if let Some(g) = &mut model.gradle {
-        g.env = java_env(g.java_version);
+        g.env = java_env(jdk.as_ref(), g.java_version);
     }
     model
 }
@@ -39,8 +50,8 @@ pub(crate) fn load(root: &Path, cache: &Path) -> BuildModel {
 #[specta::specta]
 pub async fn build_model(window: Window, state: State<'_, AppState>) -> IdeResult<BuildModel> {
     let project = state.project(window.label())?;
-    let (root, cache) = (project.root.clone(), project.build_cache_dir());
-    tauri::async_runtime::spawn_blocking(move || load(&root, &cache)).await.map_err(join_err)
+    let (root, cache, settings) = (project.root.clone(), project.build_cache_dir(), project.settings.effective());
+    tauri::async_runtime::spawn_blocking(move || load(&root, &cache, &settings)).await.map_err(join_err)
 }
 
 /// Runs Maven (`help:effective-pom dependency:tree`) or Gradle (`tasks --all`) in the
@@ -58,10 +69,10 @@ pub async fn build_sync(
     on_progress: Channel<SyncProgress>,
 ) -> IdeResult<BuildModel> {
     let project = state.project(window.label())?;
-    let (root, cache) = (project.root.clone(), project.build_cache_dir());
+    let (root, cache, settings) = (project.root.clone(), project.build_cache_dir(), project.settings.effective());
     let token = state.begin_request(request);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let current = load(&root, &cache);
+        let current = load(&root, &cache, &settings);
         let env = match tool {
             BuildTool::Maven => current
                 .maven
@@ -71,7 +82,13 @@ pub async fn build_sync(
                 .unwrap_or_default(),
             BuildTool::Gradle => current.gradle.as_ref().map(|g| g.env.clone()).unwrap_or_default(),
         };
-        let options = SyncOptions { offline, profiles, env };
+        let options = SyncOptions {
+            offline,
+            profiles,
+            env,
+            maven_command: ide_sdk::apply::maven_command(&root, &settings).map(|p| p.to_string_lossy().into_owned()),
+            maven_options: ide_sdk::apply::maven_options(&root, &settings),
+        };
         let progress = |p: SyncProgress| {
             let _ = on_progress.send(p);
         };
@@ -79,7 +96,7 @@ pub async fn build_sync(
             BuildTool::Maven => ide_build::sync_maven(&root, &cache, &options, &token, &progress)?,
             BuildTool::Gradle => ide_build::sync_gradle(&root, &cache, &options, &token, &progress)?,
         }
-        Ok(load(&root, &cache))
+        Ok(load(&root, &cache, &settings))
     })
     .await
     .map_err(join_err);
@@ -104,6 +121,7 @@ pub async fn build_run(
 ) -> IdeResult<BuildResult> {
     let project = state.project(window.label())?;
     let (root, cache, sink) = (project.root.clone(), project.build_cache_dir(), project.sink.clone());
+    let settings = project.settings.effective();
     let token = state.begin_request(request);
     let result = tauri::async_runtime::spawn_blocking(move || {
         for path in clear {
@@ -113,7 +131,7 @@ pub async fn build_run(
                 items: Vec::new(),
             });
         }
-        let plan = compile::plan(&root, &load(&root, &cache), kind, file.as_deref())?;
+        let plan = compile::plan(&root, &load(&root, &cache, &settings), kind, file.as_deref())?;
         let result = compile::run(&root, &plan, &token, &|e| {
             let _ = on_event.send(e);
         })?;

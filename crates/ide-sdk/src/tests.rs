@@ -1,4 +1,7 @@
-use crate::apply::{apply_to_run_configs, configure_server, python_interpreter, terminal_activation, tsdk};
+use crate::apply::{
+    apply_to_run_configs, configure_server, maven_command, maven_options, project_jdk, python_interpreter,
+    terminal_activation, tsdk,
+};
 use crate::python::parse_pip_list;
 use crate::{bin_dir, exe, venv_of};
 use ide_core::settings::Settings;
@@ -151,6 +154,52 @@ fn run_configs_use_selected_interpreter_and_package_manager() {
     assert_eq!(configs[2].args, ["-m", "pytest", "-x"]);
     assert_eq!(configs[3].command, "pnpm");
     assert_eq!(configs[4].command, "python3", "shell configs are left alone");
+}
+
+fn fake_jdk(dir: &Path) {
+    std::fs::create_dir_all(dir.join("bin")).unwrap();
+    std::fs::write(dir.join("bin").join(exe("java")), "").unwrap();
+    std::fs::write(dir.join("release"), "JAVA_VERSION=\"17.0.9\"\n").unwrap();
+}
+
+#[test]
+fn project_jdk_and_maven_settings() {
+    if cfg!(windows) {
+        return; // Unix paths and shells
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let jdk = tmp.path().join("jdk17");
+    fake_jdk(&jdk);
+    let maven = tmp.path().join("maven");
+    std::fs::create_dir_all(maven.join("bin")).unwrap();
+    std::fs::write(maven.join("bin/mvn"), "").unwrap();
+
+    let mut s = Settings::default();
+    assert_eq!(project_jdk(tmp.path(), &s), None);
+    assert_eq!(maven_command(tmp.path(), &s), None);
+    assert!(maven_options(tmp.path(), &s).is_empty());
+
+    // Project-relative paths, a JDK's `bin/java`, a Maven home.
+    s.languages.java.jdk = "jdk17/bin/java".into();
+    s.languages.java.maven.home = maven.to_string_lossy().into_owned();
+    s.languages.java.maven.user_settings = "/m2/settings.xml".into();
+    s.languages.java.maven.local_repository = "/m2/repo".into();
+    assert_eq!(project_jdk(tmp.path(), &s).map(|j| j.major), Some(17));
+    assert_eq!(maven_command(tmp.path(), &s), Some(maven.join("bin/mvn")));
+    assert_eq!(maven_options(tmp.path(), &s), ["-s", "/m2/settings.xml", "-Dmaven.repo.local=/m2/repo"]);
+
+    let mut configs = vec![run("maven", "./mvnw", &["package"]), run("gradle", "./gradlew", &["build"])];
+    apply_to_run_configs(&mut configs, tmp.path(), &s);
+    let home = project_jdk(tmp.path(), &s).unwrap().home.to_string_lossy().into_owned();
+    assert_eq!(configs[0].command, maven.join("bin/mvn").to_string_lossy());
+    assert_eq!(configs[0].args, ["-s", "/m2/settings.xml", "-Dmaven.repo.local=/m2/repo", "package"]);
+    assert_eq!(configs[0].env["JAVA_HOME"], home);
+    assert_eq!(configs[1].env["JAVA_HOME"], home);
+    apply_to_run_configs(&mut configs, tmp.path(), &s);
+    assert_eq!(configs[0].args.len(), 4, "applied once");
+
+    s.languages.java.jdk = "missing".into();
+    assert_eq!(project_jdk(tmp.path(), &s), None);
 }
 
 #[test]
