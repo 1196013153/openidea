@@ -45,7 +45,12 @@ export function promptText(title: string, label: string, placeholder: string): P
   );
 }
 
-function PromptDialog(props: { title: string; label: string; placeholder: string; onDone: (v: string | null) => void }) {
+function PromptDialog(props: {
+  title: string;
+  label: string;
+  placeholder: string;
+  onDone: (v: string | null) => void;
+}) {
   const [value, setValue] = useState("");
   const ok = value.trim().length > 0;
   return (
@@ -67,14 +72,26 @@ function PromptDialog(props: { title: string; label: string; placeholder: string
         }}
       >
         <label className={styles.fieldLabel}>{props.label}</label>
-        <Input data-autofocus mono aria-label={props.label} placeholder={props.placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
+        <Input
+          data-autofocus
+          mono
+          aria-label={props.label}
+          placeholder={props.placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
       </form>
     </Dialog>
   );
 }
 
 /** Confirmation with an optional checkbox; resolves `null` when cancelled, else the checkbox state. */
-export function confirm(opts: { title: string; message: ReactNode; ok: string; checkbox?: string }): Promise<{ checked: boolean } | null> {
+export function confirm(opts: {
+  title: string;
+  message: ReactNode;
+  ok: string;
+  checkbox?: string;
+}): Promise<{ checked: boolean } | null> {
   return new Promise((resolve) =>
     open((close) => {
       const done = (r: { checked: boolean } | null) => {
@@ -86,23 +103,28 @@ export function confirm(opts: { title: string; message: ReactNode; ok: string; c
   );
 }
 
-function ConfirmDialog(props: { title: string; message: ReactNode; ok: string; checkbox?: string; onDone: (r: { checked: boolean } | null) => void }) {
+function ConfirmDialog(props: {
+  title: string;
+  message: ReactNode;
+  ok: string;
+  checkbox?: string;
+  onDone: (r: { checked: boolean } | null) => void;
+}) {
   const [checked, setChecked] = useState(false);
   return (
     <Dialog
       open
       title={props.title}
+      icon="question"
       onClose={() => props.onDone(null)}
-      width={440}
+      width={460}
+      footerStart={props.checkbox && <Checkbox checked={checked} onChange={setChecked} label={props.checkbox} />}
       buttons={[
         { label: props.ok, role: "default", autoFocus: true, onClick: () => props.onDone({ checked }) },
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.form}>
-        <div className={styles.message}>{props.message}</div>
-        {props.checkbox && <Checkbox checked={checked} onChange={setChecked} label={props.checkbox} />}
-      </div>
+      {props.message}
     </Dialog>
   );
 }

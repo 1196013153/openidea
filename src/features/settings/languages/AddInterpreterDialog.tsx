@@ -4,7 +4,7 @@
  */
 import { isCancelled } from "@/platform/ipc";
 import { useId, useMemo, useState } from "react";
-import { Dialog, IconButton, Input, Select, Spinner, type SelectOption } from "@/ui";
+import { Dialog, IconButton, Input, Select, Spinner, type SelectOption, T } from "@/ui";
 import { choosePath, createVenv, rememberSdk } from "./api";
 import { tildify, useDetected } from "./components";
 import styles from "./Sdk.module.css";
@@ -83,14 +83,15 @@ export function AddInterpreterDialog({
         <ul className={styles.kinds} aria-label="Interpreter type">
           <li>
             <button type="button" className={`${styles.kind} ${styles.kindOn}`} aria-current="true">
-              Virtualenv Environment
+              <T>Virtualenv Environment</T>
             </button>
           </li>
         </ul>
         <div className={styles.form}>
           <div className={styles.radios} role="radiogroup" aria-label="Environment">
             <label className={styles.radio}>
-              <input type="radio" name="env" checked={mode === "new"} onChange={() => setMode("new")} /> New environment
+              <input type="radio" name="env" checked={mode === "new"} onChange={() => setMode("new")} />{" "}
+              <T>New environment</T>
             </label>
             <label className={styles.radio}>
               <input type="radio" name="env" checked={mode === "existing"} onChange={() => setMode("existing")} />{" "}
@@ -99,7 +100,9 @@ export function AddInterpreterDialog({
           </div>
           {mode === "new" ? (
             <>
-              <label htmlFor={ids.location}>Location:</label>
+              <label htmlFor={ids.location}>
+                <T>Location:</T>
+              </label>
               <div className={styles.pathRow}>
                 <Input
                   id={ids.location}
@@ -117,7 +120,9 @@ export function AddInterpreterDialog({
                   }}
                 />
               </div>
-              <label htmlFor={ids.base}>Base interpreter:</label>
+              <label htmlFor={ids.base}>
+                <T>Base interpreter:</T>
+              </label>
               <div className={styles.pathRow}>
                 <Select
                   className={styles.pathInput}
@@ -143,7 +148,9 @@ export function AddInterpreterDialog({
             </>
           ) : (
             <>
-              <label htmlFor={ids.existing}>Interpreter:</label>
+              <label htmlFor={ids.existing}>
+                <T>Interpreter:</T>
+              </label>
               <div className={styles.pathRow}>
                 <Select
                   className={styles.pathInput}

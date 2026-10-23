@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import type { FileMove } from "@/bindings";
-import { Checkbox, Dialog, Input, Spinner } from "@/ui";
+import { Checkbox, Dialog, Input, Spinner, T } from "@/ui";
 import { runFileRefactoring, type FileRefactorOptions } from "./fileRefactor";
 import { isSameOrInside, joinPath, nameOf, parentOf, relativeTo, splitExtension, validateName } from "./paths";
 import { useProjectTree } from "./store";
@@ -147,7 +147,9 @@ function Busy() {
   return (
     <div className={styles.busy} role="status">
       <Spinner size={14} />
-      <span>Looking for references…</span>
+      <span>
+        <T>Looking for references…</T>
+      </span>
     </div>
   );
 }
@@ -273,7 +275,7 @@ function MoveDialog({ request }: { request: Extract<FileRefactorRequest, { kind:
       >
         <div className={styles.subject}>{subject}</div>
         <label className={styles.fieldLabel} htmlFor="file-move-target">
-          To directory:
+          <T>To directory:</T>
         </label>
         <Input
           id="file-move-target"

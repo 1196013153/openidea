@@ -7,7 +7,7 @@
 import { isCancelled } from "@/platform/ipc";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import clsx from "clsx";
-import { Button, IconButton, Input, Spinner, showContextMenu } from "@/ui";
+import { Button, IconButton, Input, Spinner, showContextMenu, T } from "@/ui";
 import { useProject } from "@/platform/project";
 import { Section, Toggle } from "../components/Form";
 import { effectivePython, listPackages, pip, useSdks, type PythonPackage } from "./api";
@@ -137,7 +137,9 @@ export function PythonInterpreterPage() {
   return (
     <div className={styles.page}>
       <div className={styles.interpreterRow}>
-        <span className={styles.interpreterLabel}>Python Interpreter</span>
+        <span className={styles.interpreterLabel}>
+          <T>Python Interpreter</T>
+        </span>
         <SdkField
           kind="python"
           value={interpreter}
@@ -153,7 +155,7 @@ export function PythonInterpreterPage() {
           disabled={!root}
           title={root ? undefined : "Open a project first"}
         >
-          Add Interpreter…
+          <T>Add Interpreter…</T>
         </Button>
       </div>
       {python && (
@@ -227,7 +229,7 @@ export function PythonInterpreterPage() {
               }}
             />
             <Button type="submit" size="small" variant="primary" disabled={!requirement.trim() || !!job}>
-              Install Package
+              <T>Install Package</T>
             </Button>
           </form>
         )}
@@ -235,8 +237,12 @@ export function PythonInterpreterPage() {
           <table className={styles.table} aria-label="Installed packages">
             <thead>
               <tr>
-                <th scope="col">Package</th>
-                <th scope="col">Version</th>
+                <th scope="col">
+                  <T>Package</T>
+                </th>
+                <th scope="col">
+                  <T>Version</T>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -256,7 +262,11 @@ export function PythonInterpreterPage() {
               ))}
             </tbody>
           </table>
-          {!python && <div className={styles.empty}>No interpreter selected. Choose one above or add a new one.</div>}
+          {!python && (
+            <div className={styles.empty}>
+              <T>No interpreter selected. Choose one above or add a new one.</T>
+            </div>
+          )}
           {python && error && (
             <div className={clsx(styles.empty, styles.error)} role="alert">
               {error}
@@ -265,7 +275,11 @@ export function PythonInterpreterPage() {
           {python && !error && packages && shown.length === 0 && (
             <div className={styles.empty}>{query ? "No packages match" : "No packages installed"}</div>
           )}
-          {python && !error && !packages && loading && <div className={styles.empty}>Loading packages…</div>}
+          {python && !error && !packages && loading && (
+            <div className={styles.empty}>
+              <T>Loading packages…</T>
+            </div>
+          )}
         </div>
       </div>
 
@@ -276,7 +290,7 @@ export function PythonInterpreterPage() {
             {job.op === "install" ? "Installing" : job.op === "upgrade" ? "Upgrading" : "Uninstalling"} {job.target}…
           </span>
           <Button size="small" variant="ghost" onClick={job.cancel}>
-            Cancel
+            <T>Cancel</T>
           </Button>
         </div>
       )}

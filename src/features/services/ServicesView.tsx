@@ -17,9 +17,22 @@ import {
   Tree,
   showContextMenu,
   type TreeRowState,
+  T,
 } from "@/ui";
 import { childrenOf, findNode, nodeDetail, nodeIcon, nodeLabel, rootNodes, isRunning, type ServiceNode } from "./model";
-import { canRemove, canStart, canStop, execShell, nodeMenu, pullPrompt, pruneMenu, remove, restart, start, stop } from "./ops";
+import {
+  canRemove,
+  canStart,
+  canStop,
+  execShell,
+  nodeMenu,
+  pullPrompt,
+  pruneMenu,
+  remove,
+  restart,
+  start,
+  stop,
+} from "./ops";
 import { cancelTask, errorMessage, refresh, useServices, watch } from "./store";
 import styles from "./Services.module.css";
 
@@ -28,20 +41,20 @@ function Unavailable({ availability }: { availability: DockerAvailability }) {
   if (availability.kind === "notInstalled")
     return (
       <EmptyState title="Docker is not installed">
-        Install Docker Desktop, OrbStack, Colima or the Docker Engine and make sure <code>docker</code> is on PATH.
+        <T>Install Docker Desktop, OrbStack, Colima or the Docker Engine and make sure</T> <code>docker</code>{" "}
+        <T>is on PATH.</T>
       </EmptyState>
     );
   if (availability.kind === "daemonDown")
     return (
       <EmptyState
         title="Docker is not running"
-        actions={
-          <IconButton icon="refresh" title="Retry" onClick={() => void refresh()} />
-        }
+        actions={<IconButton icon="refresh" title="Retry" onClick={() => void refresh()} />}
       >
         <div>{availability.message}</div>
         <div className={styles.hint}>
-          Start Docker{availability.context ? ` (context '${availability.context}')` : ""}; this view connects automatically.
+          Start Docker{availability.context ? ` (context '${availability.context}')` : ""}; this view connects
+          automatically.
         </div>
       </EmptyState>
     );
@@ -54,7 +67,9 @@ function Row({ node, state }: { node: ServiceNode; state: TreeRowState }) {
   return (
     <span className={styles.row}>
       <Icon name={nodeIcon(node)} size={16} className={styles.icon} />
-      <span className={clsx(styles.label, state.selected && styles.selectedLabel, dim && styles.dim)}>{nodeLabel(node)}</span>
+      <span className={clsx(styles.label, state.selected && styles.selectedLabel, dim && styles.dim)}>
+        {nodeLabel(node)}
+      </span>
       {detail && <span className={styles.detail}>{detail}</span>}
     </span>
   );
@@ -65,14 +80,53 @@ function Toolbar({ node }: { node: ServiceNode | null }) {
   const container = node?.kind === "container" ? node.container : null;
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Services actions">
-      {loading ? <Spinner size={14} /> : <IconButton icon="refresh" size="small" iconSize={16} action="docker.refresh" />}
+      {loading ? (
+        <Spinner size={14} />
+      ) : (
+        <IconButton icon="refresh" size="small" iconSize={16} action="docker.refresh" />
+      )}
       <span className={styles.sep} />
-      <IconButton icon="run" size="small" iconSize={16} title="Start" disabled={!canStart(node)} onClick={() => void start(node)} />
-      <IconButton icon="stop" size="small" iconSize={16} title="Stop" disabled={!canStop(node)} onClick={() => void stop(node)} />
-      <IconButton icon="rerun" size="small" iconSize={16} title="Restart" disabled={!node || !(node.kind === "container" || node.kind === "compose")} onClick={() => void restart(node)} />
-      <IconButton icon="trash" size="small" iconSize={16} title="Delete" disabled={!canRemove(node)} onClick={() => void remove(node)} />
+      <IconButton
+        icon="run"
+        size="small"
+        iconSize={16}
+        title="Start"
+        disabled={!canStart(node)}
+        onClick={() => void start(node)}
+      />
+      <IconButton
+        icon="stop"
+        size="small"
+        iconSize={16}
+        title="Stop"
+        disabled={!canStop(node)}
+        onClick={() => void stop(node)}
+      />
+      <IconButton
+        icon="rerun"
+        size="small"
+        iconSize={16}
+        title="Restart"
+        disabled={!node || !(node.kind === "container" || node.kind === "compose")}
+        onClick={() => void restart(node)}
+      />
+      <IconButton
+        icon="trash"
+        size="small"
+        iconSize={16}
+        title="Delete"
+        disabled={!canRemove(node)}
+        onClick={() => void remove(node)}
+      />
       <span className={styles.sep} />
-      <IconButton icon="terminal" size="small" iconSize={16} title="Create Terminal" disabled={!container || !isRunning(container)} onClick={() => execShell(node)} />
+      <IconButton
+        icon="terminal"
+        size="small"
+        iconSize={16}
+        title="Create Terminal"
+        disabled={!container || !isRunning(container)}
+        onClick={() => execShell(node)}
+      />
       <IconButton icon="git-pull" size="small" iconSize={16} title="Pull Image…" onClick={() => void pullPrompt()} />
       <IconButton
         icon="trash"
@@ -232,12 +286,21 @@ function Detail({ node }: { node: ServiceNode | null }) {
             {a.context ? ` · context ${a.context}` : ""}
           </div>
         )}
-        <div className={styles.hint}>Select a container, image, volume or network.</div>
+        <div className={styles.hint}>
+          <T>Select a container, image, volume or network.</T>
+        </div>
       </EmptyState>
     );
   }
   const object: DockerObject = node.kind;
-  const id = node.kind === "container" ? node.container.id : node.kind === "image" ? node.image.id : node.kind === "volume" ? node.volume.name : node.network.id;
+  const id =
+    node.kind === "container"
+      ? node.container.id
+      : node.kind === "image"
+        ? node.image.id
+        : node.kind === "volume"
+          ? node.volume.name
+          : node.network.id;
   const showLog = node.kind === "container" && tab === "log";
   return (
     <div className={styles.detailPane}>
@@ -246,9 +309,16 @@ function Detail({ node }: { node: ServiceNode | null }) {
         activeId={showLog ? "log" : "inspect"}
         onSelect={(t) => useServices.setState({ detailTab: t as "log" | "inspect" })}
         aria-label="Details"
-        items={[...(node.kind === "container" ? [{ id: "log", label: "Log" }] : []), { id: "inspect", label: "Inspect" }]}
+        items={[
+          ...(node.kind === "container" ? [{ id: "log", label: "Log" }] : []),
+          { id: "inspect", label: "Inspect" },
+        ]}
       />
-      {showLog ? <LogView key={id} id={id} running={isRunning(node.container)} /> : <InspectView key={id} object={object} id={id} />}
+      {showLog ? (
+        <LogView key={id} id={id} running={isRunning(node.container)} />
+      ) : (
+        <InspectView key={id} object={object} id={id} />
+      )}
     </div>
   );
 }
@@ -265,7 +335,15 @@ export function ServicesView() {
   const node = useMemo(() => findNode(snapshot, selectedKey), [snapshot, selectedKey]);
 
   if (!snapshot)
-    return <div className={styles.loading}>{error ?? <><Spinner size={14} /> Connecting to Docker…</>}</div>;
+    return (
+      <div className={styles.loading}>
+        {error ?? (
+          <>
+            <Spinner size={14} /> <T>Connecting to Docker…</T>
+          </>
+        )}
+      </div>
+    );
 
   const ready = snapshot.availability.kind === "ready";
   return (

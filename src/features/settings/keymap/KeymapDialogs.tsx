@@ -1,6 +1,6 @@
 /** Small modal dialogs of the Keymap page: keymap name (Duplicate / Rename) and confirmations. */
 import { useId, useState, type ReactNode } from "react";
-import { Dialog, Input } from "@/ui";
+import { Dialog, Input, type MessageIconKind, T } from "@/ui";
 import { validateKeymapName, type CustomKeymaps } from "./model";
 import styles from "./Keymap.module.css";
 
@@ -37,7 +37,7 @@ export function KeymapNameDialog({
       <div className={styles.recordBody}>
         <div className={styles.recordRow}>
           <label className={styles.recordLabel} htmlFor={id}>
-            Name:
+            <T>Name:</T>
           </label>
           <Input
             id={id}
@@ -65,6 +65,7 @@ export function ConfirmDialog({
   message,
   confirm,
   extra,
+  icon = "question",
   onCancel,
   onConfirm,
   children,
@@ -72,6 +73,7 @@ export function ConfirmDialog({
   title: string;
   message: ReactNode;
   confirm: string;
+  icon?: MessageIconKind;
   /** Optional second choice next to the primary button (IDEA's "Leave"). */
   extra?: { label: string; run: () => void };
   onCancel: () => void;
@@ -83,17 +85,16 @@ export function ConfirmDialog({
       open
       onClose={onCancel}
       title={title}
-      width={420}
+      icon={icon}
+      width={460}
       buttons={[
         { label: confirm, role: "default", autoFocus: true, onClick: onConfirm },
         ...(extra ? [{ label: extra.label, onClick: extra.run }] : []),
         { label: "Cancel", role: "cancel" as const },
       ]}
     >
-      <div className={styles.recordBody}>
-        <div className={styles.confirmMessage}>{message}</div>
-        {children}
-      </div>
+      {message}
+      {children}
     </Dialog>
   );
 }

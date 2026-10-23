@@ -18,6 +18,7 @@ import {
   fileIconName,
   listNavigate,
   type MenuItem,
+  T,
 } from "@/ui";
 import { useFileDecoration } from "@/workbench/contributions";
 import { badgeKind, basename, openLocation, relDir } from "../common/open";
@@ -152,7 +153,11 @@ function SearchEverywhereDialog() {
       case "text":
         return closeThen(
           () =>
-            void openLocation(row.path, { line: row.line, col: row.col, endLine: row.line, endCol: row.endCol }, { side }),
+            void openLocation(
+              row.path,
+              { line: row.line, col: row.col, endLine: row.line, endCol: row.endCol },
+              { side },
+            ),
         );
       case "action":
         if (!row.enabled) return;
@@ -193,7 +198,12 @@ function SearchEverywhereDialog() {
             { label: "Copy Path from Project Root", run: () => copy(row.rel) },
             ...(row.kind === "symbol" ? [{ label: "Copy Name", run: () => copy(row.name) }] : []),
             ...(row.kind === "file" || row.kind === "text"
-              ? [{ label: "Find in Directory…", run: () => closeThen(() => void executeAction("find.inPath", { directory: dirOf(row.path) })) }]
+              ? [
+                  {
+                    label: "Find in Directory…",
+                    run: () => closeThen(() => void executeAction("find.inPath", { directory: dirOf(row.path) })),
+                  },
+                ]
               : []),
           ];
     setMenu({ anchor, items });
@@ -210,7 +220,8 @@ function SearchEverywhereDialog() {
     if (e.key === "Enter") {
       e.preventDefault();
       if (e.altKey) openIntentions();
-      else if (hasPrimaryModifier(e) && tab === "text") closeThen(() => void executeAction("find.inPath", { query: parsed.text }));
+      else if (hasPrimaryModifier(e) && tab === "text")
+        closeThen(() => void executeAction("find.inPath", { query: parsed.text }));
       else if (!settled && !sel.moved) pendingEnter.current = { side: e.shiftKey };
       else activate(activeRow, e.shiftKey);
       return;
@@ -225,7 +236,8 @@ function SearchEverywhereDialog() {
   const listHeight = Math.min(MAX_LIST, rows.length * ROW);
   const emptyQuery = !parsed.text.trim();
   const showEmpty = !rows.length && snap && !snap.loading && (!emptyQuery || tab !== "all");
-  const canSplit = !!activeRow && activeRow.kind !== "section" && activeRow.kind !== "more" && activeRow.kind !== "action";
+  const canSplit =
+    !!activeRow && activeRow.kind !== "section" && activeRow.kind !== "more" && activeRow.kind !== "action";
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     e.preventDefault();
@@ -359,7 +371,7 @@ function SearchEverywhereDialog() {
           <span className={styles.footerInfo}>{describe(activeRow)}</span>
           {canSplit && (
             <button type="button" className={styles.footerLink} onClick={() => activate(activeRow, true)}>
-              Open In Right Split
+              <T>Open In Right Split</T>
             </button>
           )}
         </footer>
@@ -448,7 +460,10 @@ function ResultRow({
       const shortcut = shortcutLabel(row.id);
       const toggled = actionToggled(getAction(row.id));
       return (
-        <span className={clsx(styles.actionRow, !row.enabled && styles.disabled)} aria-disabled={!row.enabled || undefined}>
+        <span
+          className={clsx(styles.actionRow, !row.enabled && styles.disabled)}
+          aria-disabled={!row.enabled || undefined}
+        >
           <span className={styles.icon}>{row.icon ? <Icon name={row.icon} size={16} /> : null}</span>
           <span className={styles.main}>
             <HighlightedText className={styles.name} text={row.title} indices={row.indices} tone={tone} />
@@ -484,7 +499,12 @@ function ResultRow({
             <Icon name={fileIconName(basename(row.rel))} size={16} />
           </span>
           <span className={styles.main}>
-            <HighlightedText className={clsx(styles.name, styles.code)} text={row.text} indices={row.indices} tone={tone} />
+            <HighlightedText
+              className={clsx(styles.name, styles.code)}
+              text={row.text}
+              indices={row.indices}
+              tone={tone}
+            />
           </span>
           <span className={clsx(styles.right, active && styles.rightActive)}>
             {basename(row.rel)} {row.line + 1}

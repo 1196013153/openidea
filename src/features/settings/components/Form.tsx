@@ -5,15 +5,17 @@
  */
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { Checkbox, IconButton, Input, Select as UiSelect, type SelectOption } from "@/ui";
+import { Checkbox, IconButton, Input, Select as UiSelect, type SelectOption, T } from "@/ui";
+import { tx, useTx } from "@/platform/i18n";
 import { highlightIndices } from "../model/pages";
 import { HEX_COLOR } from "../model/schema";
 import { useLabelMatch, useSearchQuery, useSetting } from "./context";
 import styles from "./Form.module.css";
 
 /** Text with search matches marked. */
-export function SearchLabel({ text, className }: { text: string; className?: string }) {
+export function SearchLabel({ text: source, className }: { text: string; className?: string }) {
   const q = useSearchQuery();
+  const text = useTx()(source);
   const hits = highlightIndices(text, q);
   if (!hits) return <span className={className}>{text}</span>;
   const parts: ReactNode[] = [];
@@ -41,7 +43,7 @@ export function SearchLabel({ text, className }: { text: string; className?: str
 
 export function Section({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
   return (
-    <section className={clsx(styles.section, className)} aria-label={title}>
+    <section className={clsx(styles.section, className)} aria-label={tx(title)}>
       {title && (
         <div className={styles.sectionTitle}>
           <SearchLabel text={title} />
@@ -75,7 +77,7 @@ export function Row({ label, hint, children, htmlFor, stacked, className }: RowP
         <SearchLabel text={label} />
       </label>
       <div className={styles.control}>{children}</div>
-      {hint && <div className={styles.hint}>{hint}</div>}
+      {hint && <div className={styles.hint}>{typeof hint === "string" ? <T>{hint}</T> : hint}</div>}
     </div>
   );
 }
@@ -97,7 +99,9 @@ export function Toggle({ label, checked, onChange, hint, disabled }: ToggleProps
       data-search-match={matched || undefined}
     >
       <Checkbox checked={checked} onChange={onChange} disabled={disabled} label={<SearchLabel text={label} />} />
-      {hint && <div className={clsx(styles.hint, styles.toggleHint)}>{hint}</div>}
+      {hint && (
+        <div className={clsx(styles.hint, styles.toggleHint)}>{typeof hint === "string" ? <T>{hint}</T> : hint}</div>
+      )}
     </div>
   );
 }
@@ -353,7 +357,11 @@ export function GlobListEditor({ value, onChange, placeholder = "**/pattern", ..
         aria-activedescendant={selected !== null ? `${listId}-${selected}` : undefined}
         onKeyDown={onListKey}
       >
-        {rows.length === 0 && <li className={styles.globEmpty}>No patterns</li>}
+        {rows.length === 0 && (
+          <li className={styles.globEmpty}>
+            <T>No patterns</T>
+          </li>
+        )}
         {rows.map((glob, i) => (
           <li
             key={i}

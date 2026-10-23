@@ -44,15 +44,16 @@ function RerunDialog({ name, resolve }: { name: string; resolve: (ok: boolean) =
     <Dialog
       open
       title={`Process '${name}' Is Running`}
+      icon="question"
       onClose={() => void done(false)}
-      width={440}
+      width={460}
       footerStart={<Checkbox checked={dontAsk} onChange={setDontAsk} label="Do not ask again" />}
       buttons={[
         { label: "Stop and Rerun", role: "default", autoFocus: true, onClick: () => void done(true) },
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.dialogBody}>Do you want to stop the process '{name}' and run it again?</div>
+      Do you want to stop the process &apos;{name}&apos; and run it again?
     </Dialog>
   );
 }
@@ -75,12 +76,7 @@ function PromptDialog({ title, resolve }: { title: string; resolve: (v: string |
       ]}
     >
       <div className={styles.dialogBody}>
-        <Input
-          autoFocus
-          aria-label="Value"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
+        <Input autoFocus aria-label="Value" value={value} onChange={(e) => setValue(e.target.value)} />
       </div>
     </Dialog>
   );

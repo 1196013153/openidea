@@ -190,6 +190,65 @@
   outline-offset: 1px;
 }
 
+/* Messages alert (IDEA AlertDialog): 32px icon, bold title, text; draggable anywhere but controls. */
+.message {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  gap: 16px;
+  padding: 20px 24px 4px 20px;
+  cursor: default;
+  touch-action: none;
+}
+.messageIcon {
+  flex: none;
+}
+.messageShape {
+  fill: var(--message-icon-color);
+}
+.messageGlyph {
+  stroke: var(--fg-button-primary);
+}
+.question,
+.info {
+  --message-icon-color: var(--info);
+}
+.warning {
+  --message-icon-color: var(--warning);
+}
+.error {
+  --message-icon-color: var(--danger);
+}
+.messageText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.messageTitle {
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+.messageBody {
+  color: var(--fg-strong);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.messageExtra {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+.messageFooter {
+  padding: 16px 24px 20px;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

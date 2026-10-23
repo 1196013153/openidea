@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useWorkflowSettings } from "@/platform/workflowSettings";
-import { EmptyState, Icon, IconButton, Input, SplitGroup, SplitHandle, SplitPanel, Tabs, type TabItem } from "@/ui";
+import { EmptyState, Icon, IconButton, Input, SplitGroup, SplitHandle, SplitPanel, Tabs, type TabItem, T } from "@/ui";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { ConsoleModel } from "./console";
@@ -52,7 +52,9 @@ function StdinBar({ session }: { session: RunSession }) {
         mono
         className={styles.stdinInput}
         aria-label="Standard input"
-        placeholder={session.stdinClosed ? "stdin closed" : disabled ? "Process is not running" : "Send to stdin (Enter)"}
+        placeholder={
+          session.stdinClosed ? "stdin closed" : disabled ? "Process is not running" : "Send to stdin (Enter)"
+        }
         value={value}
         disabled={disabled}
         data-autofocus=""
@@ -110,7 +112,7 @@ function SessionPanel({ session }: { session: RunSession }) {
       {testModel && (
         <div className={styles.notice}>
           <button type="button" className={styles.noticeLink} onClick={() => setSelectedTest(null)}>
-            Show all output
+            <T>Show all output</T>
           </button>
         </div>
       )}
@@ -169,7 +171,12 @@ function SessionPanel({ session }: { session: RunSession }) {
         />
         <IconButton icon="trash" iconSize={14} title="Clear All" onClick={() => clearConsole(session.id)} />
         <div className={styles.toolbarSep} />
-        <IconButton icon="settings" iconSize={14} title="Edit Configurations…" onClick={() => void executeAction("run.editConfigs", session.config.id)} />
+        <IconButton
+          icon="settings"
+          iconSize={14}
+          title="Edit Configurations…"
+          onClick={() => void executeAction("run.editConfigs", session.config.id)}
+        />
       </div>
       <div className={styles.sessionBody}>
         {rt.tests ? (
@@ -196,7 +203,6 @@ function SessionPanel({ session }: { session: RunSession }) {
     </div>
   );
 }
-
 
 function sessionItems(sessions: readonly RunSession[]): TabItem[] {
   return sessions.map((s) => ({
@@ -261,7 +267,7 @@ export function RunView() {
   if (!current) {
     return (
       <EmptyState icon="run" title="Nothing is running">
-        Run a configuration with <kbd className={styles.kbd}>⌃R</kbd> or pick one in the toolbar.
+        <T>Run a configuration with</T> <kbd className={styles.kbd}>⌃R</kbd> <T>or pick one in the toolbar.</T>
       </EmptyState>
     );
   }
@@ -269,7 +275,12 @@ export function RunView() {
   const id = "session" in current ? current.session.id : current.trace.id;
   return (
     <div className={styles.root}>
-      <div className={styles.panel} role="tabpanel" id={`openidea-run-panel-${id}`} aria-labelledby={`openidea-run-tab-${id}`}>
+      <div
+        className={styles.panel}
+        role="tabpanel"
+        id={`openidea-run-panel-${id}`}
+        aria-labelledby={`openidea-run-tab-${id}`}
+      >
         {"session" in current ? (
           <SessionPanel key={id} session={current.session} />
         ) : (

@@ -1,7 +1,19 @@
 /** React popups for LSP editor features, rendered as a workbench overlay. */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { Button, Dialog, HighlightedText, Icon, Input, List, Popup, SymbolBadge, fileIconName, fuzzyMatch } from "@/ui";
+import {
+  Button,
+  Dialog,
+  HighlightedText,
+  Icon,
+  Input,
+  List,
+  Popup,
+  SymbolBadge,
+  fileIconName,
+  fuzzyMatch,
+  T,
+} from "@/ui";
 import { basename, relativePath, useProject } from "@/platform/project";
 import { editorService } from "@/workbench/contributions";
 import { closePopup, useLspPopup, type ListPopupItem, type LspPopup } from "./popupStore";
@@ -24,9 +36,7 @@ function ListPopup({ popup }: { popup: Extract<LspPopup, { kind: "list" }> }) {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
     if (!query) return popup.items.map((item) => ({ item, match: null as number[] | null }));
-    return popup.items
-      .map((item) => ({ item, match: fuzzyMatch(item.label, query) }))
-      .filter((r) => r.match !== null);
+    return popup.items.map((item) => ({ item, match: fuzzyMatch(item.label, query) })).filter((r) => r.match !== null);
   }, [popup.items, query]);
   const firstEnabled = Math.max(
     0,
@@ -59,7 +69,9 @@ function ListPopup({ popup }: { popup: Extract<LspPopup, { kind: "list" }> }) {
   const width = useMemo(() => {
     const chars = Math.max(
       popup.title.length,
-      ...popup.items.map((i) => i.label.length + (i.preview?.length ?? 0) + (i.detail?.length ?? 0) + (i.shortcut?.length ?? 0)),
+      ...popup.items.map(
+        (i) => i.label.length + (i.preview?.length ?? 0) + (i.detail?.length ?? 0) + (i.shortcut?.length ?? 0),
+      ),
     );
     return Math.min(720, Math.max(320, chars * 7 + 90));
   }, [popup]);
@@ -85,7 +97,11 @@ function ListPopup({ popup }: { popup: Extract<LspPopup, { kind: "list" }> }) {
           hoverSelects
           aria-label={popup.title}
           onActivate={(r) => activate(r.item)}
-          empty={<span className={styles.empty}>Nothing matches</span>}
+          empty={
+            <span className={styles.empty}>
+              <T>Nothing matches</T>
+            </span>
+          }
           renderItem={({ item, match }) => (
             <div
               className={clsx(styles.item, item.disabled && styles.disabled, item.emphasis && styles.emphasis)}
@@ -125,7 +141,14 @@ function RenamePopup({ popup }: { popup: Extract<LspPopup, { kind: "rename" }> }
     return true;
   };
   return (
-    <Popup open anchor={popup.anchor} placement="bottom-start" onClose={closePopup} aria-label={popup.title} className={styles.renamePopup}>
+    <Popup
+      open
+      anchor={popup.anchor}
+      placement="bottom-start"
+      onClose={closePopup}
+      aria-label={popup.title}
+      className={styles.renamePopup}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -143,7 +166,8 @@ function RenamePopup({ popup }: { popup: Extract<LspPopup, { kind: "rename" }> }
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if ((e.key === "ArrowDown" || e.key === "ArrowUp") && pick(e.key === "ArrowDown" ? 1 : -1)) e.preventDefault();
+            if ((e.key === "ArrowDown" || e.key === "ArrowUp") && pick(e.key === "ArrowDown" ? 1 : -1))
+              e.preventDefault();
           }}
           invalid={!value.trim()}
           aria-label="New name"
@@ -214,14 +238,11 @@ function DefinitionPopup({ popup }: { popup: Extract<LspPopup, { kind: "definiti
         </span>
         <span className={styles.spacer} />
         <Button size="small" variant="ghost" onClick={open}>
-          Open
+          <T>Open</T>
         </Button>
       </div>
       <div className={clsx(popup.themeClasses, styles.docScope)}>
-        <DomContent
-          className={styles.defBody}
-          build={() => renderCode(popup.text, popup.language, "cm-lsp-code")}
-        />
+        <DomContent className={styles.defBody} build={() => renderCode(popup.text, popup.language, "cm-lsp-code")} />
       </div>
     </Popup>
   );
@@ -276,23 +297,23 @@ function PreviewDialog({ popup }: { popup: Extract<LspPopup, { kind: "preview" }
           })}
         </ul>
       ) : (
-      <ul className={styles.previewList} aria-label="Changes">
-        {summary.entries.map((e) => (
-          <li key={e.path} className={styles.previewRow}>
-            <Icon name={fileIconName(basename(e.path))} size={14} className={styles.itemIcon} />
-            <span className={styles.previewName}>{basename(e.path)}</span>
-            <span className={styles.previewPath}>{relativePath(root, e.path)}</span>
-            <span className={styles.spacer} />
-            {e.operation === "rename" && e.to && <span className={styles.previewOp}>→ {basename(e.to)}</span>}
-            {e.operation && e.operation !== "rename" && <span className={styles.previewOp}>{e.operation}</span>}
-            {e.edits > 0 && (
-              <span className={styles.previewCount}>
-                {e.edits} {e.edits === 1 ? "occurrence" : "occurrences"}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+        <ul className={styles.previewList} aria-label="Changes">
+          {summary.entries.map((e) => (
+            <li key={e.path} className={styles.previewRow}>
+              <Icon name={fileIconName(basename(e.path))} size={14} className={styles.itemIcon} />
+              <span className={styles.previewName}>{basename(e.path)}</span>
+              <span className={styles.previewPath}>{relativePath(root, e.path)}</span>
+              <span className={styles.spacer} />
+              {e.operation === "rename" && e.to && <span className={styles.previewOp}>→ {basename(e.to)}</span>}
+              {e.operation && e.operation !== "rename" && <span className={styles.previewOp}>{e.operation}</span>}
+              {e.edits > 0 && (
+                <span className={styles.previewCount}>
+                  {e.edits} {e.edits === 1 ? "occurrence" : "occurrences"}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </Dialog>
   );
@@ -309,6 +330,7 @@ function ChoiceDialog({ popup }: { popup: Extract<LspPopup, { kind: "choice" }> 
       open
       onClose={() => answer(popup.onDismiss)}
       title={popup.title}
+      icon={popup.icon ?? "question"}
       width={460}
       buttons={popup.choices.map((c) => ({
         label: c.label,
@@ -317,7 +339,7 @@ function ChoiceDialog({ popup }: { popup: Extract<LspPopup, { kind: "choice" }> 
         onClick: () => answer(c.run),
       }))}
     >
-      <div className={styles.choiceMessage}>{popup.message}</div>
+      {popup.message}
       {popup.detail && <div className={styles.choiceDetail}>{popup.detail}</div>}
     </Dialog>
   );

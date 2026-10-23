@@ -45,7 +45,7 @@ describe("Usages Detected dialog", () => {
     expect(useLspPopup.getState().popup).toBeNull();
   });
 
-  it("Windows: View Usages · Delete Anyway · Cancel; Escape and the close button cancel", () => {
+  it("Windows: View Usages · Delete Anyway · Cancel; Escape and Cancel cancel", () => {
     usePlatform.setState({ os: "windows" });
     render(<LspPopups />);
     let { cancel } = openUsagesDetected();
@@ -53,7 +53,7 @@ describe("Usages Detected dialog", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(cancel).toHaveBeenCalledTimes(1);
     ({ cancel } = openUsagesDetected());
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
   });

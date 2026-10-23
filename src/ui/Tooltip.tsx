@@ -7,6 +7,7 @@ import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactEl
 import { createPortal } from "react-dom";
 import { computePosition, flip, offset, shift } from "@floating-ui/react-dom";
 import styles from "./Tooltip.module.css";
+import { tx } from "@/platform/i18n";
 
 export const TOOLTIP_DELAY = 600;
 const WARM_MS = 400;
@@ -57,7 +58,7 @@ export function TooltipHost() {
     };
 
     const show = (el: HTMLElement) => {
-      const text = el.dataset.tooltip;
+      const text = tx(el.dataset.tooltip);
       if (!text || !el.isConnected) return;
       visible = true;
       anchorRef.current = el;

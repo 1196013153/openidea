@@ -11,8 +11,16 @@ import type { EditorDocContext } from "@/editor/api";
 import { shortcutLabel } from "@/platform/keymap";
 import { isVirtualUri } from "@/platform/virtualDocs";
 import type { HttpRequestBlock } from "@/platform/ipc";
-import { IconButton, Select, iconMarkup } from "@/ui";
-import { cancelRunning, loadEnvironments, parseRequests, runAll, runRequest, setEnvironment, useHttpClient } from "./store";
+import { IconButton, Select, iconMarkup, T } from "@/ui";
+import {
+  cancelRunning,
+  loadEnvironments,
+  parseRequests,
+  runAll,
+  runRequest,
+  setEnvironment,
+  useHttpClient,
+} from "./store";
 import styles from "./HttpClient.module.css";
 
 export const HTTP_LANGUAGE = "http";
@@ -63,7 +71,11 @@ class RequestMarker extends GutterMarker {
     super();
   }
   override eq(other: GutterMarker): boolean {
-    return other instanceof RequestMarker && other.request.index === this.request.index && other.request.url === this.request.url;
+    return (
+      other instanceof RequestMarker &&
+      other.request.index === this.request.index &&
+      other.request.url === this.request.url
+    );
   }
   override toDOM(): Node {
     const el = document.createElement("div");
@@ -101,7 +113,9 @@ function Toolbar({ path, view }: { path: string | null; view: EditorView }) {
         onClick={() => void runAll(path, view.state.doc.toString())}
       />
       <IconButton icon="stop" title="Stop" disabled={!running} onClick={cancelRunning} />
-      <span className={styles.toolbarLabel}>Run with:</span>
+      <span className={styles.toolbarLabel}>
+        <T>Run with:</T>
+      </span>
       <Select
         aria-label="Environment"
         value={chosen && envs?.includes(chosen) ? chosen : ""}

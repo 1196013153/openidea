@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import type { RunConfig } from "@/platform/ipc";
-import { Button, Checkbox, Dialog, Icon, IconButton, Input, Select, type SelectOption } from "@/ui";
+import { Button, Checkbox, Dialog, Icon, IconButton, Input, Select, type SelectOption, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import {
   KIND_OPTIONS,
@@ -183,7 +183,7 @@ function EditConfigsDialog() {
       footerStart={
         invalid && (
           <span className={styles.footerError}>
-            <Icon name="error" size={13} /> Fix the highlighted fields
+            <Icon name="error" size={13} /> <T>Fix the highlighted fields</T>
           </span>
         )
       }
@@ -236,7 +236,11 @@ function EditConfigsDialog() {
                 ))}
               </div>
             ))}
-            {draft.length === 0 && <div className={styles.testEmpty}>No configurations. Click + to add one.</div>}
+            {draft.length === 0 && (
+              <div className={styles.testEmpty}>
+                <T>No configurations. Click + to add one.</T>
+              </div>
+            )}
           </div>
         </div>
         <div className={styles.editForm}>
@@ -244,7 +248,7 @@ function EditConfigsDialog() {
             <>
               {current.detected && (
                 <div className={styles.notice}>
-                  Detected from the project. Changes are saved as a user configuration that overrides it.
+                  <T>Detected from the project. Changes are saved as a user configuration that overrides it.</T>
                 </div>
               )}
               <Field label="Name" error={errors.name}>
@@ -256,7 +260,12 @@ function EditConfigsDialog() {
                 />
               </Field>
               <Field label="Kind">
-                <Select value={current.kind} options={kindOptions} onChange={(kind) => update({ kind })} aria-label="Kind" />
+                <Select
+                  value={current.kind}
+                  options={kindOptions}
+                  onChange={(kind) => update({ kind })}
+                  aria-label="Kind"
+                />
               </Field>
               <Field label="Command" error={errors.command}>
                 <Input
@@ -317,13 +326,22 @@ function EditConfigsDialog() {
                       />
                     </div>
                   ))}
-                  <Button size="small" variant="ghost" icon="plus" onClick={() => setRows([...rows, { key: "", value: "" }])}>
-                    Add variable
+                  <Button
+                    size="small"
+                    variant="ghost"
+                    icon="plus"
+                    onClick={() => setRows([...rows, { key: "", value: "" }])}
+                  >
+                    <T>Add variable</T>
                   </Button>
                 </div>
               </Field>
               <Field label="">
-                <Checkbox checked={current.isTest} onChange={(isTest) => update({ isTest })} label="Show results in the test runner" />
+                <Checkbox
+                  checked={current.isTest}
+                  onChange={(isTest) => update({ isTest })}
+                  label="Show results in the test runner"
+                />
               </Field>
               <Field label="Debug adapter">
                 <Select
@@ -334,12 +352,16 @@ function EditConfigsDialog() {
                 />
               </Field>
               <div className={styles.editPreview}>
-                <span className={styles.chooserMuted}>Command line</span>
+                <span className={styles.chooserMuted}>
+                  <T>Command line</T>
+                </span>
                 <code>{commandLine(current) || "—"}</code>
               </div>
             </>
           ) : (
-            <div className={styles.testEmpty}>Select a configuration</div>
+            <div className={styles.testEmpty}>
+              <T>Select a configuration</T>
+            </div>
           )}
         </div>
       </div>
@@ -347,17 +369,7 @@ function EditConfigsDialog() {
   );
 }
 
-function Field({
-  label,
-  error,
-  top,
-  children,
-}: {
-  label: string;
-  error?: string;
-  top?: boolean;
-  children: ReactNode;
-}) {
+function Field({ label, error, top, children }: { label: string; error?: string; top?: boolean; children: ReactNode }) {
   return (
     <div className={clsx(styles.field, top && styles.fieldTop)}>
       <span className={styles.fieldLabel}>{label}</span>

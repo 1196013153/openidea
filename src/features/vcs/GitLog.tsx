@@ -29,6 +29,7 @@ import {
   fileIconName,
   showContextMenu,
   type MenuItem,
+  T,
 } from "@/ui";
 import { commitFileDiffData, openDiff } from "./diffInput";
 import { laneColor, type GraphRow } from "./graph";
@@ -50,13 +51,7 @@ import { clearConsole, useVcsConsole } from "./ops";
 import { loadBranches, useVcs } from "./store";
 import { checkoutBranch, loadFavoriteBranches, newBranch, useFavoriteBranches } from "./branchOps";
 import { branchMenu } from "./branchMenu";
-import {
-  branchFolderKeys,
-  branchGroupKeys,
-  buildBranchTree,
-  filterBranchTree,
-  type BranchTreeNode,
-} from "./branches";
+import { branchFolderKeys, branchGroupKeys, buildBranchTree, filterBranchTree, type BranchTreeNode } from "./branches";
 import { promptText } from "./dialogs";
 import { buildFileTree, dirKeys, type FileTreeNode } from "./fileTree";
 import styles from "./GitLog.module.css";
@@ -93,11 +88,16 @@ export function GitToolWindow() {
   if (!available)
     return (
       <EmptyState title="Version control is not configured">
-        The project is not a Git repository.
+        <T>The project is not a Git repository.</T>
       </EmptyState>
     );
   return (
-    <div className={styles.root} role="tabpanel" id={`openidea-git-panel-${tab}`} aria-labelledby={`openidea-git-tab-${tab}`}>
+    <div
+      className={styles.root}
+      role="tabpanel"
+      id={`openidea-git-panel-${tab}`}
+      aria-labelledby={`openidea-git-tab-${tab}`}
+    >
       {tab === "log" ? <LogView /> : <ConsoleView />}
     </div>
   );
@@ -228,7 +228,13 @@ function BranchesPanel() {
           e.preventDefault();
           showContextMenu(e, items);
         }}
-        empty={query.trim() ? <span className={styles.muted}>No matching branches</span> : undefined}
+        empty={
+          query.trim() ? (
+            <span className={styles.muted}>
+              <T>No matching branches</T>
+            </span>
+          ) : undefined
+        }
         aria-label="Branches"
         className={styles.branchTree}
       />
@@ -305,7 +311,11 @@ function FilterBar() {
 
   const openBranch = (e: ReactMouseEvent<HTMLElement>) =>
     menuBelow(e, [
-      { label: "HEAD (Current Branch)", checked: filters.branch === "HEAD", run: () => setLogFilters({ branch: "HEAD" }) },
+      {
+        label: "HEAD (Current Branch)",
+        checked: filters.branch === "HEAD",
+        run: () => setLogFilters({ branch: "HEAD" }),
+      },
       { kind: "separator" },
       ...branches
         .filter((b) => !b.name.endsWith("/HEAD"))
@@ -356,7 +366,6 @@ function FilterBar() {
       },
     ]);
 
-
   return (
     <div className={styles.filters} role="toolbar" aria-label="Log filters">
       <SearchField
@@ -394,7 +403,12 @@ function FilterBar() {
         onOpen={openUser}
         onClear={() => setLogFilters({ author: "" })}
       />
-      <FilterButton label="Date" value={filters.since?.label ?? null} onOpen={openDate} onClear={() => setLogFilters({ since: null })} />
+      <FilterButton
+        label="Date"
+        value={filters.since?.label ?? null}
+        onOpen={openDate}
+        onClear={() => setLogFilters({ since: null })}
+      />
       <FilterButton
         label="Paths"
         value={filters.path ? (root ? relTo(root, filters.path) : filters.path) || "." : null}
@@ -563,7 +577,10 @@ function CommitList() {
             if (!c)
               return (
                 <div key="loading" className={styles.row} style={{ transform: `translateY(${v.start}px)` }}>
-                  <Spinner size={12} /> <span className={styles.muted}>Loading…</span>
+                  <Spinner size={12} />{" "}
+                  <span className={styles.muted}>
+                    <T>Loading…</T>
+                  </span>
                 </div>
               );
             return (
@@ -671,7 +688,8 @@ export function RefLabels({ refs }: { refs: string[] }) {
     <span className={styles.refs}>
       {refs.map((r) => {
         const tag = r.startsWith("tag: ");
-        const kind = r === "HEAD" ? styles.refHead : tag ? styles.refTag : r.includes("/") ? styles.refRemote : styles.refLocal;
+        const kind =
+          r === "HEAD" ? styles.refHead : tag ? styles.refTag : r.includes("/") ? styles.refRemote : styles.refLocal;
         return (
           <span key={r} className={clsx(styles.ref, kind)} title={r}>
             {tag ? r.slice(5) : r}
@@ -707,7 +725,9 @@ function CommitDetails({ commits }: { commits: Commit[] }) {
   if (!commit)
     return (
       <div className={styles.details}>
-        <EmptyState>Select a commit to view changes</EmptyState>
+        <EmptyState>
+          <T>Select a commit to view changes</T>
+        </EmptyState>
       </div>
     );
 
@@ -725,8 +745,18 @@ function CommitDetails({ commits }: { commits: Commit[] }) {
                 {files ? `${files.length} file${files.length === 1 ? "" : "s"}` : ""}
               </span>
               <span className={styles.grow} />
-              <IconButton icon="expand-all" title="Expand All" size="small" onClick={() => setExpanded(new Set(allDirs))} />
-              <IconButton icon="collapse-all" title="Collapse All" size="small" onClick={() => setExpanded(new Set())} />
+              <IconButton
+                icon="expand-all"
+                title="Expand All"
+                size="small"
+                onClick={() => setExpanded(new Set(allDirs))}
+              />
+              <IconButton
+                icon="collapse-all"
+                title="Collapse All"
+                size="small"
+                onClick={() => setExpanded(new Set())}
+              />
             </div>
             {error && <div className={styles.message}>{error}</div>}
             {!files && !error && (
@@ -796,7 +826,9 @@ function ChangedFileRow({ node }: { node: FileTreeNode<ChangedFile> }) {
       <span className={styles.fileRow}>
         <Icon name="folder" size={16} className={styles.fileIcon} />
         <span className={styles.fileName}>{node.name}</span>
-        <span className={styles.fileDir}>{node.count} file{node.count === 1 ? "" : "s"}</span>
+        <span className={styles.fileDir}>
+          {node.count} file{node.count === 1 ? "" : "s"}
+        </span>
       </span>
     );
   const f = node.file;
@@ -838,7 +870,11 @@ function ConsoleView() {
           stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
         }}
       >
-        {!lines.length && <div className={styles.muted}>Git commands run by the IDE appear here.</div>}
+        {!lines.length && (
+          <div className={styles.muted}>
+            <T>Git commands run by the IDE appear here.</T>
+          </div>
+        )}
         {lines.map((l) => (
           <div key={l.id} className={clsx(styles.line, styles[`line-${l.kind}`])}>
             {l.kind === "cmd" && (

@@ -2,7 +2,7 @@
 import { Fragment, type ReactNode } from "react";
 import { create } from "zustand";
 import { isTauri } from "@/platform/ipc";
-import { Button, Input } from "@/ui";
+import { Button, Input, T } from "@/ui";
 import { SCOPE_LABELS, currentFile, type ScopeChoice, type ScopeKind } from "./scope";
 import styles from "./Analysis.module.css";
 
@@ -57,7 +57,9 @@ export function ScopeFields({
   const file = currentFile();
   return (
     <fieldset className={styles.scope}>
-      <legend className={styles.fieldLabel}>Scope</legend>
+      <legend className={styles.fieldLabel}>
+        <T>Scope</T>
+      </legend>
       {KINDS.map((kind) => (
         <label key={kind} className={styles.radioRow}>
           <input
@@ -81,7 +83,7 @@ export function ScopeFields({
           <Button
             onClick={() => void browseDirectory(value.directory).then((d) => d && onChange({ ...value, directory: d }))}
           >
-            Browse…
+            <T>Browse…</T>
           </Button>
         </div>
       )}

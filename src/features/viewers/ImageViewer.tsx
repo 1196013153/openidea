@@ -9,7 +9,7 @@ import { create } from "zustand";
 import { call, commands } from "@/platform/ipc";
 import { setContext } from "@/platform/context";
 import { editorService, type EditorInput } from "@/workbench/contributions";
-import { IconButton } from "@/ui";
+import { IconButton, T } from "@/ui";
 import { formatSize, isSvgPath } from "./fileKinds";
 import { fitZoom, initialZoom, stepZoom, zoomLabel } from "./imageZoom";
 import { useForwardFocus } from "./forwardFocus";
@@ -171,7 +171,7 @@ export function ImageViewer({ input }: { input: EditorInput }) {
             className={styles.textButton}
             onClick={() => void editorService().openFile(path, { asText: true })}
           >
-            Open as Text
+            <T>Open as Text</T>
           </button>
         )}
       </div>

@@ -7,7 +7,7 @@ import { history, historyKeymap } from "@codemirror/commands";
 import { keymap } from "@codemirror/view";
 import { unifiedMergeView } from "@codemirror/merge";
 import { call, commands } from "@/platform/ipc";
-import { Button, IconButton, Spinner } from "@/ui";
+import { Button, IconButton, Spinner, T } from "@/ui";
 import { editorService, type EditorInput } from "@/workbench/contributions";
 import { languageFor, viewerBase } from "./cm";
 import { confirmDialog } from "./dialogs";
@@ -101,7 +101,10 @@ const conflictField = StateField.define<{ blocks: ConflictBlock[]; deco: Decorat
 const resultTheme = EditorView.baseTheme({
   ".cm-conflict-ours": { backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)" },
   ".cm-conflict-theirs": { backgroundColor: "color-mix(in srgb, var(--vcs-added) 12%, transparent)" },
-  ".cm-conflict-marker": { backgroundColor: "color-mix(in srgb, var(--vcs-conflict) 14%, transparent)", color: "var(--fg-subtle)" },
+  ".cm-conflict-marker": {
+    backgroundColor: "color-mix(in srgb, var(--vcs-conflict) 14%, transparent)",
+    color: "var(--fg-subtle)",
+  },
   ".cm-conflict-actions": {
     display: "flex",
     alignItems: "center",
@@ -207,7 +210,10 @@ export function MergeEditor({ input }: { input: EditorInput }) {
       dir === 1
         ? (blocks.find((b) => b.from > head) ?? blocks[0]!)
         : ([...blocks].reverse().find((b) => b.to < head) ?? blocks[blocks.length - 1]!);
-    v.dispatch({ selection: { anchor: target.from }, effects: EditorView.scrollIntoView(target.from, { y: "center" }) });
+    v.dispatch({
+      selection: { anchor: target.from },
+      effects: EditorView.scrollIntoView(target.from, { y: "center" }),
+    });
     v.focus();
   };
 
@@ -250,14 +256,18 @@ export function MergeEditor({ input }: { input: EditorInput }) {
     return (
       <div className={styles.message}>
         {error}
-        <Button onClick={() => void load()}>Retry</Button>
+        <Button onClick={() => void load()}>
+          <T>Retry</T>
+        </Button>
       </div>
     );
   if (resolved)
     return (
       <div className={styles.message}>
         {baseName(path)} has been resolved and staged.
-        <Button onClick={() => void editorService().openFile(path, { focus: true })}>Open File</Button>
+        <Button onClick={() => void editorService().openFile(path, { focus: true })}>
+          <T>Open File</T>
+        </Button>
       </div>
     );
 
@@ -268,23 +278,29 @@ export function MergeEditor({ input }: { input: EditorInput }) {
         <IconButton icon="arrow-down" title="Next Conflict" size="small" onClick={() => goto(1)} />
         <span className={styles.sep} />
         <Button size="small" onClick={() => acceptAll("ours")}>
-          Accept All Yours
+          <T>Accept All Yours</T>
         </Button>
         <Button size="small" onClick={() => acceptAll("theirs")}>
-          Accept All Theirs
+          <T>Accept All Theirs</T>
         </Button>
         <IconButton icon="refresh" title="Reload from Disk" size="small" onClick={() => void load()} />
         <span className={clsx(styles.status, !left && styles.statusDone)}>
           {left ? `${left} conflict${left === 1 ? "" : "s"} left` : "All conflicts resolved"}
         </span>
         <Button size="small" variant="primary" onClick={() => void apply()}>
-          Apply
+          <T>Apply</T>
         </Button>
       </div>
       <div className={styles.labels}>
-        <span>Yours (current branch)</span>
-        <span>Result</span>
-        <span>Theirs (incoming)</span>
+        <span>
+          <T>Yours (current branch)</T>
+        </span>
+        <span>
+          <T>Result</T>
+        </span>
+        <span>
+          <T>Theirs (incoming)</T>
+        </span>
       </div>
       {!state || lang === null ? (
         <div className={styles.message}>

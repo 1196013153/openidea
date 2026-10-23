@@ -1,7 +1,7 @@
 /** "usages" tool window: Find Usages results grouped by file with line previews. */
 import { useCallback, useMemo, useState } from "react";
 import { basename, relativeDir, useProject } from "@/platform/project";
-import { EmptyState, Icon, IconButton, Spinner, Tabs, Tree, fileIconName, type TreeRowState } from "@/ui";
+import { EmptyState, Icon, IconButton, Spinner, Tabs, Tree, fileIconName, type TreeRowState, T } from "@/ui";
 import { openLocation } from "./ipc";
 import { trimPreview, usageCount, useUsages, type Usage, type UsageGroup } from "./usages";
 import styles from "./UsagesView.module.css";
@@ -68,7 +68,12 @@ export function UsagesView() {
     [files],
   );
 
-  if (!search) return <EmptyState>Use Find Usages (⌥F7) on a symbol to see its usages here</EmptyState>;
+  if (!search)
+    return (
+      <EmptyState>
+        <T>Use Find Usages (⌥F7) on a symbol to see its usages here</T>
+      </EmptyState>
+    );
   const total = usageCount(search.groups);
   const setAll = (collapse: boolean) =>
     setCollapsed({ id: search.id, keys: collapse ? new Set(files.map((f) => f.key)) : new Set() });
@@ -77,7 +82,9 @@ export function UsagesView() {
     if (n.kind === "summary")
       return (
         <span className={styles.row}>
-          <span className={styles.groupLabel}>Found usages</span>
+          <span className={styles.groupLabel}>
+            <T>Found usages</T>
+          </span>
           <span className={styles.count}>
             {total} {total === 1 ? "result" : "results"}
           </span>
@@ -155,7 +162,13 @@ export function UsagesView() {
             const u = n.kind === "usage" ? n.usage : n.kind === "file" ? n.group.usages[0] : undefined;
             if (u) openLocation(u.path, u.line, u.col);
           }}
-          empty={!search.loading && !search.error ? <EmptyState>No usages found</EmptyState> : undefined}
+          empty={
+            !search.loading && !search.error ? (
+              <EmptyState>
+                <T>No usages found</T>
+              </EmptyState>
+            ) : undefined
+          }
         />
       </div>
     </div>

@@ -2,7 +2,7 @@ import { useMemo, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
-import { HighlightedText, Icon, IconButton, List, Popup, SearchField, fuzzyMatch, listNavigate } from "@/ui";
+import { HighlightedText, Icon, IconButton, List, Popup, SearchField, fuzzyMatch, listNavigate, T } from "@/ui";
 import type { RunConfig } from "@/platform/ipc";
 import { commandLine, configIcon, groupConfigs } from "./configs";
 import { saveTemporary, selectConfig, startRun, useRun } from "./store";
@@ -44,9 +44,7 @@ export function chooserJustClosed(): boolean {
 }
 
 function anchorElement(): Element | { x: number; y: number } {
-  return (
-    document.querySelector("[data-run-chooser]") ?? { x: Math.round(window.innerWidth / 2) - 150, y: 40 }
-  );
+  return document.querySelector("[data-run-chooser]") ?? { x: Math.round(window.innerWidth / 2) - 150, y: 40 };
 }
 
 /** Run/Debug configuration chooser popup (⌃⌥R), anchored to the title bar widget. */
@@ -62,7 +60,13 @@ function ConfigChooser() {
   const temporary = useRun((s) => s.temporary);
   const [query, setQuery] = useState("");
   const rows = useMemo(
-    () => buildRows(configs, query, configs.find((c) => c.id === selectedId), temporary),
+    () =>
+      buildRows(
+        configs,
+        query,
+        configs.find((c) => c.id === selectedId),
+        temporary,
+      ),
     [configs, query, selectedId, temporary],
   );
   const isSection = (r: Row) => r.type === "section";
@@ -161,7 +165,9 @@ function ConfigChooser() {
               return (
                 <span className={clsx(styles.chooserRow, styles.chooserEdit)}>
                   <Icon name="edit" size={13} />
-                  <span>Edit Configurations…</span>
+                  <span>
+                    <T>Edit Configurations…</T>
+                  </span>
                   <span className={styles.chooserShortcut}>{shortcutLabel("run.editConfigs")}</span>
                 </span>
               );

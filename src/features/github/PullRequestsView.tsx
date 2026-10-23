@@ -21,6 +21,7 @@ import {
   Tabs,
   showContextMenu,
   type MenuItem,
+  T,
 } from "@/ui";
 import {
   checksSummary,
@@ -43,7 +44,11 @@ const STATES: Array<{ value: PrStateFilter; label: string }> = [
 ];
 
 function Unavailable({ availability }: { availability: GhAvailability }) {
-  const retry = <Button size="small" onClick={() => void refreshAll()}>Retry</Button>;
+  const retry = (
+    <Button size="small" onClick={() => void refreshAll()}>
+      <T>Retry</T>
+    </Button>
+  );
   switch (availability.kind) {
     case "notInstalled":
       return (
@@ -51,12 +56,15 @@ function Unavailable({ availability }: { availability: GhAvailability }) {
           title="GitHub CLI is not installed"
           actions={
             <>
-              <Button size="small" onClick={() => void openUrl("https://cli.github.com")}>Install gh…</Button>
+              <Button size="small" onClick={() => void openUrl("https://cli.github.com")}>
+                <T>Install gh…</T>
+              </Button>
               {retry}
             </>
           }
         >
-          Pull requests use the <code>gh</code> command line tool. Install it, then run <code>gh auth login</code>.
+          <T>Pull requests use the</T> <code>gh</code> <T>command line tool. Install it, then run</T>{" "}
+          <code>gh auth login</code>.
         </EmptyState>
       );
     case "notLoggedIn":
@@ -68,21 +76,29 @@ function Unavailable({ availability }: { availability: GhAvailability }) {
               <Button
                 size="small"
                 variant="primary"
-                onClick={() => void executeAction("terminal.runCommand", { program: "gh", args: ["auth", "login"], name: "gh auth login" })}
+                onClick={() =>
+                  void executeAction("terminal.runCommand", {
+                    program: "gh",
+                    args: ["auth", "login"],
+                    name: "gh auth login",
+                  })
+                }
               >
-                Run gh auth login
+                <T>Run gh auth login</T>
               </Button>
               {retry}
             </>
           }
         >
-          Run <code>gh auth login</code> in a terminal, then retry.
+          <T>Run</T> <code>gh auth login</code> <T>in a terminal, then retry.</T>
         </EmptyState>
       );
     case "notGitHub":
       return (
         <EmptyState title="No GitHub repository" actions={retry}>
-          <div>This project has no remote on GitHub.</div>
+          <div>
+            <T>This project has no remote on GitHub.</T>
+          </div>
           <div className={styles.hint}>{availability.message}</div>
         </EmptyState>
       );
@@ -113,11 +129,21 @@ function Filters() {
   }, [search]);
   return (
     <div className={styles.filters}>
-      <SearchField value={search} onChange={setSearch} placeholder="Search (GitHub syntax)" aria-label="Search pull requests" className={styles.search} />
+      <SearchField
+        value={search}
+        onChange={setSearch}
+        placeholder="Search (GitHub syntax)"
+        aria-label="Search pull requests"
+        className={styles.search}
+      />
       <div className={styles.filterRow}>
         <Select value={query.state} options={STATES} onChange={(state) => setQuery({ state })} aria-label="State" />
         <Checkbox checked={query.authorMe} onChange={(authorMe) => setQuery({ authorMe })} label="Mine" />
-        <Checkbox checked={query.reviewRequested} onChange={(reviewRequested) => setQuery({ reviewRequested })} label="Review requested" />
+        <Checkbox
+          checked={query.reviewRequested}
+          onChange={(reviewRequested) => setQuery({ reviewRequested })}
+          label="Review requested"
+        />
         <span className={styles.flex} />
         {loading ? <Spinner size={14} /> : <IconButton icon="refresh" size="small" action="github.refresh" />}
         <IconButton icon="plus" size="small" action="github.createPullRequest" />
@@ -184,7 +210,12 @@ function PullRequestList() {
 
 function Markdown({ text }: { text: string }) {
   const html = useMarkupHtml({ kind: "markdown", value: text });
-  if (!text.trim()) return <div className={styles.dim}>No description provided.</div>;
+  if (!text.trim())
+    return (
+      <div className={styles.dim}>
+        <T>No description provided.</T>
+      </div>
+    );
   return (
     <div
       className={styles.markdown}
@@ -225,19 +256,33 @@ function Overview({ pr }: { pr: PullRequestDetails }) {
             </span>
             {c.url && (
               <button type="button" className={styles.link} onClick={() => void openUrl(c.url!)}>
-                Details
+                <T>Details</T>
               </button>
             )}
           </div>
         ))}
       </section>
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>Reviewers</h3>
-        {pr.reviewers.length === 0 && <div className={styles.dim}>No reviews</div>}
+        <h3 className={styles.sectionTitle}>
+          <T>Reviewers</T>
+        </h3>
+        {pr.reviewers.length === 0 && (
+          <div className={styles.dim}>
+            <T>No reviews</T>
+          </div>
+        )}
         {pr.reviewers.map((r) => (
           <div key={r.login} className={styles.checkRow}>
             <Icon
-              name={r.state === "APPROVED" ? "success" : r.state === "CHANGES_REQUESTED" ? "error" : r.state === "REQUESTED" ? "clock" : "info"}
+              name={
+                r.state === "APPROVED"
+                  ? "success"
+                  : r.state === "CHANGES_REQUESTED"
+                    ? "error"
+                    : r.state === "REQUESTED"
+                      ? "clock"
+                      : "info"
+              }
               size={14}
               className={styles[`review-${r.state}`]}
             />
@@ -276,7 +321,14 @@ function Files({ pr }: { pr: PullRequestDetails }) {
       {pr.files.map((f) => {
         const slash = f.path.lastIndexOf("/");
         return (
-          <button key={f.path} type="button" role="listitem" className={styles.fileRow} onClick={(e) => e.detail <= 1 && void openFileDiff(pr, f)} title={f.path}>
+          <button
+            key={f.path}
+            type="button"
+            role="listitem"
+            className={styles.fileRow}
+            onClick={(e) => e.detail <= 1 && void openFileDiff(pr, f)}
+            title={f.path}
+          >
             <Icon name="diff" size={14} className={styles[`change-${f.changeType}`]} />
             <span className={clsx(styles.fileName, styles[`change-${f.changeType}`])}>{f.path.slice(slash + 1)}</span>
             <span className={clsx(styles.dim, styles.ellipsis)}>{slash > 0 ? f.path.slice(0, slash) : ""}</span>
@@ -304,7 +356,11 @@ function Commits({ pr }: { pr: PullRequestDetails }) {
             e.preventDefault();
             showContextMenu({ x: e.clientX, y: e.clientY }, [
               { label: "Copy Revision Number", icon: "copy", run: () => void navigator.clipboard?.writeText(c.oid) },
-              { label: "Open in Browser", icon: "external-link", run: () => void openUrl(`${pr.summary.url}/commits/${c.oid}`) },
+              {
+                label: "Open in Browser",
+                icon: "external-link",
+                run: () => void openUrl(`${pr.summary.url}/commits/${c.oid}`),
+              },
             ]);
           }}
         >
@@ -330,13 +386,19 @@ function Conversation({ pr }: { pr: PullRequestDetails }) {
         <article key={i} className={styles.comment}>
           <header className={styles.commentHead}>
             <strong>{t.author}</strong>
-            {t.reviewState && <span className={styles[`review-${t.reviewState}`]}>{reviewStateLabel(t.reviewState)}</span>}
+            {t.reviewState && (
+              <span className={styles[`review-${t.reviewState}`]}>{reviewStateLabel(t.reviewState)}</span>
+            )}
             <span className={styles.dim}>{relativeTime(t.createdAt)}</span>
           </header>
           {t.body.trim() && <Markdown text={t.body} />}
         </article>
       ))}
-      {threads.length > 0 && <h3 className={styles.sectionTitle}>Review comments</h3>}
+      {threads.length > 0 && (
+        <h3 className={styles.sectionTitle}>
+          <T>Review comments</T>
+        </h3>
+      )}
       {threads.map((t) => (
         <article key={t.root.id} className={styles.comment}>
           <header className={styles.commentHead}>
@@ -377,7 +439,7 @@ function Conversation({ pr }: { pr: PullRequestDetails }) {
               setPosting(false);
             }}
           >
-            Comment
+            <T>Comment</T>
           </Button>
         </div>
       </div>
@@ -396,7 +458,7 @@ function Details() {
     if (error) return <EmptyState title="Could not load the pull request">{error}</EmptyState>;
     return loading ? (
       <div className={styles.loading}>
-        <Spinner size={14} /> Loading…
+        <Spinner size={14} /> <T>Loading…</T>
       </div>
     ) : (
       <EmptyState title="Select a pull request" />
@@ -423,18 +485,24 @@ function Details() {
           <span>
             #{s.number} by <strong>{s.author}</strong> · {s.baseRef} ← {s.headRef}
           </span>
-          {reviewDecisionLabel(s.reviewDecision) && <span className={styles.dim}>· {reviewDecisionLabel(s.reviewDecision)}</span>}
-          {pr.mergeable === "CONFLICTING" && <span className={styles.conflict}>· Conflicts</span>}
+          {reviewDecisionLabel(s.reviewDecision) && (
+            <span className={styles.dim}>· {reviewDecisionLabel(s.reviewDecision)}</span>
+          )}
+          {pr.mergeable === "CONFLICTING" && (
+            <span className={styles.conflict}>
+              <T>· Conflicts</T>
+            </span>
+          )}
         </div>
         <div className={styles.actions}>
           <Button size="small" icon="branch" onClick={() => void checkoutPullRequest(s.number)}>
-            Checkout
+            <T>Checkout</T>
           </Button>
           <Button size="small" icon="edit" onClick={reviewMenu}>
-            Review ▾
+            <T>Review ▾</T>
           </Button>
           <Button size="small" icon="external-link" onClick={() => void openUrl(s.url)}>
-            Open in Browser
+            <T>Open in Browser</T>
           </Button>
           <span className={styles.flex} />
           <IconButton icon="refresh" size="small" title="Reload" onClick={() => void loadDetails(s.number)} />
@@ -496,11 +564,7 @@ export function PullRequestsView() {
     if (!useGithub.getState().availability) void refreshAll();
   }, []);
   if (!availability)
-    return (
-      <div className={styles.loading}>
-        {checking && <Spinner size={14} />} Connecting to GitHub…
-      </div>
-    );
+    return <div className={styles.loading}>{checking && <Spinner size={14} />} Connecting to GitHub…</div>;
   if (availability.kind !== "ready")
     return (
       <div className={styles.view}>
@@ -529,4 +593,3 @@ export function PullRequestsHeader() {
   if (availability?.kind !== "ready") return null;
   return <span className={styles.repo}>{availability.repo.nameWithOwner}</span>;
 }
-

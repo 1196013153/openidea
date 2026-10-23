@@ -1,6 +1,6 @@
 /** Dev diagnostics: keystroke → paint latency, IPC round trips, long tasks. */
 import { useEffect, useRef, useState } from "react";
-import { IconButton } from "@/ui";
+import { IconButton, T } from "@/ui";
 import { isTauri } from "@/platform/ipc";
 import { formatMs } from "./format";
 import { FRAME_BUDGET_MS, keystrokeLatencies, supportsEntryType, type EventEntryLike } from "./events";
@@ -72,7 +72,9 @@ function PerfPanel({ onClose }: { onClose: () => void }) {
   return (
     <section className={styles.overlay} aria-label="Performance overlay (dev diagnostics)">
       <div className={styles.overlayHeader}>
-        <span className={styles.overlayTitle}>Performance (dev diagnostics)</span>
+        <span className={styles.overlayTitle}>
+          <T>Performance (dev diagnostics)</T>
+        </span>
         <IconButton icon="close" size="small" title="Close performance overlay" onClick={onClose} />
       </div>
       <Block
@@ -101,7 +103,9 @@ function Block({ title, summary, budget, note }: { title: string; summary?: Summ
         <span className={styles.value}>{s ? `${s.count} samples` : "–"}</span>
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>last · p50 · p95 · max</span>
+        <span className={styles.label}>
+          <T>last · p50 · p95 · max</T>
+        </span>
         <span className={styles.value}>{s ? [s.last, s.p50, s.p95, s.max].map(formatMs).join(" · ") : "–"}</span>
       </div>
       <div className={styles.row}>

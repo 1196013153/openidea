@@ -10,7 +10,7 @@ import { shortcutLabel } from "@/platform/keymap";
 import { isTauri } from "@/platform/ipc";
 import { SCHEMES as EDITOR_SCHEMES } from "@/platform/colorScheme";
 import { formatTimestamp } from "@/platform/dateFormat";
-import { Checkbox, IconButton, Input, Popup, type SelectOption } from "@/ui";
+import { Checkbox, IconButton, Input, Popup, type SelectOption, T } from "@/ui";
 import { NOTIFICATION_GROUPS } from "@/workbench/notificationStore";
 import { ColorSwatches, NumberInput, Row, SearchLabel, Select, Toggle } from "../components/Form";
 import { useLabelMatch, useSetting } from "../components/context";
@@ -27,6 +27,7 @@ import {
 import { ACCENT_PRESETS, LIMITS, type ThemeId } from "../model/schema";
 import type { PageSpec } from "./spec";
 import styles from "./Behavior.module.css";
+import { useT } from "@/platform/i18n";
 
 export const APPEARANCE_GROUP = "Appearance & Behavior";
 
@@ -158,13 +159,17 @@ function ZoomRow() {
     value: String(z),
     label: `${z}%`,
   }));
+  const t = useT();
   const key = (id: string, fallback: string) => shortcutLabel(id) ?? fallback;
   return (
     <Row label="Zoom">
       <Select value={String(zoom)} options={options} onChange={(v) => setZoom(Number(v))} aria-label="Zoom" />
       <span className={styles.note}>
-        Change with {key("view.zoomIn", "⌃⌥=")} or {key("view.zoomOut", "⌃⌥-")}. Set to 100% with{" "}
-        {key("view.resetZoom", "⌃⌥0")}
+        {t("settings.zoom.hint", {
+          zoomIn: key("view.zoomIn", "⌃⌥="),
+          zoomOut: key("view.zoomOut", "⌃⌥-"),
+          reset: key("view.resetZoom", "⌃⌥0"),
+        })}
       </span>
     </Row>
   );
@@ -438,9 +443,15 @@ function NotificationGroupsTable() {
     <table className={styles.table} aria-label="Notification groups">
       <thead>
         <tr>
-          <th>Group</th>
-          <th>Popup type</th>
-          <th>Show in tool window</th>
+          <th>
+            <T>Group</T>
+          </th>
+          <th>
+            <T>Popup type</T>
+          </th>
+          <th>
+            <T>Show in tool window</T>
+          </th>
         </tr>
       </thead>
       <tbody>

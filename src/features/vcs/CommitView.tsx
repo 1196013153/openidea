@@ -20,6 +20,7 @@ import {
   showContextMenu,
   type MenuItem,
   type TreeHandle,
+  T,
 } from "@/ui";
 import { editorService } from "@/workbench/contributions";
 import {
@@ -67,9 +68,19 @@ export function CommitTabs() {
       items={[
         { id: "changes", label: "Changes" },
         ...(shelfCount || tab === "shelf"
-          ? [{ id: "shelf", label: "Shelf", trailing: shelfCount ? <span className={styles.count}>{shelfCount}</span> : undefined }]
+          ? [
+              {
+                id: "shelf",
+                label: "Shelf",
+                trailing: shelfCount ? <span className={styles.count}>{shelfCount}</span> : undefined,
+              },
+            ]
           : []),
-        { id: "stashes", label: "Stashes", trailing: stashCount ? <span className={styles.count}>{stashCount}</span> : undefined },
+        {
+          id: "stashes",
+          label: "Stashes",
+          trailing: stashCount ? <span className={styles.count}>{stashCount}</span> : undefined,
+        },
       ]}
     />
   );
@@ -81,7 +92,7 @@ export function CommitToolWindow() {
   if (!available)
     return (
       <EmptyState icon="commit" title="Version control is not configured">
-        Open a Git repository to commit changes.
+        <T>Open a Git repository to commit changes.</T>
       </EmptyState>
     );
   return (
@@ -141,7 +152,9 @@ function nodeMenu(nodes: ChangeNode[]): MenuItem[] {
   if (conflicted.length) items.push({ kind: "action", action: "vcs.resolveConflicts", label: "Resolve Conflicts…" });
   items.push(
     { kind: "action", action: "vcs.rollback", arg: paths, label: "Rollback…" },
-    ...(untracked.length ? [{ kind: "action" as const, action: "vcs.addToVcs", arg: untracked.map((f) => f.path) }] : []),
+    ...(untracked.length
+      ? [{ kind: "action" as const, action: "vcs.addToVcs", arg: untracked.map((f) => f.path) }]
+      : []),
     {
       label: "Stage",
       icon: "plus",
@@ -349,7 +362,11 @@ function ChangesPanel() {
                 showContextMenu(e, nodeMenu(nodes.length ? nodes : [node]));
               }}
               aria-label="Changes"
-              empty={<span className={styles.empty}>No local changes</span>}
+              empty={
+                <span className={styles.empty}>
+                  <T>No local changes</T>
+                </span>
+              }
               renderNode={(n, st) => {
                 const agg = aggregateCheck(n.files, checks);
                 const label = (
@@ -396,7 +413,10 @@ function ChangesPanel() {
                     : {};
                 return (
                   <span
-                    className={clsx(styles.nodeRow, n.type === "group" && dropTarget === n.changelist && styles.dropTarget)}
+                    className={clsx(
+                      styles.nodeRow,
+                      n.type === "group" && dropTarget === n.changelist && styles.dropTarget,
+                    )}
                     {...dnd}
                   >
                     <CheckMark
@@ -442,12 +462,20 @@ function ChangesPanel() {
 /** Commit message inspections (Settings › Version Control › Commit). */
 export function messageProblems(
   message: string,
-  c: { blankLineAfterSubject: boolean; limitSubject: boolean; subjectLimit: number; limitBody: boolean; bodyLimit: number },
+  c: {
+    blankLineAfterSubject: boolean;
+    limitSubject: boolean;
+    subjectLimit: number;
+    limitBody: boolean;
+    bodyLimit: number;
+  },
 ): string[] {
   const lines = message.split("\n");
   const out: string[] = [];
-  if (c.limitSubject && (lines[0]?.length ?? 0) > c.subjectLimit) out.push(`Subject line is longer than ${c.subjectLimit} characters`);
-  if (c.blankLineAfterSubject && lines.length > 1 && lines[1]!.trim() !== "") out.push("Missing blank line between subject and body");
+  if (c.limitSubject && (lines[0]?.length ?? 0) > c.subjectLimit)
+    out.push(`Subject line is longer than ${c.subjectLimit} characters`);
+  if (c.blankLineAfterSubject && lines.length > 1 && lines[1]!.trim() !== "")
+    out.push("Missing blank line between subject and body");
   if (c.limitBody) {
     const long = lines.slice(1).findIndex((l) => l.length > c.bodyLimit);
     if (long >= 0) out.push(`Body line ${long + 2} is longer than ${c.bodyLimit} characters`);
@@ -572,7 +600,8 @@ function CommitMessage({ included }: { included: number }) {
         spellCheck
         onChange={(e) => {
           const el = e.target;
-          const wrapped = cfg.limitBody && cfg.wrapAtMargin ? wrapAtMargin(el.value, el.selectionStart, cfg.bodyLimit) : null;
+          const wrapped =
+            cfg.limitBody && cfg.wrapAtMargin ? wrapAtMargin(el.value, el.selectionStart, cfg.bodyLimit) : null;
           useCommit.setState({ message: wrapped?.text ?? el.value });
           if (wrapped) requestAnimationFrame(() => el.setSelectionRange(wrapped.caret, wrapped.caret));
         }}

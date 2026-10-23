@@ -5,7 +5,7 @@
  * `editor.colorOverrides[scheme][attribute]`; `editor/core` injects them.
  */
 import { useMemo, useState, type CSSProperties } from "react";
-import { Button, Checkbox, Input, Tree, type SelectOption } from "@/ui";
+import { Button, Checkbox, Input, Tree, type SelectOption, T } from "@/ui";
 import type { TextAttributesOverride } from "@/platform/editorSettings";
 import {
   ATTRIBUTES,
@@ -192,7 +192,9 @@ function AttributeEditor({
           )}
         </div>
       )}
-      <div className={styles.inherited}>Unchecked values are inherited from the scheme.</div>
+      <div className={styles.inherited}>
+        <T>Unchecked values are inherited from the scheme.</T>
+      </div>
     </div>
   );
 }
@@ -279,7 +281,7 @@ function ColorSchemePage() {
           disabled={!mine}
           onClick={() => setOverrides(Object.fromEntries(Object.entries(overrides ?? {}).filter(([k]) => k !== id)))}
         >
-          Restore Defaults
+          <T>Restore Defaults</T>
         </Button>
       </div>
       {scheme === "theme-default" && <div className={styles.note}>Follows the IDE theme: currently {schemeName}.</div>}

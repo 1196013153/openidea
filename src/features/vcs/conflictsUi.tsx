@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { FileStatus } from "@/bindings";
 import { activeEditor } from "@/editor/api";
 import { call, commands } from "@/platform/ipc";
-import { Dialog, Icon, List, fileIconName } from "@/ui";
+import { Dialog, Icon, List, fileIconName, T } from "@/ui";
 import { editorService, notifications } from "@/workbench/contributions";
 import { blockAt, parseConflicts, resolutionText, type Resolution } from "./conflicts";
 import { openDialog } from "./dialogs";
@@ -98,7 +98,9 @@ function ConflictsDialog({ onClose }: { onClose: () => void }) {
       ]}
     >
       <div className={styles.section}>
-        {files.length ? `${files.length} file${files.length === 1 ? "" : "s"} with conflicts` : "All conflicts resolved"}
+        {files.length
+          ? `${files.length} file${files.length === 1 ? "" : "s"} with conflicts`
+          : "All conflicts resolved"}
       </div>
       <div style={{ height: 240, display: "flex", flexDirection: "column", padding: "0 14px 14px" }}>
         <List
@@ -109,7 +111,11 @@ function ConflictsDialog({ onClose }: { onClose: () => void }) {
           rowHeight={22}
           aria-label="Conflicted files"
           className={styles.boxList}
-          empty={<span>No conflicts</span>}
+          empty={
+            <span>
+              <T>No conflicts</T>
+            </span>
+          }
           onActivate={(f, _i, e) => {
             if (e.type === "click" && (e as unknown as MouseEvent).detail < 2) return;
             onClose();

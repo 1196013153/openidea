@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { Commit } from "@/bindings";
 import { executeAction } from "@/platform/actions";
 import { call, commands } from "@/platform/ipc";
-import { Dialog, List, Spinner, Tabs } from "@/ui";
+import { Dialog, List, Spinner, Tabs, T } from "@/ui";
 import { openDialog } from "./dialogs";
 import { formatTime } from "./model";
 import { useVcs } from "./store";
@@ -13,7 +13,17 @@ const LIMIT = 2000;
 
 /** Commits reachable from `to` but not from `from` (git's `from..to`), computed by git, unbounded by any window. */
 const commitsBetween = (from: string, to: string) =>
-  call(commands.vcsLog({ branch: null, path: null, author: null, text: null, range: `${from}..${to}`, skip: 0, limit: LIMIT }));
+  call(
+    commands.vcsLog({
+      branch: null,
+      path: null,
+      author: null,
+      text: null,
+      range: `${from}..${to}`,
+      skip: 0,
+      limit: LIMIT,
+    }),
+  );
 
 export function showCompareBranches(branch: string) {
   const current = useVcs.getState().branch?.head ?? "HEAD";
@@ -50,8 +60,16 @@ function CompareDialog({ branch, current, onClose }: { branch: string; current: 
         onSelect={setTab}
         aria-label="Direction"
         items={[
-          { id: "incoming", label: `In ${branch}, not in ${current}`, trailing: data ? String(data.incoming.length) : undefined },
-          { id: "outgoing", label: `In ${current}, not in ${branch}`, trailing: data ? String(data.outgoing.length) : undefined },
+          {
+            id: "incoming",
+            label: `In ${branch}, not in ${current}`,
+            trailing: data ? String(data.incoming.length) : undefined,
+          },
+          {
+            id: "outgoing",
+            label: `In ${current}, not in ${branch}`,
+            trailing: data ? String(data.outgoing.length) : undefined,
+          },
         ]}
       />
       <div style={{ height: 320, display: "flex", flexDirection: "column" }}>
@@ -70,7 +88,11 @@ function CompareDialog({ branch, current, onClose }: { branch: string; current: 
             rowHeight={22}
             aria-label="Commits"
             className={styles.grow}
-            empty={<span>No commits</span>}
+            empty={
+              <span>
+                <T>No commits</T>
+              </span>
+            }
             onActivate={(c) => {
               onClose();
               void executeAction("vcs.showCommit", c.id);

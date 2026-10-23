@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Icon, type IconName } from "./icons";
 import { Popup } from "./Popup";
 import { List, listNavigate } from "./List";
+import { useTx } from "@/platform/i18n";
 import styles from "./Select.module.css";
 
 export interface SelectOption<V extends string = string> {
@@ -39,6 +40,7 @@ export function Select<V extends string = string>({
   renderValue,
   ...aria
 }: SelectProps<V>) {
+  const tx = useTx();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const current = options.find((o) => o.value === value);
@@ -78,7 +80,7 @@ export function Select<V extends string = string>({
       const n = options.length;
       for (let s = 1; s <= n; s++) {
         const i = (active + s) % n;
-        if (!options[i]!.disabled && options[i]!.label.toLowerCase().startsWith(ch)) {
+        if (!options[i]!.disabled && tx(options[i]!.label).toLowerCase().startsWith(ch)) {
           setActive(i);
           break;
         }
@@ -109,7 +111,9 @@ export function Select<V extends string = string>({
         ) : (
           <>
             {current?.icon && <Icon name={current.icon} size={14} />}
-            <span className={clsx(styles.value, !current && styles.placeholder)}>{current?.label ?? placeholder}</span>
+            <span className={clsx(styles.value, !current && styles.placeholder)}>
+              {tx(current?.label ?? placeholder)}
+            </span>
           </>
         )}
         <Icon name="chevron-down" size={14} className={styles.chevron} />
@@ -127,7 +131,7 @@ export function Select<V extends string = string>({
             items={options}
             getKey={(o) => o.value}
             isSection={isSection}
-            renderSection={(o) => <span className={styles.disabled}>{o.label}</span>}
+            renderSection={(o) => <span className={styles.disabled}>{tx(o.label)}</span>}
             activeIndex={active}
             onActiveChange={setActive}
             onActivate={(o) => choose(o)}
@@ -140,7 +144,7 @@ export function Select<V extends string = string>({
               <>
                 <span className={styles.check}>{o.value === value && <Icon name="check" size={12} />}</span>
                 {o.icon && <Icon name={o.icon} size={14} />}
-                <span className={styles.optionLabel}>{o.label}</span>
+                <span className={styles.optionLabel}>{tx(o.label)}</span>
                 {o.detail && <span className={styles.detail}>{o.detail}</span>}
               </>
             )}

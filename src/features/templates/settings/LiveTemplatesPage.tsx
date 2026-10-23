@@ -1,7 +1,7 @@
 /** Settings › Editor › Live Templates. */
 import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { Button, Checkbox, IconButton, Input } from "@/ui";
+import { Button, Checkbox, IconButton, Input, T } from "@/ui";
 import { bodyVariables, type LiveTemplate, type TemplateVariable } from "../live/model";
 import {
   isModifiedBuiltin,
@@ -122,7 +122,9 @@ export function LiveTemplatesPage() {
           {selected ? (
             <TemplateEditor key={selected.id} template={selected} />
           ) : (
-            <div className={styles.empty}>Select a template to edit it</div>
+            <div className={styles.empty}>
+              <T>Select a template to edit it</T>
+            </div>
           )}
         </div>
       </div>
@@ -140,7 +142,9 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
   return (
     <>
       <div className={styles.row}>
-        <span className={styles.label}>Abbreviation</span>
+        <span className={styles.label}>
+          <T>Abbreviation</T>
+        </span>
         <Input
           className={styles.grow}
           mono
@@ -150,7 +154,9 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         />
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Description</span>
+        <span className={styles.label}>
+          <T>Description</T>
+        </span>
         <Input
           className={styles.grow}
           value={t.description}
@@ -159,7 +165,9 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         />
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Group</span>
+        <span className={styles.label}>
+          <T>Group</T>
+        </span>
         <Input
           className={styles.grow}
           value={t.group}
@@ -188,7 +196,9 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         surrounded text, <code>$$</code> a dollar sign. Leading tabs are indent units.
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Contexts</span>
+        <span className={styles.label}>
+          <T>Contexts</T>
+        </span>
         <Input
           className={styles.grow}
           mono
@@ -209,10 +219,18 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Variable</th>
-              <th>Expression</th>
-              <th>Default value</th>
-              <th>Skip if defined</th>
+              <th>
+                <T>Variable</T>
+              </th>
+              <th>
+                <T>Expression</T>
+              </th>
+              <th>
+                <T>Default value</T>
+              </th>
+              <th>
+                <T>Skip if defined</T>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -258,7 +276,7 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
       {BUILTIN_IDS.has(t.id) && isModifiedBuiltin(t.id) && (
         <div className={styles.buttons}>
           <Button size="small" onClick={() => resetTemplate(t.id)}>
-            Restore Default
+            <T>Restore Default</T>
           </Button>
         </div>
       )}

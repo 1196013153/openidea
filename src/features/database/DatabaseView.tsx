@@ -9,7 +9,18 @@ import type { DbTableDetails } from "@/platform/ipc";
 import { setContext } from "@/platform/context";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
-import { Button, EmptyState, Icon, IconButton, Menu, Tree, showContextMenu, tooltipAttrs, type TreeHandle } from "@/ui";
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Menu,
+  Tree,
+  showContextMenu,
+  tooltipAttrs,
+  type TreeHandle,
+  T,
+} from "@/ui";
 import { databaseKey, driverIcon, splitTarget, targetOf } from "./model";
 import { nodeTarget, type DbNode as Node, type Group } from "./nodes";
 import {
@@ -30,7 +41,12 @@ import { DB_VIEW_FOCUS, openTableData } from "./treeActions";
 import { newMenu, nodeMenu } from "./treeMenu";
 import styles from "./Database.module.css";
 
-const GROUP_LABELS: Record<Group, string> = { columns: "columns", keys: "keys", foreignKeys: "foreign keys", indexes: "indexes" };
+const GROUP_LABELS: Record<Group, string> = {
+  columns: "columns",
+  keys: "keys",
+  foreignKeys: "foreign keys",
+  indexes: "indexes",
+};
 
 function status<T>(key: string, l: Loaded<T> | undefined, map: (v: T) => Node[]): Node[] | undefined {
   if (!l) return undefined;
@@ -90,7 +106,9 @@ export function DatabaseView() {
   };
 
   const schemasOf = (key: string, id: string) =>
-    status(key, st.schemas[id], (v) => v.map((schema) => ({ kind: "schema", key: `${id}/${schema}`, id, schema }) as Node));
+    status(key, st.schemas[id], (v) =>
+      v.map((schema) => ({ kind: "schema", key: `${id}/${schema}`, id, schema }) as Node),
+    );
 
   const children = (n: Node): readonly Node[] | undefined => {
     switch (n.kind) {
@@ -124,7 +142,14 @@ export function DatabaseView() {
         const d = st.details[detailsKey(n.id, n.schema, n.table.name)];
         if (!d || d.status === "loading") return undefined;
         if (d.status === "error") return [{ kind: "message", key: `${n.key}/err`, text: d.message, error: true }];
-        return groupsOf(d.value).map((group) => ({ kind: "group", key: `${n.key}/${group}`, id: n.id, schema: n.schema, table: n.table.name, group }));
+        return groupsOf(d.value).map((group) => ({
+          kind: "group",
+          key: `${n.key}/${group}`,
+          id: n.id,
+          schema: n.schema,
+          table: n.table.name,
+          group,
+        }));
       }
       case "group": {
         const d = detailsOf(n.id, n.schema, n.table);
@@ -133,7 +158,13 @@ export function DatabaseView() {
         const at = { id: n.id, schema: n.schema, table: n.table };
         switch (n.group) {
           case "columns":
-            return d.columns.map((column) => ({ kind: "column", key: `${n.key}/${column.name}`, column, foreignKey: fkCols.has(column.name), ...at }));
+            return d.columns.map((column) => ({
+              kind: "column",
+              key: `${n.key}/${column.name}`,
+              column,
+              foreignKey: fkCols.has(column.name),
+              ...at,
+            }));
           case "keys":
             return [{ kind: "key", key: `${n.key}/pk`, columns: primaryKey(d), ...at }];
           case "foreignKeys":
@@ -205,7 +236,9 @@ export function DatabaseView() {
         return s?.status === "ok" ? String(s.value.length) : undefined;
       }
       case "folder":
-        return String((tablesOf(n.id, n.schema) ?? []).filter((t) => (t.kind === "view") === (n.folder === "views")).length);
+        return String(
+          (tablesOf(n.id, n.schema) ?? []).filter((t) => (t.kind === "view") === (n.folder === "views")).length,
+        );
       case "group": {
         const d = detailsOf(n.id, n.schema, n.table);
         return d ? String(groupSize(d, n.group)) : undefined;
@@ -255,7 +288,7 @@ export function DatabaseView() {
         <DatabaseToolbar />
         <EmptyState title="No data sources">
           <Button variant="ghost" onClick={() => void executeAction("db.newDataSource")}>
-            New Data Source…
+            <T>New Data Source…</T>
           </Button>
         </EmptyState>
       </div>
@@ -279,7 +312,13 @@ export function DatabaseView() {
           getLabel={label}
           getChildren={children}
           isExpandable={(n) =>
-            n.kind === "source" || n.kind === "database" || n.kind === "schema" || n.kind === "folder" || n.kind === "table" || n.kind === "group"}
+            n.kind === "source" ||
+            n.kind === "database" ||
+            n.kind === "schema" ||
+            n.kind === "folder" ||
+            n.kind === "table" ||
+            n.kind === "group"
+          }
           loadChildren={load}
           getIcon={(n) => icon(n)}
           getDetail={detail}
@@ -289,7 +328,11 @@ export function DatabaseView() {
             const d = detail(n);
             const counted = n.kind === "source" || n.kind === "database" || n.kind === "folder" || n.kind === "group";
             const labelClass =
-              n.kind === "message" && n.error ? styles.treeError : n.kind === "key" || n.kind === "foreignKey" ? styles.keyLabel : styles.nodeLabel;
+              n.kind === "message" && n.error
+                ? styles.treeError
+                : n.kind === "key" || n.kind === "foreignKey"
+                  ? styles.keyLabel
+                  : styles.nodeLabel;
             const live = n.kind === "source" && [...st.connected].some((t) => splitTarget(t).id === n.source.id);
             return (
               <span className={styles.nodeRow}>
@@ -302,14 +345,26 @@ export function DatabaseView() {
                 )}
                 <span className={labelClass}>{label(n)}</span>
                 {d && (
-                  <span className={n.kind === "source" ? styles.treeBadge : counted ? styles.treeCount : n.kind === "column" ? styles.treeType : styles.treeDetail}>
+                  <span
+                    className={
+                      n.kind === "source"
+                        ? styles.treeBadge
+                        : counted
+                          ? styles.treeCount
+                          : n.kind === "column"
+                            ? styles.treeType
+                            : styles.treeDetail
+                    }
+                  >
                     {d}
                   </span>
                 )}
               </span>
             );
           }}
-          onSelectionChange={(_, lead) => useDatabase.setState({ selectedSource: lead ? nodeTarget(lead) : null, selectedNode: lead })}
+          onSelectionChange={(_, lead) =>
+            useDatabase.setState({ selectedSource: lead ? nodeTarget(lead) : null, selectedNode: lead })
+          }
           onActivate={(n) => {
             if (n.kind === "table") openTableData(n.id, n.schema, n.table.name);
             else if (n.kind === "source") void openConsole(n.source.id ?? "");
@@ -355,7 +410,14 @@ function DatabaseToolbar() {
         aria-expanded={newOpen}
         onClick={() => setNewOpen(!newOpen)}
       />
-      <Menu open={newOpen} anchor={plus} items={newMenu()} placement="bottom-start" onClose={() => setNewOpen(false)} aria-label="New" />
+      <Menu
+        open={newOpen}
+        anchor={plus}
+        items={newMenu()}
+        placement="bottom-start"
+        onClose={() => setNewOpen(false)}
+        aria-label="New"
+      />
       <IconButton {...button} icon="db-properties" action="db.properties" disabled={!sources.length} />
       <span className={styles.dbToolbarSep} />
       <IconButton {...button} icon="refresh" action="db.refresh" disabled={!sources.length} />
@@ -372,7 +434,7 @@ function DatabaseToolbar() {
         onClick={() => void executeAction("db.goToDdl")}
         {...tooltipAttrs("Go to DDL", shortcutLabel("db.goToDdl"))}
       >
-        DDL
+        <T>DDL</T>
       </button>
     </div>
   );

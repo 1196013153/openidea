@@ -9,7 +9,7 @@ import {
   type StructuralLanguage,
 } from "@/platform/ipc";
 import { basename } from "@/platform/project";
-import { Checkbox, Dialog, Input, Select, Spinner } from "@/ui";
+import { Checkbox, Dialog, Input, Select, Spinner, T } from "@/ui";
 import { ScopeFields, openDialog } from "./dialogs";
 import { locateDuplicates, loadDuplicateOptions } from "./duplicates";
 import { runInspection } from "./inspect";
@@ -45,7 +45,9 @@ function InspectCodeDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={styles.form}>
         <ScopeFields name="inspect-scope" value={scope} onChange={setScope} />
-        <div className={styles.hint}>Files are checked by their language servers; files without one are skipped.</div>
+        <div className={styles.hint}>
+          <T>Files are checked by their language servers; files without one are skipped.</T>
+        </div>
       </div>
     </Dialog>
   );
@@ -76,7 +78,9 @@ function DuplicatesDialog({ onClose }: { onClose: () => void }) {
       <div className={styles.form}>
         <ScopeFields name="duplicates-scope" value={scope} onChange={setScope} />
         <label className={styles.fieldRow}>
-          <span>Minimum size</span>
+          <span>
+            <T>Minimum size</T>
+          </span>
           <Input
             className={styles.number}
             type="number"
@@ -185,7 +189,9 @@ function StructuralDialog({ replace, onClose }: { replace: boolean; onClose: () 
     >
       <div className={styles.form}>
         <div className={styles.fieldRow}>
-          <span>Language</span>
+          <span>
+            <T>Language</T>
+          </span>
           <Select
             value={language || null}
             options={options}
@@ -196,7 +202,7 @@ function StructuralDialog({ replace, onClose }: { replace: boolean; onClose: () 
           />
         </div>
         <label className={styles.fieldLabel} htmlFor="ssr-template">
-          Search template
+          <T>Search template</T>
         </label>
         <textarea
           id="ssr-template"
@@ -211,7 +217,7 @@ function StructuralDialog({ replace, onClose }: { replace: boolean; onClose: () 
         {replace && (
           <>
             <label className={styles.fieldLabel} htmlFor="ssr-replacement">
-              Replace template
+              <T>Replace template</T>
             </label>
             <textarea
               id="ssr-replacement"
@@ -224,8 +230,8 @@ function StructuralDialog({ replace, onClose }: { replace: boolean; onClose: () 
           </>
         )}
         <div className={styles.hint}>
-          Placeholders: <code>$name$</code> or <code>$NAME</code> match one node, <code>$$$NAME</code> any number of
-          nodes (arguments, statements). A placeholder used twice must match equal code.
+          <T>Placeholders:</T> <code>$name$</code> or <code>$NAME</code> <T>match one node,</T> <code>$$$NAME</code>{" "}
+          <T>any number of nodes (arguments, statements). A placeholder used twice must match equal code.</T>
         </div>
         <ScopeFields name="ssr-scope" value={scope} onChange={setScope} />
       </div>

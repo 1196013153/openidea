@@ -22,6 +22,7 @@ import {
   Tabs,
   showContextMenu,
   type MenuItem,
+  T,
 } from "@/ui";
 import { pluginActionId } from "./bridge";
 import {
@@ -125,7 +126,7 @@ function InstalledRow({ plugin, selected, onSelect }: { plugin: PluginInfo; sele
             {plugin.source === "dev" && <span className={styles.devTag}>dev</span>}
             {plugin.status === "failed" && (
               <Badge dot tone="danger">
-                Failed
+                <T>Failed</T>
               </Badge>
             )}
           </span>
@@ -220,7 +221,9 @@ function DetailTabs({ notes, overview }: { notes: string | null; overview: React
       ) : notes ? (
         <pre className={styles.notes}>{notes.trim()}</pre>
       ) : (
-        <p className={styles.muted}>This version has no release notes.</p>
+        <p className={styles.muted}>
+          <T>This version has no release notes.</T>
+        </p>
       )}
     </>
   );
@@ -244,17 +247,25 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
       {plugin.description && <p className={styles.description}>{plugin.description}</p>}
 
       <dl className={styles.facts}>
-        <dt>Id</dt>
+        <dt>
+          <T>Id</T>
+        </dt>
         <dd className={styles.mono}>{plugin.id}</dd>
-        <dt>Location</dt>
+        <dt>
+          <T>Location</T>
+        </dt>
         <dd className={styles.mono} title={plugin.path}>
           {plugin.path}
         </dd>
-        <dt>Code</dt>
+        <dt>
+          <T>Code</T>
+        </dt>
         <dd>{plugin.hasCode ? "WebAssembly component (sandboxed)" : "None — contributions only"}</dd>
         {plugin.homepage && (
           <>
-            <dt>Homepage</dt>
+            <dt>
+              <T>Homepage</T>
+            </dt>
             <dd className={styles.mono}>{plugin.homepage}</dd>
           </>
         )}
@@ -263,7 +274,9 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
       {plugin.hasCode && (
         <Section title="Permissions">
           {plugin.permissions.length === 0 ? (
-            <div className={styles.muted}>No special permissions.</div>
+            <div className={styles.muted}>
+              <T>No special permissions.</T>
+            </div>
           ) : (
             <ul className={styles.items}>
               {plugin.permissions.map((p) => (
@@ -297,7 +310,7 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
                     onClick={() => void runPluginCommand(plugin.id, c.id)}
                     aria-label={`Run ${c.title}`}
                   >
-                    Run
+                    <T>Run</T>
                   </Button>
                 </li>
               );
@@ -317,7 +330,7 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
                   <span className={styles.muted}>{t.kind === "dark" ? "Dark" : "Light"}</span>
                   {isActive ? (
                     <Button size="small" variant="secondary" onClick={() => void selectPluginTheme(null, null)}>
-                      Use Default Theme
+                      <T>Use Default Theme</T>
                     </Button>
                   ) : (
                     <Button
@@ -327,7 +340,7 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
                       onClick={() => void selectPluginTheme(plugin.id, t.id)}
                       aria-label={`Apply theme ${t.name}`}
                     >
-                      Apply
+                      <T>Apply</T>
                     </Button>
                   )}
                 </li>
@@ -362,7 +375,11 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
           <div className={styles.titleLine}>
             <span className={styles.version}>{plugin.version}</span>
             <Badge tone={status.tone}>{status.label}</Badge>
-            {plugin.source === "dev" && <Badge tone="warning">Dev plugin</Badge>}
+            {plugin.source === "dev" && (
+              <Badge tone="warning">
+                <T>Dev plugin</T>
+              </Badge>
+            )}
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -392,15 +409,15 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
                   onClick={() => void uninstallPlugin(plugin.id)}
                   aria-label={`Confirm uninstall ${plugin.name}`}
                 >
-                  Uninstall
+                  <T>Uninstall</T>
                 </Button>
                 <Button size="small" variant="ghost" onClick={() => setConfirmUninstall(false)}>
-                  Cancel
+                  <T>Cancel</T>
                 </Button>
               </>
             ) : (
               <Button size="small" disabled={busy} onClick={() => setConfirmUninstall(true)}>
-                Uninstall…
+                <T>Uninstall…</T>
               </Button>
             ))}
         </div>
@@ -425,17 +442,25 @@ function CatalogDetails({ entry }: { entry: CatalogPlugin }) {
       )}
       {entry.description && <p className={styles.description}>{entry.description}</p>}
       <dl className={styles.facts}>
-        <dt>Id</dt>
+        <dt>
+          <T>Id</T>
+        </dt>
         <dd className={styles.mono}>{entry.id}</dd>
-        <dt>Source</dt>
+        <dt>
+          <T>Source</T>
+        </dt>
         <dd className={styles.mono} title={entry.path}>
           {entry.path}
         </dd>
-        <dt>Code</dt>
+        <dt>
+          <T>Code</T>
+        </dt>
         <dd>{entry.hasCode ? "WebAssembly component (sandboxed)" : "None — contributions only"}</dd>
         {contributes.length > 0 && (
           <>
-            <dt>Contributes</dt>
+            <dt>
+              <T>Contributes</T>
+            </dt>
             <dd>{contributes.join(", ")}</dd>
           </>
         )}
@@ -631,15 +656,17 @@ export function PluginsPage() {
             <InstalledDetails key={selected.id} plugin={selected} />
           ) : (
             <EmptyState className={styles.detailsEmpty} title={loaded ? "No plugin selected" : "Loading…"}>
-              Plugins are folders with a <code>plugin.toml</code>. Use the gear menu to install one from disk, or put
-              dev plugins in <code>.openidea/plugins/</code> inside your project.
+              <T>Plugins are folders with a</T> <code>plugin.toml</code>
+              <T>. Use the gear menu to install one from disk, or put dev plugins in</T> <code>.openidea/plugins/</code>{" "}
+              <T>inside your project.</T>
             </EmptyState>
           )
         ) : selectedEntry ? (
           <CatalogDetails key={selectedEntry.id} entry={selectedEntry} />
         ) : (
           <EmptyState className={styles.detailsEmpty} title={NO_REPOSITORY}>
-            Install a plugin folder with <code>plugin.toml</code> via the gear menu › Install Plugin from Disk….
+            <T>Install a plugin folder with</T> <code>plugin.toml</code>{" "}
+            <T>via the gear menu › Install Plugin from Disk….</T>
           </EmptyState>
         )}
       </div>

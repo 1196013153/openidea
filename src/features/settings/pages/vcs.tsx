@@ -7,7 +7,7 @@ import { useEffect, useId, useState } from "react";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { WORKFLOW_LIMITS, type IssueLinkValid } from "@/platform/workflowSettings";
-import { Button, Icon, Input, type SelectOption } from "@/ui";
+import { Button, Icon, Input, type SelectOption, T } from "@/ui";
 import { Row, SettingSelect } from "../components/Form";
 import { useSetting } from "../components/context";
 import type { PageSpec } from "./spec";
@@ -38,15 +38,19 @@ function MappingsTable() {
       <table className={styles.table} aria-label="Directory mappings">
         <thead>
           <tr>
-            <th>Directory</th>
-            <th style={{ width: 120 }}>VCS</th>
+            <th>
+              <T>Directory</T>
+            </th>
+            <th style={{ width: 120 }}>
+              <T>VCS</T>
+            </th>
           </tr>
         </thead>
         <tbody>
           {!project ? (
             <tr>
               <td colSpan={2} className={styles.empty}>
-                No project is open
+                <T>No project is open</T>
               </td>
             </tr>
           ) : (
@@ -113,7 +117,7 @@ function GitExecutableRow() {
         }}
       />
       <Button size="small" disabled={testing || !isTauri()} onClick={() => void test()}>
-        Test
+        <T>Test</T>
       </Button>
     </Row>
   );
@@ -244,16 +248,16 @@ function IssuePresets() {
         size="small"
         onClick={() => add({ pattern: "[A-Z][A-Z0-9]+-\\d+", link: "https://jira.example.com/browse/$0" })}
       >
-        Add JIRA Pattern
+        <T>Add JIRA Pattern</T>
       </Button>
       <Button
         size="small"
         onClick={() => add({ pattern: "[A-Z][A-Z0-9]+-\\d+", link: "https://youtrack.example.com/issue/$0" })}
       >
-        Add YouTrack Pattern
+        <T>Add YouTrack Pattern</T>
       </Button>
       <Button size="small" onClick={() => add({ pattern: "#(\\d+)", link: "https://github.com/owner/repo/issues/$1" })}>
-        Add GitHub Pattern
+        <T>Add GitHub Pattern</T>
       </Button>
     </Row>
   );

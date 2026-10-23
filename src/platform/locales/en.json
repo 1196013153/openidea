@@ -34,10 +34,10 @@
   "app.category.help": "Help",
   "app.category.view": "View",
   "app.category.window": "Window",
-  "app.exit.body": "Are you sure you want to exit?",
+  "app.exit.body": "Are you sure you want to exit OpenIDEA?",
   "app.exit.confirm": "Exit",
   "app.exit.dontAsk": "Don't ask again",
-  "app.exit.title": "Exit OpenIDEA?",
+  "app.exit.title": "Confirm Exit",
   "app.keymap.count": "{count, plural, one {# shortcut} other {# shortcuts}}",
   "app.keymap.empty": "No matching shortcuts",
   "app.keymap.filter": "Filter by action or shortcut",
@@ -62,10 +62,10 @@
   "app.window.openFailed": "Cannot open {name}",
   "app.window.pickTitle": "Open in New Window",
   "app.window.askTitle": "Open Project",
-  "app.window.askBody": "Open the project \"{name}\" in a new window or in this window?",
+  "app.window.askBody": "Projects can either be opened in a new window or replace the project in the current window.\nHow would you like to open \"{name}\"?",
   "app.window.askThis": "This Window",
   "app.window.askNew": "New Window",
-  "app.window.askRemember": "Remember, don't ask again",
+  "app.window.askRemember": "Don't ask again",
   "common.cancel": "Cancel",
   "common.close": "Close",
   "common.copied": "Copied",
@@ -312,5 +312,6 @@
   "menu.github.pullRequests": "View Pull Requests",
   "menu.github.createPullRequest": "Create Pull Request…",
   "menu.github.checkoutPullRequest": "Checkout Pull Request…",
-  "menu.github.openInBrowser": "Open on GitHub"
+  "menu.github.openInBrowser": "Open on GitHub",
+  "settings.zoom.hint": "Change with {zoomIn} or {zoomOut}. Set to 100% with {reset}"
 }

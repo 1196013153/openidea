@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import clsx from "clsx";
 import { Icon, type IconName } from "./icons";
 import { IconButton } from "./Button";
+import { T } from "./T";
 import styles from "./Feedback.module.css";
 
 export interface ProgressBarProps {
@@ -87,7 +88,7 @@ export interface EmptyStateProps {
 export function EmptyState({ title, children, actions, className }: EmptyStateProps) {
   return (
     <div className={clsx(styles.empty, className)}>
-      {title && <div className={styles.emptyTitle}>{title}</div>}
+      {title && <div className={styles.emptyTitle}>{typeof title === "string" ? <T>{title}</T> : title}</div>}
       {children && <div className={styles.emptyBody}>{children}</div>}
       {actions && <div className={styles.emptyActions}>{actions}</div>}
     </div>
@@ -134,15 +135,15 @@ export function Toast({
       <Icon name={LEVEL_ICON[level]} size={16} className={clsx(styles.toastIcon, styles[`level-${level}`])} />
       <div className={styles.toastMain}>
         <div className={styles.toastHead}>
-          <span className={styles.toastTitle}>{title}</span>
+          <span className={styles.toastTitle}>{typeof title === "string" ? <T>{title}</T> : title}</span>
           {meta && <span className={styles.toastMeta}>{meta}</span>}
         </div>
-        {body && <div className={styles.toastBody}>{body}</div>}
+        {body && <div className={styles.toastBody}>{typeof body === "string" ? <T>{body}</T> : body}</div>}
         {actions && actions.length > 0 && (
           <div className={styles.toastActions}>
             {actions.map((a) => (
               <button key={a.label} type="button" className={styles.link} onClick={a.run}>
-                {a.label}
+                <T>{a.label}</T>
               </button>
             ))}
           </div>

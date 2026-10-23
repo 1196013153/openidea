@@ -8,7 +8,7 @@ import { create } from "zustand";
 import type { ApplyOutcome, FileStatus, ShelvedChangeList } from "@/bindings";
 import { executeAction } from "@/platform/actions";
 import { call, commands } from "@/platform/ipc";
-import { Checkbox, Dialog, Icon, IconButton, Input, Select, Tree, fileIconName, showContextMenu } from "@/ui";
+import { Checkbox, Dialog, Icon, IconButton, Input, Select, Tree, fileIconName, showContextMenu, T } from "@/ui";
 import { notifications, toolWindowService } from "@/workbench/contributions";
 import { groupOf } from "./changes";
 import { activeList, listOf, moveFiles, relOf, updateChangelists, useChangelists } from "./changelists";
@@ -110,7 +110,15 @@ export function FileChecklist({
   );
 }
 
-function ShelveDialog({ files, initialName, onClose }: { files: FileStatus[]; initialName: string; onClose: () => void }) {
+function ShelveDialog({
+  files,
+  initialName,
+  onClose,
+}: {
+  files: FileStatus[];
+  initialName: string;
+  onClose: () => void;
+}) {
   const [selected, setSelected] = useState(() => new Set(files.map((f) => f.path)));
   const [name, setName] = useState(initialName);
   const run = async () => {
@@ -146,13 +154,13 @@ function ShelveDialog({ files, initialName, onClose }: { files: FileStatus[]; in
       ]}
     >
       <div className={styles.section}>
-        {selected.size} of {files.length} file{files.length === 1 ? "" : "s"} will be shelved and reverted in the working
-        tree.
+        {selected.size} of {files.length} file{files.length === 1 ? "" : "s"} will be shelved and reverted in the
+        working tree.
       </div>
       <FileChecklist files={files} selected={selected} onChange={setSelected} label="Files to shelve" />
       <div className={styles.form}>
         <label className={styles.fieldLabel} htmlFor="openidea-shelf-name">
-          Name:
+          <T>Name:</T>
         </label>
         <Input id="openidea-shelf-name" data-autofocus value={name} onChange={(e) => setName(e.target.value)} />
       </div>
@@ -215,12 +223,17 @@ function UnshelveDialog({ entry, onClose }: { entry: ShelvedChangeList; onClose:
         {entry.name} · {entry.files.length} file{entry.files.length === 1 ? "" : "s"}
       </div>
       <div className={styles.form}>
-        <label className={styles.fieldLabel}>Changelist:</label>
+        <label className={styles.fieldLabel}>
+          <T>Changelist:</T>
+        </label>
         <Select
           value={target}
           aria-label="Target changelist"
           onChange={setTarget}
-          options={lists.lists.map((l) => ({ value: l.id, label: l.id === lists.active ? `${l.name} (active)` : l.name }))}
+          options={lists.lists.map((l) => ({
+            value: l.id,
+            label: l.id === lists.active ? `${l.name} (active)` : l.name,
+          }))}
         />
         <Checkbox checked={remove} onChange={setRemove} label="Remove successfully applied files from the shelf" />
       </div>
@@ -243,7 +256,12 @@ export async function deleteShelf(entry: ShelvedChangeList) {
 }
 
 export async function renameShelf(entry: ShelvedChangeList) {
-  const r = await promptText({ title: "Rename Shelved Changes", label: "Name:", initial: entry.name, okLabel: "Rename" });
+  const r = await promptText({
+    title: "Rename Shelved Changes",
+    label: "Name:",
+    initial: entry.name,
+    okLabel: "Rename",
+  });
   if (!r || r.value === entry.name) return;
   await runOp("Rename shelved changes", () => call(commands.vcsShelfRename(entry.id, r.value)), { refresh: false });
   void loadShelves().catch(() => undefined);

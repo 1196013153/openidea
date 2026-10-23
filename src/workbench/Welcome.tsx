@@ -2,7 +2,7 @@ import { useState } from "react";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import { Button, Spinner } from "@/ui";
+import { Button, Spinner, T } from "@/ui";
 import { useWorkbenchSlots } from "./contributions";
 import { ErrorBoundary, Slot } from "./ErrorBoundary";
 import { usePlatform } from "@/platform/platformInfo";
@@ -16,7 +16,9 @@ function WelcomeFallback() {
   return (
     <div className={styles.fallback}>
       <div className={styles.brand}>
-        <span className={styles.name}>OpenIDEA</span>
+        <span className={styles.name}>
+          <T>OpenIDEA</T>
+        </span>
         {version && <span className={styles.version}>{version}</span>}
       </div>
       <div className={styles.actions}>
@@ -33,12 +35,14 @@ function WelcomeFallback() {
             }
           }}
         >
-          Open…
+          <T>Open…</T>
         </Button>
         {(busy || opening) && <Spinner size={14} className={styles.spinner} />}
       </div>
       <div className={styles.hint}>
-        <span>Open a folder</span>
+        <span>
+          <T>Open a folder</T>
+        </span>
         <span className={styles.keys}>{shortcutLabel("file.openProject")}</span>
       </div>
     </div>

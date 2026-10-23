@@ -5,6 +5,7 @@ import { shortcutLabel } from "@/platform/keymap";
 import { Icon, type IconName } from "./icons";
 import { tooltipAttrs } from "./Tooltip";
 import styles from "./Button.module.css";
+import { useTx } from "@/platform/i18n";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "ghost";
@@ -14,18 +15,20 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "secondary", size = "normal", icon, className, children, type = "button", ...rest },
+  { variant = "secondary", size = "normal", icon, className, children, type = "button", title, ...rest },
   ref,
 ) {
+  const tx = useTx();
   return (
     <button
       ref={ref}
       type={type}
       className={clsx(styles.button, styles[variant], size === "small" && styles.small, className)}
+      title={tx(title)}
       {...rest}
     >
       {icon && <Icon name={icon} size={14} />}
-      {children}
+      {typeof children === "string" ? tx(children) : children}
     </button>
   );
 });
@@ -65,8 +68,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
   },
   ref,
 ) {
+  const tx = useTx();
   const a = action ? getAction(action) : undefined;
-  const label = title ?? a?.title ?? action ?? icon;
+  const label = tx(title) ?? a?.title ?? action ?? icon;
   const keys = shortcut ?? (action ? shortcutLabel(action) : undefined);
   return (
     <button

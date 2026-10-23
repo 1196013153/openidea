@@ -9,11 +9,19 @@ import clsx from "clsx";
 import { create } from "zustand";
 import { call, commands, isTauri, type OutlineItem } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { Icon, Popup } from "@/ui";
+import { Icon, Popup, T } from "@/ui";
 import { editorController, useEditorStatus } from "../controller";
 import { useOutline } from "../model/document";
 import { symbolChain } from "./outline";
-import { dirChildren, iconOf, navSegments, stepSegment, symbolChildren, type NavChild, type NavSegment } from "./navBar";
+import {
+  dirChildren,
+  iconOf,
+  navSegments,
+  stepSegment,
+  symbolChildren,
+  type NavChild,
+  type NavSegment,
+} from "./navBar";
 import styles from "./NavBarPopup.module.css";
 
 export const useNavBarPopup = create<{ open: boolean; seq: number }>(() => ({ open: false, seq: 0 }));
@@ -48,7 +56,12 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
   const project = useProject((s) => s.project);
   const outline = useOutline((s) => s[path]);
   const initial = useMemo(
-    () => navSegments(project ? { root: project.root, name: project.name } : null, path, outline ? symbolChain(outline, line, col) : []),
+    () =>
+      navSegments(
+        project ? { root: project.root, name: project.name } : null,
+        path,
+        outline ? symbolChain(outline, line, col) : [],
+      ),
     // The bar is a snapshot of where ⌘↑ was pressed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -76,7 +89,10 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
   const choose = (child: NavChild) => {
     if (!list) return;
     if (child.kind === "dir") {
-      const segs: NavSegment[] = [...segments.slice(0, list.seg + 1), { kind: "dir", path: child.path, label: child.label }];
+      const segs: NavSegment[] = [
+        ...segments.slice(0, list.seg + 1),
+        { kind: "dir", path: child.path, label: child.label },
+      ];
       setSegments(segs);
       setActive(segs.length - 1);
       void openList(segs.length - 1, segs);
@@ -101,7 +117,8 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
     if (e.key === "ArrowLeft") move(-1);
     else if (e.key === "ArrowRight") move(1);
     else if (e.key === "ArrowDown" && !list) void openList(active);
-    else if (e.key === "ArrowDown" && list) setList({ ...list, active: Math.min(list.items.length - 1, list.active + 1) });
+    else if (e.key === "ArrowDown" && list)
+      setList({ ...list, active: Math.min(list.items.length - 1, list.active + 1) });
     else if (e.key === "ArrowUp" && list) setList({ ...list, active: Math.max(0, list.active - 1) });
     else if (e.key === "Enter" && list) {
       const child = list.items[list.active];
@@ -123,8 +140,23 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
   }, [list]);
 
   return (
-    <Popup open anchor={anchor} placement="bottom-start" offset={0} onClose={close} aria-label="Navigation bar" className={styles.popup}>
-      <div className={styles.root} tabIndex={0} data-autofocus onKeyDown={onKeyDown} role="toolbar" aria-label="Navigation bar">
+    <Popup
+      open
+      anchor={anchor}
+      placement="bottom-start"
+      offset={0}
+      onClose={close}
+      aria-label="Navigation bar"
+      className={styles.popup}
+    >
+      <div
+        className={styles.root}
+        tabIndex={0}
+        data-autofocus
+        onKeyDown={onKeyDown}
+        role="toolbar"
+        aria-label="Navigation bar"
+      >
         <div className={styles.bar}>
           {segments.map((s, i) => (
             <span key={`${i}:${s.path}:${s.label}`} className={styles.segmentWrap}>
@@ -147,8 +179,18 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
           ))}
         </div>
         {list && (
-          <div ref={listRef} className={styles.list} style={{ marginLeft: list.left }} role="listbox" aria-label="Children">
-            {list.items.length === 0 && <div className={styles.empty}>Nothing here</div>}
+          <div
+            ref={listRef}
+            className={styles.list}
+            style={{ marginLeft: list.left }}
+            role="listbox"
+            aria-label="Children"
+          >
+            {list.items.length === 0 && (
+              <div className={styles.empty}>
+                <T>Nothing here</T>
+              </div>
+            )}
             {list.items.map((c, i) => (
               <div
                 key={`${c.path}:${c.label}:${i}`}

@@ -13,7 +13,6 @@ import { openDialog } from "./dialogs";
 import { effectiveKind, relTo, stripSlash } from "./model";
 import { runOp } from "./ops";
 import { refreshNow, useVcs } from "./store";
-import styles from "./common.module.css";
 
 const inside = (root: string, p: string) => p === root || p.startsWith(root.endsWith("/") ? root : root + "/");
 
@@ -35,7 +34,9 @@ function matching(paths: readonly string[], kind: "untracked" | "deleted"): stri
 function ask(op: FileOperation["kind"], files: string[]): Promise<{ ok: boolean; remember: boolean }> {
   const root = useVcs.getState().root ?? "";
   return new Promise((resolve) => {
-    const close = openDialog(() => <ConfirmDialog op={op} files={files} root={root} onDone={(r) => (close(), resolve(r))} />);
+    const close = openDialog(() => (
+      <ConfirmDialog op={op} files={files} root={root} onDone={(r) => (close(), resolve(r))} />
+    ));
   });
 }
 
@@ -58,23 +59,31 @@ function ConfirmDialog({
     <Dialog
       open
       title={add ? "Add File to Git" : "Remove File from Git"}
+      icon="question"
       onClose={() => onDone({ ok: false, remember: false })}
       width={480}
       footerStart={<Checkbox checked={remember} onChange={setRemember} label="Don't ask again" />}
       buttons={[
-        { label: add ? "Add" : "Remove", role: "default", autoFocus: true, onClick: () => onDone({ ok: true, remember }) },
+        {
+          label: add ? "Add" : "Remove",
+          role: "default",
+          autoFocus: true,
+          onClick: () => onDone({ ok: true, remember }),
+        },
         { label: "Cancel", role: "cancel", onClick: () => onDone({ ok: false, remember }) },
       ]}
     >
-      <div className={styles.message}>
-        {add ? `Do you want to add the following ${what} to Git?` : `Do you want to remove the following ${what} from Git?`}
+      <>
+        {add
+          ? `Do you want to add the following ${what} to Git?`
+          : `Do you want to remove the following ${what} from Git?`}
         {"\n"}
         {files
           .slice(0, 10)
           .map((f) => relTo(root, f))
           .join("\n")}
         {n > 10 ? "\n…" : ""}
-      </div>
+      </>
     </Dialog>
   );
 }
@@ -105,7 +114,9 @@ async function handle(op: FileOperation) {
   }
   const n = files.length;
   await runOp(
-    op.kind === "created" ? `Add ${n} file${n === 1 ? "" : "s"} to Git` : `Remove ${n} file${n === 1 ? "" : "s"} from Git`,
+    op.kind === "created"
+      ? `Add ${n} file${n === 1 ? "" : "s"} to Git`
+      : `Remove ${n} file${n === 1 ? "" : "s"} from Git`,
     () => call(commands.vcsStage(files)),
   );
 }

@@ -61,6 +61,36 @@ pub fn window_take_launch(window: WebviewWindow, windows: State<'_, WindowsState
 
 #[derive(Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct OpenProject {
+    pub name: String,
+    pub root: PathBuf,
+    /// Open in the calling window.
+    pub current: bool,
+}
+
+/// Projects open in project windows, in window order (title bar project widget).
+#[tauri::command]
+#[specta::specta]
+pub fn window_open_projects(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+) -> IdeResult<Vec<OpenProject>> {
+    Ok(windows::project_window_labels(&app)
+        .into_iter()
+        .filter_map(|label| {
+            let project = state.project(&label).ok()?;
+            Some(OpenProject {
+                name: project.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                root: project.root.clone(),
+                current: label == window.label(),
+            })
+        })
+        .collect())
+}
+
+#[derive(Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct CloseContext {
     /// Quit is in progress (exit was already confirmed).
     pub quitting: bool,

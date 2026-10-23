@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import type { Commit, FileStatus, PatchFile, PatchSource } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
-import { Button, Checkbox, Dialog, Icon, Input, List, Spinner, fileIconName } from "@/ui";
+import { Button, Checkbox, Dialog, Icon, Input, List, Spinner, fileIconName, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { openDialog } from "./dialogs";
 import { KIND_COLOR, baseName, dirName, stripSlash } from "./model";
@@ -22,7 +22,10 @@ export function suggestedPatchName(origin: PatchOrigin, listName: string): strin
         ? origin.commits[0]!.summary
         : `${origin.commits.length} commits`
       : listName;
-  const clean = base.replace(/[^\p{L}\p{N}._-]+/gu, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+  const clean = base
+    .replace(/[^\p{L}\p{N}._-]+/gu, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60);
   return `${clean || "changes"}.patch`;
 }
 
@@ -65,7 +68,11 @@ function CreatePatchDialog({ origin, onClose }: { origin: PatchOrigin; onClose: 
     await saveAll();
     const source: PatchSource =
       origin.kind === "changes"
-        ? { from: "changes", paths: origin.files.filter((f) => selected.has(f.path)).map((f) => stripSlash(f.path)), reverse }
+        ? {
+            from: "changes",
+            paths: origin.files.filter((f) => selected.has(f.path)).map((f) => stripSlash(f.path)),
+            reverse,
+          }
         : {
             from: "commits",
             commits: [...origin.commits].sort((a, b) => (a.timeMs ?? 0) - (b.timeMs ?? 0)).map((c) => c.id),
@@ -94,7 +101,9 @@ function CreatePatchDialog({ origin, onClose }: { origin: PatchOrigin; onClose: 
     >
       {origin.kind === "changes" ? (
         <>
-          <div className={styles.section}>Changes to include:</div>
+          <div className={styles.section}>
+            <T>Changes to include:</T>
+          </div>
           <FileChecklist files={origin.files} selected={selected} onChange={setSelected} label="Files to include" />
         </>
       ) : (
@@ -107,7 +116,9 @@ function CreatePatchDialog({ origin, onClose }: { origin: PatchOrigin; onClose: 
       <div className={styles.form} role="radiogroup" aria-label="Patch destination">
         <label className={styles.radioRow}>
           <input type="radio" name="dest" checked={toFile} onChange={() => setToFile(true)} />
-          <span className={styles.radioText}>Save to file:</span>
+          <span className={styles.radioText}>
+            <T>Save to file:</T>
+          </span>
         </label>
         <div className={styles.cloneDirRow}>
           <Input
@@ -118,16 +129,15 @@ function CreatePatchDialog({ origin, onClose }: { origin: PatchOrigin; onClose: 
             value={file}
             onChange={(e) => setFile(e.target.value)}
           />
-          <Button
-            disabled={!toFile}
-            onClick={() => void browseSave(file).then((p) => p && setFile(p))}
-          >
-            Browse…
+          <Button disabled={!toFile} onClick={() => void browseSave(file).then((p) => p && setFile(p))}>
+            <T>Browse…</T>
           </Button>
         </div>
         <label className={styles.radioRow}>
           <input type="radio" name="dest" checked={!toFile} onChange={() => setToFile(false)} />
-          <span className={styles.radioText}>Copy to clipboard</span>
+          <span className={styles.radioText}>
+            <T>Copy to clipboard</T>
+          </span>
         </label>
         <Checkbox checked={reverse} onChange={setReverse} label="Reverse patch" />
       </div>
@@ -195,7 +205,9 @@ function ApplyPatchDialog({ patch, source, onClose }: { patch: string; source: s
   const run = async () => {
     onClose();
     await saveAll();
-    const outcome = await runOp(`Apply patch (${source})`, () => call(commands.vcsApplyPatch(patch)), { refresh: false });
+    const outcome = await runOp(`Apply patch (${source})`, () => call(commands.vcsApplyPatch(patch)), {
+      refresh: false,
+    });
     if (outcome) await reportApply(outcome, "Patch applied");
   };
   return (
@@ -216,7 +228,9 @@ function ApplyPatchDialog({ patch, source, onClose }: { patch: string; source: s
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.section}>{files ? `${files.length} file${files.length === 1 ? "" : "s"} in the patch` : ""}</div>
+      <div className={styles.section}>
+        {files ? `${files.length} file${files.length === 1 ? "" : "s"} in the patch` : ""}
+      </div>
       <div style={{ height: 280, display: "flex", flexDirection: "column", padding: "0 14px 14px" }}>
         {error ? (
           <div className={styles.error}>{error}</div>
@@ -231,7 +245,11 @@ function ApplyPatchDialog({ patch, source, onClose }: { patch: string; source: s
             rowHeight={22}
             aria-label="Patch files"
             className={styles.boxList}
-            empty={<span>No changes</span>}
+            empty={
+              <span>
+                <T>No changes</T>
+              </span>
+            }
             renderItem={(f) => (
               <span
                 className={styles.fileRow}
@@ -241,7 +259,10 @@ function ApplyPatchDialog({ patch, source, onClose }: { patch: string; source: s
                 <Icon name={fileIconName(baseName(f.path))} size={14} />
                 <span
                   className={styles.fileName}
-                  style={{ color: KIND_COLOR[f.kind === "untracked" ? "added" : f.kind === "conflicted" ? "conflicted" : f.kind] }}
+                  style={{
+                    color:
+                      KIND_COLOR[f.kind === "untracked" ? "added" : f.kind === "conflicted" ? "conflicted" : f.kind],
+                  }}
                 >
                   {baseName(f.path)}
                 </span>

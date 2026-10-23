@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Icon, IconButton, Tree, folderIconName, type FolderKind } from "@/ui";
+import { Icon, IconButton, Tree, folderIconName, type FolderKind, T } from "@/ui";
 import { call, commands, isTauri, type FileEntry } from "@/platform/ipc";
 import { relativePath, useProject } from "@/platform/project";
 import {
@@ -124,7 +124,12 @@ export function ProjectStructurePage() {
     };
   }, [root]);
 
-  if (!rootNode) return <div className={styles.note}>Open a project to configure its folders.</div>;
+  if (!rootNode)
+    return (
+      <div className={styles.note}>
+        <T>Open a project to configure its folders.</T>
+      </div>
+    );
 
   const role = selected ? rootRole(roots, selected.rel) : null;
   const mark = (r: FolderRole) => {
@@ -139,7 +144,9 @@ export function ProjectStructurePage() {
       <div className={styles.structure}>
         <div className={styles.structureTree}>
           <div className={styles.markBar} role="toolbar" aria-label="Mark as">
-            <span>Mark as:</span>
+            <span>
+              <T>Mark as:</T>
+            </span>
             {ROLES.map((r) => (
               <button
                 key={r.role}
@@ -186,16 +193,18 @@ export function ProjectStructurePage() {
                   <Icon name={folderIconName(r.kind)} size={14} />
                   {r.title}
                 </div>
-                {list.length === 0 && <div className={clsx(styles.rootItem, styles.note)}>None</div>}
+                {list.length === 0 && (
+                  <div className={clsx(styles.rootItem, styles.note)}>
+                    <T>None</T>
+                  </div>
+                )}
                 {list.map((x) => {
                   const shown = x.path || name || ".";
                   return (
                     <div key={x.path} className={styles.rootItem}>
                       <span className={styles.rootPath} title={x.path || root || undefined}>
                         {shown}
-                        {x.detectedFrom && (
-                          <span className={styles.rootHint}> detected from {x.detectedFrom}</span>
-                        )}
+                        {x.detectedFrom && <span className={styles.rootHint}> detected from {x.detectedFrom}</span>}
                       </span>
                       <IconButton
                         icon="close"
@@ -216,14 +225,16 @@ export function ProjectStructurePage() {
                 ? "1 detected folder is unmarked."
                 : `${unmarkedDetected.length} detected folders are unmarked.`}{" "}
               <button type="button" className={styles.linkButton} onClick={restore}>
-                Restore detected roots
+                <T>Restore detected roots</T>
               </button>
             </div>
           )}
           <div className={styles.note}>
-            Folders are detected from build files (pom.xml, build.gradle, Cargo.toml, go.mod, pyproject.toml,
-            package.json); marking or unmarking a folder overrides detection. Excluded folders are skipped by the Project
-            view, Find in Files and the index (reopen the project to re-index).
+            <T>
+              {
+                "Folders are detected from build files (pom.xml, build.gradle, Cargo.toml, go.mod, pyproject.toml, package.json); marking or unmarking a folder overrides detection. Excluded folders are skipped by the Project view, Find in Files and the index (reopen the project to re-index)."
+              }
+            </T>
           </div>
         </div>
       </div>

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import type { ChangedFile, Commit, ResetMode } from "@/bindings";
 import { executeAction } from "@/platform/actions";
 import { call, commands } from "@/platform/ipc";
-import { Checkbox, Dialog, Icon, Input, List, Spinner, fileIconName } from "@/ui";
+import { Checkbox, Dialog, Icon, Input, List, Spinner, fileIconName, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { openDiff } from "./diffInput";
 import { openDialog, promptText } from "./dialogs";
@@ -36,7 +36,13 @@ export function inProgress(op: string | null | undefined = useVcs.getState().bra
 
 /** "Rebasing main", "Merging", "Cherry-picking"… for the branch widget and banner. */
 export function operationTitle(op: InProgress, head: string | null): string {
-  const verb = { rebase: "Rebasing", merge: "Merging", "cherry-pick": "Cherry-picking", revert: "Reverting", am: "Applying patches" }[op];
+  const verb = {
+    rebase: "Rebasing",
+    merge: "Merging",
+    "cherry-pick": "Cherry-picking",
+    revert: "Reverting",
+    am: "Applying patches",
+  }[op];
   return head ? `${verb} ${head}` : verb;
 }
 
@@ -64,7 +70,9 @@ function notInProgress(expected: InProgress | null) {
   notifications().notify({
     group: "vcs",
     level: "info",
-    title: expected ? `No ${OP_NOUN[expected].toLowerCase()} in progress` : "No merge, rebase, cherry-pick or revert in progress",
+    title: expected
+      ? `No ${OP_NOUN[expected].toLowerCase()} in progress`
+      : "No merge, rebase, cherry-pick or revert in progress",
   });
 }
 
@@ -82,7 +90,11 @@ export async function controlOperation(control: "continue" | "skip" | "abort", e
     return;
   }
   const noun = OP_NOUN[op];
-  const progress = { continue: `Continuing ${noun.toLowerCase()}`, skip: "Skipping commit", abort: `Aborting ${noun.toLowerCase()}` }[control];
+  const progress = {
+    continue: `Continuing ${noun.toLowerCase()}`,
+    skip: "Skipping commit",
+    abort: `Aborting ${noun.toLowerCase()}`,
+  }[control];
   const success = {
     continue: `${noun} continued`,
     skip: "Commit skipped",
@@ -113,11 +125,15 @@ export function OperationBanner() {
       <Icon name={conflicts ? "warning" : "branch"} size={14} />
       <span className={styles.bannerText}>
         {operationTitle(op, branch?.head ?? null)}
-        {conflicts ? ` · ${conflicts} conflict${conflicts === 1 ? "" : "s"}` : op === "merge" ? " · commit to conclude" : ""}
+        {conflicts
+          ? ` · ${conflicts} conflict${conflicts === 1 ? "" : "s"}`
+          : op === "merge"
+            ? " · commit to conclude"
+            : ""}
       </span>
       {conflicts > 0 && (
         <button type="button" className={styles.linkButton} onClick={() => void executeAction("vcs.resolveConflicts")}>
-          Resolve…
+          <T>Resolve…</T>
         </button>
       )}
       {operationControls(op).map((c) => (
@@ -144,7 +160,10 @@ const short = (id: string) => id.slice(0, 8);
  * Commits newest first in the log's topological order (author dates lie after
  * rebases and cherry-picks); commits not loaded in the log fall back to their date.
  */
-export function newestFirst(commits: readonly Commit[], log: readonly Commit[] = useGitLog.getState().commits): Commit[] {
+export function newestFirst(
+  commits: readonly Commit[],
+  log: readonly Commit[] = useGitLog.getState().commits,
+): Commit[] {
   const pos = new Map(log.map((c, i) => [c.id, i]));
   return [...commits].sort((a, b) => {
     const pa = pos.get(a.id);
@@ -158,17 +177,24 @@ export async function cherryPick(commits: Commit[]) {
   if (!commits.length) return;
   // Oldest first, as IDEA applies them.
   const ordered = newestFirst(commits).reverse();
-  const label = ordered.length === 1 ? `${short(ordered[0]!.id)} “${ordered[0]!.summary}”` : `${ordered.length} commits`;
+  const label =
+    ordered.length === 1 ? `${short(ordered[0]!.id)} “${ordered[0]!.summary}”` : `${ordered.length} commits`;
   await runGitOperation(
     { op: "cherryPick", commits: ordered.map((c) => c.id) },
-    { progress: "Cherry-picking", success: `Cherry-picked ${label}`, failure: "Cherry-pick failed", onError: conflictsInstead },
+    {
+      progress: "Cherry-picking",
+      success: `Cherry-picked ${label}`,
+      failure: "Cherry-pick failed",
+      onError: conflictsInstead,
+    },
   );
 }
 
 export async function revertCommits(commits: Commit[]) {
   if (!commits.length) return;
   const ordered = newestFirst(commits);
-  const label = ordered.length === 1 ? `${short(ordered[0]!.id)} “${ordered[0]!.summary}”` : `${ordered.length} commits`;
+  const label =
+    ordered.length === 1 ? `${short(ordered[0]!.id)} “${ordered[0]!.summary}”` : `${ordered.length} commits`;
   await runGitOperation(
     { op: "revert", commits: ordered.map((c) => c.id) },
     { progress: "Reverting", success: `Reverted ${label}`, failure: "Revert failed", onError: conflictsInstead },
@@ -205,7 +231,11 @@ function ResetDialog({ commit, onClose }: { commit?: Commit; onClose: () => void
     onClose();
     await runGitOperation(
       { op: "reset", commit: rev, mode },
-      { progress: "Resetting", success: `Reset ${head} to ${commit ? short(commit.id) : rev} (${mode})`, failure: "Reset failed" },
+      {
+        progress: "Resetting",
+        success: `Reset ${head} to ${commit ? short(commit.id) : rev} (${mode})`,
+        failure: "Reset failed",
+      },
     );
   };
   return (
@@ -222,8 +252,11 @@ function ResetDialog({ commit, onClose }: { commit?: Commit; onClose: () => void
       <div className={styles.form} role="radiogroup" aria-label="Reset type">
         {commit ? (
           <div className={styles.hint}>
-            This will reset the current branch head to the selected commit, and update the working tree and the index
-            according to the selected mode:
+            <T>
+              {
+                "This will reset the current branch head to the selected commit, and update the working tree and the index according to the selected mode:"
+              }
+            </T>
             <div className={styles.mono} style={{ marginTop: 4 }}>
               {short(commit.id)} {commit.summary}
             </div>
@@ -231,9 +264,15 @@ function ResetDialog({ commit, onClose }: { commit?: Commit; onClose: () => void
         ) : (
           <>
             <label className={styles.fieldLabel} htmlFor="openidea-reset-to">
-              To commit:
+              <T>To commit:</T>
             </label>
-            <Input id="openidea-reset-to" data-autofocus mono value={target} onChange={(e) => setTarget(e.target.value)} />
+            <Input
+              id="openidea-reset-to"
+              data-autofocus
+              mono
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+            />
           </>
         )}
         {RESET_MODES.map((m) => (
@@ -317,17 +356,24 @@ function TagDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={styles.form}>
         <label className={styles.fieldLabel} htmlFor="openidea-tag-name">
-          Tag name:
+          <T>Tag name:</T>
         </label>
-        <Input id="openidea-tag-name" data-autofocus mono value={name} invalid={!!name && !!error} onChange={(e) => setName(e.target.value)} />
+        <Input
+          id="openidea-tag-name"
+          data-autofocus
+          mono
+          value={name}
+          invalid={!!name && !!error}
+          onChange={(e) => setName(e.target.value)}
+        />
         {name && error && <div className={styles.error}>{error}</div>}
         <Checkbox checked={force} onChange={setForce} label="Force" />
         <label className={styles.fieldLabel} htmlFor="openidea-tag-commit">
-          Commit:
+          <T>Commit:</T>
         </label>
         <Input id="openidea-tag-commit" mono value={commit} onChange={(e) => setCommit(e.target.value)} />
         <label className={styles.fieldLabel} htmlFor="openidea-tag-message">
-          Message:
+          <T>Message:</T>
         </label>
         <textarea
           id="openidea-tag-message"
@@ -401,7 +447,11 @@ function CompareWithLocalDialog({ rev, label, onClose }: { rev: string; label: s
             rowHeight={22}
             aria-label="Changed files"
             className={styles.boxList}
-            empty={<span>No differences</span>}
+            empty={
+              <span>
+                <T>No differences</T>
+              </span>
+            }
             onActivate={(f, _i, e) => {
               if (e.type === "click" && (e as unknown as MouseEvent).detail < 2) return;
               open(f);
@@ -409,7 +459,10 @@ function CompareWithLocalDialog({ rev, label, onClose }: { rev: string; label: s
             renderItem={(f) => (
               <span className={styles.fileRow} style={{ flex: 1, padding: 0 }}>
                 <Icon name={fileIconName(baseName(f.path))} size={14} />
-                <span className={styles.fileName} style={{ color: KIND_COLOR[f.kind === "untracked" ? "added" : f.kind] }}>
+                <span
+                  className={styles.fileName}
+                  style={{ color: KIND_COLOR[f.kind === "untracked" ? "added" : f.kind] }}
+                >
                   {baseName(f.path)}
                 </span>
                 <span className={styles.fileDir}>{dirName(f.path)}</span>
@@ -421,4 +474,3 @@ function CompareWithLocalDialog({ rev, label, onClose }: { rev: string; label: s
     </Dialog>
   );
 }
-

@@ -12,7 +12,7 @@ import {
   WORKFLOW_LIMITS,
   type ExternalToolValid,
 } from "@/platform/workflowSettings";
-import { Button, Checkbox, IconButton, Input, Menu, type SelectOption } from "@/ui";
+import { Button, Checkbox, IconButton, Input, Menu, type SelectOption, T } from "@/ui";
 import { NumberInput, Row, SearchLabel, Section, Select } from "../components/Form";
 import { useLabelMatch, useSetting } from "../components/context";
 import type { PageSpec } from "./spec";
@@ -163,7 +163,10 @@ function TerminalFont() {
       <div className={clsx(styles.inlineRow, matched && styles.matched)}>
         <Checkbox checked={useEditor} onChange={setUseEditor} label={<SearchLabel text="Use editor font" />} />
         <span className={styles.note}>
-          configured in <PageLink page="editor.font">Editor › Font</PageLink>
+          <T>configured in</T>{" "}
+          <PageLink page="editor.font">
+            <T>Editor › Font</T>
+          </PageLink>
         </span>
       </div>
       <Indented>
@@ -228,8 +231,15 @@ function ActionsOnSave() {
 function ActionsOnSaveNote() {
   return (
     <div className={styles.note}>
-      Actions run when a file is saved with Save (⌘S) or Save All. Trailing spaces and the final line break are
-      configured in <PageLink page="editor.general">Editor › General</PageLink>.
+      <T>
+        {
+          "Actions run when a file is saved with Save (⌘S) or Save All. Trailing spaces and the final line break are configured in"
+        }
+      </T>{" "}
+      <PageLink page="editor.general">
+        <T>Editor › General</T>
+      </PageLink>
+      .
     </div>
   );
 }
@@ -243,7 +253,7 @@ function MacroButton({ onInsert }: { onInsert: (macro: string) => void }) {
   return (
     <>
       <Button ref={ref} size="small" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        Insert Macro…
+        <T>Insert Macro…</T>
       </Button>
       <Menu
         open={open}
@@ -353,7 +363,9 @@ function ExternalToolsEditor() {
         </div>
         <div className={styles.toolList} role="listbox" aria-label="External tools">
           {tools.length === 0 && (
-            <div className={clsx(styles.toolRow, styles.empty)}>No external tools. Click + to add one.</div>
+            <div className={clsx(styles.toolRow, styles.empty)}>
+              <T>No external tools. Click + to add one.</T>
+            </div>
           )}
           {tools.map((t) => (
             <div
@@ -421,8 +433,11 @@ function ExternalToolsEditor() {
         </Section>
       )}
       <div className={styles.note}>
-        Enabled tools appear in Find Action (⇧⌘A) under “External Tools” and can get shortcuts in Keymap. Output is
-        shown in the Run tool window.
+        <T>
+          {
+            "Enabled tools appear in Find Action (⇧⌘A) under “External Tools” and can get shortcuts in Keymap. Output is shown in the Run tool window."
+          }
+        </T>
       </div>
     </div>
   );

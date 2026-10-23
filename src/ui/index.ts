@@ -20,3 +20,4 @@ export { acquirePopup, isPopupOpen, openLayer } from "./popupState";
 export * from "./BarButton";
 export * from "./AppLogo";
 export { lazyComponent, prefetchLazyComponents } from "./lazy";
+export { T } from "./T";

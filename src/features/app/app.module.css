@@ -1,10 +1,3 @@
-.promptBody {
-  margin: 0;
-  padding: 14px 16px;
-  color: var(--fg);
-  line-height: 1.5;
-}
-
 /* About (JetBrains-style: logo left, product facts as plain lines) */
 .about {
   display: flex;

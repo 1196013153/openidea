@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { HttpExchange, HttpHistoryEntry } from "@/platform/ipc";
-import { EmptyState, IconButton, SplitGroup, SplitHandle, SplitPanel, Spinner, Tabs } from "@/ui";
+import { EmptyState, IconButton, SplitGroup, SplitHandle, SplitPanel, Spinner, Tabs, T } from "@/ui";
 import { bodyKind, formatMs, formatSize, prettyBody } from "./format";
 import { cancelRunning, clearHistory, refreshHistory, selectEntry, useHttpClient } from "./store";
 import styles from "./HttpClient.module.css";
@@ -98,7 +98,9 @@ function ExchangeView({ ex }: { ex: HttpExchange }) {
           ) : (
             <pre className={styles.pre} aria-label="Response body">
               {body}
-              {r.truncated && <span className={styles.truncated}>{`\n… truncated (${formatSize(r.size)} received)`}</span>}
+              {r.truncated && (
+                <span className={styles.truncated}>{`\n… truncated (${formatSize(r.size)} received)`}</span>
+              )}
             </pre>
           ))}
         {tab === "headers" && r && <HeaderTable headers={r.headers} />}
@@ -147,7 +149,9 @@ export function HttpClientView() {
             </div>
           )}
           {history.length === 0 && !running ? (
-            <EmptyState title="No requests yet">Run a request from an .http file with the gutter ▶ or ⌘↩.</EmptyState>
+            <EmptyState title="No requests yet">
+              <T>Run a request from an .http file with the gutter ▶ or ⌘↩.</T>
+            </EmptyState>
           ) : (
             history.map((h) => <EntryRow key={h.id} entry={h} selected={h.id === selected} />)
           )}

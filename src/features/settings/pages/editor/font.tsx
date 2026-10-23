@@ -1,6 +1,6 @@
 /** Editor › Font: family (installed fonts, monospaced filter), size, line height, ligatures, fallback, editable preview. */
 import { useMemo, useState } from "react";
-import { Checkbox, type SelectOption } from "@/ui";
+import { Checkbox, type SelectOption, T } from "@/ui";
 import { NumberInput, Row, SearchLabel, Select } from "../../components/Form";
 import { useLabelMatch, useSetting } from "../../components/context";
 import { LIMITS } from "../../model/schema";
@@ -152,7 +152,9 @@ function Preview() {
   const fam = `"${family.replace(/"/g, "")}"${fallback ? `, "${fallback.replace(/"/g, "")}"` : ""}, var(--font-mono)`;
   return (
     <>
-      <div className={styles.previewTitle}>Preview</div>
+      <div className={styles.previewTitle}>
+        <T>Preview</T>
+      </div>
       <textarea
         className={styles.previewArea}
         aria-label="Font preview"

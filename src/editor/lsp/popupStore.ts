@@ -68,6 +68,8 @@ export type LspPopup =
       title: string;
       message: string;
       detail?: string;
+      /** Defaults to `question`. */
+      icon?: "question" | "warning" | "error" | "info";
       choices: PopupChoice[];
       /** Escape / close button / replaced by another popup. */
       onDismiss?: () => void;

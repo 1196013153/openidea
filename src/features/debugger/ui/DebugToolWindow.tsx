@@ -19,6 +19,7 @@ import {
   showContextMenu,
   type MenuItem,
   type TabItem,
+  T,
 } from "@/ui";
 import { setMuted, useBreakpoints } from "../breakpoints/store";
 import { frameLabel, groupFrames } from "../frames";
@@ -141,7 +142,8 @@ export function DebugToolWindow() {
     return (
       <div className={styles.emptyWrap}>
         <EmptyState title="Not debugging">
-          Start a debug configuration with <Kbd action="run.debug" /> or click a line number to set a breakpoint.
+          <T>Start a debug configuration with</T> <Kbd action="run.debug" />{" "}
+          <T>or click a line number to set a breakpoint.</T>
         </EmptyState>
       </div>
     );
@@ -618,4 +620,3 @@ function ConsoleView({ session }: { session: DebugSession }) {
     </div>
   );
 }
-

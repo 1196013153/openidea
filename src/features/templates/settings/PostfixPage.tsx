@@ -1,7 +1,7 @@
 /** Settings › Editor › Postfix Completion. */
 import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { Checkbox } from "@/ui";
+import { Checkbox, T } from "@/ui";
 import { POSTFIX_GROUPS, POSTFIX_TEMPLATES } from "../postfix/model";
 import { setPostfixTemplateEnabled, updatePostfixSettings, usePostfixSettings } from "../postfix/store";
 import styles from "./Settings.module.css";
@@ -34,8 +34,9 @@ export function PostfixPage() {
         />
       </div>
       <div className={styles.hint}>
-        Type an expression followed by <code>.key</code>, e.g. <code>user.name.nn</code> or <code>items.for</code>, then
-        press Tab.
+        <T>Type an expression followed by</T> <code>.key</code>, e.g. <code>user.name.nn</code> or{" "}
+        <code>items.for</code>
+        <T>, then press Tab.</T>
       </div>
       <div className={styles.tabs} role="tablist" aria-label="Languages">
         {POSTFIX_GROUPS.map((g) => (

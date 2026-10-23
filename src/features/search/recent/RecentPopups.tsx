@@ -4,7 +4,7 @@ import { editorsFor, getNavigationHistory } from "@/editor/api";
 import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import { Checkbox, Dialog, HighlightedText, Icon, List, fileIconName, listNavigate } from "@/ui";
+import { Checkbox, Dialog, HighlightedText, Icon, List, fileIconName, listNavigate, T } from "@/ui";
 import {
   maybeEditorService,
   toolWindowService,
@@ -15,7 +15,13 @@ import {
 import { basename, openLocation } from "../common/open";
 import { fromNavigationHistory, mergeLocations, type RecentLocation } from "../common/locations";
 import { useTracking } from "../common/tracking";
-import { filterLocations, filterRecentFiles, initialFileIndex, switcherToolWindows, type RecentFileItem } from "./model";
+import {
+  filterLocations,
+  filterRecentFiles,
+  initialFileIndex,
+  switcherToolWindows,
+  type RecentFileItem,
+} from "./model";
 import { cycleSwitcher, hideRecentPopup, showRecentPopup, useRecentPopup } from "./store";
 import styles from "./RecentPopups.module.css";
 
@@ -67,7 +73,9 @@ function RecentFilesDialog() {
     [paths, query, root, edited, editedOnly],
   );
   const tools = useMemo(() => switcherToolWindows(toolWindows.values(), !!root, query), [toolWindows, root, query]);
-  const fIndex = files.length ? Math.min(fileIndex ?? initialFileIndex(files, activePath, query), files.length - 1) : -1;
+  const fIndex = files.length
+    ? Math.min(fileIndex ?? initialFileIndex(files, activePath, query), files.length - 1)
+    : -1;
   const tIndex = tools.length ? Math.min(toolIndex, tools.length - 1) : -1;
   const effectiveColumn = column === "files" && !files.length && tools.length ? "tools" : column;
 
@@ -119,7 +127,15 @@ function RecentFilesDialog() {
     if (e.key === "Tab" || ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !query)) {
       e.preventDefault();
       e.stopPropagation();
-      setColumn(e.key === "ArrowLeft" ? "tools" : e.key === "ArrowRight" ? "files" : effectiveColumn === "files" ? "tools" : "files");
+      setColumn(
+        e.key === "ArrowLeft"
+          ? "tools"
+          : e.key === "ArrowRight"
+            ? "files"
+            : effectiveColumn === "files"
+              ? "tools"
+              : "files",
+      );
       return;
     }
     if (!NAV_KEYS.includes(e.key)) return;
@@ -136,7 +152,7 @@ function RecentFilesDialog() {
   const recentShortcut = shortcutLabel("navigate.recentFiles");
   const locationsShortcut = shortcutLabel("navigate.recentLocations");
   const title = editedOnly ? "Recently Edited Files" : "Recent Files";
-  const footerPath = selected?.path ?? (selectedTool ? "" : root ?? "");
+  const footerPath = selected?.path ?? (selectedTool ? "" : (root ?? ""));
   return (
     <Dialog open onClose={hideRecentPopup} width={720} aria-label="Recent Files" className={styles.dialog}>
       <header className={styles.header}>
@@ -165,11 +181,7 @@ function RecentFilesDialog() {
             showRecentPopup("files");
             inputRef.current?.focus();
           }}
-          label={
-            <>
-              Show edited only {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}
-            </>
-          }
+          label={<>Show edited only {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}</>}
         />
       </header>
       <div className={styles.columns}>
@@ -188,8 +200,14 @@ function RecentFilesDialog() {
             aria-label="Tool windows"
             renderItem={(t) => <ToolRow tw={t.tw} indices={t.indices} />}
           />
-          <button type="button" className={styles.locationsLink} onClick={() => afterClose(() => showRecentPopup("locations"))}>
-            <span className={styles.name}>Recent Locations</span>
+          <button
+            type="button"
+            className={styles.locationsLink}
+            onClick={() => afterClose(() => showRecentPopup("locations"))}
+          >
+            <span className={styles.name}>
+              <T>Recent Locations</T>
+            </span>
             {locationsShortcut && <span className={styles.shortcut}>{locationsShortcut}</span>}
           </button>
         </div>
@@ -206,7 +224,9 @@ function RecentFilesDialog() {
             focusable={false}
             rowHeight={24}
             aria-label="Recent files"
-            empty={paths && <span>{editedOnly ? "No edited files" : query ? "No matching files" : "No recent files"}</span>}
+            empty={
+              paths && <span>{editedOnly ? "No edited files" : query ? "No matching files" : "No recent files"}</span>
+            }
             renderItem={(f) => <RecentFileRow item={f} current={f.path === activePath} />}
           />
         </div>
@@ -236,7 +256,10 @@ function RecentFileRow({ item, current }: { item: RecentFileItem; current: boole
   return (
     <>
       <Icon name={fileIconName(item.name)} size={16} className={styles.icon} />
-      <span className={clsx(styles.name, current && styles.current)} style={deco.color ? { color: deco.color } : undefined}>
+      <span
+        className={clsx(styles.name, current && styles.current)}
+        style={deco.color ? { color: deco.color } : undefined}
+      >
         <HighlightedText text={item.name} indices={item.indices} tone="strong" />
       </span>
       <span className={styles.dir}>{item.dir}</span>
@@ -292,7 +315,10 @@ function RecentLocationsDialog() {
   const source = useMemo(() => {
     return withSnippets(mergeLocations(navigationHistory(), recorded), recorded);
   }, [recorded]);
-  const items = useMemo(() => filterLocations(source, query, { changedOnly, root }), [source, query, changedOnly, root]);
+  const items = useMemo(
+    () => filterLocations(source, query, { changedOnly, root }),
+    [source, query, changedOnly, root],
+  );
   const active = items.length ? Math.min(index, items.length - 1) : -1;
 
   const open = (l: RecentLocation | undefined, side = false) => {
@@ -341,7 +367,7 @@ function RecentLocationsDialog() {
           }}
           label={
             <>
-              Show changed only <span className={styles.hint}>{shortcutLabel("navigate.recentLocations")}</span>
+              <T>Show changed only</T> <span className={styles.hint}>{shortcutLabel("navigate.recentLocations")}</span>
             </>
           }
         />

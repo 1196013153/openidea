@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { BarButton, IconButton, Popup, ProgressBar, showContextMenu } from "@/ui";
+import { BarButton, IconButton, Popup, ProgressBar, showContextMenu, T } from "@/ui";
 import { useContributions, type StatusItemContribution } from "./contributions";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { isStatusItemVisible, statusBarMenu, useStatusWidgetOverrides } from "./statusBarWidgets";
@@ -74,7 +74,9 @@ export function TaskStatus() {
         onClick={() => setOpen((v) => !v)}
         className={styles.task}
       >
-        <span className={styles.taskTitle}>{current.title}</span>
+        <span className={styles.taskTitle}>
+          <T>{current.title}</T>
+        </span>
         <ProgressBar
           value={current.done ? 1 : current.fraction}
           className={styles.taskBar}
@@ -91,11 +93,15 @@ export function TaskStatus() {
         aria-label="Background tasks"
       >
         <div className={styles.taskList}>
-          <div className={styles.taskListHeader}>Background Tasks</div>
+          <div className={styles.taskListHeader}>
+            <T>Background Tasks</T>
+          </div>
           {tasks.map((t) => (
             <div key={t.id} className={styles.taskRow}>
               <div className={styles.taskRowHead}>
-                <span className={styles.taskRowTitle}>{t.title}</span>
+                <span className={styles.taskRowTitle}>
+                  <T>{t.title}</T>
+                </span>
                 {t.fraction != null && <span className={styles.taskPct}>{Math.round(t.fraction * 100)}%</span>}
                 {t.cancel && !t.done && (
                   <IconButton icon="stop" size="small" title={`Cancel ${t.title}`} onClick={() => t.cancel?.()} />

@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Icon, type IconName } from "./icons";
 import { IconButton } from "./Button";
 import styles from "./Input.module.css";
+import { useTx } from "@/platform/i18n";
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
   invalid?: boolean;
@@ -12,9 +13,10 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { invalid, mono, variant = "framed", className, spellCheck = false, autoComplete = "off", ...rest },
+  { invalid, mono, variant = "framed", className, spellCheck = false, autoComplete = "off", placeholder, ...rest },
   ref,
 ) {
+  const tx = useTx();
   return (
     <input
       ref={ref}
@@ -23,6 +25,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       autoCorrect="off"
       autoCapitalize="off"
       aria-invalid={invalid || undefined}
+      placeholder={tx(placeholder)}
       className={clsx(styles.input, variant === "bare" ? styles.bare : styles.framed, mono && styles.mono, className)}
       {...rest}
     />
@@ -65,10 +68,12 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
     size = "normal",
     variant = "framed",
     className,
+    placeholder,
     ...rest
   },
   ref,
 ) {
+  const tx = useTx();
   return (
     <div
       className={clsx(
@@ -90,6 +95,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
         autoCorrect="off"
         autoCapitalize="off"
         aria-invalid={invalid || undefined}
+        placeholder={tx(placeholder)}
         onChange={(e) => onChange(e.target.value)}
         {...rest}
       />

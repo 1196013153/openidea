@@ -22,6 +22,7 @@ import {
   wordMatch,
   type MenuItem,
   type SelectOption,
+  T,
 } from "@/ui";
 import { useSetting } from "../components/context";
 import { useSettingsDialog } from "../model/staging";
@@ -367,7 +368,11 @@ export function KeymapPage() {
             e.preventDefault();
             showContextMenu(e, menuFor(n.action));
           }}
-          empty={<div className={styles.empty}>Nothing to show</div>}
+          empty={
+            <div className={styles.empty}>
+              <T>Nothing to show</T>
+            </div>
+          }
           renderNode={(n, state) =>
             n.kind === "group" ? (
               <span className={styles.catRow}>

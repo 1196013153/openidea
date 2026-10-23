@@ -12,12 +12,6 @@
   color: var(--danger);
   font-size: var(--fs-small);
 }
-.message {
-  padding: 14px;
-  color: var(--fg);
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
 .hint {
   color: var(--fg-subtle);
   font-size: var(--fs-small);

@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { call, commands, type DataSource, type DbColumnInfo, type DbDriver } from "@/platform/ipc";
 import { highlightInto } from "@/editor/lsp/markdown";
-import { Button, Checkbox, Dialog, IconButton, Input, Popup, Icon } from "@/ui";
+import { Button, Checkbox, Dialog, IconButton, Input, Popup, Icon, T } from "@/ui";
 import { parseSourceUrl, sourceLabel, splitTarget } from "./model";
 import { nodeTarget, tableOf, type DbNode } from "./nodes";
 import {
@@ -158,9 +158,16 @@ function DropDialog({ id, object }: { id: string; object: DbObjectRef }) {
           checked={ifExists}
           onChange={setIfExists}
           label="Use IF EXISTS syntax"
-          disabled={(object.kind === "column" && driver !== "postgres") || (object.kind === "index" && driver === "mysql")}
+          disabled={
+            (object.kind === "column" && driver !== "postgres") || (object.kind === "index" && driver === "mysql")
+          }
         />
-        <Checkbox checked={cascade} onChange={setCascade} label="Use DROP CASCADE syntax" disabled={driver !== "postgres"} />
+        <Checkbox
+          checked={cascade}
+          onChange={setCascade}
+          label="Use DROP CASCADE syntax"
+          disabled={driver !== "postgres"}
+        />
         <SqlPreview sql={sql} />
       </div>
     </Dialog>
@@ -186,7 +193,7 @@ function TruncateDialog({ id, schema, table }: { id: string; schema: string; tab
     >
       <div className={styles.dialogBody}>
         <div className={styles.dialogLead}>
-          Delete all rows of <strong>{table}</strong>?
+          <T>Delete all rows of</T> <strong>{table}</strong>?
         </div>
         {driver === "postgres" && (
           <>
@@ -223,7 +230,21 @@ const TYPES: Record<DbDriver, string[]> = {
     "jsonb",
     "bytea",
   ],
-  mysql: ["int", "bigint", "smallint", "tinyint(1)", "decimal(10,2)", "double", "varchar(255)", "text", "date", "datetime", "timestamp", "json", "blob"],
+  mysql: [
+    "int",
+    "bigint",
+    "smallint",
+    "tinyint(1)",
+    "decimal(10,2)",
+    "double",
+    "varchar(255)",
+    "text",
+    "date",
+    "datetime",
+    "timestamp",
+    "json",
+    "blob",
+  ],
 };
 
 interface ModifyProps {
@@ -260,13 +281,26 @@ function ModifyTableDialog(props: ModifyProps) {
   if (!table) return <ModifyTableForm {...props} initial={null} />;
   if (details?.status === "ok") return <ModifyTableForm {...props} initial={details.value.columns} />;
   return (
-    <Dialog open onClose={closeDialog} title={`Modify Table ${table}`} width={440} buttons={[{ label: "Cancel", role: "cancel" }]}>
+    <Dialog
+      open
+      onClose={closeDialog}
+      title={`Modify Table ${table}`}
+      width={440}
+      buttons={[{ label: "Cancel", role: "cancel" }]}
+    >
       <div className={styles.dialogText}>{details?.status === "error" ? details.message : "Loading…"}</div>
     </Dialog>
   );
 }
 
-function ModifyTableForm({ id, schema, table, focusColumn, addColumn, initial }: ModifyProps & { initial: DbColumnInfo[] | null }) {
+function ModifyTableForm({
+  id,
+  schema,
+  table,
+  focusColumn,
+  addColumn,
+  initial,
+}: ModifyProps & { initial: DbColumnInfo[] | null }) {
   const driver = driverOf(id);
   const [name, setName] = useState(table ?? "table_name");
   const [columns, setColumns] = useState<ColumnDraft[]>(() => {
@@ -287,7 +321,8 @@ function ModifyTableForm({ id, schema, table, focusColumn, addColumn, initial }:
   }, [columns, driver, schema, table, name]);
 
   const current = columns.find((c) => c.key === selected) ?? null;
-  const patch = (p: Partial<ColumnDraft>) => setColumns((cs) => cs.map((c) => (c.key === selected ? { ...c, ...p } : c)));
+  const patch = (p: Partial<ColumnDraft>) =>
+    setColumns((cs) => cs.map((c) => (c.key === selected ? { ...c, ...p } : c)));
   const add = () => {
     const c = blankColumn(driver, columns.length + 1);
     setColumns((cs) => [...cs, c]);
@@ -325,9 +360,15 @@ function ModifyTableForm({ id, schema, table, focusColumn, addColumn, initial }:
       <div className={styles.modifyBody}>
         <div className={styles.formRow}>
           <label className={styles.formLabel} htmlFor="db-table-name">
-            Table:
+            <T>Table:</T>
           </label>
-          <Input id="db-table-name" className={styles.fill} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!table} />
+          <Input
+            id="db-table-name"
+            className={styles.fill}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus={!table}
+          />
           <span className={styles.formHint}>{schema}</span>
         </div>
         <div className={styles.modifyMain}>
@@ -364,11 +405,16 @@ function ModifyTableForm({ id, schema, table, focusColumn, addColumn, initial }:
             {current ? (
               <>
                 <label className={styles.formLabel} htmlFor="db-col-name">
-                  Name
+                  <T>Name</T>
                 </label>
-                <Input id="db-col-name" value={current.name} disabled={current.dropped} onChange={(e) => patch({ name: e.target.value })} />
+                <Input
+                  id="db-col-name"
+                  value={current.name}
+                  disabled={current.dropped}
+                  onChange={(e) => patch({ name: e.target.value })}
+                />
                 <label className={styles.formLabel} htmlFor="db-col-type">
-                  Data type
+                  <T>Data type</T>
                 </label>
                 <Input
                   id="db-col-type"
@@ -379,15 +425,24 @@ function ModifyTableForm({ id, schema, table, focusColumn, addColumn, initial }:
                   onChange={(e) => patch({ dataType: e.target.value })}
                 />
                 <span />
-                <Checkbox checked={current.notNull} disabled={current.dropped || locked} onChange={(notNull) => patch({ notNull })} label="Not null" />
+                <Checkbox
+                  checked={current.notNull}
+                  disabled={current.dropped || locked}
+                  onChange={(notNull) => patch({ notNull })}
+                  label="Not null"
+                />
                 {!table && (
                   <>
                     <span />
-                    <Checkbox checked={current.primaryKey} onChange={(primaryKey) => patch({ primaryKey })} label="Primary key" />
+                    <Checkbox
+                      checked={current.primaryKey}
+                      onChange={(primaryKey) => patch({ primaryKey })}
+                      label="Primary key"
+                    />
                   </>
                 )}
                 <label className={styles.formLabel} htmlFor="db-col-default">
-                  Default
+                  <T>Default</T>
                 </label>
                 <Input
                   id="db-col-default"
@@ -400,12 +455,16 @@ function ModifyTableForm({ id, schema, table, focusColumn, addColumn, initial }:
                 {locked && (
                   <>
                     <span />
-                    <span className={styles.formHint}>SQLite can rename or drop an existing column, not change its type, NOT NULL or default.</span>
+                    <span className={styles.formHint}>
+                      <T>SQLite can rename or drop an existing column, not change its type, NOT NULL or default.</T>
+                    </span>
                   </>
                 )}
               </>
             ) : (
-              <span className={styles.formHint}>Select a column</span>
+              <span className={styles.formHint}>
+                <T>Select a column</T>
+              </span>
             )}
           </div>
         </div>
@@ -434,15 +493,17 @@ function RemoveSourceDialog({ source }: { source: DataSource }) {
       open
       onClose={closeDialog}
       title="Remove Data Source"
-      width={440}
+      icon="question"
+      width={460}
       buttons={[
         { label: "Cancel", role: "cancel" },
         { label: "Remove", role: "default", onClick: () => void remove() },
       ]}
     >
-      <div className={styles.dialogText}>
-        Remove data source <strong>{source.name}</strong>? Its query console file stays on disk.
-      </div>
+      <>
+        <T>Remove data source</T> <strong>{source.name}</strong>
+        <T>? Its query console file stays on disk.</T>
+      </>
     </Dialog>
   );
 }
@@ -470,7 +531,7 @@ function SourceUrlDialog() {
     >
       <div className={styles.dialogBody}>
         <label className={styles.formLabelLeft} htmlFor="db-url">
-          URL:
+          <T>URL:</T>
         </label>
         <Input
           id="db-url"
@@ -521,7 +582,10 @@ function QuickDoc({ node, anchor }: { node: DbNode; anchor: { x: number; y: numb
       rows.push(
         node.source.driver === "sqlite"
           ? ["File", node.source.file ?? ""]
-          : ["Host", `${node.source.host ?? ""}${node.source.port ? `:${node.source.port}` : ""}${node.source.database ? `/${node.source.database}` : ""}`],
+          : [
+              "Host",
+              `${node.source.host ?? ""}${node.source.port ? `:${node.source.port}` : ""}${node.source.database ? `/${node.source.database}` : ""}`,
+            ],
       );
       rows.push(["Status", connectedTargets(node.source.id ?? "").length ? "Connected" : "Not connected"]);
       break;
@@ -548,7 +612,15 @@ function QuickDoc({ node, anchor }: { node: DbNode; anchor: { x: number; y: numb
     definition = `primary key (${node.columns.join(", ")})`;
   }
   return (
-    <Popup open onClose={closeDialog} anchor={anchor} placement="bottom-start" className={styles.quickDoc} role="dialog" aria-label="Quick Documentation">
+    <Popup
+      open
+      onClose={closeDialog}
+      anchor={anchor}
+      placement="bottom-start"
+      className={styles.quickDoc}
+      role="dialog"
+      aria-label="Quick Documentation"
+    >
       <dl className={styles.quickDocRows}>
         {rows.map(([k, v]) => (
           <div key={k}>
@@ -568,7 +640,7 @@ function QuickDoc({ node, anchor }: { node: DbNode; anchor: { x: number; y: numb
               openTableData(t.id, t.schema, t.table);
             }}
           >
-            Show table data
+            <T>Show table data</T>
           </Button>
         </div>
       )}

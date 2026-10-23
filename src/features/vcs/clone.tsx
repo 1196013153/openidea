@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { call, commands, isCancelled, isTauri, nextRequestId } from "@/platform/ipc";
 import { openProject } from "@/platform/project";
-import { Button, Dialog, Input, ProgressBar } from "@/ui";
+import { Button, Dialog, Input, ProgressBar, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { openDialog } from "./dialogs";
 import { progressFraction } from "./model";
@@ -14,8 +14,15 @@ const PARENT_KEY = "openidea.vcs.cloneParent";
 /** Folder name git would pick for `url` (`https://h/o/repo.git` → `repo`, `git@h:o/r` → `r`). */
 export function cloneDirName(url: string): string {
   let u = url.trim().replace(/[?#].*$/, "");
-  u = u.replace(/[/\\]+$/, "").replace(/\.git$/i, "").replace(/[/\\]+$/, "");
-  const name = u.split(/[/\\:]/).filter(Boolean).pop() ?? "";
+  u = u
+    .replace(/[/\\]+$/, "")
+    .replace(/\.git$/i, "")
+    .replace(/[/\\]+$/, "");
+  const name =
+    u
+      .split(/[/\\:]/)
+      .filter(Boolean)
+      .pop() ?? "";
   return name.replace(/[^\w.-]+/g, "-").replace(/^[.-]+/, "");
 }
 
@@ -32,7 +39,8 @@ export function validateClone(url: string, dir: string): string | null {
   if (/\s/.test(u)) return "The URL must not contain spaces";
   if (u.startsWith("-")) return "Invalid repository URL";
   if (!dir.trim()) return "Choose a directory";
-  if (!dir.trim().startsWith("/") && !/^[a-zA-Z]:[\\/]/.test(dir.trim())) return "The directory must be an absolute path";
+  if (!dir.trim().startsWith("/") && !/^[a-zA-Z]:[\\/]/.test(dir.trim()))
+    return "The directory must be an absolute path";
   return null;
 }
 
@@ -97,7 +105,12 @@ function CloneDialog({ onClose, initialUrl }: { onClose: () => void; initialUrl:
 
   const browse = async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const picked = await open({ directory: true, multiple: false, title: "Directory to Clone Into", defaultPath: parent || undefined });
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      title: "Directory to Clone Into",
+      defaultPath: parent || undefined,
+    });
     const path = Array.isArray(picked) ? picked[0] : picked;
     if (!path) return;
     setParent(path);
@@ -164,7 +177,7 @@ function CloneDialog({ onClose, initialUrl }: { onClose: () => void; initialUrl:
         }}
       >
         <label className={styles.fieldLabel} htmlFor="vcs-clone-url">
-          URL:
+          <T>URL:</T>
         </label>
         <Input
           id="vcs-clone-url"
@@ -176,7 +189,7 @@ function CloneDialog({ onClose, initialUrl }: { onClose: () => void; initialUrl:
           onChange={(e) => setUrl(e.target.value)}
         />
         <label className={styles.fieldLabel} htmlFor="vcs-clone-dir">
-          Directory:
+          <T>Directory:</T>
         </label>
         <div className={styles.cloneDirRow}>
           <Input
@@ -188,7 +201,7 @@ function CloneDialog({ onClose, initialUrl }: { onClose: () => void; initialUrl:
             onChange={(e) => setCustomDir(e.target.value)}
           />
           <Button disabled={busy} onClick={() => void browse()}>
-            Browse…
+            <T>Browse…</T>
           </Button>
         </div>
         {busy && (

@@ -9,7 +9,7 @@ import { create } from "zustand";
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
 import { registerOverlay, toolWindowService } from "@/workbench/contributions";
-import { Dialog } from "@/ui";
+import { Dialog, T } from "@/ui";
 import { ConsoleModel } from "./console";
 import { ConsoleView } from "./ConsoleView";
 import { findOutputLinks } from "./links";
@@ -116,7 +116,7 @@ function StackTraceDialog({ initial }: { initial: string }) {
     >
       <div className={styles.form}>
         <label className={styles.label} htmlFor="stacktrace-text">
-          Put a stack trace or a complete thread dump here:
+          <T>Put a stack trace or a complete thread dump here:</T>
         </label>
         <textarea
           id="stacktrace-text"

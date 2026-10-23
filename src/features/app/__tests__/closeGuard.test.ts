@@ -28,7 +28,7 @@ describe("decideClose", () => {
   it("confirms exit for the last window when enabled", async () => {
     const { d, asked } = deps([{ button: "exit", checked: false }]);
     await expect(decideClose({ ...base, confirmExit: true }, d)).resolves.toBe(true);
-    expect(asked[0]?.title).toBe("Exit OpenIDEA?");
+    expect(asked[0]?.title).toBe("Confirm Exit");
     expect(d.disableConfirmExit).not.toHaveBeenCalled();
   });
 

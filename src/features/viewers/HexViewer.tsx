@@ -7,7 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import clsx from "clsx";
 import { call, commands } from "@/platform/ipc";
 import { editorService, type EditorInput } from "@/workbench/contributions";
-import { Icon } from "@/ui";
+import { Icon, T } from "@/ui";
 import { formatSize, type BinaryInputData } from "./fileKinds";
 import {
   BYTES_PER_ROW,
@@ -185,7 +185,7 @@ export function HexViewer({ input }: { input: EditorInput }) {
             className={styles.textButton}
             onClick={() => void editorService().openFile(path, { asText: true })}
           >
-            Open as Text
+            <T>Open as Text</T>
           </button>
         )}
       </div>
@@ -202,7 +202,9 @@ export function HexViewer({ input }: { input: EditorInput }) {
                 </span>
               ))}
             </span>
-            <span className={styles.hexAscii}>Decoded text</span>
+            <span className={styles.hexAscii}>
+              <T>Decoded text</T>
+            </span>
           </div>
           <div
             ref={scrollRef}

@@ -26,6 +26,6 @@ export class ErrorBoundary extends Component<Props, { error: Error | null }> {
 }
 
 /** Renders a component supplied through a slot or contribution. */
-export function Slot({ component: C }: { component: ComponentType }) {
-  return <C />;
+export function Slot<P extends object = object>({ component: C, ...props }: { component: ComponentType<P> } & P) {
+  return <C {...(props as P)} />;
 }

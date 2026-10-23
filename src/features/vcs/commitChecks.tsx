@@ -134,13 +134,23 @@ async function modifyFile(path: string, mods: Modifications) {
         logConsole("info", `${label} skipped for ${baseName(path)}: ${e instanceof Error ? e.message : String(e)}`);
       }
     };
-    if (mods.optimizeImports) await step("Optimize imports", async () => applyKind(info.id, (await call(commands.docSnapshot(info.id))).text, "source.organizeImports"));
-    if (mods.cleanup) await step("Cleanup", async () => applyKind(info.id, (await call(commands.docSnapshot(info.id))).text, "source.fixAll"));
+    if (mods.optimizeImports)
+      await step("Optimize imports", async () =>
+        applyKind(info.id, (await call(commands.docSnapshot(info.id))).text, "source.organizeImports"),
+      );
+    if (mods.cleanup)
+      await step("Cleanup", async () =>
+        applyKind(info.id, (await call(commands.docSnapshot(info.id))).text, "source.fixAll"),
+      );
     if (mods.reformat)
       await step("Reformat code", async () => {
-        const editor = useProject.getState().settings?.editor as { tabSize?: number; insertSpaces?: boolean } | undefined;
+        const editor = useProject.getState().settings?.editor as
+          { tabSize?: number; insertSpaces?: boolean } | undefined;
         const edits = await call(
-          commands.lspFormat(info.id, null, { tabSize: editor?.tabSize ?? 4, insertSpaces: editor?.insertSpaces ?? true }),
+          commands.lspFormat(info.id, null, {
+            tabSize: editor?.tabSize ?? 4,
+            insertSpaces: editor?.insertSpaces ?? true,
+          }),
         );
         if (edits.length) await call(commands.applyWorkspaceEdit({ files: [{ kind: "edit", path, edits }] }));
       });
@@ -166,15 +176,24 @@ function choiceDialog(title: string, body: ReactNode, reviewLabel?: string): Pro
         <Dialog
           open
           title={title}
+          icon="warning"
           onClose={() => done("cancel")}
           width={520}
           buttons={[
-            ...(reviewLabel ? [{ label: reviewLabel, onClick: () => done("review") }] : []),
-            { label: "Commit Anyway", role: "default", autoFocus: true, onClick: () => done("commit") },
+            // IDEA's check-in handlers default to Review when there is something to review.
+            ...(reviewLabel
+              ? [{ label: reviewLabel, role: "default" as const, autoFocus: true, onClick: () => done("review") }]
+              : []),
+            {
+              label: "Commit Anyway",
+              role: reviewLabel ? ("extra" as const) : ("default" as const),
+              autoFocus: !reviewLabel,
+              onClick: () => done("commit"),
+            },
             { label: "Cancel", role: "cancel", onClick: () => done("cancel") },
           ]}
         >
-          <div className={styles.message}>{body}</div>
+          {body}
         </Dialog>
       );
     });
@@ -216,9 +235,16 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
   const existing = files.filter((f) => f.exists).map((f) => f.path);
   if (!isTauri() || !existing.length) return true;
 
-  const mods: Modifications = { reformat: commit.reformat, optimizeImports: commit.optimizeImports, cleanup: commit.cleanup };
+  const mods: Modifications = {
+    reformat: commit.reformat,
+    optimizeImports: commit.optimizeImports,
+    cleanup: commit.cleanup,
+  };
   if (mods.reformat || mods.optimizeImports || mods.cleanup) {
-    logConsole("info", `Before commit: ${[mods.optimizeImports && "optimize imports", mods.cleanup && "cleanup", mods.reformat && "reformat code"].filter(Boolean).join(", ")}`);
+    logConsole(
+      "info",
+      `Before commit: ${[mods.optimizeImports && "optimize imports", mods.cleanup && "cleanup", mods.reformat && "reformat code"].filter(Boolean).join(", ")}`,
+    );
     for (const p of existing) await modifyFile(p, mods);
     try {
       await maybeEditorService()?.saveAll();
@@ -244,7 +270,9 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
     }
     const { errors, warnings, files: n } = problemCounts(existing);
     if (errors + warnings > 0) {
-      const parts = [errors && plural(errors, "error"), warnings && plural(warnings, "warning")].filter(Boolean).join(" and ");
+      const parts = [errors && plural(errors, "error"), warnings && plural(warnings, "warning")]
+        .filter(Boolean)
+        .join(" and ");
       const choice = await choiceDialog("Code Analysis", `${parts} found in ${plural(n, "file")}.`, "Review");
       if (choice === "review") {
         try {
@@ -283,7 +311,9 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
                 <button
                   type="button"
                   className={styles.linkButton}
-                  onClick={() => void maybeEditorService()?.openFile(h.path, { selection: { line: h.line, col: 0 }, focus: true })}
+                  onClick={() =>
+                    void maybeEditorService()?.openFile(h.path, { selection: { line: h.line, col: 0 }, focus: true })
+                  }
                 >
                   {relTo(root, h.path)}:{h.line + 1}
                 </button>{" "}

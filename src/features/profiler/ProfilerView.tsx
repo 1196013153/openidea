@@ -6,7 +6,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import type { Profile } from "@/platform/ipc";
-import { EmptyState, IconButton, Input, Tabs, Tree } from "@/ui";
+import { EmptyState, IconButton, Input, Tabs, Tree, T } from "@/ui";
 import { editorService } from "@/workbench/contributions";
 import { colorSlot, flameLayout, formatWeight, frameLocation, matchingFrames, share } from "./model";
 import { activeSnapshot, closeSnapshot, useProfiler, type ProfilerTab } from "./store";
@@ -17,7 +17,10 @@ const ROW = 18;
 function openFrame(profile: Profile, frame: number) {
   const f = profile.frames[frame];
   if (!f?.file) return;
-  void editorService().openFile(f.file, f.line !== null ? { selection: { line: f.line, col: 0 }, focus: true } : { focus: true });
+  void editorService().openFile(
+    f.file,
+    f.line !== null ? { selection: { line: f.line, col: 0 }, focus: true } : { focus: true },
+  );
 }
 
 export function ProfilerTabs() {
@@ -188,10 +191,12 @@ function MethodList({ profile, query }: { profile: Profile; query: string }) {
                   {location && <span className={styles.muted}>{location}</span>}
                 </td>
                 <td className={styles.num}>
-                  {formatWeight(m.selfWeight ?? 0, profile.unit)} <span className={styles.muted}>{share(m.selfWeight ?? 0, total)}</span>
+                  {formatWeight(m.selfWeight ?? 0, profile.unit)}{" "}
+                  <span className={styles.muted}>{share(m.selfWeight ?? 0, total)}</span>
                 </td>
                 <td className={styles.num}>
-                  {formatWeight(m.total ?? 0, profile.unit)} <span className={styles.muted}>{share(m.total ?? 0, total)}</span>
+                  {formatWeight(m.total ?? 0, profile.unit)}{" "}
+                  <span className={styles.muted}>{share(m.total ?? 0, total)}</span>
                 </td>
               </tr>
             );
@@ -209,7 +214,9 @@ export function ProfilerView() {
   if (!snapshot) {
     return (
       <EmptyState title="No profiler snapshots">
-        <span>Profile a run configuration to see where it spends its time.</span>
+        <span>
+          <T>Profile a run configuration to see where it spends its time.</T>
+        </span>
       </EmptyState>
     );
   }

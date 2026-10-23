@@ -16,6 +16,7 @@ import {
   Tabs,
   listNavigate,
   type MenuItem,
+  T,
 } from "@/ui";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
 import { basename, dirname, openLocation } from "../common/open";
@@ -126,7 +127,8 @@ function FindInFilesDialog() {
   }, [s.scopeTab, s.namedScope, recentPaths]);
 
   const scope: SearchScope = useMemo(() => {
-    if (s.scopeTab === "directory" && s.directory.trim()) return { kind: "directory", path: resolveDirectory(s.directory, root) };
+    if (s.scopeTab === "directory" && s.directory.trim())
+      return { kind: "directory", path: resolveDirectory(s.directory, root) };
     const fileSet = FILE_SET_SCOPES[s.namedScope];
     if (s.scopeTab === "scope" && fileSet) return { kind: "fileSet", set: fileSet };
     if (s.scopeTab === "scope") {
@@ -191,7 +193,8 @@ function FindInFilesDialog() {
     if (!row) return;
     close();
     setTimeout(
-      () => void openLocation(row.path, { line: row.line, col: row.col, endLine: row.line, endCol: row.endCol }, { side }),
+      () =>
+        void openLocation(row.path, { line: row.line, col: row.col, endLine: row.line, endCol: row.endCol }, { side }),
       0,
     );
   };
@@ -231,7 +234,12 @@ function FindInFilesDialog() {
       setMarks(next);
       return next;
     } catch (e) {
-      notifications().notify({ group: "search", level: "error", title: "Replace failed", body: String((e as Error)?.message ?? e) });
+      notifications().notify({
+        group: "search",
+        level: "error",
+        title: "Replace failed",
+        body: String((e as Error)?.message ?? e),
+      });
       return null;
     } finally {
       setRunning(null);
@@ -253,7 +261,12 @@ function FindInFilesDialog() {
   };
   const replaceInFile = async () => {
     if (!selected) return;
-    const next = await replaceUsages(pendingUsages(rows.filter((r) => r.path === selected.path), marks));
+    const next = await replaceUsages(
+      pendingUsages(
+        rows.filter((r) => r.path === selected.path),
+        marks,
+      ),
+    );
     if (next) {
       const i = nextPending(rows, active, next);
       if (i >= 0) setIndex(i);
@@ -287,10 +300,7 @@ function FindInFilesDialog() {
     const inField = target.tagName === "INPUT" && target.closest("[data-find-field]");
     if (e.altKey && !e.metaKey && !e.ctrlKey) {
       const toggle = { KeyC: "caseSensitive", KeyW: "wholeWord", KeyX: "isRegex" }[e.code] as
-        | "caseSensitive"
-        | "wholeWord"
-        | "isRegex"
-        | undefined;
+        "caseSensitive" | "wholeWord" | "isRegex" | undefined;
       if (toggle) {
         e.preventDefault();
         set({ [toggle]: !s[toggle] });
@@ -347,7 +357,13 @@ function FindInFilesDialog() {
               onChange={(e) => set({ mask: e.target.value, maskEnabled: true })}
               onBlur={() => s.maskEnabled && rememberMask(s.mask)}
             />
-            <IconButton icon="chevron-down" title="Recent file masks" size="small" iconSize={11} onClick={() => setMaskMenu(true)} />
+            <IconButton
+              icon="chevron-down"
+              title="Recent file masks"
+              size="small"
+              iconSize={11}
+              onClick={() => setMaskMenu(true)}
+            />
           </div>
           <IconButton icon="pin" title="Open in Find Window" shortcut="⌘↵" onClick={pin} disabled={!s.pattern} />
         </header>
@@ -363,9 +379,30 @@ function FindInFilesDialog() {
               invalid={state.status === "invalid"}
               className={styles.field}
               toggles={[
-                { id: "case", icon: "case", title: "Match Case", shortcut: "⌥C", pressed: s.caseSensitive, onToggle: (v) => set({ caseSensitive: v }) },
-                { id: "word", icon: "word", title: "Words", shortcut: "⌥W", pressed: s.wholeWord, onToggle: (v) => set({ wholeWord: v }) },
-                { id: "regex", icon: "regex", title: "Regex", shortcut: "⌥X", pressed: s.isRegex, onToggle: (v) => set({ isRegex: v }) },
+                {
+                  id: "case",
+                  icon: "case",
+                  title: "Match Case",
+                  shortcut: "⌥C",
+                  pressed: s.caseSensitive,
+                  onToggle: (v) => set({ caseSensitive: v }),
+                },
+                {
+                  id: "word",
+                  icon: "word",
+                  title: "Words",
+                  shortcut: "⌥W",
+                  pressed: s.wholeWord,
+                  onToggle: (v) => set({ wholeWord: v }),
+                },
+                {
+                  id: "regex",
+                  icon: "regex",
+                  title: "Regex",
+                  shortcut: "⌥X",
+                  pressed: s.isRegex,
+                  onToggle: (v) => set({ isRegex: v }),
+                },
               ]}
             />
           </div>
@@ -446,22 +483,32 @@ function FindInFilesDialog() {
             renderItem={(r, st) => {
               const state = s.replace ? groupState(r, marks) : "pending";
               return (
-              <>
-                <span className={clsx(styles.rowText, state === "done" && styles.rowDone, state === "excluded" && styles.rowExcluded)}>
-                  <MatchText
-                    text={r.text}
-                    ranges={r.ranges}
-                    active={st.active}
-                    replacement={s.replace && state !== "done" ? s.replacement : null}
-                    query={query}
-                    preserveCase={s.preserveCase}
-                  />
-                </span>
-                <span className={clsx(styles.rowFile, st.active && styles.rowFileActive)}>
-                  {state === "done" && <span className={styles.rowLine}>replaced · </span>}
-                  {basename(r.relPath)} <span className={styles.rowLine}>{r.line + 1}</span>
-                </span>
-              </>
+                <>
+                  <span
+                    className={clsx(
+                      styles.rowText,
+                      state === "done" && styles.rowDone,
+                      state === "excluded" && styles.rowExcluded,
+                    )}
+                  >
+                    <MatchText
+                      text={r.text}
+                      ranges={r.ranges}
+                      active={st.active}
+                      replacement={s.replace && state !== "done" ? s.replacement : null}
+                      query={query}
+                      preserveCase={s.preserveCase}
+                    />
+                  </span>
+                  <span className={clsx(styles.rowFile, st.active && styles.rowFileActive)}>
+                    {state === "done" && (
+                      <span className={styles.rowLine}>
+                        <T>replaced ·</T>{" "}
+                      </span>
+                    )}
+                    {basename(r.relPath)} <span className={styles.rowLine}>{r.line + 1}</span>
+                  </span>
+                </>
               );
             }}
           />
@@ -480,13 +527,23 @@ function FindInFilesDialog() {
         </div>
         <div className={styles.previewBox}>
           {previewMode && s.replace && selected ? (
-            <ReplaceDiffPreview lines={diffPreview?.key === selected.key ? diffPreview.lines : null} line={selected.line} />
+            <ReplaceDiffPreview
+              lines={diffPreview?.key === selected.key ? diffPreview.lines : null}
+              line={selected.line}
+            />
           ) : (
-            <CodePreview path={selected?.path ?? null} line={selected?.line ?? 0} highlights={fileHighlights} version={previewVersion} />
+            <CodePreview
+              path={selected?.path ?? null}
+              line={selected?.line ?? 0}
+              highlights={fileHighlights}
+              version={previewVersion}
+            />
           )}
         </div>
         <footer className={styles.footer}>
-          <span className={styles.hint}>↵ Open · ⇧↵ Open to the side · ⌘↵ Open in Find Window</span>
+          <span className={styles.hint}>
+            <T>↵ Open · ⇧↵ Open to the side · ⌘↵ Open in Find Window</T>
+          </span>
           <span className={styles.spacer} />
           {s.replace && progress && (
             <span className={styles.hint} aria-live="polite">
@@ -495,41 +552,48 @@ function FindInFilesDialog() {
           )}
           {s.replace && running && (
             <Button size="small" onClick={() => running.cancel()}>
-              Stop
+              <T>Stop</T>
             </Button>
           )}
           {s.replace && (
             <>
               <Checkbox checked={previewMode} onChange={setPreviewMode} label="Preview" />
               <Button size="small" variant="secondary" disabled={!selected || busy} onClick={skip}>
-                Skip
+                <T>Skip</T>
               </Button>
               <Button size="small" disabled={!selected || busy} onClick={() => void replaceCurrent()}>
-                Replace
+                <T>Replace</T>
               </Button>
               <Button size="small" disabled={!selected || busy} onClick={() => void replaceInFile()}>
-                Replace All in This File
+                <T>Replace All in This File</T>
               </Button>
               <Button
                 size="small"
                 disabled={!rows.length || busy || state.status === "searching"}
                 onClick={() => setConfirm({ usages: pendingUsages(rows, marks), partial: !!state.summary?.limitHit })}
               >
-                Replace All
+                <T>Replace All</T>
               </Button>
             </>
           )}
           <Button size="small" variant={s.replace ? "secondary" : "primary"} disabled={!s.pattern} onClick={pin}>
-            Open in Find Window
+            <T>Open in Find Window</T>
           </Button>
         </footer>
       </div>
-      <Menu open={maskMenu} anchor={maskRef} items={maskItems} placement="bottom-end" onClose={() => setMaskMenu(false)} />
+      <Menu
+        open={maskMenu}
+        anchor={maskRef}
+        items={maskItems}
+        placement="bottom-end"
+        onClose={() => setMaskMenu(false)}
+      />
       <Dialog
         open={!!confirm}
         onClose={() => setConfirm(null)}
-        width={420}
+        width={460}
         title="Replace All"
+        icon="question"
         buttons={[
           {
             label: "Replace",
@@ -547,8 +611,18 @@ function FindInFilesDialog() {
       >
         <p className={styles.confirm}>
           {confirm && confirmText(countUsages(confirm.usages), s.pattern, s.replacement || "")}
-          {confirm && marks.excluded.size > 0 && <span> Excluded usages are skipped.</span>}
-          {confirm?.partial && <span className={styles.warn}> The search hit its limit; only usages found so far are replaced.</span>}
+          {confirm && marks.excluded.size > 0 && (
+            <span>
+              {" "}
+              <T>Excluded usages are skipped.</T>
+            </span>
+          )}
+          {confirm?.partial && (
+            <span className={styles.warn}>
+              {" "}
+              <T>The search hit its limit; only usages found so far are replaced.</T>
+            </span>
+          )}
         </p>
       </Dialog>
     </Dialog>

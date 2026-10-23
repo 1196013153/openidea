@@ -10,7 +10,18 @@ import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { useProject } from "@/platform/project";
 import { useSettingsPages, type SettingsPageContribution } from "@/workbench/contributions";
-import { Dialog, DialogButtons, EmptyState, Icon, IconButton, SearchField, Tree, type DialogButton, type TreeHandle } from "@/ui";
+import {
+  Dialog,
+  DialogButtons,
+  EmptyState,
+  Icon,
+  IconButton,
+  SearchField,
+  Tree,
+  type DialogButton,
+  type TreeHandle,
+  T,
+} from "@/ui";
 import { PageContext } from "../components/context";
 import { SearchLabel } from "../components/Form";
 import { breadcrumb, buildPageTree, filterPageTree, flatten, groupKey, type PageNode } from "../model/pages";
@@ -28,6 +39,7 @@ import {
 import { builtinSpec, pageLabels } from "../pages/registry";
 import { PageErrorBoundary } from "./PageErrorBoundary";
 import styles from "./SettingsDialog.module.css";
+import { tx } from "@/platform/i18n";
 
 function firstPage(nodes: readonly PageNode[]): string | null {
   const list = flatten(nodes).filter((n) => n.page);
@@ -101,13 +113,15 @@ function PageHost({
           {crumbs.map((c, i) => (
             <span key={i} className={styles.crumb}>
               {i > 0 && <Icon name="chevron-right" size={12} className={styles.crumbSep} />}
-              <span>{c}</span>
+              <span>
+                <T>{c}</T>
+              </span>
             </span>
           ))}
         </div>
         {dirty && (
           <button type="button" className={styles.reset} onClick={onReset}>
-            Reset
+            <T>Reset</T>
           </button>
         )}
         {projectScope && <ScopeSwitch pageId={pageId} scope={scope} />}
@@ -125,7 +139,7 @@ function PageHost({
       {scope === "project" && (
         <div className={styles.scopeNote}>
           <Icon name="info" size={14} />
-          Saved to .openidea/settings.toml in this project; overrides the global value.
+          <T>Saved to .openidea/settings.toml in this project; overrides the global value.</T>
         </div>
       )}
       <div className={styles.pageBody}>
@@ -223,7 +237,7 @@ export function SettingsLayout() {
             aria-label="Settings pages"
             roots={filtered}
             getKey={(n) => n.key}
-            getLabel={(n) => n.title}
+            getLabel={(n) => tx(n.title)}
             getChildren={(n) => (n.children.length ? n.children : undefined)}
             isExpandable={(n) => n.children.length > 0}
             defaultExpanded={all.filter((n) => n.children.length).map((n) => n.key)}
@@ -233,7 +247,11 @@ export function SettingsLayout() {
             multiSelect={false}
             speedSearch={false}
             rowHeight={24}
-            empty={<div className={styles.noMatch}>No matches</div>}
+            empty={
+              <div className={styles.noMatch}>
+                <T>No matches</T>
+              </div>
+            }
             renderNode={(n) => (
               <span
                 className={clsx(

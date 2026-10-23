@@ -19,6 +19,7 @@ import {
   Tree,
   fileIconName,
   type TreeRowState,
+  T,
 } from "@/ui";
 import type { BuildMessage, Severity } from "@/platform/ipc";
 import {
@@ -62,7 +63,9 @@ function rootDetail(status: BuildStatus, durationMs: number | null, errors: numb
   if (status === "running") return "running…";
   if (status === "cancelled") return "cancelled";
   const summary = finishSummary({ success: status === "success", errors, warnings, durationMs });
-  return status === "success" ? `finished ${formatDuration(durationMs ?? 0)}` : summary.replace(/^Build failed:?\s*/, "") || "failed";
+  return status === "success"
+    ? `finished ${formatDuration(durationMs ?? 0)}`
+    : summary.replace(/^Build failed:?\s*/, "") || "failed";
 }
 
 export function BuildHeaderActions() {
@@ -107,13 +110,18 @@ function BuildTree() {
     if (n.kind === "file") {
       const errors = n.messages.filter((m) => m.severity === "error").length;
       const warnings = n.messages.filter((m) => m.severity === "warning").length;
-      const counts = [errors && `${errors} error${errors === 1 ? "" : "s"}`, warnings && `${warnings} warning${warnings === 1 ? "" : "s"}`]
+      const counts = [
+        errors && `${errors} error${errors === 1 ? "" : "s"}`,
+        warnings && `${warnings} warning${warnings === 1 ? "" : "s"}`,
+      ]
         .filter(Boolean)
         .join(", ");
       return (
         <span className={styles.row}>
           <Icon name={fileIconName(basename(n.path))} size={16} className={styles.fileIcon} />
-          <span className={clsx(styles.strong, errors > 0 && styles.fileError, state.selected && styles.selected)}>{basename(n.path)}</span>
+          <span className={clsx(styles.strong, errors > 0 && styles.fileError, state.selected && styles.selected)}>
+            {basename(n.path)}
+          </span>
           <span className={styles.muted}>{relativeDir(root, n.path)}</span>
           <span className={styles.muted}>{counts}</span>
         </span>
@@ -125,7 +133,11 @@ function BuildTree() {
       <span className={styles.row} title={m.text}>
         <Icon name={SEVERITY_ICON[m.severity]} size={14} className={styles[`sev-${m.severity}`]} />
         <span className={styles.message}>{m.text.split("\n")[0]}</span>
-        {start && <span className={styles.position}>:{start.line + 1}:{start.col + 1}</span>}
+        {start && (
+          <span className={styles.position}>
+            :{start.line + 1}:{start.col + 1}
+          </span>
+        )}
       </span>
     );
   };
@@ -192,7 +204,11 @@ function BuildConsole() {
         {virtualizer.getVirtualItems().map((v) => {
           const line = lines[v.index]!;
           return (
-            <div key={v.key} className={clsx(styles.line, styles[line.kind])} style={{ transform: `translateY(${v.start}px)` }}>
+            <div
+              key={v.key}
+              className={clsx(styles.line, styles[line.kind])}
+              style={{ transform: `translateY(${v.start}px)` }}
+            >
               {line.text || " "}
             </div>
           );
@@ -207,7 +223,9 @@ export function BuildView() {
   if (!hasBuild) {
     return (
       <div className={styles.view}>
-        <EmptyState title="No build output">Build the project to see compiler messages here</EmptyState>
+        <EmptyState title="No build output">
+          <T>Build the project to see compiler messages here</T>
+        </EmptyState>
       </div>
     );
   }

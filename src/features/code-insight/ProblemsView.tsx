@@ -6,7 +6,7 @@ import type { Diagnostic, Severity } from "@/bindings";
 import { useEditorRegistry } from "@/editor/api";
 import { basename, relativeDir, useProject } from "@/platform/project";
 import { editorService } from "@/workbench/contributions";
-import { EmptyState, Icon, IconButton, Tabs, Tree, fileIconName, type TreeRowState } from "@/ui";
+import { EmptyState, Icon, IconButton, Tabs, Tree, fileIconName, type TreeRowState, T } from "@/ui";
 import { countSeverities, fileDiagnostics, useProblems, type ProblemsMap } from "./problemsStore";
 import styles from "./ProblemsView.module.css";
 
@@ -65,8 +65,20 @@ export function ProblemsHeaderActions() {
   return (
     <>
       <IconButton icon="error" title="Show Errors" size="small" pressed={show.error} onClick={() => toggle("error")} />
-      <IconButton icon="warning" title="Show Warnings" size="small" pressed={show.warning} onClick={() => toggle("warning")} />
-      <IconButton icon="info" title="Show Infos and Hints" size="small" pressed={show.info} onClick={() => toggle("info")} />
+      <IconButton
+        icon="warning"
+        title="Show Warnings"
+        size="small"
+        pressed={show.warning}
+        onClick={() => toggle("warning")}
+      />
+      <IconButton
+        icon="info"
+        title="Show Infos and Hints"
+        size="small"
+        pressed={show.info}
+        onClick={() => toggle("info")}
+      />
     </>
   );
 }
@@ -80,7 +92,8 @@ export function ProblemsTabs() {
   const fileCount = current ? countSeverities(fileDiagnostics(map, current)) : null;
   const projectErrors = useMemo(() => {
     let n = 0;
-    for (const sources of map.values()) for (const items of sources.values()) n += items.filter((d) => d.severity === "error").length;
+    for (const sources of map.values())
+      for (const items of sources.values()) n += items.filter((d) => d.severity === "error").length;
     return n;
   }, [map]);
   return (
@@ -95,7 +108,7 @@ export function ProblemsTabs() {
           id: "file",
           label: current ? (
             <>
-              File <span className={styles.tabFile}>{basename(current)}</span>
+              <T>File</T> <span className={styles.tabFile}>{basename(current)}</span>
             </>
           ) : (
             "File"
@@ -128,7 +141,10 @@ export function ProblemsView() {
     return buildProblemNodes(map, paths, show);
   }, [map, tab, current, show]);
 
-  const expanded = useMemo(() => new Set(roots.filter((r) => !collapsed.has(r.key)).map((r) => r.key)), [roots, collapsed]);
+  const expanded = useMemo(
+    () => new Set(roots.filter((r) => !collapsed.has(r.key)).map((r) => r.key)),
+    [roots, collapsed],
+  );
 
   const getChildren = useCallback(
     (n: Node): Node[] | undefined =>
@@ -141,15 +157,15 @@ export function ProblemsView() {
   const renderNode = (n: Node, state: TreeRowState) => {
     if (n.kind === "file") {
       const c = countSeverities(n.items);
-      const parts = [
-        plural(c.error, "error"),
-        plural(c.warning, "warning"),
-        plural(c.info + c.hint, "info"),
-      ].filter(Boolean);
+      const parts = [plural(c.error, "error"), plural(c.warning, "warning"), plural(c.info + c.hint, "info")].filter(
+        Boolean,
+      );
       return (
         <span className={styles.row}>
           <Icon name={fileIconName(basename(n.path))} size={16} className={styles.fileIcon} />
-          <span className={clsx(styles.fileName, c.error > 0 && styles.fileError, state.selected && styles.selectedText)}>
+          <span
+            className={clsx(styles.fileName, c.error > 0 && styles.fileError, state.selected && styles.selectedText)}
+          >
             {basename(n.path)}
           </span>
           <span className={styles.muted}>{relativeDir(root, n.path)}</span>

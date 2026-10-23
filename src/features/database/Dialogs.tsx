@@ -10,7 +10,7 @@ import {
   type DbSshAuth,
   type DbSslMode,
 } from "@/platform/ipc";
-import { Button, Checkbox, Dialog, Input, Select, Tabs, lazyComponent } from "@/ui";
+import { Button, Checkbox, Dialog, Input, Select, Tabs, lazyComponent, T } from "@/ui";
 import { connectRemedy, fileSourceName, newSourceId, sshLabel } from "./model";
 import { closeDialog, saveSource, useDatabase } from "./store";
 import styles from "./Database.module.css";
@@ -147,7 +147,7 @@ function SourceDialog({
       width={560}
       footerStart={
         <Button onClick={() => void runTest()} disabled={busy || !valid}>
-          Test Connection
+          <T>Test Connection</T>
         </Button>
       }
       buttons={[
@@ -169,19 +169,35 @@ function SourceDialog({
           ]}
         />
       )}
-      <div className={styles.form} role={sqlite ? undefined : "tabpanel"} id={sqlite ? undefined : `db-source-panel-${tab}`}>
+      <div
+        className={styles.form}
+        role={sqlite ? undefined : "tabpanel"}
+        id={sqlite ? undefined : `db-source-panel-${tab}`}
+      >
         {sqlite || tab === "general" ? (
           <>
             <label className={styles.formLabel} htmlFor="db-name">
-              Name:
+              <T>Name:</T>
             </label>
-            <Input id="db-name" value={s.name ?? ""} placeholder={name} onChange={(e) => set({ name: e.target.value })} />
-            <span className={styles.formLabel}>Driver:</span>
-            <Select aria-label="Driver" value={s.driver ?? "postgres"} options={DRIVERS} onChange={(driver) => set({ driver })} />
+            <Input
+              id="db-name"
+              value={s.name ?? ""}
+              placeholder={name}
+              onChange={(e) => set({ name: e.target.value })}
+            />
+            <span className={styles.formLabel}>
+              <T>Driver:</T>
+            </span>
+            <Select
+              aria-label="Driver"
+              value={s.driver ?? "postgres"}
+              options={DRIVERS}
+              onChange={(driver) => set({ driver })}
+            />
             {sqlite ? (
               <>
                 <label className={styles.formLabel} htmlFor="db-file">
-                  File:
+                  <T>File:</T>
                 </label>
                 <div className={styles.formRow}>
                   <Input
@@ -191,18 +207,25 @@ function SourceDialog({
                     placeholder="path/to/database.db (absolute or project-relative)"
                     onChange={(e) => set({ file: e.target.value || null })}
                   />
-                  <Button onClick={() => void browse()}>Browse…</Button>
+                  <Button onClick={() => void browse()}>
+                    <T>Browse…</T>
+                  </Button>
                 </div>
               </>
             ) : (
               <>
                 <label className={styles.formLabel} htmlFor="db-host">
-                  Host:
+                  <T>Host:</T>
                 </label>
                 <div className={styles.formRow}>
-                  <Input id="db-host" className={styles.fill} value={s.host ?? ""} onChange={(e) => set({ host: e.target.value })} />
+                  <Input
+                    id="db-host"
+                    className={styles.fill}
+                    value={s.host ?? ""}
+                    onChange={(e) => set({ host: e.target.value })}
+                  />
                   <label className={styles.formLabel} htmlFor="db-port">
-                    Port:
+                    <T>Port:</T>
                   </label>
                   <Input
                     id="db-port"
@@ -220,11 +243,11 @@ function SourceDialog({
                   </>
                 )}
                 <label className={styles.formLabel} htmlFor="db-user">
-                  User:
+                  <T>User:</T>
                 </label>
                 <Input id="db-user" value={s.user ?? ""} onChange={(e) => set({ user: e.target.value })} />
                 <label className={styles.formLabel} htmlFor="db-password">
-                  Password:
+                  <T>Password:</T>
                 </label>
                 <div className={styles.formRow}>
                   <Input
@@ -242,7 +265,7 @@ function SourceDialog({
                   />
                 </div>
                 <label className={styles.formLabel} htmlFor="db-database">
-                  Database:
+                  <T>Database:</T>
                 </label>
                 <Input id="db-database" value={s.database ?? ""} onChange={(e) => set({ database: e.target.value })} />
               </>
@@ -255,7 +278,7 @@ function SourceDialog({
             <span />
             <Checkbox checked={!!ssh.enabled} onChange={(enabled) => setSsh({ enabled })} label="Use SSH tunnel" />
             <label className={styles.formLabel} htmlFor="db-ssh-host">
-              Host:
+              <T>Host:</T>
             </label>
             <div className={styles.formRow}>
               <Input
@@ -267,7 +290,7 @@ function SourceDialog({
                 onChange={(e) => setSsh({ host: e.target.value })}
               />
               <label className={styles.formLabel} htmlFor="db-ssh-port">
-                Port:
+                <T>Port:</T>
               </label>
               <Input
                 id="db-ssh-port"
@@ -280,7 +303,7 @@ function SourceDialog({
               />
             </div>
             <label className={styles.formLabel} htmlFor="db-ssh-user">
-              User:
+              <T>User:</T>
             </label>
             <Input
               id="db-ssh-user"
@@ -289,7 +312,9 @@ function SourceDialog({
               placeholder={ssh.auth === "openSsh" ? "from ~/.ssh/config" : ""}
               onChange={(e) => setSsh({ user: e.target.value })}
             />
-            <span className={styles.formLabel}>Authentication:</span>
+            <span className={styles.formLabel}>
+              <T>Authentication:</T>
+            </span>
             <Select
               aria-label="SSH authentication type"
               disabled={!sshOn}
@@ -300,7 +325,7 @@ function SourceDialog({
             {ssh.auth === "keyPair" && (
               <>
                 <label className={styles.formLabel} htmlFor="db-ssh-key">
-                  Private key:
+                  <T>Private key:</T>
                 </label>
                 <div className={styles.formRow}>
                   <Input
@@ -312,7 +337,7 @@ function SourceDialog({
                     onChange={(e) => setSsh({ keyFile: e.target.value })}
                   />
                   <Button disabled={!sshOn} onClick={() => void browseKey()}>
-                    Browse…
+                    <T>Browse…</T>
                   </Button>
                 </div>
               </>
@@ -321,7 +346,11 @@ function SourceDialog({
               <>
                 <span />
                 <span className={styles.formHint}>
-                  Uses HostName, User, Port, IdentityFile and ProxyJump from ~/.ssh/config, and keys of the SSH agent.
+                  <T>
+                    {
+                      "Uses HostName, User, Port, IdentityFile and ProxyJump from ~/.ssh/config, and keys of the SSH agent."
+                    }
+                  </T>
                 </span>
               </>
             ) : (
@@ -348,7 +377,9 @@ function SourceDialog({
                 </div>
               </>
             )}
-            <span className={styles.formLabel}>SSL:</span>
+            <span className={styles.formLabel}>
+              <T>SSL:</T>
+            </span>
             <Select aria-label="SSL mode" value={s.ssl ?? "prefer"} options={SSL} onChange={(ssl) => set({ ssl })} />
           </>
         )}
@@ -358,7 +389,7 @@ function SourceDialog({
             <>
               {" "}
               <Button size="small" onClick={() => void trustAndRetry()} disabled={busy}>
-                Trust Host and Retry
+                <T>Trust Host and Retry</T>
               </Button>
             </>
           )}
@@ -391,12 +422,20 @@ function PasswordDialog({ source, resolve }: { source: DataSource; resolve: (ok:
       ]}
     >
       <div className={styles.form}>
-        <span className={styles.formLabel}>User:</span>
+        <span className={styles.formLabel}>
+          <T>User:</T>
+        </span>
         <span>{source.user || "(default)"}</span>
         <label className={styles.formLabel} htmlFor="db-ask-password">
-          Password:
+          <T>Password:</T>
         </label>
-        <Input id="db-ask-password" type="password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Input
+          id="db-ask-password"
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         <span />
         <Checkbox checked={save} onChange={setSave} label="Save password" />
       </div>
@@ -405,7 +444,15 @@ function PasswordDialog({ source, resolve }: { source: DataSource; resolve: (ok:
 }
 
 /** SSH password / key passphrase asked on connect. */
-function SshSecretDialog({ source, prompt, resolve }: { source: DataSource; prompt: string; resolve: (ok: boolean) => void }) {
+function SshSecretDialog({
+  source,
+  prompt,
+  resolve,
+}: {
+  source: DataSource;
+  prompt: string;
+  resolve: (ok: boolean) => void;
+}) {
   const [secret, setSecret] = useState("");
   const [save, setSave] = useState(!!source.ssh?.saveSecret);
   const password = source.ssh?.auth === "password" || /password required/.test(prompt);
@@ -434,7 +481,13 @@ function SshSecretDialog({ source, prompt, resolve }: { source: DataSource; prom
         <label className={styles.formLabel} htmlFor="db-ask-ssh-secret">
           {password ? "Password:" : "Passphrase:"}
         </label>
-        <Input id="db-ask-ssh-secret" type="password" autoFocus value={secret} onChange={(e) => setSecret(e.target.value)} />
+        <Input
+          id="db-ask-ssh-secret"
+          type="password"
+          autoFocus
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+        />
         <span />
         <Checkbox checked={save} onChange={setSave} label="Save password" />
       </div>
@@ -453,22 +506,27 @@ function HostKeyDialog({ prompt, resolve }: { prompt: string; resolve: (ok: bool
       open
       onClose={() => done(false)}
       title="Unknown SSH Host"
+      icon="warning"
       width={480}
       buttons={[
         { label: "Cancel", role: "cancel" },
         { label: "Trust and Connect", role: "default", onClick: () => done(true) },
       ]}
     >
-      <div className={styles.dialogText}>
-        {prompt}. The authenticity of the host cannot be established. Trust it and add the key to ~/.ssh/known_hosts?
-      </div>
+      {prompt}. The authenticity of the host cannot be established. Trust it and add the key to ~/.ssh/known_hosts?
     </Dialog>
   );
 }
 
 /** Overlay host: whichever dialog the store asks for. */
 /** IDEA's parameter dialog: one SQL value per query parameter, remembered for the next run. */
-function ParamsDialog({ names, resolve }: { names: string[]; resolve: (values: Record<string, string> | null) => void }) {
+function ParamsDialog({
+  names,
+  resolve,
+}: {
+  names: string[];
+  resolve: (values: Record<string, string> | null) => void;
+}) {
   const [values, setValues] = useState<Record<string, string>>(() => {
     const last = useDatabase.getState().paramValues;
     return Object.fromEntries(names.map((n) => [n, last[n] ?? ""]));
@@ -512,7 +570,9 @@ function ParamsDialog({ names, resolve }: { names: string[]; resolve: (values: R
           </Fragment>
         ))}
         <span />
-        <span className={styles.formHint}>Values are inserted as SQL: quote strings, e.g. 'abc'.</span>
+        <span className={styles.formHint}>
+          <T>Values are inserted as SQL: quote strings, e.g. 'abc'.</T>
+        </span>
       </div>
     </Dialog>
   );
@@ -529,16 +589,15 @@ function EndTransactionDialog({ source, resolve }: { source: DataSource; resolve
       open
       onClose={() => done(null)}
       title="Switch to Auto-Commit"
-      width={420}
+      icon="question"
+      width={460}
       buttons={[
         { label: "Cancel", role: "cancel" },
         { label: "Roll Back", onClick: () => done(false) },
         { label: "Commit", role: "default", onClick: () => done(true) },
       ]}
     >
-      <div className={styles.dialogText}>
-        {source.name} has uncommitted changes. Commit or roll them back before switching to auto-commit?
-      </div>
+      {source.name} has uncommitted changes. Commit or roll them back before switching to auto-commit?
     </Dialog>
   );
 }
@@ -547,12 +606,22 @@ export function DatabaseDialogs() {
   const dialog = useDatabase((s) => s.dialog);
   if (!dialog) return null;
   if (dialog.kind === "source")
-    return <SourceDialog key={dialog.source?.id ?? "new"} initial={dialog.source} preset={dialog.preset} presetPassword={dialog.password} />;
+    return (
+      <SourceDialog
+        key={dialog.source?.id ?? "new"}
+        initial={dialog.source}
+        preset={dialog.preset}
+        presetPassword={dialog.password}
+      />
+    );
   if (dialog.kind === "params") return <ParamsDialog names={dialog.names} resolve={dialog.resolve} />;
   if (dialog.kind === "endTransaction") return <EndTransactionDialog source={dialog.source} resolve={dialog.resolve} />;
   if (dialog.kind === "sshSecret")
-    return <SshSecretDialog key={dialog.source.id} source={dialog.source} prompt={dialog.prompt} resolve={dialog.resolve} />;
+    return (
+      <SshSecretDialog key={dialog.source.id} source={dialog.source} prompt={dialog.prompt} resolve={dialog.resolve} />
+    );
   if (dialog.kind === "hostKey") return <HostKeyDialog prompt={dialog.prompt} resolve={dialog.resolve} />;
-  if (dialog.kind === "password") return <PasswordDialog key={dialog.source.id} source={dialog.source} resolve={dialog.resolve} />;
+  if (dialog.kind === "password")
+    return <PasswordDialog key={dialog.source.id} source={dialog.source} resolve={dialog.resolve} />;
   return <ObjectDialogs />;
 }

@@ -4,7 +4,7 @@ import { basename, relativePath, useProject } from "@/platform/project";
 import { executeAction } from "@/platform/actions";
 import { call, commands, type AttachableProcess, type RunConfig, type Variable } from "@/platform/ipc";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
-import { Button, Checkbox, Dialog, Icon, IconButton, Input, Kbd, List, Popup, Toggle } from "@/ui";
+import { Button, Checkbox, Dialog, Icon, IconButton, Input, Kbd, List, Popup, Toggle, T } from "@/ui";
 import { isConditional, type BreakpointEntry } from "../breakpoints/model";
 import {
   removeAllBreakpoints,
@@ -117,7 +117,9 @@ function BreakpointEditor({
           label="Enabled"
         />
         <label className={styles.field}>
-          <span className={styles.label}>Condition</span>
+          <span className={styles.label}>
+            <T>Condition</T>
+          </span>
           <Input
             mono
             value={condition}
@@ -129,7 +131,9 @@ function BreakpointEditor({
           />
         </label>
         <label className={styles.field}>
-          <span className={styles.label}>Hit count</span>
+          <span className={styles.label}>
+            <T>Hit count</T>
+          </span>
           <Input
             mono
             value={hitCondition}
@@ -160,7 +164,7 @@ function BreakpointEditor({
               void executeAction("debug.viewBreakpoints");
             }}
           >
-            More <Kbd action="debug.viewBreakpoints" />
+            <T>More</T> <Kbd action="debug.viewBreakpoints" />
           </button>
           <div className={styles.spacer} />
           <Button
@@ -171,10 +175,10 @@ function BreakpointEditor({
               closeBreakpointPopover();
             }}
           >
-            Remove
+            <T>Remove</T>
           </Button>
           <Button size="small" variant="primary" onClick={close}>
-            Done
+            <T>Done</T>
           </Button>
         </div>
       </div>
@@ -203,7 +207,9 @@ function SpecialEditor({ bp, at }: { bp: SpecialBreakpoint; at: { x: number; y: 
         </div>
         <Checkbox checked={bp.enabled} onChange={(enabled) => updateSpecial(bp.id, { enabled })} label="Enabled" />
         <label className={styles.field}>
-          <span className={styles.label}>Condition</span>
+          <span className={styles.label}>
+            <T>Condition</T>
+          </span>
           <Input
             mono
             value={condition}
@@ -214,7 +220,9 @@ function SpecialEditor({ bp, at }: { bp: SpecialBreakpoint; at: { x: number; y: 
           />
         </label>
         <label className={styles.field}>
-          <span className={styles.label}>Hit count</span>
+          <span className={styles.label}>
+            <T>Hit count</T>
+          </span>
           <Input
             mono
             value={hitCondition}
@@ -232,7 +240,7 @@ function SpecialEditor({ bp, at }: { bp: SpecialBreakpoint; at: { x: number; y: 
               void executeAction("debug.viewBreakpoints");
             }}
           >
-            More <Kbd action="debug.viewBreakpoints" />
+            <T>More</T> <Kbd action="debug.viewBreakpoints" />
           </button>
           <div className={styles.spacer} />
           <Button
@@ -243,10 +251,10 @@ function SpecialEditor({ bp, at }: { bp: SpecialBreakpoint; at: { x: number; y: 
               closeBreakpointPopover();
             }}
           >
-            Remove
+            <T>Remove</T>
           </Button>
           <Button size="small" variant="primary" onClick={close}>
-            Done
+            <T>Done</T>
           </Button>
         </div>
       </div>
@@ -284,8 +292,14 @@ function BreakpointsDialog() {
       if (list.length) out.push({ type: "section", key: `section:${label}`, label }, ...list);
     };
     section("Line Breakpoints", lines);
-    section("Method Breakpoints", methods.map((bp) => ({ type: "special" as const, key: bp.id, bp })));
-    section("Field Watchpoints", fields.map((bp) => ({ type: "special" as const, key: bp.id, bp })));
+    section(
+      "Method Breakpoints",
+      methods.map((bp) => ({ type: "special" as const, key: bp.id, bp })),
+    );
+    section(
+      "Field Watchpoints",
+      fields.map((bp) => ({ type: "special" as const, key: bp.id, bp })),
+    );
     return out;
   }, [byFile, methods, fields]);
   const items = rows.filter((r) => r.type !== "section");
@@ -328,7 +342,13 @@ function BreakpointsDialog() {
               size="small"
               onClick={() => setSelected(addMethodBreakpoint("").id)}
             />
-            <IconButton icon="trash" title="Remove All Breakpoints" size="small" disabled={!items.length} onClick={removeAll} />
+            <IconButton
+              icon="trash"
+              title="Remove All Breakpoints"
+              size="small"
+              disabled={!items.length}
+              onClick={removeAll}
+            />
           </div>
           <List
             items={rows}
@@ -340,7 +360,11 @@ function BreakpointsDialog() {
             onActivate={(r) => goTo(r)}
             aria-label="All breakpoints"
             className={styles.bpList}
-            empty={<div className={styles.empty}>No breakpoints. Click a line number to add one.</div>}
+            empty={
+              <div className={styles.empty}>
+                <T>No breakpoints. Click a line number to add one.</T>
+              </div>
+            }
             renderItem={(r) => {
               if (r.type === "section") return null;
               if (r.type === "special") {
@@ -417,16 +441,29 @@ function ExceptionBreakpoints({ open }: { open: boolean }) {
   }, [open]);
   return (
     <section className={styles.exceptions} aria-label="Exception breakpoints">
-      <div className={styles.exceptionsTitle}>Exception Breakpoints</div>
+      <div className={styles.exceptionsTitle}>
+        <T>Exception Breakpoints</T>
+      </div>
       {groups.length === 0 ? (
-        <div className={styles.exceptionsEmpty}>Start a debug session to see the exception filters of its adapter.</div>
+        <div className={styles.exceptionsEmpty}>
+          <T>Start a debug session to see the exception filters of its adapter.</T>
+        </div>
       ) : (
         groups.map((g) => (
-          <div key={g.adapter} className={styles.exceptionGroup} role="group" aria-label={`${g.adapter} exception filters`}>
+          <div
+            key={g.adapter}
+            className={styles.exceptionGroup}
+            role="group"
+            aria-label={`${g.adapter} exception filters`}
+          >
             {groups.length > 1 && <div className={styles.exceptionAdapter}>{g.adapter}</div>}
             {g.filters.map((f) => (
               <span key={f.filter} title={f.description ?? undefined} className={styles.exceptionRow}>
-                <Checkbox checked={f.enabled} onChange={(on) => setExceptionFilter(g.adapter, f.filter, on)} label={f.label} />
+                <Checkbox
+                  checked={f.enabled}
+                  onChange={(on) => setExceptionFilter(g.adapter, f.filter, on)}
+                  label={f.label}
+                />
               </span>
             ))}
           </div>
@@ -451,17 +488,19 @@ function BreakpointDetail({ row, onGo }: { row: BpRow; onGo: () => void }) {
         </span>
         <div className={styles.spacer} />
         <Button size="small" variant="ghost" onClick={onGo}>
-          Go to Source
+          <T>Go to Source</T>
         </Button>
         <Button size="small" variant="ghost" onClick={() => removeBreakpoint(path, bp.id)}>
-          Remove
+          <T>Remove</T>
         </Button>
       </div>
       {st && <div className={styles.statusLine}>{st.verified ? "Verified" : (st.message ?? "Not verified")}</div>}
       <Checkbox checked={bp.enabled} onChange={(enabled) => commit({ enabled })} label="Enabled" />
       <Checkbox checked={!!bp.temporary} onChange={(temporary) => commit({ temporary })} label="Remove once hit" />
       <label className={styles.field}>
-        <span className={styles.label}>Condition</span>
+        <span className={styles.label}>
+          <T>Condition</T>
+        </span>
         <Input
           mono
           value={condition}
@@ -471,7 +510,9 @@ function BreakpointDetail({ row, onGo }: { row: BpRow; onGo: () => void }) {
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Hit count</span>
+        <span className={styles.label}>
+          <T>Hit count</T>
+        </span>
         <Input
           mono
           value={hitCondition}
@@ -481,7 +522,9 @@ function BreakpointDetail({ row, onGo }: { row: BpRow; onGo: () => void }) {
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Log message</span>
+        <span className={styles.label}>
+          <T>Log message</T>
+        </span>
         <Input
           mono
           value={logMessage}
@@ -508,18 +551,20 @@ function SpecialDetail({ bp, onGo }: { bp: SpecialBreakpoint; onGo: () => void }
         <div className={styles.spacer} />
         {bp.path && (
           <Button size="small" variant="ghost" onClick={onGo}>
-            Go to Source
+            <T>Go to Source</T>
           </Button>
         )}
         <Button size="small" variant="ghost" onClick={() => removeSpecial(bp.id)}>
-          Remove
+          <T>Remove</T>
         </Button>
       </div>
       {st && <div className={styles.statusLine}>{st.verified ? "Verified" : (st.message ?? "Not verified")}</div>}
       <Checkbox checked={bp.enabled} onChange={(enabled) => updateSpecial(bp.id, { enabled })} label="Enabled" />
       {bp.kind === "method" ? (
         <label className={styles.field}>
-          <span className={styles.label}>Method</span>
+          <span className={styles.label}>
+            <T>Method</T>
+          </span>
           <Input
             mono
             value={name}
@@ -534,7 +579,9 @@ function SpecialDetail({ bp, onGo }: { bp: SpecialBreakpoint; onGo: () => void }
         <>
           <div className={styles.statusLine}>Watching {bp.dataId}</div>
           <label className={styles.field}>
-            <span className={styles.label}>Suspend on</span>
+            <span className={styles.label}>
+              <T>Suspend on</T>
+            </span>
             <span className={styles.exceptionGroup}>
               <Checkbox
                 checked={bp.accessType !== "read"}
@@ -553,7 +600,9 @@ function SpecialDetail({ bp, onGo }: { bp: SpecialBreakpoint; onGo: () => void }
         </>
       )}
       <label className={styles.field}>
-        <span className={styles.label}>Condition</span>
+        <span className={styles.label}>
+          <T>Condition</T>
+        </span>
         <Input
           mono
           value={condition}
@@ -563,7 +612,9 @@ function SpecialDetail({ bp, onGo }: { bp: SpecialBreakpoint; onGo: () => void }
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Hit count</span>
+        <span className={styles.label}>
+          <T>Hit count</T>
+        </span>
         <Input
           mono
           value={hitCondition}
@@ -616,7 +667,7 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
           }}
           disabled={!expression.trim()}
         >
-          Add to Watches
+          <T>Add to Watches</T>
         </Button>
       }
       buttons={[
@@ -626,7 +677,9 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
     >
       <div className={styles.evalBody}>
         <label className={styles.field}>
-          <span className={styles.label}>Expression</span>
+          <span className={styles.label}>
+            <T>Expression</T>
+          </span>
           <Input
             mono
             value={expression}
@@ -756,7 +809,9 @@ function AttachPopup() {
           aria-label="Filter processes"
         />
         {state.processes == null ? (
-          <div className={styles.empty}>Loading processes…</div>
+          <div className={styles.empty}>
+            <T>Loading processes…</T>
+          </div>
         ) : state.error ? (
           <div className={styles.empty}>{state.error}</div>
         ) : (

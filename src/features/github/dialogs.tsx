@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import type { ReviewEvent } from "@/platform/ipc";
 import { call, commands } from "@/platform/ipc";
-import { Checkbox, Dialog, Input, Select } from "@/ui";
+import { Checkbox, Dialog, Input, Select, T } from "@/ui";
 import styles from "./Github.module.css";
 
 interface Entry {
@@ -45,11 +45,22 @@ export interface CreatePrInput {
 }
 
 /** Asks for the new pull request's title, description, base branch and options. */
-export function createPullRequestDialog(opts: { head: string; defaultBase: string | null; title: string; needsPush: boolean }) {
+export function createPullRequestDialog(opts: {
+  head: string;
+  defaultBase: string | null;
+  title: string;
+  needsPush: boolean;
+}) {
   return open<CreatePrInput>((done) => <CreateDialog {...opts} onDone={done} />);
 }
 
-function CreateDialog(props: { head: string; defaultBase: string | null; title: string; needsPush: boolean; onDone: (v: CreatePrInput | null) => void }) {
+function CreateDialog(props: {
+  head: string;
+  defaultBase: string | null;
+  title: string;
+  needsPush: boolean;
+  onDone: (v: CreatePrInput | null) => void;
+}) {
   const [title, setTitle] = useState(props.title);
   const [body, setBody] = useState("");
   const [base, setBase] = useState(props.defaultBase ?? "");
@@ -95,11 +106,24 @@ function CreateDialog(props: { head: string; defaultBase: string | null; title: 
     >
       <div className={styles.form}>
         <div className={styles.formRow}>
-          <label className={styles.fieldLabel}>Base:</label>
-          <Select value={base || null} options={bases.map((b) => ({ value: b, label: b }))} onChange={setBase} aria-label="Base branch" />
+          <label className={styles.fieldLabel}>
+            <T>Base:</T>
+          </label>
+          <Select
+            value={base || null}
+            options={bases.map((b) => ({ value: b, label: b }))}
+            onChange={setBase}
+            aria-label="Base branch"
+          />
           <span className={styles.fieldLabel}>← {props.head}</span>
         </div>
-        <Input data-autofocus aria-label="Title" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Input
+          data-autofocus
+          aria-label="Title"
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
         <textarea
           aria-label="Description"
           placeholder="Description (Markdown)"
@@ -117,14 +141,24 @@ function CreateDialog(props: { head: string; defaultBase: string | null; title: 
   );
 }
 
-const REVIEW_LABEL: Record<ReviewEvent, string> = { approve: "Approve", requestChanges: "Request Changes", comment: "Comment" };
+const REVIEW_LABEL: Record<ReviewEvent, string> = {
+  approve: "Approve",
+  requestChanges: "Request Changes",
+  comment: "Comment",
+};
 
 /** Asks for a review comment; resolves with the chosen event and body. */
 export function reviewDialog(number: number, initial: ReviewEvent) {
-  return open<{ event: ReviewEvent; body: string }>((done) => <ReviewDialog number={number} initial={initial} onDone={done} />);
+  return open<{ event: ReviewEvent; body: string }>((done) => (
+    <ReviewDialog number={number} initial={initial} onDone={done} />
+  ));
 }
 
-function ReviewDialog(props: { number: number; initial: ReviewEvent; onDone: (v: { event: ReviewEvent; body: string } | null) => void }) {
+function ReviewDialog(props: {
+  number: number;
+  initial: ReviewEvent;
+  onDone: (v: { event: ReviewEvent; body: string } | null) => void;
+}) {
   const [body, setBody] = useState("");
   const [event, setEvent] = useState<ReviewEvent>(props.initial);
   const needsBody = event !== "approve";
@@ -135,7 +169,12 @@ function ReviewDialog(props: { number: number; initial: ReviewEvent; onDone: (v:
       onClose={() => props.onDone(null)}
       width={520}
       buttons={[
-        { label: REVIEW_LABEL[event], role: "default", disabled: needsBody && !body.trim(), onClick: () => props.onDone({ event, body }) },
+        {
+          label: REVIEW_LABEL[event],
+          role: "default",
+          disabled: needsBody && !body.trim(),
+          onClick: () => props.onDone({ event, body }),
+        },
         { label: "Cancel", role: "cancel" },
       ]}
     >
@@ -187,8 +226,17 @@ function NumberDialog(props: { title: string; onDone: (v: number | null) => void
           if (ok) props.onDone(n);
         }}
       >
-        <label className={styles.fieldLabel}>Pull request number:</label>
-        <Input data-autofocus mono aria-label="Pull request number" placeholder="#123" value={value} onChange={(e) => setValue(e.target.value)} />
+        <label className={styles.fieldLabel}>
+          <T>Pull request number:</T>
+        </label>
+        <Input
+          data-autofocus
+          mono
+          aria-label="Pull request number"
+          placeholder="#123"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
       </form>
     </Dialog>
   );

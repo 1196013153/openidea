@@ -20,7 +20,7 @@ import { activate as build } from "./build";
 import { activate as templates, activateSettingsPages as templatesPages } from "./templates";
 import { activate as todo, activateSettingsPages as todoPages } from "./todo";
 import { activate as settings, activateSettingsWindow } from "./settings";
-import { activate as app } from "./app";
+import { activate as app, activateLocale as appLocale } from "./app";
 import { activate as perf } from "./perf";
 import { activate as plugins, activateSettingsPages as pluginsPages } from "./plugins";
 import { activate as tools, activateSettingsPages as toolsPages } from "./tools";
@@ -86,6 +86,7 @@ export { SettingsWindow, settingsWindowParent } from "./settings";
  */
 export function activateSettingsWindowFeatures(parent: string): () => void {
   const pages: Array<[string, Activate]> = [
+    ["locale", appLocale],
     ["settings", () => activateSettingsWindow(parent)],
     ["templates", templatesPages],
     ["todo", todoPages],

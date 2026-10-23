@@ -59,6 +59,7 @@ export async function decideClose(input: CloseInput, deps: CloseDeps): Promise<b
         { id: "discard", label: t("app.unsaved.discard") },
         { id: "save", label: t("app.unsaved.save"), primary: true },
       ],
+      icon: "warning",
     });
     if (r.button === "cancel") return false;
     if (r.button === "save") {

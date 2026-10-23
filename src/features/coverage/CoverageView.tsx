@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
 import { useProject } from "@/platform/project";
-import { EmptyState, Icon, IconButton, Tabs, Tree, fileIconName } from "@/ui";
+import { EmptyState, Icon, IconButton, Tabs, Tree, fileIconName, T } from "@/ui";
 import { editorService } from "@/workbench/contributions";
 import { coverageTree, formatPercent, percent, sortTree, type CoverageNode, type SortKey } from "./model";
 import { activeSuite, closeSuite, selectSuite, setCoverageVisible, useCoverage } from "./store";
@@ -72,15 +72,23 @@ export function CoverageView() {
   const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({ key: "name", ascending: true });
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
 
-  const roots = useMemo(() => (suite ? sortTree(coverageTree(suite.data, root), sort.key, sort.ascending) : []), [suite, root, sort]);
-  const effectiveExpanded = useMemo(() => expanded ?? new Set(roots.filter((n) => n.dir).map((n) => n.path)), [expanded, roots]);
+  const roots = useMemo(
+    () => (suite ? sortTree(coverageTree(suite.data, root), sort.key, sort.ascending) : []),
+    [suite, root, sort],
+  );
+  const effectiveExpanded = useMemo(
+    () => expanded ?? new Set(roots.filter((n) => n.dir).map((n) => n.path)),
+    [expanded, roots],
+  );
 
   if (!suite) {
     return (
       <EmptyState title="No coverage data">
-        <span>Run a configuration with coverage to see which lines its tests execute.</span>
+        <span>
+          <T>Run a configuration with coverage to see which lines its tests execute.</T>
+        </span>
         <button type="button" className={styles.link} onClick={() => void executeAction("run.coverage")}>
-          Run with Coverage
+          <T>Run with Coverage</T>
         </button>
       </EmptyState>
     );
@@ -92,7 +100,11 @@ export function CoverageView() {
 
   return (
     <div className={styles.view}>
-      {!visible && <div className={styles.banner}>Coverage is hidden in editors and the project view.</div>}
+      {!visible && (
+        <div className={styles.banner}>
+          <T>Coverage is hidden in editors and the project view.</T>
+        </div>
+      )}
       <div className={clsx(styles.header, !branches && styles.noBranches)} role="row">
         {columns.map((c) => (
           <button

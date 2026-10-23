@@ -1,6 +1,6 @@
 /** Change list dialogs: New / Edit Changelist, Move to Another Changelist, delete. */
 import { useState } from "react";
-import { Checkbox, Dialog, Input, Select } from "@/ui";
+import { Checkbox, Dialog, Input, Select, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import {
   activeList,
@@ -40,7 +40,7 @@ function ChangelistForm({
   return (
     <div className={styles.form}>
       <label className={styles.fieldLabel} htmlFor="openidea-cl-name">
-        Name:
+        <T>Name:</T>
       </label>
       <Input
         id="openidea-cl-name"
@@ -51,7 +51,7 @@ function ChangelistForm({
       />
       {value.name && error && <div className={styles.error}>{error}</div>}
       <label className={styles.fieldLabel} htmlFor="openidea-cl-comment">
-        Comment:
+        <T>Comment:</T>
       </label>
       <textarea
         id="openidea-cl-comment"
@@ -238,7 +238,9 @@ function MoveDialog({ paths, onClose }: { paths: readonly string[]; onClose: () 
             disabled={!others.length}
             onChange={() => setMode("existing")}
           />
-          <span className={styles.radioText}>Existing changelist:</span>
+          <span className={styles.radioText}>
+            <T>Existing changelist:</T>
+          </span>
         </label>
         <Select
           value={target}
@@ -249,7 +251,9 @@ function MoveDialog({ paths, onClose }: { paths: readonly string[]; onClose: () 
         />
         <label className={styles.radioRow}>
           <input type="radio" name="target" checked={mode === "new"} onChange={() => setMode("new")} />
-          <span className={styles.radioText}>New changelist:</span>
+          <span className={styles.radioText}>
+            <T>New changelist:</T>
+          </span>
         </label>
       </div>
       {mode === "new" && <ChangelistForm value={value} onChange={setValue} error={error} />}

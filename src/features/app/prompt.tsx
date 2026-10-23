@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { create } from "zustand";
 import { useT } from "@/platform/i18n";
-import { Checkbox, Dialog } from "@/ui";
-import styles from "./app.module.css";
+import { Checkbox, Dialog, type MessageIconKind } from "@/ui";
 
 export interface PromptButton {
   id: string;
@@ -17,6 +16,8 @@ export interface PromptRequest {
   /** Declaration order (IDEA `createActions`); the dialog orders them per platform. A Cancel button (id `cancel`) is added unless present. */
   buttons: PromptButton[];
   checkbox?: string;
+  /** Defaults to `question`. */
+  icon?: MessageIconKind;
 }
 
 export interface PromptResult {
@@ -64,20 +65,21 @@ function PromptDialog({ request }: { request: NonNullable<PromptState["current"]
       open
       onClose={() => done("cancel")}
       title={request.title}
-      width={420}
-      footerStart={
-        request.checkbox && <Checkbox checked={checked} onChange={setChecked} label={request.checkbox} />
-      }
+      icon={request.icon ?? "question"}
+      width={520}
+      footerStart={request.checkbox && <Checkbox checked={checked} onChange={setChecked} label={request.checkbox} />}
       buttons={[
         ...request.buttons.map((b) => ({
           label: b.label,
           role: b.primary ? ("default" as const) : b.id === "cancel" ? ("cancel" as const) : ("extra" as const),
           onClick: () => done(b.id),
         })),
-        ...(request.buttons.some((b) => b.id === "cancel") ? [] : [{ label: t("common.cancel"), role: "cancel" as const }]),
+        ...(request.buttons.some((b) => b.id === "cancel")
+          ? []
+          : [{ label: t("common.cancel"), role: "cancel" as const }]),
       ]}
     >
-      <p className={styles.promptBody}>{request.body}</p>
+      {request.body}
     </Dialog>
   );
 }

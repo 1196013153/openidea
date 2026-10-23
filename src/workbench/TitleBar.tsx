@@ -3,9 +3,9 @@ import clsx from "clsx";
 import { useActions } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import { BarButton, Icon, IconButton, Menu, type MenuItem } from "@/ui";
-import { useContributions, type TitleItemContribution } from "./contributions";
-import { ErrorBoundary } from "./ErrorBoundary";
+import { BarButton, Icon, IconButton, Menu, type MenuItem, T } from "@/ui";
+import { useContributions, useWorkbenchSlots, type TitleItemContribution } from "./contributions";
+import { ErrorBoundary, Slot } from "./ErrorBoundary";
 import { MainMenu } from "./MainMenu";
 import { WindowControls } from "./WindowControls";
 import { usePlatform } from "@/platform/platformInfo";
@@ -37,6 +37,7 @@ function ProjectButton() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const actions = useActions((s) => s.actions);
+  const Popup = useWorkbenchSlots((s) => s.projectPopup);
   const items = useMemo<MenuItem[]>(() => {
     const list: MenuItem[] = [{ kind: "action", action: "file.openProject", label: "Open…" }];
     if (actions.has("welcome.recentProjects")) list.push({ kind: "action", action: "welcome.recentProjects" });
@@ -52,7 +53,7 @@ function ProjectButton() {
         className={styles.widget}
         tooltip={root}
         aria-label={label}
-        aria-haspopup="menu"
+        aria-haspopup={Popup ? "dialog" : "menu"}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -62,7 +63,11 @@ function ProjectButton() {
         <span className={styles.widgetText}>{label}</span>
         <Icon name="chevron-down" size={12} className={styles.chevron} />
       </BarButton>
-      <Menu open={open} onClose={() => setOpen(false)} anchor={ref} items={items} aria-label="Project" />
+      {Popup ? (
+        open && <Slot component={Popup} anchor={ref} onClose={() => setOpen(false)} />
+      ) : (
+        <Menu open={open} onClose={() => setOpen(false)} anchor={ref} items={items} aria-label="Project" />
+      )}
     </>
   );
 }
@@ -89,7 +94,9 @@ function VcsFallback() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={styles.widgetText}>Version Control</span>
+        <span className={styles.widgetText}>
+          <T>Version Control</T>
+        </span>
         <Icon name="chevron-down" size={12} className={styles.chevron} />
       </BarButton>
       <Menu open={open} onClose={() => setOpen(false)} anchor={ref} items={items} aria-label="Version Control" />
@@ -135,7 +142,7 @@ export function TitleBar({
       {frameless && !minimal && <MainMenu onExpandedChange={setMenuExpanded} />}
       {title && (
         <span className={styles.windowTitle} data-tauri-drag-region>
-          {title}
+          {typeof title === "string" ? <T>{title}</T> : title}
         </span>
       )}
       {!minimal && !menuExpanded && (

@@ -18,7 +18,9 @@ import { Icon, type IconName } from "./icons";
 import { IconButton } from "./Button";
 import { Menu, type MenuItem } from "./Menu";
 import { tooltipAttrs } from "./Tooltip";
+import { T } from "./T";
 import styles from "./Tabs.module.css";
+import { tx } from "@/platform/i18n";
 
 export interface TabItem {
   id: string;
@@ -181,7 +183,7 @@ export function Tabs({
 
   const menuItems: MenuItem[] = items.map((t) => ({
     id: t.id,
-    label: t.text ?? (typeof t.label === "string" ? t.label : t.id),
+    label: tx(t.text ?? (typeof t.label === "string" ? t.label : t.id)),
     icon: t.icon,
     checked: t.id === activeId ? true : undefined,
     run: () => onSelect(t.id),
@@ -250,7 +252,9 @@ export function Tabs({
                 {...tooltipAttrs(item.tooltip)}
               >
                 {item.icon && <Icon name={item.icon} size={14} className={styles.tabIcon} />}
-                <span className={clsx(styles.tabLabel, item.italic && styles.italic)}>{item.label}</span>
+                <span className={clsx(styles.tabLabel, item.italic && styles.italic)}>
+                  {typeof item.label === "string" ? <T>{item.label}</T> : item.label}
+                </span>
                 {item.trailing}
                 {item.modified && !closable && <span className={styles.modified} aria-label="Modified" />}
               </button>

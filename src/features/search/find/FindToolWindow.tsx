@@ -16,6 +16,7 @@ import {
   fileIconName,
   showContextMenu,
   type TreeRowState,
+  T,
 } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { basename, openLocation, relDir } from "../common/open";
@@ -83,7 +84,14 @@ export function buildFindTree(files: readonly FileMatches[]): Node[] {
         starts: m.ranges.map(([s]) => ({ line: m.line, col: s + m.textOffset })),
       };
     });
-    d.children.push({ kind: "file", key: `f:${f.path}`, path: f.path, name: basename(f.relPath), count: f.matches.length, children });
+    d.children.push({
+      kind: "file",
+      key: `f:${f.path}`,
+      path: f.path,
+      name: basename(f.relPath),
+      count: f.matches.length,
+      children,
+    });
     d.count += f.matches.length;
   }
   return [...dirs.values()].sort((a, b) => a.label.localeCompare(b.label));
@@ -97,7 +105,8 @@ export function nodeGroups(node: Node): UsageGroup[] {
 
 /** Excluded (⌫) / replaced usages per Find tab. */
 const useMarks = create<{ byTab: Record<number, ReplaceMarks> }>(() => ({ byTab: {} }));
-const setMarks = (tab: number, marks: ReplaceMarks) => useMarks.setState((s) => ({ byTab: { ...s.byTab, [tab]: marks } }));
+const setMarks = (tab: number, marks: ReplaceMarks) =>
+  useMarks.setState((s) => ({ byTab: { ...s.byTab, [tab]: marks } }));
 
 const useCollapsed = create<{ byTab: Record<number, ReadonlySet<string>> }>(() => ({ byTab: {} }));
 const setCollapsed = (tab: number, keys: ReadonlySet<string>) =>
@@ -185,7 +194,12 @@ function FindTabView({ tab }: { tab: FindTab }) {
   const replace = async (usages: Usage[]) => {
     if (tab.replacement === null || !usages.length || running) return;
     const run = startReplace(
-      { query: tab.query, replacement: tab.replacement, preserveCase: !!tab.preserveCase, targets: replaceTargets(usages) },
+      {
+        query: tab.query,
+        replacement: tab.replacement,
+        preserveCase: !!tab.preserveCase,
+        targets: replaceTargets(usages),
+      },
       setProgress,
     );
     setRunning(run);
@@ -200,7 +214,12 @@ function FindTabView({ tab }: { tab: FindTab }) {
       // Replaced usages disappear from the view, as in IDEA; exclusions are kept.
       rerunFindTab(tab.id);
     } catch (e) {
-      notifications().notify({ group: "search", level: "error", title: "Replace failed", body: String((e as Error)?.message ?? e) });
+      notifications().notify({
+        group: "search",
+        level: "error",
+        title: "Replace failed",
+        body: String((e as Error)?.message ?? e),
+      });
     } finally {
       setRunning(null);
       setProgress(null);
@@ -226,7 +245,12 @@ function FindTabView({ tab }: { tab: FindTab }) {
         line: usages[0]?.line,
       });
     } catch (e) {
-      notifications().notify({ group: "search", level: "error", title: "Preview failed", body: String((e as Error)?.message ?? e) });
+      notifications().notify({
+        group: "search",
+        level: "error",
+        title: "Preview failed",
+        body: String((e as Error)?.message ?? e),
+      });
     }
   };
 
@@ -257,27 +281,31 @@ function FindTabView({ tab }: { tab: FindTab }) {
         </span>
         <span className={styles.spacer} />
         <Button size="small" variant="ghost" disabled={!selection.size} onClick={exclude} title="Exclude / include (⌫)">
-          Exclude
+          <T>Exclude</T>
         </Button>
         {replaceMode && (
           <>
             {running && (
               <Button size="small" onClick={() => running.cancel()}>
-                Stop
+                <T>Stop</T>
               </Button>
             )}
             <Button size="small" variant="ghost" disabled={!selection.size || busy} onClick={() => void preview()}>
-              Preview
+              <T>Preview</T>
             </Button>
-            <Button size="small" disabled={!selectedPending.length || busy} onClick={() => void replace(selectedPending)}>
-              Replace Selected
+            <Button
+              size="small"
+              disabled={!selectedPending.length || busy}
+              onClick={() => void replace(selectedPending)}
+            >
+              <T>Replace Selected</T>
             </Button>
             <Button
               size="small"
               disabled={busy || !allPending.length || st.status === "searching"}
               onClick={() => setConfirm(allPending)}
             >
-              Replace All
+              <T>Replace All</T>
             </Button>
           </>
         )}
@@ -307,7 +335,13 @@ function FindTabView({ tab }: { tab: FindTab }) {
           const groups = [...sel].flatMap((k) => (byKey.get(k) ? nodeGroups(byKey.get(k)!) : []));
           const excludedAll = groups.length > 0 && groups.every((g) => groupState(g, marks) === "excluded");
           showContextMenu(e, [
-            { id: "exclude", label: excludedAll ? "Include" : "Exclude", shortcut: "⌫", disabled: !groups.length, run: exclude },
+            {
+              id: "exclude",
+              label: excludedAll ? "Include" : "Exclude",
+              shortcut: "⌫",
+              disabled: !groups.length,
+              run: exclude,
+            },
             ...(replaceMode
               ? [
                   {
@@ -316,7 +350,12 @@ function FindTabView({ tab }: { tab: FindTab }) {
                     disabled: busy || !pendingUsages(groups, marks).length,
                     run: () => void replace(pendingUsages(groups, marks)),
                   },
-                  { id: "preview", label: "Preview Replacement", disabled: busy || !groups.length, run: () => void preview() },
+                  {
+                    id: "preview",
+                    label: "Preview Replacement",
+                    disabled: busy || !groups.length,
+                    run: () => void preview(),
+                  },
                 ]
               : []),
           ]);
@@ -332,8 +371,9 @@ function FindTabView({ tab }: { tab: FindTab }) {
       <Dialog
         open={!!confirm}
         onClose={() => setConfirm(null)}
-        width={420}
+        width={460}
         title="Replace All"
+        icon="question"
         buttons={[
           {
             label: "Replace",
@@ -373,7 +413,9 @@ function FindNodeContent({ node, state, tab }: { node: Node; state: TreeRowState
         <span className={styles.node}>
           <Icon name={state.expanded ? "folder-open" : "folder"} size={14} className={styles.icon} />
           <span className={styles.label}>{node.label}</span>
-          <span className={styles.meta}>{node.count} {node.count === 1 ? "match" : "matches"}</span>
+          <span className={styles.meta}>
+            {node.count} {node.count === 1 ? "match" : "matches"}
+          </span>
         </span>
       );
     case "file":

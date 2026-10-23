@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { HistoryEntry } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { relativePath, useProject } from "@/platform/project";
-import { Button, Icon, List, Spinner } from "@/ui";
+import { Button, Icon, List, Spinner, T } from "@/ui";
 import { notifications, type EditorInput } from "@/workbench/contributions";
 import { DiffEditor } from "./DiffEditor";
 import { confirmDialog } from "./dialogs";
@@ -78,7 +78,10 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
       async () => {
         for (const e of targets) await call(commands.historyRestore(e.path, e.id));
       },
-      { success: targets.length === 1 ? `${baseName(targets[0]!.path)} reverted` : `${targets.length} files reverted`, refresh: true },
+      {
+        success: targets.length === 1 ? `${baseName(targets[0]!.path)} reverted` : `${targets.length} files reverted`,
+        refresh: true,
+      },
     );
     load();
   };
@@ -86,12 +89,19 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
   const revert = () => {
     if (!current || !view) return;
     if (!isLabel(current)) {
-      void restore([current], `${baseName(current.path)} to the revision from ${formatTime(current.timestampMs)} (${current.label})`);
+      void restore(
+        [current],
+        `${baseName(current.path)} to the revision from ${formatTime(current.timestampMs)} (${current.label})`,
+      );
       return;
     }
     const targets = view.folder ? [...(atLabel?.values() ?? [])] : fileAtLabel ? [fileAtLabel] : [];
     if (!targets.length) {
-      notifications().notify({ level: "info", title: "Nothing recorded before this label", key: "localHistory.revert" });
+      notifications().notify({
+        level: "info",
+        title: "Nothing recorded before this label",
+        key: "localHistory.revert",
+      });
       return;
     }
     void restore(
@@ -113,14 +123,21 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
     );
 
   let detail;
-  if (!current) detail = <div className={styles.message}>Select a revision</div>;
+  if (!current)
+    detail = (
+      <div className={styles.message}>
+        <T>Select a revision</T>
+      </div>
+    );
   else if (!isLabel(current)) detail = diffFor(current, !!view?.deleted.has(current.path));
   else if (fileAtLabel) detail = diffFor(fileAtLabel, !!view?.deleted.has(path));
   else
     detail = (
       <div className={styles.message}>
         Label '{current.label}'
-        {view?.folder && atLabel?.size ? ` · ${atLabel.size} ${atLabel.size === 1 ? "file" : "files"} recorded before it` : ""}
+        {view?.folder && atLabel?.size
+          ? ` · ${atLabel.size} ${atLabel.size === 1 ? "file" : "files"} recorded before it`
+          : ""}
       </div>
     );
 
@@ -130,7 +147,9 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
     <div className={styles.root}>
       <div className={styles.sidebar}>
         <div className={styles.header}>
-          <span className={styles.title}>Local History</span>
+          <span className={styles.title}>
+            <T>Local History</T>
+          </span>
           <Button size="small" disabled={!current} onClick={revert}>
             {revertLabel}
           </Button>
@@ -151,7 +170,9 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
             rowHeight={view.folder ? 52 : 38}
             aria-label="Revisions"
             className={styles.list}
-            empty={<span className={styles.message}>No local history for this {view.folder ? "folder" : "path"} yet</span>}
+            empty={
+              <span className={styles.message}>No local history for this {view.folder ? "folder" : "path"} yet</span>
+            }
             renderItem={(e) =>
               isLabel(e) ? (
                 <span className={styles.entry}>

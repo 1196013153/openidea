@@ -8,10 +8,12 @@ import {
   resolveLocale,
   setLocale,
   t,
+  tx,
   useI18n,
 } from "./i18n";
 import en from "./locales/en.json";
 import zh from "./locales/zh.json";
+import zhText from "./locales/text/zh.json";
 
 afterEach(() => _resetI18nForTests());
 
@@ -105,6 +107,15 @@ describe("t / locales", () => {
     expect(t("feature.hello")).toBe("Hello");
   });
 
+  it("translates source text through the locale's text catalog", async () => {
+    await setLocale("en");
+    expect(tx("Sync with OS")).toBe("Sync with OS");
+    await setLocale("zh");
+    expect(tx("Sync with OS")).toBe("与操作系统同步");
+    expect(tx("Some text nobody translated")).toBe("Some text nobody translated");
+    expect(tx(undefined)).toBeUndefined();
+  });
+
   it("lists keys by prefix", () => {
     const keys = keysWithPrefix("menu.");
     expect(keys).toContain("menu.file.save");
@@ -114,6 +125,13 @@ describe("t / locales", () => {
 
 describe("catalogs", () => {
   const catalogs: Record<string, Record<string, string>> = { en, zh };
+
+  it("translate source text into non-empty, different text", () => {
+    for (const [source, text] of Object.entries(zhText as Record<string, string>)) {
+      expect(text.trim(), source).not.toBe("");
+      expect(text, source).not.toBe(source);
+    }
+  });
 
   it("have the same keys", () => {
     expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());

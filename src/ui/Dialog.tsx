@@ -5,6 +5,7 @@ import { usePlatform } from "@/platform/platformInfo";
 import { Button, IconButton } from "./Button";
 import { Icon } from "./icons";
 import { FOCUSABLE, openLayer, trapTab } from "./popupState";
+import { useTx } from "@/platform/i18n";
 import styles from "./Dialog.module.css";
 
 /**
@@ -44,7 +45,10 @@ const MAC_ORDER: Record<DialogButtonRole, number> = { cancel: -10, extra: 0, def
  * default action last, others in between. Elsewhere: declaration order with the
  * default action first, e.g. OK · Cancel · Apply.
  */
-export function orderDialogButtons<T extends { role?: DialogButtonRole }>(buttons: readonly T[], platform: DialogPlatform): T[] {
+export function orderDialogButtons<T extends { role?: DialogButtonRole }>(
+  buttons: readonly T[],
+  platform: DialogPlatform,
+): T[] {
   const role = (b: T) => b.role ?? "extra";
   if (platform === "mac") {
     return buttons
@@ -67,6 +71,7 @@ export function DialogButtons({
   platform?: DialogPlatform;
 }) {
   const platform = useDialogPlatform(override);
+  const tx = useTx();
   return (
     <div className={styles.buttons}>
       {orderDialogButtons(buttons, platform).map((b) => (
@@ -74,12 +79,12 @@ export function DialogButtons({
           key={b.label}
           variant={b.role === "default" ? "primary" : "secondary"}
           disabled={b.disabled}
-          title={b.title}
+          title={tx(b.title)}
           data-autofocus={b.autoFocus ? "" : undefined}
           data-dialog-default={b.role === "default" ? "" : undefined}
           onClick={b.onClick ?? (b.role === "cancel" ? onCancel : undefined)}
         >
-          {b.label}
+          {tx(b.label)}
         </Button>
       ))}
     </div>
@@ -117,6 +122,50 @@ export interface DialogProps {
   chrome?: "default" | "window";
   /** Test hook: force macOS or Windows/Linux chrome and button order. */
   platform?: DialogPlatform;
+  /**
+   * A Messages alert (IDEA `MessageDialogBuilder`): no title bar, this icon on the
+   * left, the title in bold above the content, `footerStart` under the text.
+   */
+  icon?: MessageIconKind;
+}
+
+export type MessageIconKind = "question" | "info" | "warning" | "error";
+
+const MESSAGE_GLYPH: Record<MessageIconKind, ReactNode> = {
+  question: (
+    <path
+      d="M12.6 12.6a3.4 3.4 0 1 1 5 3c-1 .6-1.6 1.2-1.6 2.4v.6M16 22.2v.4"
+      fill="none"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ),
+  info: <path d="M16 15v7M16 10.2v.4" fill="none" strokeWidth="2.6" strokeLinecap="round" />,
+  warning: <path d="M16 11v6.5M16 21.6v.4" fill="none" strokeWidth="2.6" strokeLinecap="round" />,
+  error: <path d="M12 12l8 8M20 12l-8 8" fill="none" strokeWidth="2.6" strokeLinecap="round" />,
+};
+
+function MessageIcon({ kind }: { kind: MessageIconKind }) {
+  return (
+    <svg
+      className={clsx(styles.messageIcon, styles[kind])}
+      width={32}
+      height={32}
+      viewBox="0 0 32 32"
+      aria-hidden="true"
+    >
+      {kind === "warning" ? (
+        <path
+          className={styles.messageShape}
+          d="M13.4 4.6a3 3 0 0 1 5.2 0l11 19.4A3 3 0 0 1 27 28.5H5A3 3 0 0 1 2.4 24z"
+        />
+      ) : (
+        <circle className={styles.messageShape} cx="16" cy="16" r="14" />
+      )}
+      <g className={styles.messageGlyph}>{MESSAGE_GLYPH[kind]}</g>
+    </svg>
+  );
 }
 
 /**
@@ -145,12 +194,15 @@ function DialogInner({
   className,
   dismissOnBackdrop,
   platform: platformOverride,
+  icon,
   ...aria
 }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   const platform = useDialogPlatform(platformOverride);
+  const tx = useTx();
+  if (typeof title === "string") title = tx(title);
   // Choosers and untitled dialogs (Recent Files, About) are IDEA popups.
-  const popup = position === "top" || title == null;
+  const popup = position === "top" || (title == null && !icon);
   const onCloseRef = useRef(onClose);
   const buttonsRef = useRef(buttons);
   useLayoutEffect(() => {
@@ -176,10 +228,12 @@ function DialogInner({
     const layer = openLayer(() => ref.current);
     const previous = document.activeElement as HTMLElement | null;
     const el = ref.current;
-    // Content first, then the default button; never the title bar's close button.
+    // Content first (an alert's checkbox is not content), then the default button; never the title bar's close button.
     const target =
       el?.querySelector<HTMLElement>("[data-autofocus]") ??
-      el?.querySelector<HTMLElement>(`[data-dialog-body] :is(${FOCUSABLE})`) ??
+      (el?.hasAttribute("data-alert")
+        ? null
+        : el?.querySelector<HTMLElement>(`[data-dialog-body] :is(${FOCUSABLE})`)) ??
       el?.querySelector<HTMLElement>("[data-dialog-footer] [data-dialog-default]:not([disabled])") ??
       el?.querySelector<HTMLElement>(`[data-dialog-footer] :is(${FOCUSABLE})`) ??
       el;
@@ -213,7 +267,7 @@ function DialogInner({
   }, []);
 
   const drag = (e: PointerEvent<HTMLDivElement>) => {
-    if (popup || e.button !== 0 || (e.target as Element).closest("button")) return;
+    if (popup || e.button !== 0 || (e.target as Element).closest("button, input, label, a, select, textarea")) return;
     const el = ref.current;
     if (!el) return;
     e.preventDefault();
@@ -222,7 +276,10 @@ function DialogInner({
     const base = { left: rect.left - offset.x, top: rect.top - offset.y };
     const move = (ev: globalThis.PointerEvent) => {
       // Keep the title bar reachable.
-      const x = Math.min(Math.max(ev.clientX - start.x, -base.left - rect.width + 80), window.innerWidth - base.left - 80);
+      const x = Math.min(
+        Math.max(ev.clientX - start.x, -base.left - rect.width + 80),
+        window.innerWidth - base.left - 80,
+      );
       const y = Math.min(Math.max(ev.clientY - start.y, -base.top), window.innerHeight - base.top - 28);
       setOffset({ x, y });
     };
@@ -251,11 +308,12 @@ function DialogInner({
         aria-label={label}
         tabIndex={-1}
         data-platform={platform}
+        data-alert={icon ? "" : undefined}
         data-inactive={active ? undefined : ""}
         className={clsx(styles.dialog, popup ? styles.popup : styles.window, className)}
         style={{ width, translate: offset.x || offset.y ? `${offset.x}px ${offset.y}px` : undefined }}
       >
-        {popup ? (
+        {icon ? null : popup ? (
           title != null && (
             <div className={styles.popupHeader}>
               <span className={styles.title}>{title}</span>
@@ -284,21 +342,38 @@ function DialogInner({
             <IconButton icon="close" title="Close" size="small" tabIndex={-1} onClick={onClose} />
           </div>
         )}
-        <div className={styles.body} data-dialog-body="">
-          {children}
-        </div>
-        {hasFooter && (
-          <div className={styles.footer} data-dialog-footer="">
-            {onHelp && (
-              <button type="button" className={styles.help} aria-label="Help" onClick={onHelp}>
-                ?
-              </button>
-            )}
-            {footerStart && <div className={styles.footerStart}>{footerStart}</div>}
-            {footer}
-            {!!buttons?.length && <DialogButtons buttons={buttons} onCancel={onClose} platform={platform} />}
+        {icon ? (
+          <div className={styles.message} data-dialog-body="" onPointerDown={drag}>
+            <MessageIcon kind={icon} />
+            <div className={styles.messageText}>
+              {title != null && <div className={styles.messageTitle}>{title}</div>}
+              <div className={styles.messageBody}>{typeof children === "string" ? tx(children) : children}</div>
+              {footerStart && <div className={styles.messageExtra}>{footerStart}</div>}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.body} data-dialog-body="">
+            {children}
           </div>
         )}
+        {icon
+          ? !!buttons?.length && (
+              <div className={clsx(styles.footer, styles.messageFooter)} data-dialog-footer="" onPointerDown={drag}>
+                <DialogButtons buttons={buttons} onCancel={onClose} platform={platform} />
+              </div>
+            )
+          : hasFooter && (
+              <div className={styles.footer} data-dialog-footer="">
+                {onHelp && (
+                  <button type="button" className={styles.help} aria-label="Help" onClick={onHelp}>
+                    ?
+                  </button>
+                )}
+                {footerStart && <div className={styles.footerStart}>{footerStart}</div>}
+                {footer}
+                {!!buttons?.length && <DialogButtons buttons={buttons} onCancel={onClose} platform={platform} />}
+              </div>
+            )}
       </div>
     </div>,
     document.body,

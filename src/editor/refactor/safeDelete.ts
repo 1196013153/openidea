@@ -56,7 +56,9 @@ export function deletionRange(
   const restOk =
     !rest ||
     /^[;,]$/.test(rest) ||
-    (!!comments.line && (rest.startsWith(comments.line) || /^[;,]\s*/.test(rest) && rest.replace(/^[;,]\s*/, "").startsWith(comments.line)));
+    (!!comments.line &&
+      (rest.startsWith(comments.line) ||
+        (/^[;,]\s*/.test(rest) && rest.replace(/^[;,]\s*/, "").startsWith(comments.line))));
   if (!restOk) return null;
 
   // Attached comments and annotations above (no blank line in between).
@@ -88,7 +90,8 @@ export function deletionRange(
     const next = last.number + 1;
     if (blank(next) && next < doc.lines) end = doc.line(next).to + 1;
     else if (blank(next)) end = doc.line(next).to;
-    else if (blank(startLine - 1) && /^[}\])]|^end\b/.test(doc.line(next).text.trim())) start = doc.line(startLine - 1).from;
+    else if (blank(startLine - 1) && /^[}\])]|^end\b/.test(doc.line(next).text.trim()))
+      start = doc.line(startLine - 1).from;
   } else if (startLine > 1) {
     // Last line: take the line break before it (and a blank line above).
     start = doc.line(blank(startLine - 1) && startLine > 2 ? startLine - 2 : startLine - 1).to;
@@ -147,14 +150,17 @@ const FUNCTION_STATEMENT = /function|method|^def|^fn|func|procedure/;
 /** Declaration statement of a syntax-resolved local, or why it can't be deleted on its own. */
 export function localDeclaration(doc: Text, symbol: LocalSymbol, statement: SyntaxNode | null): Range | string {
   if (symbol.kind === "parameter") return "Deleting a parameter changes its call sites; use Change Signature";
-  if (symbol.kind === "label" || symbol.kind === "type" || symbol.kind === "macro") return "Caret should be on a variable or function declaration";
+  if (symbol.kind === "label" || symbol.kind === "type" || symbol.kind === "macro")
+    return "Caret should be on a variable or function declaration";
   if (!symbol.certain) return `'${symbol.name}' is declared more than once in this scope`;
-  if (!statement || !rangeContains(statement.range, symbol.definition.start)) return "The declaration could not be determined";
+  if (!statement || !rangeContains(statement.range, symbol.definition.start))
+    return "The declaration could not be determined";
   const kind = statement.kind;
   if (symbol.kind === "function") {
     return FUNCTION_STATEMENT.test(kind) ? statement.range : "The declaration could not be determined";
   }
-  if (COMPOUND_STATEMENT.test(kind) || !DECLARATION_STATEMENT.test(kind)) return `'${symbol.name}' is not declared by a separate statement`;
+  if (COMPOUND_STATEMENT.test(kind) || !DECLARATION_STATEMENT.test(kind))
+    return `'${symbol.name}' is not declared by a separate statement`;
   const { from, to } = rangeToOffsets(doc, statement.range);
   const defEnd = rangeToOffsets(doc, symbol.definition).to;
   // Up to the initializer, the statement must declare only this name (no `a, b` / destructuring).
@@ -193,7 +199,13 @@ async function resolveTarget(view: EditorView, ctx: EditorDocContext): Promise<R
     if (lsp)
       return {
         status: "ok",
-        target: { name: item.name, kind: kindLabel(item.kind), at: item.selection_range.start, range: item.range, local: null },
+        target: {
+          name: item.name,
+          kind: kindLabel(item.kind),
+          at: item.selection_range.start,
+          range: item.range,
+          local: null,
+        },
       };
   }
 
@@ -224,14 +236,20 @@ async function resolveTarget(view: EditorView, ctx: EditorDocContext): Promise<R
       reason: `The language server for ${lang} is not available; only local declarations can be deleted safely without it`,
     };
   }
-  return { status: "refused", reason: item ? `'${name}' can't be deleted` : "Caret should be on the name of a declaration" };
+  return {
+    status: "refused",
+    reason: item ? `'${name}' can't be deleted` : "Caret should be on the name of a declaration",
+  };
 }
 
 /** LSP references to the target, its own declaration excluded. */
 async function findUsages(ctx: EditorDocContext, target: SafeDeleteTarget): Promise<Location[]> {
   const outside = (path: string, range: Range) =>
-    path !== ctx.path || comparePos(range.start, target.range.start) < 0 || comparePos(range.start, target.range.end) > 0;
-  if (target.local) return target.local.references.filter((r) => outside(ctx.path, r)).map((range) => ({ path: ctx.path, range }));
+    path !== ctx.path ||
+    comparePos(range.start, target.range.start) < 0 ||
+    comparePos(range.start, target.range.end) > 0;
+  if (target.local)
+    return target.local.references.filter((r) => outside(ctx.path, r)).map((range) => ({ path: ctx.path, range }));
   const refs = await lspRequest(() => commands.lspReferences(ctx.doc, target.at, false));
   return refs.filter((l) => outside(l.path, l.range));
 }
@@ -242,7 +260,11 @@ async function findUsages(ctx: EditorDocContext, target: SafeDeleteTarget): Prom
 export type UsagesAnswer = "view" | "delete" | "cancel";
 
 /** `subject`: "Function 'foo'", "File 'a.ts'", "3 files" (`plural`). */
-export function usagesMessage(subject: string, usages: readonly Location[], plural = false): { message: string; detail: string } {
+export function usagesMessage(
+  subject: string,
+  usages: readonly Location[],
+  plural = false,
+): { message: string; detail: string } {
   const n = usages.length;
   const files = new Set(usages.map((u) => u.path)).size;
   const noun = n === 1 ? "usage that is" : "usages that are";
@@ -266,6 +288,7 @@ export function askUsagesDetected(subject: string, usages: readonly Location[], 
     openPopup({
       kind: "choice",
       title: "Usages Detected",
+      icon: "warning",
       message,
       detail,
       choices: [

@@ -16,6 +16,7 @@ import {
   fileIconName,
   type MenuItem,
   type TreeRowState,
+  T,
 } from "@/ui";
 import { activePatterns, countItems, groupTodos, mergeLive, type TodoGroup, type TodoItem } from "./model";
 import { scanProject, updateTodoSettings, useTodoSettings, useTodos } from "./store";
@@ -158,7 +159,7 @@ export function TodoTabs() {
           id: "file",
           label: current ? (
             <>
-              Current File <span className={styles.tabFile}>{basename(current)}</span>
+              <T>Current File</T> <span className={styles.tabFile}>{basename(current)}</span>
             </>
           ) : (
             "Current File"
@@ -225,7 +226,7 @@ export function TodoView() {
       </EmptyState>
     ) : scanning || (!scannedOnce && tab === "project") ? (
       <div className={styles.loading}>
-        <Spinner size={14} /> Scanning for TODO items…
+        <Spinner size={14} /> <T>Scanning for TODO items…</T>
       </div>
     ) : (
       <EmptyState icon="todo" title={tab === "file" ? "No TODO items in this file" : "No TODO items found"} />
@@ -234,7 +235,9 @@ export function TodoView() {
   return (
     <div className={styles.view}>
       {tab === "project" && limitHit && (
-        <div className={styles.banner}>Too many matches; showing the first 10 000.</div>
+        <div className={styles.banner}>
+          <T>Too many matches; showing the first 10 000.</T>
+        </div>
       )}
       <div className={styles.body}>
         <Tree<Node>

@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { ToolInfo } from "@/bindings";
-import { Badge, Button, IconButton, ProgressBar, SearchField, Spinner } from "@/ui";
+import { Badge, Button, IconButton, ProgressBar, SearchField, Spinner, T } from "@/ui";
 import {
   cancelInstall,
   installTool,
@@ -41,7 +41,7 @@ function JobRow({ name, job }: { name: string; job: InstallJob }) {
           {job.message ?? "Starting…"}
         </span>
         <Button size="small" variant="ghost" onClick={() => cancelInstall(name)}>
-          Cancel
+          <T>Cancel</T>
         </Button>
       </div>
     </div>
@@ -83,7 +83,7 @@ function Actions({
           onClick={() => void uninstallTool(tool.name)}
           aria-label={`Uninstall ${label}`}
         >
-          Uninstall
+          <T>Uninstall</T>
         </Button>
       )}
       {hasLog && (
@@ -160,16 +160,22 @@ export function LanguageServersPage() {
         <table className={styles.table} aria-label="Language servers and debug adapters">
           <thead>
             <tr>
-              <th scope="col">Tool</th>
-              <th scope="col">Languages</th>
-              <th scope="col" className={styles.fitHead}>
-                Status
+              <th scope="col">
+                <T>Tool</T>
+              </th>
+              <th scope="col">
+                <T>Languages</T>
               </th>
               <th scope="col" className={styles.fitHead}>
-                Version
+                <T>Status</T>
+              </th>
+              <th scope="col" className={styles.fitHead}>
+                <T>Version</T>
               </th>
               <th scope="col" className={styles.actionsHead}>
-                <span className={styles.visuallyHidden}>Actions</span>
+                <span className={styles.visuallyHidden}>
+                  <T>Actions</T>
+                </span>
               </th>
             </tr>
           </thead>
@@ -185,8 +191,16 @@ export function LanguageServersPage() {
                     <td>
                       <div className={styles.toolName}>
                         <span className={styles.display}>{t.displayName}</span>
-                        {t.kind === "debugger" && <span className={styles.kindTag}>Debugger</span>}
-                        {t.kind === "plugin" && <span className={styles.kindTag}>Plugin</span>}
+                        {t.kind === "debugger" && (
+                          <span className={styles.kindTag}>
+                            <T>Debugger</T>
+                          </span>
+                        )}
+                        {t.kind === "plugin" && (
+                          <span className={styles.kindTag}>
+                            <T>Plugin</T>
+                          </span>
+                        )}
                       </div>
                       {(t.path ?? (t.command !== t.displayName ? t.command : null)) && (
                         <div className={styles.sub} title={t.path ?? undefined}>
@@ -236,8 +250,16 @@ export function LanguageServersPage() {
             })}
           </tbody>
         </table>
-        {loaded && shown.length === 0 && <div className={styles.empty}>No tools match.</div>}
-        {!loaded && !error && <div className={styles.empty}>Checking installed tools…</div>}
+        {loaded && shown.length === 0 && (
+          <div className={styles.empty}>
+            <T>No tools match.</T>
+          </div>
+        )}
+        {!loaded && !error && (
+          <div className={styles.empty}>
+            <T>Checking installed tools…</T>
+          </div>
+        )}
       </div>
     </div>
   );

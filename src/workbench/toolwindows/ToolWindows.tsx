@@ -16,14 +16,7 @@ import { create } from "zustand";
 import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import {
-  Icon,
-  IconButton,
-  Menu,
-  showContextMenu,
-  tooltipAttrs,
-  type MenuItem,
-} from "@/ui";
+import { Icon, IconButton, Menu, showContextMenu, tooltipAttrs, type MenuItem, T } from "@/ui";
 import { FOCUSABLE } from "@/ui/popupState";
 import { useContributions, type ToolWindowAnchor, type ToolWindowContribution } from "../contributions";
 import { useDistractionFree } from "../distractionFree";
@@ -43,6 +36,7 @@ import {
   type StripeGroup,
 } from "./store";
 import styles from "./ToolWindows.module.css";
+import { tx } from "@/platform/i18n";
 
 function byOrder(a: ToolWindowContribution, b: ToolWindowContribution) {
   return (a.order ?? 100) - (b.order ?? 100) || a.title.localeCompare(b.title);
@@ -92,15 +86,13 @@ export function moveToMenu(tw: ToolWindowContribution): MenuItem {
   return {
     label: "Move To",
     submenu: [
-      ...GROUP_LABELS.map(
-        ([group, label]): MenuItem => ({
-          id: group,
-          label,
-          checked: group === current ? true : undefined,
-          disabled: group === current,
-          run: () => moveToolWindow(tw.id, group),
-        }),
-      ),
+      ...GROUP_LABELS.map(([group, label]): MenuItem => ({
+        id: group,
+        label,
+        checked: group === current ? true : undefined,
+        disabled: group === current,
+        run: () => moveToolWindow(tw.id, group),
+      })),
       { kind: "separator" },
       { label: "Restore Default Layout", run: resetToolWindowPlacements },
     ],
@@ -292,7 +284,7 @@ function StripeButton({
         active && focused && styles.stripeFocused,
         side === "right" && styles.stripeRight,
       )}
-      aria-label={tw.title}
+      aria-label={tx(tw.title)}
       aria-pressed={active}
       aria-keyshortcuts={shortcut}
       data-stripe-button={tw.id}
@@ -313,11 +305,8 @@ function StripeButton({
         {tw.useBadge && <StripeBadge useBadge={tw.useBadge} />}
       </span>
       {showName && (
-        <span
-          className={clsx(styles.stripeLabel, !/\s/.test(tw.title) && styles.stripeLabelWord)}
-          aria-hidden="true"
-        >
-          {tw.title}
+        <span className={clsx(styles.stripeLabel, !/\s/.test(tw.title) && styles.stripeLabelWord)} aria-hidden="true">
+          <T>{tw.title}</T>
         </span>
       )}
     </button>
@@ -421,7 +410,9 @@ export function ToolWindowStripe({
   const isDrag = (e: DragEvent) => [...e.dataTransfer.types].includes(TOOL_WINDOW_MIME);
 
   const indicator = (group: StripeGroup, before: string | null) =>
-    drop && drop.group === group && drop.before === before ? <div className={styles.stripeDrop} aria-hidden="true" /> : null;
+    drop && drop.group === group && drop.before === before ? (
+      <div className={styles.stripeDrop} aria-hidden="true" />
+    ) : null;
   const renderGroup = (group: StripeGroup, list: ToolWindowContribution[]) => (
     <>
       {list.map((w) => (
@@ -532,7 +523,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
       ref={ref}
       className={styles.window}
       data-toolwindow={tw.id}
-      aria-label={tw.title}
+      aria-label={tx(tw.title)}
       hidden={hidden}
       tabIndex={-1}
     >
@@ -550,7 +541,9 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
               aria-expanded={titleOpen}
               onClick={() => setTitleOpen((v) => !v)}
             >
-              <span className={styles.title}>{tw.title}</span>
+              <span className={styles.title}>
+                <T>{tw.title}</T>
+              </span>
               <Icon name="chevron-down" size={12} className={styles.titleChevron} />
             </button>
             <Menu
@@ -558,11 +551,13 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
               onClose={() => setTitleOpen(false)}
               anchor={titleRef}
               items={own}
-              aria-label={`${tw.title} view options`}
+              aria-label={`${tx(tw.title)} view options`}
             />
           </>
         ) : (
-          <span className={clsx(styles.title, styles.titlePlain)}>{tw.title}</span>
+          <span className={clsx(styles.title, styles.titlePlain)}>
+            <T>{tw.title}</T>
+          </span>
         )}
         {Tabs && (
           <div className={styles.headerContent}>
@@ -597,7 +592,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
           anchor={moreRef}
           items={more}
           placement="bottom-end"
-          aria-label={`${tw.title} options`}
+          aria-label={`${tx(tw.title)} options`}
         />
       </header>
       <div className={styles.body} data-toolwindow-body="">

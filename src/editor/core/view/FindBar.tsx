@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 import { create } from "zustand";
 import clsx from "clsx";
 import type { EditorView } from "@codemirror/view";
-import { Button, IconButton, SearchField } from "@/ui";
+import { Button, IconButton, SearchField, T } from "@/ui";
 import { editorController, useFindBars, useTabs } from "../controller";
 import {
   countMatches,
@@ -198,7 +198,11 @@ function FindBarInner({ paneId, replace, seq }: { paneId: string; replace: boole
         else run(replaceNext);
       } else run(back ? findPrevious : findNext);
     } else if (e.altKey && !e.metaKey && !e.ctrlKey) {
-      const map: Record<string, "caseSensitive" | "wholeWord" | "regexp"> = { KeyC: "caseSensitive", KeyW: "wholeWord", KeyX: "regexp" };
+      const map: Record<string, "caseSensitive" | "wholeWord" | "regexp"> = {
+        KeyC: "caseSensitive",
+        KeyW: "wholeWord",
+        KeyX: "regexp",
+      };
       const k = map[e.code];
       if (k) {
         e.preventDefault();
@@ -235,17 +239,51 @@ function FindBarInner({ paneId, replace, seq }: { paneId: string; replace: boole
         invalid={invalid || none}
         onKeyDown={(e) => onKeyDown(e, "find")}
         toggles={[
-          { id: "case", icon: "case", title: "Match Case", shortcut: "⌥C", pressed: opts.caseSensitive, onToggle: () => toggle("caseSensitive") },
-          { id: "word", icon: "word", title: "Words", shortcut: "⌥W", pressed: opts.wholeWord, onToggle: () => toggle("wholeWord") },
-          { id: "regex", icon: "regex", title: "Regex", shortcut: "⌥X", pressed: opts.regexp, onToggle: () => toggle("regexp") },
-          { id: "scope", icon: "filter", title: "In Selection", shortcut: "⌥E", pressed: scoped, onToggle: () => toggleScope(paneId) },
+          {
+            id: "case",
+            icon: "case",
+            title: "Match Case",
+            shortcut: "⌥C",
+            pressed: opts.caseSensitive,
+            onToggle: () => toggle("caseSensitive"),
+          },
+          {
+            id: "word",
+            icon: "word",
+            title: "Words",
+            shortcut: "⌥W",
+            pressed: opts.wholeWord,
+            onToggle: () => toggle("wholeWord"),
+          },
+          {
+            id: "regex",
+            icon: "regex",
+            title: "Regex",
+            shortcut: "⌥X",
+            pressed: opts.regexp,
+            onToggle: () => toggle("regexp"),
+          },
+          {
+            id: "scope",
+            icon: "filter",
+            title: "In Selection",
+            shortcut: "⌥E",
+            pressed: scoped,
+            onToggle: () => toggleScope(paneId),
+          },
         ]}
       />
       <div className={styles.findButtons}>
         <span className={clsx(styles.findCount, (none || invalid) && styles.findCountNone)} aria-live="polite">
           {counter}
         </span>
-        <IconButton icon="arrow-up" title="Previous Occurrence" shortcut="⇧↵" size="small" onClick={() => run(findPrevious)} />
+        <IconButton
+          icon="arrow-up"
+          title="Previous Occurrence"
+          shortcut="⇧↵"
+          size="small"
+          onClick={() => run(findPrevious)}
+        />
         <IconButton icon="arrow-down" title="Next Occurrence" shortcut="↵" size="small" onClick={() => run(findNext)} />
         <IconButton
           icon="replace"
@@ -270,10 +308,10 @@ function FindBarInner({ paneId, replace, seq }: { paneId: string; replace: boole
           />
           <div className={styles.replaceButtons}>
             <Button size="small" onClick={() => run(replaceNext)} disabled={!opts.search || invalid}>
-              Replace
+              <T>Replace</T>
             </Button>
             <Button size="small" onClick={() => run(replaceAll)} disabled={!opts.search || invalid}>
-              Replace All
+              <T>Replace All</T>
             </Button>
           </div>
         </>

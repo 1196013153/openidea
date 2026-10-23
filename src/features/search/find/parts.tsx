@@ -5,6 +5,7 @@ import { previewReplacement } from "./session";
 import { loadPreviewText } from "./preview";
 import type { PreviewLine } from "./replaceFlow";
 import styles from "./parts.module.css";
+import { T } from "@/ui";
 
 /** A result line with matches highlighted; in replace mode shows `old → new` inline. */
 export function MatchText({
@@ -104,7 +105,12 @@ export function CodePreview({
     }
   }, [current, line]);
 
-  if (!path) return <div className={clsx(styles.preview, styles.previewEmpty)}>Select a result to preview</div>;
+  if (!path)
+    return (
+      <div className={clsx(styles.preview, styles.previewEmpty)}>
+        <T>Select a result to preview</T>
+      </div>
+    );
   if (error && !current) return <div className={clsx(styles.preview, styles.previewEmpty)}>{error}</div>;
   if (!current) return <div className={styles.preview} />;
 
@@ -117,7 +123,9 @@ export function CodePreview({
     rows.push(
       <div key={n} data-line={n} className={clsx(styles.codeLine, n === line && styles.currentLine)}>
         <span className={styles.gutter}>{n + 1}</span>
-        <span className={styles.code}>{ranges ? <MatchText text={content} ranges={ranges} active={n === line} /> : content || " "}</span>
+        <span className={styles.code}>
+          {ranges ? <MatchText text={content} ranges={ranges} active={n === line} /> : content || " "}
+        </span>
       </div>,
     );
   }
@@ -148,7 +156,11 @@ export function ReplaceDiffPreview({ lines, line }: { lines: readonly PreviewLin
             key={from + i}
             data-focus={from + i === focus ? "" : undefined}
             data-kind={l.kind}
-            className={clsx(styles.codeLine, l.kind === "del" && styles.lineDeleted, l.kind === "add" && styles.lineAdded)}
+            className={clsx(
+              styles.codeLine,
+              l.kind === "del" && styles.lineDeleted,
+              l.kind === "add" && styles.lineAdded,
+            )}
           >
             <span className={styles.gutter}>{l.line + 1}</span>
             <span className={styles.sign}>{l.kind === "del" ? "-" : l.kind === "add" ? "+" : " "}</span>

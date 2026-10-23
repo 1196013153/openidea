@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EmptyState, IconButton, Toast } from "@/ui";
+import { EmptyState, IconButton, Toast, T } from "@/ui";
 import {
   BALLOON_TIMEOUT,
   clearNotifications,
@@ -83,7 +83,9 @@ export function NotificationsToolWindow() {
   return (
     <div className={styles.list} data-autofocus="" tabIndex={-1}>
       {items.length === 0 ? (
-        <EmptyState icon="bell">No notifications</EmptyState>
+        <EmptyState icon="bell">
+          <T>No notifications</T>
+        </EmptyState>
       ) : (
         items.map((n) => (
           <Toast
@@ -104,7 +106,16 @@ export function NotificationsToolWindow() {
 
 export function NotificationsHeaderActions() {
   const count = useNotifications((s) => s.items.filter((n) => n.logged).length);
-  return <IconButton icon="trash" title="Clear All" size="small" iconSize={16} disabled={!count} onClick={clearNotifications} />;
+  return (
+    <IconButton
+      icon="trash"
+      title="Clear All"
+      size="small"
+      iconSize={16}
+      disabled={!count}
+      onClick={clearNotifications}
+    />
+  );
 }
 
 /** Unread count on the Notifications stripe button. */

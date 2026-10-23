@@ -8,7 +8,7 @@ import { executeAction } from "@/platform/actions";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { defaultPreset, PRESET_TITLES } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import { Checkbox, Select, type SelectOption } from "@/ui";
+import { Checkbox, Select, type SelectOption, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from "@/workbench/theme";
 import { reopenEnabled, setReopenPreference, useSession } from "./session";
@@ -181,7 +181,7 @@ export function CustomizePage() {
             onChange={(k) => update("keymap", k, () => setGlobalSetting("keymap", k))}
           />
           <button type="button" className={styles.link} onClick={() => void executeAction("settings.keymap")}>
-            Configure…
+            <T>Configure…</T>
           </button>
         </Field>
       </Section>
@@ -200,7 +200,7 @@ export function CustomizePage() {
       </Section>
 
       <button type="button" className={styles.link} onClick={() => void executeAction("file.settings")}>
-        All settings…
+        <T>All settings…</T>
       </button>
     </div>
   );

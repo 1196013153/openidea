@@ -21,11 +21,19 @@ import { Icon, type IconName } from "./icons";
 import { Popup, type PopupAnchor } from "./Popup";
 import type { Placement } from "@floating-ui/react-dom";
 import styles from "./Menu.module.css";
+import { tx } from "@/platform/i18n";
 
 export type MenuItem =
   | { kind: "separator" }
   | { kind: "header"; label: string }
-  | { kind: "action"; action: string; arg?: unknown; label?: string; icon?: IconName | (string & {}); disabled?: boolean }
+  | {
+      kind: "action";
+      action: string;
+      arg?: unknown;
+      label?: string;
+      icon?: IconName | (string & {});
+      disabled?: boolean;
+    }
   | {
       kind?: "item";
       id?: string;
@@ -61,7 +69,7 @@ export function resolveMenuItems(items: MenuItem[]): Resolved[] {
       return;
     }
     if (item.kind === "header") {
-      out.push({ kind: "header", key: `h${i}`, label: item.label });
+      out.push({ kind: "header", key: `h${i}`, label: tx(item.label) });
       return;
     }
     if (item.kind === "action") {
@@ -70,7 +78,7 @@ export function resolveMenuItems(items: MenuItem[]): Resolved[] {
       out.push({
         kind: "item",
         key: item.action,
-        label: item.label ?? a.title,
+        label: tx(item.label) ?? a.title,
         icon: item.icon ?? a.icon,
         shortcut: shortcutLabel(item.action),
         disabled: !!item.disabled || !isActionEnabled(a),
@@ -78,7 +86,7 @@ export function resolveMenuItems(items: MenuItem[]): Resolved[] {
       });
       return;
     }
-    out.push({ ...item, kind: "item", key: item.id ?? `${i}:${item.label}` });
+    out.push({ ...item, label: tx(item.label), kind: "item", key: item.id ?? `${i}:${item.label}` });
   });
   while (out.length && out[out.length - 1]!.kind === "separator") out.pop();
   return out;

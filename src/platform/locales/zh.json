@@ -34,10 +34,10 @@
   "app.category.help": "帮助",
   "app.category.view": "视图",
   "app.category.window": "窗口",
-  "app.exit.body": "确定要退出吗？",
+  "app.exit.body": "确定要退出 OpenIDEA 吗？",
   "app.exit.confirm": "退出",
   "app.exit.dontAsk": "不再询问",
-  "app.exit.title": "退出 OpenIDEA？",
+  "app.exit.title": "确认退出",
   "app.keymap.count": "{count, plural, other {# 个快捷键}}",
   "app.keymap.empty": "没有匹配的快捷键",
   "app.keymap.filter": "按操作或快捷键筛选",
@@ -62,10 +62,10 @@
   "app.window.openFailed": "无法打开 {name}",
   "app.window.pickTitle": "在新窗口中打开",
   "app.window.askTitle": "打开项目",
-  "app.window.askBody": "在新窗口还是当前窗口中打开项目“{name}”？",
+  "app.window.askBody": "项目可以在新窗口中打开，也可以替换当前窗口中的项目。\n要如何打开“{name}”？",
   "app.window.askThis": "当前窗口",
   "app.window.askNew": "新窗口",
-  "app.window.askRemember": "记住选择，不再询问",
+  "app.window.askRemember": "不再询问",
   "common.cancel": "取消",
   "common.close": "关闭",
   "common.copied": "已复制",
@@ -312,5 +312,6 @@
   "menu.github.pullRequests": "查看拉取请求",
   "menu.github.createPullRequest": "创建拉取请求…",
   "menu.github.checkoutPullRequest": "签出拉取请求…",
-  "menu.github.openInBrowser": "在 GitHub 上打开"
+  "menu.github.openInBrowser": "在 GitHub 上打开",
+  "settings.zoom.hint": "使用 {zoomIn} 或 {zoomOut} 更改，使用 {reset} 重置为 100%"
 }

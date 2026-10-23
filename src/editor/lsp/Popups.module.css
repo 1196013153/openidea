@@ -277,13 +277,7 @@
   border-radius: 2px;
 }
 
-.choiceMessage {
-  padding: 14px 16px 4px;
-  font-size: var(--fs-ui);
-  color: var(--fg);
-}
 .choiceDetail {
-  padding: 4px 16px 12px;
-  font-size: var(--fs-ui);
+  margin-top: 4px;
   color: var(--fg-muted);
 }

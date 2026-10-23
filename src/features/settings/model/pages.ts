@@ -5,6 +5,7 @@
  * otherwise under a folder for its `group`, otherwise at the top level.
  */
 import type { SettingsPageContribution } from "@/workbench/contributions";
+import { tx } from "@/platform/i18n";
 
 export interface PageNode {
   key: string;
@@ -88,7 +89,8 @@ export function queryTerms(query: string): string[] {
 /** Every term occurs in at least one of the texts. */
 export function matchesTerms(texts: readonly string[], terms: readonly string[]): boolean {
   if (!terms.length) return true;
-  const hay = texts.map((t) => t.toLowerCase());
+  // Translated texts are searched alongside the English ones.
+  const hay = texts.flatMap((t) => [t.toLowerCase(), tx(t).toLowerCase()]);
   return terms.every((term) => hay.some((h) => h.includes(term)));
 }
 
@@ -108,7 +110,7 @@ export function highlightIndices(text: string, query: string): number[] | null {
 
 /** Whether one option label matches the query (any term, so partial queries still light up rows). */
 export function labelMatches(text: string, query: string): boolean {
-  return highlightIndices(text, query) !== null;
+  return highlightIndices(text, query) !== null || highlightIndices(tx(text), query) !== null;
 }
 
 /** Search texts of a page: title, group, keywords and its registered option labels. */

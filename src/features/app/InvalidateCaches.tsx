@@ -9,7 +9,7 @@ import { create } from "zustand";
 import type { InvalidateCachesOptions } from "@/bindings";
 import { registerActions } from "@/platform/actions";
 import { call, commands, isTauri } from "@/platform/ipc";
-import { Checkbox, Dialog } from "@/ui";
+import { Checkbox, Dialog, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import styles from "./app.module.css";
 
@@ -30,7 +30,11 @@ export const DEFAULT_INVALIDATE_OPTIONS: Required<InvalidateCachesOptions> = {
 /** Schedules the invalidation (or none, for Just Restart) and restarts. */
 export async function invalidateAndRestart(options: InvalidateCachesOptions | null): Promise<void> {
   if (!isTauri()) {
-    notifications().notify({ level: "info", title: "Restart is only available in the desktop app", key: "app.invalidateCaches" });
+    notifications().notify({
+      level: "info",
+      title: "Restart is only available in the desktop app",
+      key: "app.invalidateCaches",
+    });
     return;
   }
   try {
@@ -78,10 +82,15 @@ export function InvalidateCachesDialog({ onClose = close }: { onClose?: () => vo
     >
       <div className={styles.invalidateBody}>
         <p className={styles.invalidateText}>
-          The caches will be invalidated and rebuilt on the next startup: the symbol index of every project and the
-          syntax caches.
+          <T>
+            {
+              "The caches will be invalidated and rebuilt on the next startup: the symbol index of every project and the syntax caches."
+            }
+          </T>
         </p>
-        <div className={styles.invalidateHeading}>Optional:</div>
+        <div className={styles.invalidateHeading}>
+          <T>Optional:</T>
+        </div>
         <Checkbox
           label="Clear file system cache and Local History"
           checked={options.localHistory}
@@ -99,7 +108,7 @@ export function InvalidateCachesDialog({ onClose = close }: { onClose?: () => vo
         />
         {options.localHistory && (
           <p className={styles.invalidateWarning} role="note">
-            Local History of all projects will be deleted.
+            <T>Local History of all projects will be deleted.</T>
           </p>
         )}
       </div>

@@ -1,7 +1,7 @@
 /** Settings › Editor › File Templates. */
 import { useState } from "react";
 import clsx from "clsx";
-import { Button, Checkbox, Icon, IconButton, Input, Select } from "@/ui";
+import { Button, Checkbox, Icon, IconButton, Input, Select, T } from "@/ui";
 import type { FileTemplate, NameStyle } from "../files/model";
 import {
   isBuiltinFileTemplate,
@@ -85,7 +85,9 @@ export function FileTemplatesPage() {
           {selected ? (
             <FileTemplateEditor key={selected.id} template={selected} />
           ) : (
-            <div className={styles.empty}>Select a template to edit it</div>
+            <div className={styles.empty}>
+              <T>Select a template to edit it</T>
+            </div>
           )}
         </div>
       </div>
@@ -103,7 +105,9 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
   return (
     <>
       <div className={styles.row}>
-        <span className={styles.label}>Name</span>
+        <span className={styles.label}>
+          <T>Name</T>
+        </span>
         <Input
           className={styles.grow}
           value={t.name}
@@ -112,7 +116,9 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
         />
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Extension</span>
+        <span className={styles.label}>
+          <T>Extension</T>
+        </span>
         <Input
           mono
           value={t.extension}
@@ -120,7 +126,9 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
           aria-label="Extension"
           placeholder="none"
         />
-        <span className={styles.label}>File name</span>
+        <span className={styles.label}>
+          <T>File name</T>
+        </span>
         <Select
           value={t.nameStyle}
           options={NAME_STYLES}
@@ -129,7 +137,9 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
         />
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Kinds</span>
+        <span className={styles.label}>
+          <T>Kinds</T>
+        </span>
         <div className={clsx(styles.tabs, styles.grow)} role="tablist" aria-label="Kinds">
           {t.kinds.map((k, i) => (
             <button
@@ -167,7 +177,9 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
         />
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Kind label</span>
+        <span className={styles.label}>
+          <T>Kind label</T>
+        </span>
         <Input
           className={styles.grow}
           value={kind.label}
@@ -190,7 +202,7 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
       {isBuiltinFileTemplate(t.id) && isModifiedFileTemplate(t.id) && (
         <div className={styles.buttons}>
           <Button size="small" onClick={() => resetFileTemplate(t.id)}>
-            Restore Default
+            <T>Restore Default</T>
           </Button>
         </div>
       )}

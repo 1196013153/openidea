@@ -8,7 +8,7 @@
  * The workbench renders whatever is registered; the action
  * `toolwindow.<id>` toggles it (registered automatically).
  */
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, ReactNode, RefObject } from "react";
 import type { RunConfig } from "@/bindings";
 import type { MenuItem } from "@/ui/Menu";
 import { create } from "zustand";
@@ -181,11 +181,18 @@ interface WorkbenchSlots {
   editorArea?: ComponentType;
   /** Shown instead of the workbench when no project is open (recent projects…). */
   welcome?: ComponentType;
+  /** The title bar project widget's popup (open / recent projects). */
+  projectPopup?: ComponentType<ProjectPopupProps>;
+}
+
+export interface ProjectPopupProps {
+  anchor: RefObject<HTMLElement | null>;
+  onClose: () => void;
 }
 
 export const useWorkbenchSlots = create<WorkbenchSlots>(() => ({}));
 
-function provideSlot(slot: keyof WorkbenchSlots, component: ComponentType): () => void {
+function provideSlot<K extends keyof WorkbenchSlots>(slot: K, component: NonNullable<WorkbenchSlots[K]>): () => void {
   useWorkbenchSlots.setState({ [slot]: component });
   return () => {
     if (useWorkbenchSlots.getState()[slot] === component) useWorkbenchSlots.setState({ [slot]: undefined });
@@ -194,6 +201,8 @@ function provideSlot(slot: keyof WorkbenchSlots, component: ComponentType): () =
 
 export const provideEditorArea = (component: ComponentType) => provideSlot("editorArea", component);
 export const provideWelcomeView = (component: ComponentType) => provideSlot("welcome", component);
+export const provideProjectPopup = (component: ComponentType<ProjectPopupProps>) =>
+  provideSlot("projectPopup", component);
 
 // ---------------------------------------------------------------------------
 // File editors: `openFile` asks providers whether a path opens in another

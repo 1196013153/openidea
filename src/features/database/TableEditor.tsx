@@ -4,8 +4,16 @@
  * together in one transaction. Tables without a primary key are read-only.
  */
 import { useEffect, useState } from "react";
-import { call, commands, isCancelled, nextRequestId, type DbSortKey, type DbTablePage, type RequestId } from "@/platform/ipc";
-import { Button, EmptyState, IconButton, Input, Select, Spinner } from "@/ui";
+import {
+  call,
+  commands,
+  isCancelled,
+  nextRequestId,
+  type DbSortKey,
+  type DbTablePage,
+  type RequestId,
+} from "@/platform/ipc";
+import { Button, EmptyState, IconButton, Input, Select, Spinner, T } from "@/ui";
 import { notifications, type EditorInput } from "@/workbench/contributions";
 import { Grid } from "./Grid";
 import { buildRowEdits, emptyEdits, hasEdits, type Cell, type PendingEdits } from "./model";
@@ -47,7 +55,12 @@ export function TableEditor({ input }: { input: EditorInput }) {
         setLoadedPage({ key, page: p, error: null });
         setEdits(emptyEdits());
       } catch (e) {
-        if (!isCancelled(e)) setLoadedPage((prev) => ({ key, page: prev?.page ?? null, error: e instanceof Error ? e.message : String(e) }));
+        if (!isCancelled(e))
+          setLoadedPage((prev) => ({
+            key,
+            page: prev?.page ?? null,
+            error: e instanceof Error ? e.message : String(e),
+          }));
       } finally {
         done = true;
       }
@@ -184,10 +197,10 @@ export function TableEditor({ input }: { input: EditorInput }) {
               onClick={() => setEdits((e) => ({ ...e, inserts: [...e.inserts, new Map()] }))}
             />
             <Button size="small" variant="primary" disabled={!dirty} onClick={() => void submit()}>
-              Submit
+              <T>Submit</T>
             </Button>
             <Button size="small" disabled={!dirty} onClick={() => setEdits(emptyEdits())}>
-              Revert
+              <T>Revert</T>
             </Button>
           </>
         )}

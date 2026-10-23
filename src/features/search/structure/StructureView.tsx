@@ -14,10 +14,20 @@ import {
   fileIconName,
   listNavigate,
   type TreeHandle,
+  T,
 } from "@/ui";
 import { badgeKind, basename, openLocation } from "../common/open";
 import { useTracking } from "../common/tracking";
-import { allKeys, bestRow, flattenOutline, keyOutline, sortOutline, symbolPathAt, type FlatOutlineRow, type OutlineNode } from "./outline";
+import {
+  allKeys,
+  bestRow,
+  flattenOutline,
+  keyOutline,
+  sortOutline,
+  symbolPathAt,
+  type FlatOutlineRow,
+  type OutlineNode,
+} from "./outline";
 import { useLiveOutline, useOutline, useStructureOptions } from "./store";
 import styles from "./StructureView.module.css";
 
@@ -89,7 +99,12 @@ export function StructureView() {
     revealing.current = false;
   }, [caretKey, caretPath, collapsed]);
 
-  if (!path) return <EmptyState>No structure to show</EmptyState>;
+  if (!path)
+    return (
+      <EmptyState>
+        <T>No structure to show</T>
+      </EmptyState>
+    );
   if (!items) {
     return error ? (
       <EmptyState title="Structure unavailable">{error}</EmptyState>
@@ -123,7 +138,11 @@ export function StructureView() {
             <span className={styles.node}>
               <Icon name={fileIconName(n.name)} size={16} className={styles.badge} />
               <HighlightedText className={styles.name} text={n.name} indices={s.matches} tone="strong" />
-              {!n.children.length && <span className={styles.detail}>no symbols</span>}
+              {!n.children.length && (
+                <span className={styles.detail}>
+                  <T>no symbols</T>
+                </span>
+              )}
             </span>
           ) : (
             <span className={styles.node}>
@@ -213,7 +232,10 @@ function FileStructureDialog() {
     if (query) return Math.max(0, bestRow(rows));
     if (!caret || caret.path !== path) return 0;
     const key = symbolPathAt(nodes, { line: caret.line, col: caret.col }).pop();
-    return Math.max(0, rows.findIndex((r) => r.node.key === key));
+    return Math.max(
+      0,
+      rows.findIndex((r) => r.node.key === key),
+    );
   }, [rows, nodes, query, caret, path]);
   const active = rows.length ? Math.min(index ?? initial, rows.length - 1) : -1;
 
@@ -289,7 +311,12 @@ function FileStructureDialog() {
           renderItem={(r, s) => (
             <span className={clsx(styles.node, !r.matched && styles.ancestor)} style={{ paddingLeft: r.depth * 14 }}>
               <SymbolBadge kind={badgeKind(r.node.item.kind)} className={styles.badge} />
-              <HighlightedText className={styles.name} text={r.node.item.name} indices={r.indices} tone={s.active ? "accent" : "strong"} />
+              <HighlightedText
+                className={styles.name}
+                text={r.node.item.name}
+                indices={r.indices}
+                tone={s.active ? "accent" : "strong"}
+              />
               {r.node.item.detail && <span className={styles.detail}>{r.node.item.detail}</span>}
             </span>
           )}

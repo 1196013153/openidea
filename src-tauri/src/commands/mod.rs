@@ -227,6 +227,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         window::window_toggle_fullscreen,
         window::window_take_launch,
         window::window_close_context,
+        window::window_open_projects,
         window::app_quit,
         window::app_cancel_quit,
         window::menu_configure,

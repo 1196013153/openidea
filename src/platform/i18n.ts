@@ -9,6 +9,12 @@
  * is the fallback for missing keys; other locales load lazily on `setLocale`.
  * Features may also ship catalogs of their own with `registerMessages`.
  *
+ * Most UI text is written in English at the call site instead of under a key.
+ * `tx("Sync with OS")` / `useTx()` translate such text through the locale's
+ * source-text catalog (`locales/text/<locale>.json`, English → translation);
+ * the UI primitives (labels, buttons, menus, dialogs, tooltips) apply it to the
+ * strings they are given, and unknown text stays in English.
+ *
  * Message syntax (ICU-lite):
  *   - `{name}` parameter (numbers are locale-formatted);
  *   - `{n, plural, =0 {none} one {# file} other {# files}}` — `=N` exact
@@ -18,7 +24,7 @@
  *   - `{n, number}`.
  *   Branches nest. Unknown parameters are left as written.
  */
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { create } from "zustand";
 import en from "./locales/en.json";
 
@@ -33,18 +39,22 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 const LOCALE_NAMES: Record<Locale, string> = { en: "English", zh: "中文" };
 
 const loaders = import.meta.glob<Catalog>(["./locales/*.json", "!./locales/en.json"], { import: "default" });
+const textLoaders = import.meta.glob<Catalog>("./locales/text/*.json", { import: "default" });
 
 /** Bundled + loaded catalogs and feature-registered messages, per locale. */
 const catalogs = new Map<string, Catalog>([[DEFAULT_LOCALE, en as Catalog]]);
 const extra = new Map<string, Catalog>();
+const textCatalogs = new Map<string, Catalog>([[DEFAULT_LOCALE, {}]]);
 
 interface I18nState {
   locale: string;
   /** Effective messages for `locale` (without the English fallback). */
   messages: Catalog;
+  /** Source-text catalog of `locale`: English text → translation. */
+  texts: Catalog;
 }
 
-export const useI18n = create<I18nState>(() => ({ locale: DEFAULT_LOCALE, messages: en as Catalog }));
+export const useI18n = create<I18nState>(() => ({ locale: DEFAULT_LOCALE, messages: en as Catalog, texts: {} }));
 
 /** Maps settings values / BCP 47 tags to a supported locale (`zh-CN` → `zh`, `system` → browser). */
 export function resolveLocale(input: string | null | undefined): Locale {
@@ -80,6 +90,15 @@ async function loadCatalog(locale: string): Promise<Catalog> {
   return catalog;
 }
 
+async function loadTexts(locale: string): Promise<Catalog> {
+  const cached = textCatalogs.get(locale);
+  if (cached) return cached;
+  const load = textLoaders[`./locales/text/${locale}.json`];
+  const catalog = load ? await load() : {};
+  textCatalogs.set(locale, catalog);
+  return catalog;
+}
+
 let switchToken = 0;
 
 /** Switches the UI locale (loading its catalog on first use). Unsupported tags fall back to English. */
@@ -87,12 +106,12 @@ export async function setLocale(input: string | null | undefined): Promise<Local
   const locale = resolveLocale(input);
   const token = ++switchToken;
   try {
-    await loadCatalog(locale);
+    await Promise.all([loadCatalog(locale), loadTexts(locale)]);
   } catch (e) {
     console.warn(`cannot load locale ${locale}`, e);
   }
   if (token === switchToken) {
-    useI18n.setState({ locale, messages: merged(locale) });
+    useI18n.setState({ locale, messages: merged(locale), texts: textCatalogs.get(locale) ?? {} });
     if (typeof document !== "undefined") document.documentElement.lang = locale;
   }
   return locale;
@@ -116,7 +135,7 @@ export function registerMessages(locale: string, messages: Catalog): () => void 
 }
 
 /** The raw message for `key` in the active locale, falling back to English; `undefined` if unknown. */
-export function lookup(key: string, state: I18nState = useI18n.getState()): string | undefined {
+export function lookup(key: string, state: Pick<I18nState, "messages"> = useI18n.getState()): string | undefined {
   return state.messages[key] ?? fallback()[key];
 }
 
@@ -126,7 +145,7 @@ export function t(key: string, params?: MessageParams): string {
   return translateWith(s, key, params);
 }
 
-function translateWith(s: I18nState, key: string, params?: MessageParams): string {
+function translateWith(s: Pick<I18nState, "locale" | "messages">, key: string, params?: MessageParams): string {
   const message = lookup(key, s);
   if (message === undefined) return key;
   return formatMessage(message, params, s.locale);
@@ -137,6 +156,26 @@ export function useT(): Translate {
   const locale = useI18n((s) => s.locale);
   const messages = useI18n((s) => s.messages);
   return useCallback((key, params) => translateWith({ locale, messages }, key, params), [locale, messages]);
+}
+
+/** Translates English UI text through the source-text catalog; unknown text is returned as is. */
+export function tx(text: string): string;
+export function tx(text: string | undefined): string | undefined;
+export function tx(text: string | undefined): string | undefined {
+  return text && (useI18n.getState().texts[text] ?? text);
+}
+
+/** `tx` bound to the current locale; components re-render when it changes. */
+export function useTx(): typeof tx {
+  const texts = useI18n((s) => s.texts);
+  return useMemo(() => {
+    function bound(text: string): string;
+    function bound(text: string | undefined): string | undefined;
+    function bound(text: string | undefined) {
+      return text && (texts[text] ?? text);
+    }
+    return bound;
+  }, [texts]);
 }
 
 /** All keys with `prefix`, across the active catalog and the English fallback. */
@@ -287,5 +326,5 @@ export function _resetI18nForTests() {
   extra.clear();
   fallbackCache = null;
   switchToken++;
-  useI18n.setState({ locale: DEFAULT_LOCALE, messages: en as Catalog });
+  useI18n.setState({ locale: DEFAULT_LOCALE, messages: en as Catalog, texts: {} });
 }

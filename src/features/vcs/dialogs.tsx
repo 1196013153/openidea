@@ -131,14 +131,15 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
         <Dialog
           open
           title={opts.title}
+          icon={opts.danger ? "warning" : "question"}
           onClose={() => done(false)}
-          width={440}
+          width={460}
           buttons={[
             { label: opts.okLabel ?? "OK", role: "default", autoFocus: true, onClick: () => done(true) },
             { label: "Cancel", role: "cancel" },
           ]}
         >
-          <div className={styles.message}>{opts.message}</div>
+          {opts.message}
         </Dialog>
       );
     });

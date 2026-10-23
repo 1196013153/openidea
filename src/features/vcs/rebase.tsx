@@ -5,7 +5,7 @@
 import { useState } from "react";
 import type { Commit, RebaseAction, RebaseEntry } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
-import { Dialog, IconButton, Select } from "@/ui";
+import { Dialog, IconButton, Select, T } from "@/ui";
 import { notifications, toolWindowService } from "@/workbench/contributions";
 import { useCommit } from "./commitStore";
 import { confirmDialog, openDialog } from "./dialogs";
@@ -126,7 +126,11 @@ export async function editCommitMessage(commit: Commit) {
   if (!range) return;
   const message = await promptMessage(`Edit Commit Message (${short(commit.id)})`, commit.message);
   if (message === null || message.trim() === commit.message.trim()) return;
-  await runRebase(range.base, singleCommitPlan(range, commit.id, "reword", message), `Commit message of ${short(commit.id)} changed`);
+  await runRebase(
+    range.base,
+    singleCommitPlan(range, commit.id, "reword", message),
+    `Commit message of ${short(commit.id)} changed`,
+  );
 }
 
 /** Drop Commit(s): removes commits from the current branch. */
@@ -145,14 +149,19 @@ export async function dropCommits(commits: Commit[]) {
     danger: true,
   });
   if (!ok) return;
-  const plan = range.commits.map((c) => ({ commit: c.id, action: ids.has(c.id) ? ("drop" as const) : ("pick" as const), message: null }));
+  const plan = range.commits.map((c) => ({
+    commit: c.id,
+    action: ids.has(c.id) ? ("drop" as const) : ("pick" as const),
+    message: null,
+  }));
   await runRebase(range.base, plan, `Dropped ${commits.length} commits`);
 }
 
 async function dropCommit(commit: Commit) {
   const range = await rangeFrom(commit, "drop commit");
   if (!range) return;
-  if (range.commits.length === 1 && !range.base) return warn("Cannot drop commit", "It is the only commit of the branch");
+  if (range.commits.length === 1 && !range.base)
+    return warn("Cannot drop commit", "It is the only commit of the branch");
   const ok = await confirmDialog({
     title: "Drop Commit",
     message: `Drop commit ${short(commit.id)} “${commit.summary}” from the current branch? Its changes are removed.`,
@@ -290,7 +299,9 @@ function InteractiveRebaseDialog({ range, onClose }: { range: RebaseRange; onClo
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.section}>Commits are applied from top to bottom.</div>
+      <div className={styles.section}>
+        <T>Commits are applied from top to bottom.</T>
+      </div>
       <div className={styles.rebaseList} role="list" aria-label="Commits to rebase">
         {rows.map((r, i) => (
           <div key={r.commit.id} className={styles.rebaseRow} role="listitem">

@@ -1,6 +1,6 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { HighlightedText, Icon, List, Popup, fileIconName, listNavigate } from "@/ui";
+import { HighlightedText, Icon, List, Popup, fileIconName, listNavigate, T } from "@/ui";
 import { chooserRows, type LanguageRow, type ScratchLanguage } from "./model";
 import { closeChooser, rememberLanguage, useScratch } from "./store";
 import { createScratch } from "./scratches";
@@ -60,7 +60,9 @@ function ScratchChooser({ languages }: { languages: readonly ScratchLanguage[] }
     >
       <div className={styles.body} tabIndex={0} data-autofocus onKeyDown={onKeyDown}>
         <div className={styles.header}>
-          <span className={styles.title}>New Scratch File</span>
+          <span className={styles.title}>
+            <T>New Scratch File</T>
+          </span>
           {filter && <span className={styles.filter}>{filter}</span>}
         </div>
         <List
@@ -74,7 +76,11 @@ function ScratchChooser({ languages }: { languages: readonly ScratchLanguage[] }
           rowHeight={24}
           className={styles.list}
           aria-label="Languages"
-          empty={<div className={styles.empty}>No matching languages</div>}
+          empty={
+            <div className={styles.empty}>
+              <T>No matching languages</T>
+            </div>
+          }
           renderItem={(r, state) => (
             <div className={clsx(styles.row, state.active && styles.active)} data-language={r.lang.id}>
               <Icon name={fileIconName(`scratch.${r.lang.ext}`)} size={16} />

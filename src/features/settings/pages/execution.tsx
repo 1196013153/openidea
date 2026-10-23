@@ -10,6 +10,7 @@ import { useSetting } from "../components/context";
 import type { PageSpec } from "./spec";
 import { Indented, ToggleNumber } from "./workflowControls";
 import styles from "./Workflow.module.css";
+import { T } from "@/ui";
 
 export const BUILD_GROUP = "Build, Execution, Deployment";
 
@@ -77,7 +78,11 @@ function TooltipDelayRow() {
           step={100}
           aria-label="Value tooltip delay (ms)"
         />
-        {!enabled && <span className={styles.note}>Value tooltips are off</span>}
+        {!enabled && (
+          <span className={styles.note}>
+            <T>Value tooltips are off</T>
+          </span>
+        )}
       </Row>
     </Indented>
   );

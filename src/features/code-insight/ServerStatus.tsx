@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { getAction, executeAction } from "@/platform/actions";
-import { BarButton, Button, IconButton, Popup } from "@/ui";
+import { BarButton, Button, IconButton, Popup, T } from "@/ui";
 import { relativePath, useProject } from "@/platform/project";
 import { STATUS_LABEL, restartServer, serversSummary, useServers } from "./servers";
 import styles from "./ServerStatus.module.css";
@@ -38,7 +38,9 @@ export function ServerStatus() {
         aria-label="Language servers"
       >
         <div className={styles.panel}>
-          <div className={styles.header}>Language Servers</div>
+          <div className={styles.header}>
+            <T>Language Servers</T>
+          </div>
           {servers.map((s) => (
             <div key={s.id} className={styles.server}>
               <div className={styles.line}>
@@ -55,7 +57,7 @@ export function ServerStatus() {
                       void executeAction("tools.install", s.name);
                     }}
                   >
-                    Install
+                    <T>Install</T>
                   </Button>
                 ) : (
                   <IconButton

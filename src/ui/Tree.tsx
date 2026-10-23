@@ -26,6 +26,7 @@ import { Spinner } from "./Feedback";
 import { fuzzyMatch } from "./match";
 import { acquirePopup } from "./popupState";
 import styles from "./Tree.module.css";
+import { T } from "./T";
 
 export interface TreeRowState {
   depth: number;
@@ -435,7 +436,7 @@ export function Tree<T>(props: TreeProps<T>) {
                   style={{ ...style, paddingLeft: pad + 20 }}
                   role="presentation"
                 >
-                  <Spinner size={12} /> Loading…
+                  <Spinner size={12} /> <T>Loading…</T>
                 </div>
               );
             }

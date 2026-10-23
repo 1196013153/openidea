@@ -1,7 +1,7 @@
 /** "hierarchy" tool window: call hierarchy (⌃⌥H) and type hierarchy (⌃H). */
 import { useCallback, useMemo } from "react";
 import { basename, relativePath, useProject } from "@/platform/project";
-import { EmptyState, IconButton, Spinner, SymbolBadge, Tabs, Tree, badgeKind, type TreeRowState } from "@/ui";
+import { EmptyState, IconButton, Spinner, SymbolBadge, Tabs, Tree, badgeKind, type TreeRowState, T } from "@/ui";
 import { openLocation } from "./ipc";
 import {
   ROOT_ID,
@@ -68,8 +68,7 @@ export function HierarchyView() {
   const roots = useMemo<Node[]>(() => (root ? [{ kind: "root", id: ROOT_ID }] : []), [root]);
 
   const getChildren = useCallback(
-    (n: Node): Node[] | undefined =>
-      children.get(n.id)?.map((c) => ({ kind: "item", id: c.id, node: c }) as Node),
+    (n: Node): Node[] | undefined => children.get(n.id)?.map((c) => ({ kind: "item", id: c.id, node: c }) as Node),
     [children],
   );
   const isExpandable = useCallback(
@@ -82,7 +81,9 @@ export function HierarchyView() {
 
   if (!root)
     return (
-      <EmptyState>Use Call Hierarchy (⌃⌥H) or Type Hierarchy (⌃H) on a symbol to see its hierarchy here</EmptyState>
+      <EmptyState>
+        <T>Use Call Hierarchy (⌃⌥H) or Type Hierarchy (⌃H) on a symbol to see its hierarchy here</T>
+      </EmptyState>
     );
 
   const renderNode = (n: Node, _state: TreeRowState) => {
@@ -95,7 +96,11 @@ export function HierarchyView() {
             {basename(root.path)}:{root.line + 1}
           </span>
           {loading && <Spinner size={12} />}
-          {failed.has(ROOT_ID) && <span className={styles.error}>failed to load</span>}
+          {failed.has(ROOT_ID) && (
+            <span className={styles.error}>
+              <T>failed to load</T>
+            </span>
+          )}
           {!loading && !failed.has(ROOT_ID) && children.get(ROOT_ID)?.length === 0 && (
             <span className={styles.muted}>— no {directionLabel(mode, direction).toLowerCase()} found</span>
           )}
@@ -113,7 +118,11 @@ export function HierarchyView() {
           {basename(item.path)}:{item.selectionRange.start.line + 1}
         </span>
         {calls > 1 && <span className={styles.muted}>({calls} calls)</span>}
-        {failed.has(n.id) && <span className={styles.error}>failed to load</span>}
+        {failed.has(n.id) && (
+          <span className={styles.error}>
+            <T>failed to load</T>
+          </span>
+        )}
       </span>
     );
   };

@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 import clsx from "clsx";
 import { call, commands } from "@/platform/ipc";
-import { EmptyState, IconButton, Spinner, Tabs, showContextMenu, type MenuItem } from "@/ui";
+import { EmptyState, IconButton, Spinner, Tabs, showContextMenu, type MenuItem, T } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { EXPORT_FORMATS, exportData, type ExportData, type ExportFormat } from "./export";
 import { Grid } from "./Grid";
@@ -68,7 +68,10 @@ async function saveExport(format: ExportFormat, data: ExportData) {
   let path: string | null;
   try {
     const { save } = await import("@tauri-apps/plugin-dialog");
-    path = await save({ defaultPath: `${data.table}.${f.extension}`, filters: [{ name: f.label, extensions: [f.extension] }] });
+    path = await save({
+      defaultPath: `${data.table}.${f.extension}`,
+      filters: [{ name: f.label, extensions: [f.extension] }],
+    });
   } catch {
     return;
   }
@@ -77,21 +80,26 @@ async function saveExport(format: ExportFormat, data: ExportData) {
     await call(commands.dbExportFile(path, exportData(format, data)));
     notifications().notify({ level: "info", title: `${data.rows.length} rows exported`, body: path, key: "db-export" });
   } catch (e) {
-    notifications().notify({ level: "error", title: "Cannot export data", body: e instanceof Error ? e.message : String(e) });
+    notifications().notify({
+      level: "error",
+      title: "Cannot export data",
+      body: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
 function exportMenu(data: ExportData): MenuItem[] {
   return [
-    ...EXPORT_FORMATS.map(
-      (f): MenuItem => ({
-        label: `Copy as ${f.label}`,
-        icon: "copy",
-        run: () => void navigator.clipboard?.writeText(exportData(f.id, data)),
-      }),
-    ),
+    ...EXPORT_FORMATS.map((f): MenuItem => ({
+      label: `Copy as ${f.label}`,
+      icon: "copy",
+      run: () => void navigator.clipboard?.writeText(exportData(f.id, data)),
+    })),
     { kind: "separator" },
-    ...EXPORT_FORMATS.map((f): MenuItem => ({ label: `Export to ${f.label} File…`, run: () => void saveExport(f.id, data) })),
+    ...EXPORT_FORMATS.map((f): MenuItem => ({
+      label: `Export to ${f.label} File…`,
+      run: () => void saveExport(f.id, data),
+    })),
   ];
 }
 
@@ -137,7 +145,11 @@ export function ResultsView() {
   const active = useDatabase((s) => s.activeResult);
   const hasOutput = useDatabase((s) => s.output.length > 0);
   if (!results.length && !hasOutput)
-    return <EmptyState title="No results">Execute a statement in a query console with ⌘↩.</EmptyState>;
+    return (
+      <EmptyState title="No results">
+        <T>Execute a statement in a query console with ⌘↩.</T>
+      </EmptyState>
+    );
   const tab = results.find((r) => r.id === active);
   return (
     <div className={styles.view}>

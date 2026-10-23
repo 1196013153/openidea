@@ -6,7 +6,7 @@
  * new-file creation in the backend (`ide-workspace::FileDefaults`).
  */
 import { useId, useState } from "react";
-import { Button, Checkbox, Input, type SelectOption } from "@/ui";
+import { Button, Checkbox, Input, type SelectOption, T } from "@/ui";
 import { commands, isTauri, type LanguageInfo_Serialize as LanguageInfo } from "@/platform/ipc";
 import { ENCODING_CHOICES, type LanguageCodeStyle } from "@/platform/editorSettings";
 import { NumberInput, Row } from "../../components/Form";
@@ -140,7 +140,9 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
   return (
     <div className={styles.page}>
       <section aria-label="Tabs and Indents">
-        <div className={styles.previewTitle}>Tabs and Indents</div>
+        <div className={styles.previewTitle}>
+          <T>Tabs and Indents</T>
+        </div>
         <div className={styles.check}>
           <Checkbox checked={eff.useTab} onChange={(v) => set({ useTab: v })} label="Use tab character" />
         </div>
@@ -166,7 +168,9 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
         </Row>
       </section>
       <section aria-label="Wrapping">
-        <div className={styles.previewTitle}>Wrapping</div>
+        <div className={styles.previewTitle}>
+          <T>Wrapping</T>
+        </div>
         <Row label="Hard wrap at" hint="Shown as the right margin guide in the editor.">
           <NumberInput
             value={eff.hardWrapAt}
@@ -181,7 +185,7 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
       </section>
       <div className={styles.schemeRow}>
         <Button size="small" disabled={!all?.[lang.id]} onClick={reset}>
-          Reset to Language Defaults
+          <T>Reset to Language Defaults</T>
         </Button>
         <span className={styles.inherited}>
           Defaults from the {lang.name} language definition: {base.useTab ? "tab" : `${base.tabSize} spaces`}.

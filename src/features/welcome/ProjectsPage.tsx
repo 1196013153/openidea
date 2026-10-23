@@ -14,6 +14,7 @@ import {
   Spinner,
   listNavigate,
   showContextMenu,
+  T,
 } from "@/ui";
 import { ProjectBadge, recentMenu } from "./RecentList";
 import { filterRecent, openRecent, removeRecent, useRecent, type RecentMatch } from "./recent";
@@ -30,9 +31,13 @@ function HeaderButtons() {
         onClick={() => void executeAction("file.openProject")}
         title={openKey ? `Open (${openKey})` : "Open"}
       >
-        Open
+        <T>Open</T>
       </Button>
-      {canClone && <Button onClick={() => void executeAction("vcs.clone")}>Clone Repository</Button>}
+      {canClone && (
+        <Button onClick={() => void executeAction("vcs.clone")}>
+          <T>Clone Repository</T>
+        </Button>
+      )}
     </div>
   );
 }
@@ -44,7 +49,9 @@ function Landing() {
   const shortcut = shortcutLabel("file.openProject");
   return (
     <div className={styles.landing}>
-      <div className={styles.landingTitle}>Welcome to OpenIDEA</div>
+      <div className={styles.landingTitle}>
+        <T>Welcome to OpenIDEA</T>
+      </div>
       <p className={styles.landingText}>
         Open a folder from disk{canClone ? " or clone a repository from version control" : ""}.
         <br />
@@ -60,20 +67,20 @@ function Landing() {
           <span className={styles.landingIcon}>
             <Icon name="folder-open" size={20} />
           </span>
-          Open
+          <T>Open</T>
         </button>
         {canClone && (
           <button type="button" className={styles.landingAction} onClick={() => void executeAction("vcs.clone")}>
             <span className={styles.landingIcon}>
               <Icon name="branch" size={20} />
             </span>
-            Clone Repository
+            <T>Clone Repository</T>
           </button>
         )}
       </div>
       {shortcut && (
         <div className={styles.landingHint}>
-          Open a folder <Kbd>{shortcut}</Kbd>
+          <T>Open a folder</T> <Kbd>{shortcut}</Kbd>
         </div>
       )}
     </div>
@@ -245,7 +252,11 @@ export function ProjectsPage() {
             onOpen={() => void openRecent(m.project)}
           />
         ))}
-        {items.length === 0 && <div className={styles.noMatches}>No matching projects</div>}
+        {items.length === 0 && (
+          <div className={styles.noMatches}>
+            <T>No matching projects</T>
+          </div>
+        )}
       </div>
     </div>
   );

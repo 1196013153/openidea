@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef } from "react";
 import clsx from "clsx";
-import { BarButton, Button, Popup } from "@/ui";
+import { BarButton, Button, Popup, T } from "@/ui";
 import { executeAction } from "@/platform/actions";
 import { isTauri, type AppMetrics } from "@/platform/ipc";
 import { formatBytes, formatCount, formatMs, formatSize, formatUptime } from "./format";
@@ -109,7 +109,9 @@ export function MemoryDetails({ metrics: m }: { metrics: AppMetrics }) {
       ))}
       <div className={styles.section}>
         <div className={styles.groupRow}>
-          <span className={styles.groupTitle}>Total</span>
+          <span className={styles.groupTitle}>
+            <T>Total</T>
+          </span>
           <span className={styles.value}>{formatSize(summary.total)}</span>
         </div>
         <Row label="Physical memory" value={formatSize(m.totalMemoryBytes)} />
@@ -137,7 +139,7 @@ export function MemoryDetails({ metrics: m }: { metrics: AppMetrics }) {
       {error && <div className={styles.error}>{error}</div>}
       <div className={styles.actions}>
         <Button size="small" icon="trash" onClick={() => void executeAction("file.invalidateCaches")}>
-          Clear caches
+          <T>Clear caches</T>
         </Button>
       </div>
     </div>

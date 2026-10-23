@@ -225,7 +225,3 @@
   font-size: var(--fs-small);
   padding-left: 128px;
 }
-.confirmMessage {
-  color: var(--fg);
-  line-height: 1.5;
-}

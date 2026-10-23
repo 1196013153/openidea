@@ -434,6 +434,8 @@ export const commands = {
 	settingsPage: string | null,
 } | null>("window_take_launch"),
 	windowCloseContext: () => __TAURI_INVOKE<CloseContext>("window_close_context"),
+	/**  Projects open in project windows, in window order (title bar project widget). */
+	windowOpenProjects: () => typedError<OpenProject[], IdeError>(__TAURI_INVOKE("window_open_projects")),
 	/**  Quits: closes every window, each of which runs its own unsaved-changes check. */
 	appQuit: () => __TAURI_INVOKE<void>("app_quit"),
 	/**  A window vetoed the quit (user cancelled its unsaved-changes prompt). */
@@ -2715,6 +2717,13 @@ export type OpenOutcome =
 { kind: "opened"; label: string } | 
 /**  The caller should open the project in its own window. */
 { kind: "current" };
+
+export type OpenProject = {
+	name: string,
+	root: string,
+	/**  Open in the calling window. */
+	current: boolean,
+};
 
 /**  A node of a document outline (Structure tool window, breadcrumbs). */
 export type OutlineItem = {

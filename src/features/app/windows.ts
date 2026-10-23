@@ -76,8 +76,8 @@ export async function openProjectWithPolicy(path: string): Promise<void> {
       title: t("app.window.askTitle"),
       body: t("app.window.askBody", { name: basename(path) }),
       buttons: [
-        { id: "same", label: t("app.window.askThis") },
-        { id: "new", label: t("app.window.askNew"), primary: true },
+        { id: "new", label: t("app.window.askNew") },
+        { id: "same", label: t("app.window.askThis"), primary: true },
         { id: "cancel", label: t("common.cancel") },
       ],
       checkbox: t("app.window.askRemember"),
@@ -86,7 +86,9 @@ export async function openProjectWithPolicy(path: string): Promise<void> {
     mode = r.button;
     if (r.checked) {
       try {
-        useProject.setState({ settings: await call(commands.settingsSet("global", "general.openProjectIn", JSON.stringify(mode))) });
+        useProject.setState({
+          settings: await call(commands.settingsSet("global", "general.openProjectIn", JSON.stringify(mode))),
+        });
       } catch {
         /* the choice still applies to this open */
       }

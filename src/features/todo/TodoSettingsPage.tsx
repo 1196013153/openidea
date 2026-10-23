@@ -1,5 +1,5 @@
 /** Settings › Editor › TODO: patterns, colours, matching options. */
-import { Button, Checkbox, IconButton, Input, Select } from "@/ui";
+import { Button, Checkbox, IconButton, Input, Select, T } from "@/ui";
 import { DEFAULT_PATTERNS, type TodoPattern } from "./model";
 import { updateTodoSettings, useTodoSettings } from "./store";
 import styles from "./TodoSettingsPage.module.css";
@@ -34,7 +34,9 @@ export function TodoSettingsPage() {
         />
       </div>
       <div className={styles.header}>
-        <span>Patterns</span>
+        <span>
+          <T>Patterns</T>
+        </span>
         <IconButton
           icon="plus"
           size="small"
@@ -80,7 +82,7 @@ export function TodoSettingsPage() {
       </div>
       <div>
         <Button size="small" onClick={() => setPatterns(DEFAULT_PATTERNS)}>
-          Restore Defaults
+          <T>Restore Defaults</T>
         </Button>
       </div>
     </div>

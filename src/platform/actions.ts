@@ -9,9 +9,15 @@
  *                    category: "Code", when: "editorFocus", run: () => … });
  *
  * Default keybindings live in keymaps (`keymap.ts`), not on the action.
+ *
+ * Titles are written in English; `action.<id>`, `action.<id>.description` and
+ * `action.category.<category>` catalog keys, else the source-text catalog
+ * (`tx`), translate them, and the registry re-localises on locale change. The
+ * English title stays searchable.
  */
 import { create } from "zustand";
 import { evaluateWhen, getContext, type ContextKeys } from "./context";
+import { formatMessage, lookup, tx, useI18n } from "./i18n";
 
 export interface ActionContext {
   ctx: ContextKeys;
@@ -53,16 +59,53 @@ interface ActionStore {
 
 export const useActions = create<ActionStore>(() => ({ actions: new Map() }));
 
+/** Registered actions as written (English), by id; the store holds their localised copies. */
+const sources = new Map<string, Action>();
+
+function translated(key: string): string | undefined {
+  const message = lookup(key);
+  return message === undefined ? undefined : formatMessage(message, {}, useI18n.getState().locale);
+}
+
+/** Catalog key, else the source-text catalog; `undefined` when untranslated. */
+function localized(key: string, text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const v = translated(key) ?? tx(text);
+  return v === text ? undefined : v;
+}
+
+function localize(action: Action): Action {
+  const title = localized(`action.${action.id}`, action.title);
+  const description = localized(`action.${action.id}.description`, action.description);
+  const category = localized(`action.category.${action.category}`, action.category);
+  if (!title && !description && !category) return action;
+  return {
+    ...action,
+    title: title ?? action.title,
+    description: description ?? action.description,
+    category: category ?? action.category,
+    keywords: title ? [...(action.keywords ?? []), action.title] : action.keywords,
+  };
+}
+
+useI18n.subscribe((s, prev) => {
+  if ((s.messages === prev.messages && s.texts === prev.texts) || !sources.size) return;
+  useActions.setState({ actions: new Map([...sources].map(([id, a]) => [id, localize(a)])) });
+});
+
 /** Registers an action; returns a disposer. Re-registering an id replaces it. */
 export function registerAction(action: Action): () => void {
-  useActions.setState((s) => ({ actions: new Map(s.actions).set(action.id, action) }));
-  return () =>
+  sources.set(action.id, action);
+  useActions.setState((s) => ({ actions: new Map(s.actions).set(action.id, localize(action)) }));
+  return () => {
+    if (sources.get(action.id) !== action) return;
+    sources.delete(action.id);
     useActions.setState((s) => {
-      if (s.actions.get(action.id) !== action) return s;
       const actions = new Map(s.actions);
       actions.delete(action.id);
       return { actions };
     });
+  };
 }
 
 export function registerActions(actions: Action[]): () => void {

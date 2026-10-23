@@ -115,10 +115,3 @@
   pointer-events: none;
   white-space: nowrap;
 }
-
-.confirmBody {
-  padding: 14px;
-  color: var(--fg);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}

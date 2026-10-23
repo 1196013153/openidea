@@ -5,7 +5,7 @@ import { executeAction } from "@/platform/actions";
 import { useT } from "@/platform/i18n";
 import { isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { Icon, IconButton, Menu, Spinner, type MenuItem } from "@/ui";
+import { Icon, IconButton, Menu, Spinner, type MenuItem, T } from "@/ui";
 import { useSettingsPages } from "@/workbench/contributions";
 import { ErrorBoundary, Slot } from "@/workbench/ErrorBoundary";
 import logo from "../../../src-tauri/icons/128x128.png";
@@ -141,7 +141,9 @@ export function WelcomeView() {
         <div className={styles.brand}>
           <img className={styles.logo} src={logo} alt="" draggable={false} />
           <span className={styles.brandText}>
-            <span className={styles.appName}>OpenIDEA</span>
+            <span className={styles.appName}>
+              <T>OpenIDEA</T>
+            </span>
             {version && <span className={styles.version}>{version}</span>}
           </span>
         </div>
@@ -171,7 +173,7 @@ export function WelcomeView() {
         {dropping && (
           <div className={styles.dropOverlay} aria-hidden>
             <Icon name="folder-open" size={20} />
-            Drop a folder to open it as a project
+            <T>Drop a folder to open it as a project</T>
           </div>
         )}
       </section>

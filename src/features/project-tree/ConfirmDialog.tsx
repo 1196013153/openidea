@@ -1,7 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { create } from "zustand";
 import { Dialog } from "@/ui";
-import styles from "./ProjectView.module.css";
 
 interface ConfirmRequest {
   title: string;
@@ -37,14 +36,15 @@ export function ConfirmDialogHost() {
     <Dialog
       open
       title={request.title}
+      icon="question"
       onClose={() => request.resolve(false)}
-      width={420}
+      width={460}
       buttons={[
         { label: request.okLabel, role: "default", autoFocus: true, onClick: () => request.resolve(true) },
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.confirmBody}>{request.message}</div>
+      {request.message}
     </Dialog>
   );
 }

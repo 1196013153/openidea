@@ -152,12 +152,6 @@
   color: var(--fg-secondary);
   font-size: var(--fs-small);
 }
-.message {
-  color: var(--fg);
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
 /* Dockerfile / Compose gutter run icons */
 .gutter {
   width: 14px;

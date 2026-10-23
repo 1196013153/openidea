@@ -15,6 +15,9 @@ import { PromptOverlay } from "./prompt";
 import { installWindowTitle } from "./title";
 import { installLaunchHandling, windowActions } from "./windows";
 
+/** The UI locale of a secondary (Settings) window. */
+export const activateLocale = installLocaleSync;
+
 export function activate(): () => void {
   const disposers = [
     installLocaleSync(),

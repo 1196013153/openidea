@@ -2,6 +2,7 @@ import { useId, type ReactNode } from "react";
 import clsx from "clsx";
 import { Icon } from "./icons";
 import styles from "./Checkbox.module.css";
+import { useTx } from "@/platform/i18n";
 
 export interface CheckboxProps {
   checked: boolean;
@@ -16,6 +17,7 @@ export interface CheckboxProps {
 
 export function Checkbox({ checked, onChange, label, disabled, indeterminate, className, ...aria }: CheckboxProps) {
   const id = useId();
+  const tx = useTx();
   return (
     <label className={clsx(styles.row, disabled && styles.disabled, className)} htmlFor={id}>
       <span className={styles.boxWrap}>
@@ -26,7 +28,7 @@ export function Checkbox({ checked, onChange, label, disabled, indeterminate, cl
           checked={checked}
           disabled={disabled}
           aria-checked={indeterminate ? "mixed" : checked}
-          aria-label={aria["aria-label"]}
+          aria-label={tx(aria["aria-label"])}
           onChange={(e) => onChange(e.target.checked)}
           ref={(el) => {
             if (el) el.indeterminate = !!indeterminate;
@@ -36,7 +38,7 @@ export function Checkbox({ checked, onChange, label, disabled, indeterminate, cl
           {indeterminate ? <Icon name="minus" size={12} /> : checked ? <Icon name="check" size={12} /> : null}
         </span>
       </span>
-      {label != null && <span className={styles.label}>{label}</span>}
+      {label != null && <span className={styles.label}>{typeof label === "string" ? tx(label) : label}</span>}
     </label>
   );
 }

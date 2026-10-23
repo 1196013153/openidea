@@ -4,7 +4,19 @@ import clsx from "clsx";
 import type { BuildTool, GradleModel, MavenModel, RunConfig } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { editorService } from "@/workbench/contributions";
-import { Button, Checkbox, EmptyState, Icon, IconButton, Spinner, Tree, showContextMenu, type MenuItem, type TreeRowState } from "@/ui";
+import {
+  Button,
+  Checkbox,
+  EmptyState,
+  Icon,
+  IconButton,
+  Spinner,
+  Tree,
+  showContextMenu,
+  type MenuItem,
+  type TreeRowState,
+  T,
+} from "@/ui";
 import {
   gradleChildren,
   gradleRoots,
@@ -19,7 +31,16 @@ import {
   withGradleOptions,
   type BuildNode,
 } from "./model";
-import { createRunConfig, initialExpanded, runConfig, setCurrentProject, setExpanded, setProfile, syncTool, useBuild } from "./store";
+import {
+  createRunConfig,
+  initialExpanded,
+  runConfig,
+  setCurrentProject,
+  setExpanded,
+  setProfile,
+  syncTool,
+  useBuild,
+} from "./store";
 import styles from "./BuildTools.module.css";
 
 export function MavenView() {
@@ -31,11 +52,15 @@ export function GradleView() {
 }
 
 /** The run configuration a runnable node (or several of one project) starts. */
-export function nodeConfig(nodes: readonly BuildNode[], model: { maven?: MavenModel | null; gradle?: GradleModel | null }) {
+export function nodeConfig(
+  nodes: readonly BuildNode[],
+  model: { maven?: MavenModel | null; gradle?: GradleModel | null },
+) {
   const settings = useBuild.getState().settings;
   const first = nodes[0];
   if (!first) return null;
-  if (first.kind === "runConfig") return first.config.kind === "gradle" ? withGradleOptions(first.config, settings.gradle) : first.config;
+  if (first.kind === "runConfig")
+    return first.config.kind === "gradle" ? withGradleOptions(first.config, settings.gradle) : first.config;
   if ((first.kind === "phase" || first.kind === "goal") && model.maven) {
     const same = nodes.filter(
       (n): n is Extract<BuildNode, { kind: "phase" | "goal" }> =>
@@ -45,19 +70,37 @@ export function nodeConfig(nodes: readonly BuildNode[], model: { maven?: MavenMo
     return mavenGoalConfig(first.project, goals, model.maven, settings.maven);
   }
   if (first.kind === "task" && model.gradle) {
-    const same = nodes.filter((n): n is Extract<BuildNode, { kind: "task" }> => n.kind === "task" && n.project.path === first.project.path);
-    return gradleTaskConfig(model.gradle, first.project, same.map((n) => n.task.name), settings.gradle);
+    const same = nodes.filter(
+      (n): n is Extract<BuildNode, { kind: "task" }> => n.kind === "task" && n.project.path === first.project.path,
+    );
+    return gradleTaskConfig(
+      model.gradle,
+      first.project,
+      same.map((n) => n.task.name),
+      settings.gradle,
+    );
   }
   return null;
 }
 
 /** Memoised children lookup (node objects stay stable while the model is unchanged). */
-function childrenOf(tool: BuildTool, maven: MavenModel | null, gradle: GradleModel | null, configs: readonly RunConfig[]) {
+function childrenOf(
+  tool: BuildTool,
+  maven: MavenModel | null,
+  gradle: GradleModel | null,
+  configs: readonly RunConfig[],
+) {
   const cache = new Map<string, BuildNode[] | undefined>();
   return (n: BuildNode) => {
     if (cache.has(n.key)) return cache.get(n.key);
     const kids =
-      tool === "maven" ? (maven ? mavenChildren(n, maven, configs) : undefined) : gradle ? gradleChildren(n, gradle, configs) : undefined;
+      tool === "maven"
+        ? maven
+          ? mavenChildren(n, maven, configs)
+          : undefined
+        : gradle
+          ? gradleChildren(n, gradle, configs)
+          : undefined;
     cache.set(n.key, kids);
     return kids;
   };
@@ -95,7 +138,12 @@ function Toolbar({ tool, selection }: { tool: BuildTool; selection: BuildNode[] 
         disabled={!runnable.length}
         onClick={runSelected}
       />
-      <IconButton icon="run-anything" size="small" iconSize={16} action={maven ? "maven.executeGoal" : "gradle.executeTask"} />
+      <IconButton
+        icon="run-anything"
+        size="small"
+        iconSize={16}
+        action={maven ? "maven.executeGoal" : "gradle.executeTask"}
+      />
       <IconButton
         icon="build-offline"
         size="small"
@@ -104,7 +152,13 @@ function Toolbar({ tool, selection }: { tool: BuildTool; selection: BuildNode[] 
         pressed={maven ? settings.maven.offline : settings.gradle.offline}
       />
       {maven && (
-        <IconButton icon="skip-tests" size="small" iconSize={16} action="maven.toggleSkipTests" pressed={settings.maven.skipTests} />
+        <IconButton
+          icon="skip-tests"
+          size="small"
+          iconSize={16}
+          action="maven.toggleSkipTests"
+          pressed={settings.maven.skipTests}
+        />
       )}
       <span className={styles.sep} />
       <IconButton icon="expand-all" size="small" iconSize={16} action={`${tool}.expandAll`} />
@@ -129,7 +183,9 @@ function Banner({ tool }: { tool: BuildTool }) {
     return (
       <div className={styles.banner}>
         <Icon name={tool === "maven" ? "maven-load-changes" : "gradle-load-changes"} size={16} />
-        <span className={styles.bannerText}>Build files changed since the last reload</span>
+        <span className={styles.bannerText}>
+          <T>Build files changed since the last reload</T>
+        </span>
         <Button size="small" variant="ghost" onClick={() => void syncTool(tool)}>
           {tool === "maven" ? "Load Maven Changes" : "Load Gradle Changes"}
         </Button>
@@ -195,7 +251,8 @@ function BuildToolView({ tool }: { tool: BuildTool }) {
 
   const hasModel = tool === "maven" ? !!maven : !!gradle;
   useEffect(() => {
-    if (model && hasModel && useBuild.getState().expanded[tool].size === 0) setExpanded(tool, initialExpanded(tool, model));
+    if (model && hasModel && useBuild.getState().expanded[tool].size === 0)
+      setExpanded(tool, initialExpanded(tool, model));
   }, [model, hasModel, tool]);
 
   const nodesByKey = useCallback(
@@ -230,20 +287,33 @@ function BuildToolView({ tool }: { tool: BuildTool }) {
         { label: `Debug '${config.name}'`, icon: "debug", run: () => runConfig(config, "debug") },
         { kind: "separator" },
       );
-      if (node.kind === "runConfig") items.push({ kind: "action", action: "run.editConfigs", arg: node.config.id, label: "Edit Configuration…" });
+      if (node.kind === "runConfig")
+        items.push({ kind: "action", action: "run.editConfigs", arg: node.config.id, label: "Edit Configuration…" });
       else items.push({ label: "Create Run Configuration…", icon: "edit", run: () => void createRunConfig(config) });
     }
     if (node.kind === "mavenProject") {
       items.push(
-        { label: "Open pom.xml", icon: "file-maven", run: () => void editorService().openFile(`${root}/${node.project.pom}`) },
+        {
+          label: "Open pom.xml",
+          icon: "file-maven",
+          run: () => void editorService().openFile(`${root}/${node.project.pom}`),
+        },
         { kind: "action", action: "maven.reload", label: "Reload All Maven Projects" },
         { kind: "action", action: "maven.executeGoal" },
       );
     }
     if (node.kind === "gradleProject") {
       const file = node.project.buildFile;
-      if (file) items.push({ label: `Open ${file.split("/").pop()}`, icon: "file-gradle", run: () => void editorService().openFile(`${root}/${file}`) });
-      items.push({ kind: "action", action: "gradle.reload", label: "Reload All Gradle Projects" }, { kind: "action", action: "gradle.executeTask" });
+      if (file)
+        items.push({
+          label: `Open ${file.split("/").pop()}`,
+          icon: "file-gradle",
+          run: () => void editorService().openFile(`${root}/${file}`),
+        });
+      items.push(
+        { kind: "action", action: "gradle.reload", label: "Reload All Gradle Projects" },
+        { kind: "action", action: "gradle.executeTask" },
+      );
     }
     if (node.kind === "dependency") {
       const d = node.dependency;
@@ -257,7 +327,13 @@ function BuildToolView({ tool }: { tool: BuildTool }) {
     return (
       <div className={styles.view}>
         <div className={styles.loading}>
-          {error ? error : loading ? <><Spinner size={14} /> Loading…</> : null}
+          {error ? (
+            error
+          ) : loading ? (
+            <>
+              <Spinner size={14} /> <T>Loading…</T>
+            </>
+          ) : null}
         </div>
       </div>
     );

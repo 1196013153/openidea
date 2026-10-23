@@ -4,7 +4,7 @@ import type { Commit, PushTags, RemoteOp } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { notifications } from "@/workbench/contributions";
-import { Checkbox, Dialog, List, Select, Spinner } from "@/ui";
+import { Checkbox, Dialog, List, Select, Spinner, T } from "@/ui";
 import { openDialog } from "./dialogs";
 import { formatTime } from "./model";
 import { lastRemoteFailure, runRemote, saveAll } from "./ops";
@@ -41,22 +41,30 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
             ? `Update ${branch.head ?? "HEAD"} from ${branch.upstream}${branch.behind ? ` (${branch.behind} incoming)` : ""}`
             : "The current branch has no tracked branch; git pull may fail."}
         </div>
-        <div className={styles.fieldLabel}>Update type:</div>
+        <div className={styles.fieldLabel}>
+          <T>Update type:</T>
+        </div>
         <label className={styles.radioRow}>
           <input type="radio" name="update" checked={!rebase} onChange={() => setRebase(false)} />
           <span className={styles.radioText}>
-            Merge incoming changes into the current branch
-            <span className={styles.hint}>git pull --no-rebase --ff</span>
+            <T>Merge incoming changes into the current branch</T>
+            <span className={styles.hint}>
+              <T>git pull --no-rebase --ff</T>
+            </span>
           </span>
         </label>
         <label className={styles.radioRow}>
           <input type="radio" name="update" checked={rebase} onChange={() => setRebase(true)} />
           <span className={styles.radioText}>
-            Rebase the current branch on top of incoming changes
-            <span className={styles.hint}>git pull --rebase</span>
+            <T>Rebase the current branch on top of incoming changes</T>
+            <span className={styles.hint}>
+              <T>git pull --rebase</T>
+            </span>
           </span>
         </label>
-        <div className={styles.hint}>Uncommitted changes are stashed before the update and restored afterwards.</div>
+        <div className={styles.hint}>
+          <T>Uncommitted changes are stashed before the update and restored afterwards.</T>
+        </div>
       </div>
     </Dialog>
   );
@@ -92,7 +100,9 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
   const head = pushTarget.branch ?? current;
   // Another branch, or a partial push: `git push <remote> <src>:<dst>` instead of the plain push.
   const explicit = head !== current || !!pushTarget.revision;
-  const upstream = explicit ? (branches.find((b) => !b.remote && b.name === head)?.upstream ?? null) : (branch?.upstream ?? null);
+  const upstream = explicit
+    ? (branches.find((b) => !b.remote && b.name === head)?.upstream ?? null)
+    : (branch?.upstream ?? null);
   const revision = pushTarget.revision?.id ?? null;
   const [setUpstream, setSetUpstream] = useState(!upstream);
   const [pushTags, setPushTags] = useState(false);
@@ -232,7 +242,14 @@ export function isProtectedBranch(branch: string, patterns = workflowSettings().
   return patterns
     .split(/[;,\s]+/)
     .filter(Boolean)
-    .some((p) => new RegExp(`^${p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`).test(branch));
+    .some((p) =>
+      new RegExp(
+        `^${p
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".")}$`,
+      ).test(branch),
+    );
 }
 
 /** Rejected because the remote has commits we don't (non-fast-forward). */
@@ -252,7 +269,8 @@ export async function pushWithAutoUpdate(op: Extract<RemoteOp, { op: "push" }>, 
   const git = workflowSettings().vcs.git;
   const updateAndPush = async () => {
     await saveAll();
-    if (!(await runRemote({ op: "pull", rebase: git.updateMethod === "rebase" }, "updating after rejected push"))) return false;
+    if (!(await runRemote({ op: "pull", rebase: git.updateMethod === "rebase" }, "updating after rejected push")))
+      return false;
     return runRemote(op, detail);
   };
   if (git.autoUpdateOnPushRejected) return updateAndPush();

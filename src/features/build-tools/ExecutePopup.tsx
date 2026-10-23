@@ -7,7 +7,7 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import type { BuildTool } from "@/platform/ipc";
-import { HighlightedText, Input, List, Popup, Select, listNavigate } from "@/ui";
+import { HighlightedText, Input, List, Popup, Select, listNavigate, T } from "@/ui";
 import {
   goalCompletions,
   gradleTaskConfig,
@@ -115,7 +115,9 @@ function ExecutePopup({ tool }: { tool: BuildTool }) {
       <div className={styles.popupBody}>
         <div className={styles.popupHeader}>
           <span className={styles.popupTitle}>{title}</span>
-          <span>Tab to complete, Enter to run</span>
+          <span>
+            <T>Tab to complete, Enter to run</T>
+          </span>
         </div>
         <div className={styles.inputRow}>
           <span className={styles.inputPrefix}>{tool === "maven" ? "mvn" : "gradle"}</span>
@@ -148,14 +150,19 @@ function ExecutePopup({ tool }: { tool: BuildTool }) {
           renderItem={(c, state) => (
             <div className={clsx(styles.completion, state.active && styles.activeRow)}>
               <span className={styles.completionLabel}>
-                <HighlightedText text={c.label} indices={c.detail === "recent" ? undefined : [...Array(Math.min(word.length, c.label.length)).keys()]} />
+                <HighlightedText
+                  text={c.label}
+                  indices={c.detail === "recent" ? undefined : [...Array(Math.min(word.length, c.label.length)).keys()]}
+                />
               </span>
               {c.detail && <span className={styles.completionDetail}>{c.detail}</span>}
             </div>
           )}
         />
         <div className={styles.popupFooter}>
-          <span>Project:</span>
+          <span>
+            <T>Project:</T>
+          </span>
           <Select
             className={styles.footerSelect}
             value={project}
