@@ -11,6 +11,7 @@
 //! [`Launch::settings_page`] tells it which page to show.
 
 use crate::state::AppState;
+use ide_core::settings::AppearanceSettings;
 use ide_core::{IdeError, IdeResult};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,8 @@ use specta::Type;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow, WebviewWindowBuilder};
+use tauri::utils::config::{Color, WindowConfig};
+use tauri::{AppHandle, Emitter, Manager, Theme, WebviewWindow, WebviewWindowBuilder};
 
 /// Tells a window that a pending launch is waiting for it.
 pub const LAUNCH_EVENT: &str = "openidea://launch";
@@ -195,19 +197,66 @@ pub fn target_window(app: &AppHandle) -> Option<WebviewWindow> {
     sorted_labels(windows.keys().map(String::as_str)).first().and_then(|l| windows.get(l)).cloned()
 }
 
-/// Creates a new project window; `project` is opened by its frontend on load.
-pub fn create_window(app: &AppHandle, project: Option<PathBuf>) -> IdeResult<WebviewWindow> {
-    let windows = app.webview_windows();
-    let label = next_label(windows.keys().map(String::as_str));
-    let mut config = app
-        .config()
+fn window_config(app: &AppHandle) -> IdeResult<WindowConfig> {
+    app.config()
         .app
         .windows
         .iter()
         .find(|w| w.label == MAIN)
         .or_else(|| app.config().app.windows.first())
         .cloned()
-        .ok_or_else(|| IdeError::internal("no window configuration"))?;
+        .ok_or_else(|| IdeError::internal("no window configuration"))
+}
+
+/// The theme's `--bg-frame` (tokens.css), mirroring `resolveThemeId` in theme.ts.
+pub fn frame_color(appearance: &AppearanceSettings, os_dark: bool) -> Color {
+    const LIGHT: Color = Color(0xe9, 0xea, 0xee, 0xff);
+    const DARK: Color = Color(0x26, 0x28, 0x2c, 0xff);
+    const DARK_HC: Color = Color(0x1a, 0x1b, 0x1e, 0xff);
+    let sync = appearance.sync_with_os || appearance.theme == "system";
+    let theme = match (sync, os_dark) {
+        (false, _) => &appearance.theme,
+        (true, true) => &appearance.preferred_dark_theme,
+        (true, false) => &appearance.preferred_light_theme,
+    };
+    match theme.as_str() {
+        "dark-hc" => DARK_HC,
+        "dark" => DARK,
+        "light" => LIGHT,
+        _ if sync && os_dark => DARK,
+        _ => LIGHT,
+    }
+}
+
+/// Builds a project window painted in the saved theme's frame colour, so it
+/// doesn't flash the light default before its page (and splash) loads.
+fn build_project_window(app: &AppHandle, mut config: WindowConfig) -> IdeResult<WebviewWindow> {
+    let appearance = app.try_state::<AppState>().map(|s| s.global_settings.effective().appearance);
+    if let Some(a) = &appearance {
+        config.background_color = Some(frame_color(a, false));
+    }
+    let window = WebviewWindowBuilder::from_config(app, &config)
+        .and_then(|b| b.build())
+        .map_err(|e| IdeError::internal(format!("cannot create window: {e}")))?;
+    // "Sync with OS" needs the OS mode, known once the window exists.
+    if let Some(a) = appearance.filter(|a| a.sync_with_os || a.theme == "system")
+        && window.theme().is_ok_and(|t| t == Theme::Dark)
+    {
+        let _ = window.set_background_color(Some(frame_color(&a, true)));
+    }
+    Ok(window)
+}
+
+/// The first window (`create: false` in tauri.conf.json so it can take the theme's colour).
+pub fn create_main_window(app: &AppHandle) -> IdeResult<WebviewWindow> {
+    build_project_window(app, window_config(app)?)
+}
+
+/// Creates a new project window; `project` is opened by its frontend on load.
+pub fn create_window(app: &AppHandle, project: Option<PathBuf>) -> IdeResult<WebviewWindow> {
+    let windows = app.webview_windows();
+    let label = next_label(windows.keys().map(String::as_str));
+    let mut config = window_config(app)?;
     config.label = label.clone();
     if let Some(name) = project.as_deref().and_then(Path::file_name) {
         config.title = name.to_string_lossy().into_owned();
@@ -223,9 +272,7 @@ pub fn create_window(app: &AppHandle, project: Option<PathBuf>) -> IdeResult<Web
         config.center = false;
     }
     app.state::<WindowsState>().set_launch(&label, Launch { project: project.map(Into::into), settings_page: None });
-    let window = WebviewWindowBuilder::from_config(app, &config)
-        .and_then(|b| b.build())
-        .map_err(|e| IdeError::internal(format!("cannot create window: {e}")))?;
+    let window = build_project_window(app, config)?;
     focus(&window);
     Ok(window)
 }
@@ -300,6 +347,7 @@ pub fn open_path(app: &AppHandle, path: &Path) {
 }
 
 /// Second instance launched: focus this one and open its path argument.
+#[cfg_attr(debug_assertions, allow(dead_code))]
 pub fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
     match cli_path(&args, Path::new(&cwd)) {
         Some(path) => open_path(app, &path),
@@ -342,15 +390,7 @@ pub fn open_settings_window(
         return Ok(());
     }
     let parent = app.get_webview_window(&parent_label).ok_or_else(|| IdeError::not_found("no parent window"))?;
-    let mut config = app
-        .config()
-        .app
-        .windows
-        .iter()
-        .find(|w| w.label == MAIN)
-        .or_else(|| app.config().app.windows.first())
-        .cloned()
-        .ok_or_else(|| IdeError::internal("no window configuration"))?;
+    let mut config = window_config(app)?;
     config.label = label.clone();
     config.title = "Settings".into();
     // Frameless on Windows like project windows (tauri.windows.conf.json): the page draws
@@ -396,6 +436,17 @@ mod tests {
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn frame_color_follows_theme_and_os_mode() {
+        let mut a = AppearanceSettings::default();
+        assert_eq!(frame_color(&a, true), Color(0xe9, 0xea, 0xee, 0xff));
+        a.theme = "dark-hc".into();
+        assert_eq!(frame_color(&a, false), Color(0x1a, 0x1b, 0x1e, 0xff));
+        a.sync_with_os = true;
+        assert_eq!(frame_color(&a, false), Color(0xe9, 0xea, 0xee, 0xff));
+        assert_eq!(frame_color(&a, true), Color(0x26, 0x28, 0x2c, 0xff));
     }
 
     #[test]

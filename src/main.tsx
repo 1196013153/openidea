@@ -6,6 +6,7 @@ import { activateSecondaryWindow, activateWorkbench } from "./workbench/activate
 import { activateFeatures, activateSettingsWindowFeatures, SettingsWindow, settingsWindowParent } from "./features";
 import { installKeyboardDispatcher } from "./platform/keymap";
 import { isTauri } from "./platform/ipc";
+import { hideSplash } from "./platform/splash";
 import { prefetchLazyComponents } from "./ui";
 
 if (import.meta.env.DEV && isTauri()) {
@@ -42,5 +43,6 @@ if (settingsParent !== null) {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>{settingsParent !== null ? <SettingsWindow /> : <Workbench />}</React.StrictMode>,
 );
+hideSplash();
 // Views split out of the start-up bundle load in the background once the UI is up.
 if (settingsParent === null) prefetchLazyComponents();

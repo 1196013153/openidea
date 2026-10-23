@@ -50,9 +50,12 @@ pub fn run() {
     #[cfg(debug_assertions)]
     export_bindings(&builder);
 
+    let app = tauri::Builder::default();
     // Single instance first: a second launch focuses this one and opens its path argument.
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(windows::on_second_instance))
+    // Release only, so a dev build can run beside an installed release (same identifier).
+    #[cfg(not(debug_assertions))]
+    let app = app.plugin(tauri_plugin_single_instance::init(windows::on_second_instance));
+    let app = app
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -84,6 +87,7 @@ pub fn run() {
             app.manage(windows);
             app.manage(menu_state);
             app.on_menu_event(on_menu_event);
+            windows::create_main_window(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| match event {
