@@ -1,6 +1,6 @@
 /** Applies `data-theme` and the accent colour from appearance settings. */
 import { useEffect, useSyncExternalStore } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { create } from "zustand";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
@@ -88,12 +88,16 @@ export function useApplyTheme() {
   }, [pending, theme, id, accent]);
 }
 
-/** The native window shows its own colour where a live resize outruns the webview; match the frame. */
+/**
+ * Where a live resize outruns the page, the native window and the webview (WebView2's default
+ * background) show their own colours; match both to the frame. The webview one is only set at
+ * window creation otherwise, so a theme switched later left it light.
+ */
 function syncWindowBackground() {
   if (!isTauri()) return;
   const color = getComputedStyle(document.documentElement).getPropertyValue("--bg-frame").trim();
   if (!color) return;
-  getCurrentWindow()
+  getCurrentWebviewWindow()
     .setBackgroundColor(color)
     .catch(() => {});
 }

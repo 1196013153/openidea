@@ -2,7 +2,8 @@
    which voids style-src 'unsafe-inline' and blocks the editor's runtime-injected styles. */
 /* Start-up splash over the page until the window's launch project is open (platform/splash.ts).
    Tokens aren't loaded yet, so the colours mirror --bg-frame / --fg-muted / --accent. */
-html, body, .splash { background: #e9eaee; }
+/* Not on html: the canvas then takes body's (themed) background, which a fast resize shows before relayout. */
+body, .splash { background: #e9eaee; }
 :root[data-theme="dark"] :is(body, .splash) { background: #26282c; }
 :root:is([data-theme="dark-hc"], [data-theme="dark"][data-contrast="high"]) :is(body, .splash) { background: #1a1b1e; }
 .splash {
