@@ -74,6 +74,11 @@
   -webkit-user-select: text;
   user-select: text;
 }
+.input:focus-visible,
+.searchInput:focus-visible {
+  /* The frame's focus ring stands in for the global :focus-visible outline. */
+  outline: none;
+}
 .invalid .searchInput {
   color: var(--danger);
 }
