@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import clsx from "clsx";
 import { actionToggled, executeAction, getAction } from "@/platform/actions";
 import type { ProjectFileSet } from "@/platform/ipc";
+import { useTx } from "@/platform/i18n";
 import { hasPrimaryModifier, shortcutLabel } from "@/platform/keymap";
 import {
   Checkbox,
@@ -62,6 +63,7 @@ export function SearchEverywhereOverlay() {
 type Selection = { key: string | null; index: number; moved: boolean };
 
 function SearchEverywhereDialog() {
+  const tx = useTx();
   const tab = useSearchEverywhere((s) => s.tab);
   const query = useSearchEverywhere((s) => s.query);
   const includeNonProject = useSearchEverywhere((s) => s.includeNonProject);
@@ -251,11 +253,11 @@ function SearchEverywhereDialog() {
       width={670}
       position="top"
       transparentBackdrop
-      aria-label="Search Everywhere"
+      aria-label={tx("Search Everywhere")}
       className={styles.dialog}
     >
       <div className={styles.header}>
-        <div role="tablist" aria-label="Search scope" className={styles.tabs} onKeyDown={onTabKey}>
+        <div role="tablist" aria-label={tx("Search scope")} className={styles.tabs} onKeyDown={onTabKey}>
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -267,7 +269,7 @@ function SearchEverywhereDialog() {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setTab(t.id)}
             >
-              {t.label}
+              <T>{t.label}</T>
             </button>
           ))}
         </div>
@@ -300,7 +302,7 @@ function SearchEverywhereDialog() {
           icon="external-link"
           size="small"
           className={styles.headerButton}
-          title="Open in Find Tool Window"
+          title={tx("Open in Find Tool Window")}
           shortcut={tab === "text" ? "⌘↵" : undefined}
           onClick={() => closeThen(() => void executeAction("find.inPath", { query: parsed.text }))}
         />
@@ -322,13 +324,13 @@ function SearchEverywhereDialog() {
             aria-expanded
             aria-controls="se-results"
             aria-autocomplete="list"
-            aria-label="Search query"
+            aria-label={tx("Search query")}
             onChange={(e) => useSearchEverywhere.setState({ query: e.target.value })}
             onKeyDown={onKeyDown}
           />
           {snap?.loading && !emptyQuery && <Spinner size={14} className={styles.spinner} />}
           <span className={styles.hint} aria-hidden>
-            {hintFor(tab)}
+            <T>{hintFor(tab)}</T>
           </span>
         </div>
       </div>
@@ -344,7 +346,9 @@ function SearchEverywhereDialog() {
               items={rows}
               getKey={(r) => r.key}
               isSection={isSectionRow}
-              renderSection={(r) => <span className={styles.section}>{r.kind === "section" ? r.title : ""}</span>}
+              renderSection={(r) => (
+                <span className={styles.section}>{r.kind === "section" ? <T>{r.title}</T> : ""}</span>
+              )}
               activeIndex={active}
               onActiveChange={select}
               onActivate={(r, _i, e) => activate(r, (e as MouseEvent).shiftKey)}
@@ -352,7 +356,7 @@ function SearchEverywhereDialog() {
               rowHeight={ROW}
               sectionHeight={ROW}
               className={styles.list}
-              aria-label="Results"
+              aria-label={tx("Results")}
               renderItem={(r, state) => (
                 <ResultRow row={r} active={state.active} toggleTick={toggleTick} onToggled={bumpToggles} />
               )}
@@ -360,7 +364,9 @@ function SearchEverywhereDialog() {
           )}
           {showEmpty && (
             <div className={styles.empty}>
-              {emptyQuery ? "Type to search" : includeNonProject ? "Nothing found" : "Nothing found in project files"}
+              {tx(
+                emptyQuery ? "Type to search" : includeNonProject ? "Nothing found" : "Nothing found in project files",
+              )}
             </div>
           )}
         </div>
@@ -435,12 +441,17 @@ function ResultRow({
   toggleTick: number;
   onToggled: () => void;
 }) {
+  const tx = useTx();
   const tone = "strong";
   switch (row.kind) {
     case "section":
       return null;
     case "more":
-      return <span className={clsx(styles.name, styles.more)}>… more {SECTION_TITLES[row.section].toLowerCase()}</span>;
+      return (
+        <span className={clsx(styles.name, styles.more)}>
+          … {tx("more")} {tx(SECTION_TITLES[row.section]).toLowerCase()}
+        </span>
+      );
     case "file":
       return <FileRow path={row.path} name={row.name} dir={row.dir} indices={row.nameIndices} line={row.line} />;
     case "symbol":
