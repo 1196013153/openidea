@@ -2,6 +2,10 @@
 
 use std::process::Command;
 
+/// Windows `CREATE_NO_WINDOW` creation flag, for call sites that combine it
+/// with other flags. Prefer [`no_window`] otherwise.
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// Keeps a console child (java, node, curl, a language server, ...) from
 /// opening its own console window on Windows. Release builds use the GUI
 /// subsystem, so without this every spawn flashes a `cmd` window. A no-op
@@ -10,7 +14,6 @@ pub fn no_window(cmd: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     cmd

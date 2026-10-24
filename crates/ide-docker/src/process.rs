@@ -25,11 +25,7 @@ fn prepare(cmd: &mut Command) {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
-    }
+    ide_core::process::no_window(cmd);
 }
 
 fn spawn(cmd: &mut Command) -> IdeResult<Child> {
