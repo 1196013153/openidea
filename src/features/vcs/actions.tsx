@@ -7,7 +7,7 @@ import { editorService, maybeEditorService, notifications, toolWindowService } f
 import { annotationsShown, toggleAnnotations } from "./blame";
 import { showBranchesPopup } from "./BranchWidget";
 import { checkoutRevision, newBranch } from "./branchOps";
-import { addToVcs, rollbackCandidates, showRollbackDialog, stashChanges } from "./changeOps";
+import { addToVcs, isNestedRepoEntry, rollbackCandidates, showRollbackDialog, stashChanges } from "./changeOps";
 import { useCommit } from "./commitStore";
 import { gotoConflict, resolveAtCaret, showConflictsDialog } from "./conflictsUi";
 import { focusedDiffNavigator } from "./diffNavigator";
@@ -20,7 +20,7 @@ import { allRepos, runRemote } from "./ops";
 import { showPushDialog, showUpdateDialog, type PushTarget } from "./remoteUi";
 import { chooseRevision } from "./RevisionChooser";
 import { showCloneDialog } from "./clone";
-import { refreshNow } from "./store";
+import { refreshNow, repoName } from "./store";
 
 const VCS = "vcsAvailable";
 
@@ -171,7 +171,18 @@ export function registerVcsActions(): () => void {
         const explicit = argPaths(arg);
         const sel = useCommit.getState().selection;
         const paths = explicit?.length ? explicit : commitWindowFocused() && sel.length ? sel : undefined;
-        if (paths) return showRollbackDialog(rollbackCandidates(paths));
+        if (paths) {
+          const candidates = rollbackCandidates(paths);
+          const submodule = paths.find((p) => isNestedRepoEntry(p));
+          if (!candidates.length && submodule)
+            return notifications().notify({
+              group: "vcs",
+              level: "info",
+              title: "Submodule changes cannot be rolled back here",
+              body: `${repoName(submodule)} points to another commit. Check out the recorded commit in the submodule (git submodule update) to revert it.`,
+            });
+          return showRollbackDialog(candidates);
+        }
         const active = maybeEditorService()?.activePath();
         const activeChanged = active ? rollbackCandidates([active]) : [];
         showRollbackDialog(activeChanged.length ? activeChanged : rollbackCandidates());

@@ -77,20 +77,32 @@ export async function commitChanges(): Promise<string | undefined> {
 }
 
 /** Files the Rollback action applies to by default. */
-export function rollbackCandidates(paths?: readonly string[]): FileStatus[] {
-  const status = useVcs.getState().status.filter((f) => {
+export function rollbackCandidates(
+  paths?: readonly string[],
+  status: readonly FileStatus[] = useVcs.getState().status,
+  roots: readonly string[] = useVcs.getState().roots,
+): FileStatus[] {
+  // A nested repository's own entry (a submodule's checked-out commit) is not rolled back
+  // from the enclosing repository: it is changed by checking out a commit in the submodule.
+  const changed = status.filter((f) => {
     const g = groupOf(f);
-    return g === "changes" || g === "conflicts";
+    return (g === "changes" || g === "conflicts") && !isNestedRepoEntry(f.path, roots);
   });
-  if (!paths?.length) return status;
+  if (!paths?.length) return changed;
   const set = new Set(paths.map(stripSlash));
-  const picked = status.filter((f) => {
+  // A selected change is just that change; other paths are folders and take the changes below them.
+  const entries = new Set(status.map((f) => stripSlash(f.path)));
+  const folders = [...set].filter((s) => !entries.has(s));
+  return changed.filter((f) => {
     const p = stripSlash(f.path);
-    if (set.has(p)) return true;
-    for (const s of set) if (p.startsWith(s + "/")) return true;
-    return false;
+    return set.has(p) || folders.some((s) => p.startsWith(s + "/"));
   });
-  return picked;
+}
+
+/** `path` is the root of a repository nested in another one (its submodule / untracked-folder entry there). */
+export function isNestedRepoEntry(path: string, roots: readonly string[] = useVcs.getState().roots): boolean {
+  const p = stripSlash(path);
+  return roots.includes(p) && roots.some((r) => p.startsWith(r + "/"));
 }
 
 /**

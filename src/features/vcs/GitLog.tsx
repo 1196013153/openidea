@@ -111,14 +111,16 @@ function LogView() {
   const commits = useGitLog((s) => s.commits);
   const selected = useGitLog((s) => s.selected);
   const root = useVcs((s) => s.root);
+  const repo = useVcs((s) => s.repo);
   const lastRefs = useRef<string | null>(null);
 
-  // On mount and when the window switches to another repository.
+  // On mount, when the window switches to another project and when another of its
+  // repositories is selected (its branches are needed to notice its refs moving).
   useEffect(() => {
     lastRefs.current = null;
     if (!useGitLog.getState().commits.length) void reloadLog();
     void loadBranches().catch(() => undefined);
-  }, [root]);
+  }, [root, repo]);
 
   // HEAD or a branch tip moved (commit, undo, reset, rebase, fetch…): reload (keeps the selection).
   useEffect(() => {
