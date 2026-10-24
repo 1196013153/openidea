@@ -359,6 +359,48 @@ pub fn default_shell_path() -> String {
     default_shell()
 }
 
+/// Installed shells for "New Predefined Session", the login shell first. On
+/// Unix: `/etc/shells` plus `$PATH`, so Homebrew shells show up too.
+pub fn available_shells() -> Vec<String> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    let mut add = |p: PathBuf| {
+        let key = p.canonicalize().unwrap_or_else(|_| p.clone());
+        if p.is_file() && !found.iter().any(|f| f.canonicalize().unwrap_or_else(|_| f.clone()) == key) {
+            found.push(p);
+        }
+    };
+    add(PathBuf::from(default_shell()));
+    #[cfg(unix)]
+    {
+        const NAMES: [&str; 5] = ["zsh", "bash", "fish", "nu", "pwsh"];
+        let listed = std::fs::read_to_string("/etc/shells").unwrap_or_default();
+        for name in NAMES {
+            for line in listed.lines().map(str::trim).filter(|l| l.starts_with('/')) {
+                if shell_title(line) == name {
+                    add(PathBuf::from(line));
+                }
+            }
+            if let Some(p) = find_in_path(name) {
+                add(p);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        for exe in ["pwsh.exe", "powershell.exe", "cmd.exe", "wsl.exe"] {
+            if let Some(p) = find_in_path(exe) {
+                add(p);
+            }
+        }
+        for var in ["ProgramFiles", "ProgramW6432"] {
+            if let Some(dir) = std::env::var_os(var) {
+                add(PathBuf::from(dir).join("Git").join("bin").join("bash.exe"));
+            }
+        }
+    }
+    found.into_iter().map(|p| p.to_string_lossy().into_owned()).collect()
+}
+
 /// Picks the shell binary and its arguments. A default (or explicitly chosen but
 /// argument-less) POSIX shell is started as a login shell, like Terminal.app/IDEA.
 fn resolve_shell(shell: Option<&str>, args: &[String]) -> (String, Vec<String>) {
@@ -410,7 +452,6 @@ fn default_shell() -> String {
     std::env::var("COMSPEC").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "cmd.exe".to_owned())
 }
 
-#[cfg(windows)]
 fn find_in_path(exe: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|dir| dir.join(exe)).find(|p| p.is_file())
@@ -447,6 +488,15 @@ mod tests {
     fn login_shell_reads_the_passwd_entry() {
         let shell = login_shell().expect("passwd entry");
         assert!(shell.starts_with('/'), "{shell}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn available_shells_start_with_the_default_and_are_distinct() {
+        let shells = available_shells();
+        assert_eq!(shells.first(), Some(&default_shell_path()));
+        let unique: std::collections::HashSet<_> = shells.iter().collect();
+        assert_eq!(unique.len(), shells.len());
     }
     use std::sync::mpsc::Receiver;
 

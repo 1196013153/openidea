@@ -14,7 +14,7 @@ import { findTerminalLinks, resolvePath, type TerminalLink } from "./links";
 import { splitCommandLine } from "@/platform/commandLine";
 import { useProject } from "@/platform/project";
 import { workflowSettings, type TerminalSettingsValid } from "@/platform/workflowSettings";
-import { readSearchDecorations, readTerminalTheme, terminalFont } from "./theme";
+import { readSearchDecorations, readTerminalTheme, terminalFont, withFontExtras } from "./theme";
 
 export interface TerminalSearchOptions {
   caseSensitive: boolean;
@@ -46,8 +46,11 @@ export interface SessionOptions {
   onFocus: (key: string) => void;
   /** The shell exited (after the exit message was printed). */
   onExit?: (key: string) => void;
-  /** Run this program instead of the configured shell (e.g. `docker exec -it <id> sh`). */
-  command?: { program: string; args: string[] };
+  /**
+   * Run this program instead of the configured shell (e.g. `docker exec -it <id> sh`).
+   * `shell`: it is a shell (a predefined session), so shell integration still applies.
+   */
+  command?: { program: string; args: string[]; shell?: boolean };
 }
 
 /** Mouse-tracking DEC private modes (X10, normal, button, any-event, encodings). */
@@ -74,7 +77,7 @@ function beep() {
 
 function fontFor(t: TerminalSettingsValid) {
   const e = useProject.getState().settings?.editor as { fontFamily?: string; fontSize?: number; lineHeight?: number } | undefined;
-  return terminalFont(t, e);
+  return withFontExtras(terminalFont(t, e), t);
 }
 
 const CURSOR: Record<TerminalSettingsValid["cursorShape"], "block" | "underline" | "bar"> = {
@@ -163,7 +166,7 @@ export class TerminalSession {
       fontFamily: font.family,
       fontSize: font.size,
       lineHeight: font.lineHeight,
-      letterSpacing: 0,
+      letterSpacing: font.letterSpacing,
       cursorBlink: settings.cursorBlink,
       cursorStyle: CURSOR[settings.cursorShape],
       cursorWidth: 2,
@@ -238,6 +241,7 @@ export class TerminalSession {
     if (o.fontFamily !== font.family) o.fontFamily = font.family;
     if (o.fontSize !== font.size) o.fontSize = font.size;
     if (o.lineHeight !== font.lineHeight) o.lineHeight = font.lineHeight;
+    if (o.letterSpacing !== font.letterSpacing) o.letterSpacing = font.letterSpacing;
     o.cursorStyle = CURSOR[t.cursorShape];
     o.cursorBlink = t.cursorBlink;
     o.macOptionIsMeta = t.optionAsMeta;
@@ -364,7 +368,7 @@ export class TerminalSession {
       const args = custom ? custom.args : shellArgs;
       const info = await call(
         commands.termSpawn(
-          { cwd: this.opts.cwd, shell: shell ?? null, args, env: { ...t.env }, cols, rows, shellIntegration: !custom && t.shellIntegration },
+          { cwd: this.opts.cwd, shell: shell ?? null, args, env: { ...t.env }, cols, rows, shellIntegration: (!custom || !!custom.shell) && t.shellIntegration },
           channel,
         ),
       );
