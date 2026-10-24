@@ -4,7 +4,7 @@
  */
 import { registerOverlay } from "@/workbench/contributions";
 import { AboutOverlay } from "./AboutDialog";
-import { appActions, updateActions } from "./appActions";
+import { appActions, checkForUpdatesOnStartup, updateActions } from "./appActions";
 import { installCloseGuard } from "./closeGuard";
 import { InvalidateCachesOverlay, registerInvalidateCachesActions } from "./InvalidateCaches";
 import { buildInfo } from "./host";
@@ -32,7 +32,9 @@ export function activate(): () => void {
   ];
   let disposed = false;
   void buildInfo().then((b) => {
-    if (b?.updates && !disposed) disposers.push(registerLocalizedActions(updateActions));
+    if (!b?.updates || disposed) return;
+    disposers.push(registerLocalizedActions(updateActions));
+    void checkForUpdatesOnStartup();
   });
   return () => {
     disposed = true;

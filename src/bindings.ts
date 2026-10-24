@@ -460,6 +460,17 @@ export const commands = {
 	appBuildInfo: () => __TAURI_INVOKE<BuildInfo>("app_build_info"),
 	appCheckUpdate: () => typedError<UpdateCheck, IdeError>(__TAURI_INVOKE("app_check_update")),
 	/**
+	 *  The background check made once per process when the first window starts;
+	 *  later calls (other windows) and debug builds get `None`. Failures are logged,
+	 *  not reported: the user didn't ask for this check.
+	 */
+	appStartupUpdateCheck: () => __TAURI_INVOKE<{
+	version: string,
+	currentVersion: string,
+	notes: string | null,
+	date: string | null,
+} | null>("app_startup_update_check"),
+	/**
 	 *  Downloads and installs the available update, then quits through every
 	 *  window's unsaved-changes check and relaunches. If a window cancels the quit,
 	 *  the update applies on the next start.

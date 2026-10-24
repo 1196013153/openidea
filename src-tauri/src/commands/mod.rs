@@ -239,6 +239,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         window::app_log_location,
         window::app_build_info,
         window::app_check_update,
+        window::app_startup_update_check,
         window::app_install_update,
         debug::debug_exception_filters,
         debug::debug_set_exception_breakpoints,

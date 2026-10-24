@@ -1,6 +1,6 @@
 import type { Action } from "@/platform/actions";
 import { t } from "@/platform/i18n";
-import { call, commands, isTauri } from "@/platform/ipc";
+import { call, commands, isTauri, type UpdateInfo } from "@/platform/ipc";
 import { notifications } from "@/workbench/contributions";
 import { showAbout } from "./AboutDialog";
 import { quitApp } from "./closeGuard";
@@ -42,26 +42,37 @@ export async function checkForUpdates(): Promise<void> {
         key: "app.update",
       });
     } else {
-      notifications().notify({
-        level: "info",
-        title: t("app.update.available", { version: r.update.version }),
-        body: r.update.notes ?? undefined,
-        sticky: true,
-        key: "app.update",
-        actions: [
-          {
-            label: t("app.update.install"),
-            run: () =>
-              void call(commands.appInstallUpdate()).catch((e) =>
-                notifications().notify({ level: "error", title: t("app.update.installFailed"), body: errorText(e) }),
-              ),
-          },
-        ],
-      });
+      notifyUpdate(r.update);
     }
   } catch (e) {
     notifications().notify({ level: "error", title: t("app.update.failed"), body: errorText(e), key: "app.update" });
   }
+}
+
+/** Silent check once per app start; only an available update is shown. */
+export async function checkForUpdatesOnStartup(): Promise<void> {
+  if (!isTauri()) return;
+  const update = await commands.appStartupUpdateCheck().catch(() => null);
+  if (update) notifyUpdate(update);
+}
+
+function notifyUpdate(update: UpdateInfo) {
+  notifications().notify({
+    level: "info",
+    title: t("app.update.available", { version: update.version }),
+    body: update.notes ?? undefined,
+    sticky: true,
+    key: "app.update",
+    actions: [
+      {
+        label: t("app.update.install"),
+        run: () =>
+          void call(commands.appInstallUpdate()).catch((e) =>
+            notifications().notify({ level: "error", title: t("app.update.installFailed"), body: errorText(e) }),
+          ),
+      },
+    ],
+  });
 }
 
 /**

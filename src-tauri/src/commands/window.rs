@@ -268,6 +268,26 @@ pub async fn app_check_update(app: AppHandle) -> IdeResult<UpdateCheck> {
     })
 }
 
+/// The background check made once per process when the first window starts;
+/// later calls (other windows) and debug builds get `None`. Failures are logged,
+/// not reported: the user didn't ask for this check.
+#[tauri::command]
+#[specta::specta]
+pub async fn app_startup_update_check(app: AppHandle) -> Option<UpdateInfo> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if cfg!(debug_assertions) || DONE.swap(true, Ordering::SeqCst) {
+        return None;
+    }
+    match app_check_update(app).await {
+        Ok(check) => check.update,
+        Err(e) => {
+            tracing::warn!("startup update check failed: {e}");
+            None
+        }
+    }
+}
+
 /// Downloads and installs the available update, then quits through every
 /// window's unsaved-changes check and relaunches. If a window cancels the quit,
 /// the update applies on the next start.
