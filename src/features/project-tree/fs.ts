@@ -78,13 +78,15 @@ export class MemoryFs implements ProjectFs {
       .map((p) => {
         const c = this.nodes.get(p)!;
         const name = nameOf(p);
+        const excluded = [...this.ignored].some((i) => p === i || isInside(p, i));
         return {
           name,
           path: p,
           kind: c.kind,
           size: c.kind === "file" ? c.size : 0,
           mtimeMs: 0,
-          ignored: [...this.ignored].some((i) => p === i || isInside(p, i)),
+          ignored: excluded,
+          excluded,
           hidden: name.startsWith("."),
         } satisfies FileEntry;
       })

@@ -67,11 +67,16 @@ export const openideaTheme = EditorView.theme({
   },
   ".cm-activeLine": { backgroundColor: "var(--editor-caret-row)" },
   ".cm-selectionMatch": { backgroundColor: "var(--bg-identifier-under-caret, color-mix(in srgb, var(--fg) 9%, transparent))" },
+  // IDEA's MATCHED_BRACE_ATTRIBUTES (bold in dark schemes only) and MATCHED_TAG_NAME (never bold).
   ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
     backgroundColor: "var(--editor-brace)",
     color: "inherit",
-    fontWeight: "700",
+    fontWeight: "var(--matched-brace-weight, 700)",
     borderRadius: "1px",
+  },
+  ".cm-matchingTag, &.cm-focused .cm-matchingTag": {
+    backgroundColor: "var(--bg-matched-tag, var(--editor-brace))",
+    fontWeight: "inherit",
   },
   ".cm-nonmatchingBracket, &.cm-focused .cm-nonmatchingBracket": {
     color: "var(--danger)",

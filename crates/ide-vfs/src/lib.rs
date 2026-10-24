@@ -37,8 +37,10 @@ pub struct FileEntry {
     pub size: u64,
     /// Milliseconds since the Unix epoch.
     pub mtime_ms: f64,
-    /// Matched by .gitignore / exclude settings (shown dimmed, like IDEA "excluded").
+    /// Matched by .gitignore or the exclude settings.
     pub ignored: bool,
+    /// Matched by the exclude settings (IDEA's "excluded": dimmed, excluded-folder icon).
+    pub excluded: bool,
     pub hidden: bool,
     /// For symlinks: what the link points to (`None` when dangling); `None`
     /// for other entries.
@@ -96,8 +98,8 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
 /// case-insensitively with natural number ordering.
 ///
 /// Symlinks are reported as [`EntryKind::Symlink`] but sorted (and sized) by
-/// what they point to. `ignored` reflects `excludes` (relative to the enclosing
-/// repository root, else to `dir`) and the applicable `.gitignore`/`.ignore` files.
+/// what they point to. `excluded` reflects `excludes` (relative to the enclosing
+/// repository root, else to `dir`); `ignored` also the applicable `.gitignore`/`.ignore` files.
 pub fn read_dir(dir: &Path, excludes: &[String]) -> IdeResult<Vec<FileEntry>> {
     if !fs::metadata(dir)?.is_dir() {
         return Err(IdeError::invalid(format!("{} is not a directory", dir.display())));
@@ -133,7 +135,8 @@ pub fn read_dir(dir: &Path, excludes: &[String]) -> IdeResult<Vec<FileEntry>> {
         };
         let is_dir = meta.is_dir();
         let rel = path.strip_prefix(&base).unwrap_or(&path);
-        let ignored = excludes.is_excluded(rel) || gitignore.is_ignored(&path, is_dir);
+        let excluded = excludes.is_excluded(rel);
+        let ignored = excluded || gitignore.is_ignored(&path, is_dir);
         entries.push((
             is_dir,
             FileEntry {
@@ -144,6 +147,7 @@ pub fn read_dir(dir: &Path, excludes: &[String]) -> IdeResult<Vec<FileEntry>> {
                 path: path.into(),
                 kind,
                 ignored,
+                excluded,
                 target_kind,
             },
         ));

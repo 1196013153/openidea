@@ -39,6 +39,7 @@ const ICONS = {
   "folder-test-resources": "openidea/nodes/testResourcesRoot",
   "folder-excluded": "nodes/excludeRoot",
   "folder-library": "nodes/libraryFolder",
+  "folder-github": "nodes/folderGithub",
   module: "nodes/module",
   "spring-boot": "openidea/runConfigurations/springBoot",
   file: "fileTypes/text",
@@ -807,6 +808,7 @@ export type FolderKind =
   | "testResources"
   | "excluded"
   | "library"
+  | "github"
   | "module";
 
 /** Folder icon by role (expui has no separate "open" folder glyph). */
@@ -824,6 +826,8 @@ export function folderIconName(kind: FolderKind = "plain"): IconName {
       return "folder-excluded";
     case "library":
       return "folder-library";
+    case "github":
+      return "folder-github";
     case "module":
       return "module";
     default:

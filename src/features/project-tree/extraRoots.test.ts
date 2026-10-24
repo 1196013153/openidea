@@ -21,6 +21,7 @@ const entry = (path: string, kind: "file" | "dir" = "file"): FileEntry => ({
   size: 0,
   mtimeMs: 1,
   ignored: false,
+  excluded: false,
   hidden: false,
 });
 

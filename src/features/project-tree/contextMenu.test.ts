@@ -19,6 +19,7 @@ const node = (path: string, dir = false, root = false): ProjectNode => ({
   root,
   entry: null,
   ignored: false,
+  excluded: false,
   symlink: false,
 });
 

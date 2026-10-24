@@ -234,6 +234,8 @@ const Row = memo(function Row({
   const isEditing =
     !!editing && (node.placeholder ? editing.kind === "new" : editing.kind === "rename" && editing.key === node.key);
   const faded = node.ignored || deco.faded;
+  // IDEA dims the icon of excluded folders only; git-ignored ones just get the ignored colour.
+  const dimIcon = node.excluded;
   return (
     <span
       className={clsx(styles.content, cut && styles.cut, dropTarget && styles.dropTarget)}
@@ -244,7 +246,7 @@ const Row = memo(function Row({
       onClick={(e) => onClick(node, e)}
       onPointerDown={(e) => onPointerDown(node, e)}
     >
-      <Icon name={icon} size={16} className={clsx(styles.icon, node.dir && styles.folderIcon, faded && styles.faded)} />
+      <Icon name={icon} size={16} className={clsx(styles.icon, node.dir && styles.folderIcon, dimIcon && styles.faded)} />
       {isEditing && editing ? (
         <InlineEditor
           editing={editing}

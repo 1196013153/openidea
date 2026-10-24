@@ -13,7 +13,7 @@ import {
 
 const entry = (path: string, kind: "file" | "dir" = "file", extra: Partial<FileEntry> = {}): FileEntry => {
   const name = path.slice(path.lastIndexOf("/") + 1);
-  return { name, path, kind, size: 0, mtimeMs: 1, ignored: false, hidden: name.startsWith("."), ...extra };
+  return { name, path, kind, size: 0, mtimeMs: 1, ignored: false, excluded: false, hidden: name.startsWith("."), ...extra };
 };
 
 const ROOT = { path: "/r", name: "acme" };

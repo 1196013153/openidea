@@ -156,7 +156,8 @@ export const DEFAULT_EXTERNAL_TOOL: ExternalToolValid = {
 
 export const DEFAULT_WORKFLOW: WorkflowSettings = {
   vcs: {
-    showDirtyDirectories: true,
+    // IDEA's VcsConfiguration.SHOW_DIRTY_RECURSIVELY is off by default.
+    showDirtyDirectories: false,
     limitHistory: true,
     historyLimit: 1000,
     git: {

@@ -2,8 +2,9 @@
  * The base extension set of every text editor, with compartments for the
  * parts that change at runtime (language, settings, contributions).
  */
-import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Prec, type Extension, type Range } from "@codemirror/state";
 import {
+  Decoration,
   EditorView,
   dropCursor,
   highlightActiveLineGutter,
@@ -11,7 +12,14 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { bracketMatching, indentOnInput, indentUnit, syntaxHighlighting, type LanguageSupport } from "@codemirror/language";
+import {
+  bracketMatching,
+  indentOnInput,
+  indentUnit,
+  syntaxHighlighting,
+  type LanguageSupport,
+  type MatchResult,
+} from "@codemirror/language";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches } from "@codemirror/search";
@@ -172,11 +180,24 @@ export function stickyExtension(settings: EditorSettings | undefined): Extension
   return settings?.stickyScroll === false || isDistractionFree() ? [] : [stickyScroll, stickyMaxLines.of(prefsOf(settings).codeEditing.stickyLinesMax)];
 }
 
+const matchingBracket = Decoration.mark({ class: "cm-matchingBracket" });
+const matchingTag = Decoration.mark({ class: "cm-matchingBracket cm-matchingTag" });
+const nonmatchingBracket = Decoration.mark({ class: "cm-nonmatchingBracket" });
+
+/** Like the default, but matched tag names (HTML / XML / JSX) get their own mark, as IDEA's MATCHED_TAG_NAME. */
+function renderMatch(match: MatchResult, state: EditorState): readonly Range<Decoration>[] {
+  const mark = (from: number, to: number) =>
+    !match.matched ? nonmatchingBracket : /^[()[\]{}]$/.test(state.sliceDoc(from, to)) ? matchingBracket : matchingTag;
+  const out = [mark(match.start.from, match.start.to).range(match.start.from, match.start.to)];
+  if (match.end) out.push(mark(match.end.from, match.end.to).range(match.end.from, match.end.to));
+  return out;
+}
+
 export function heavyExtension(docLength: number, settings?: EditorSettings): Extension {
   if (docLength > HEAVY_LIMIT) return [];
   const prefs = prefsOf(settings);
   return [
-    prefs.codeEditing.highlightBraces ? bracketMatching() : [],
+    prefs.codeEditing.highlightBraces ? bracketMatching({ renderMatch }) : [],
     prefs.appearance.indentGuides ? indentGuides : [],
     prefs.codeEditing.highlightSelection ? highlightSelectionMatches({ minSelectionLength: 2, maxMatches: 500 }) : [],
   ];

@@ -1847,8 +1847,10 @@ export type FileEntry = {
 	size: number,
 	/**  Milliseconds since the Unix epoch. */
 	mtimeMs: number | null,
-	/**  Matched by .gitignore / exclude settings (shown dimmed, like IDEA "excluded"). */
+	/**  Matched by .gitignore or the exclude settings. */
 	ignored: boolean,
+	/**  Matched by the exclude settings (IDEA's "excluded": dimmed, excluded-folder icon). */
+	excluded: boolean,
 	hidden: boolean,
 	/**
 	 *  For symlinks: what the link points to (`None` when dangling); `None`

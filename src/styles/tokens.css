@@ -121,6 +121,8 @@
   --bg-text-search-result: #114957;
   --bg-text-search-result-current: #165e70;
   --bg-matched-brace: #43454a;
+  --matched-brace-weight: 700;
+  --bg-matched-tag: #3f4045;
   --bg-fold-placeholder: #393b40;
   --fg-fold-placeholder: #868991;
   --fg-fold-marker: #6f737a;
@@ -444,6 +446,8 @@
   --bg-text-search-result: #fcd47e;
   --bg-text-search-result-current: #f2bf57;
   --bg-matched-brace: #93d9d9;
+  --matched-brace-weight: normal;
+  --bg-matched-tag: #c9ecec;
   --bg-fold-placeholder: #e9f5e6;
   --fg-fold-placeholder: #414d41;
   --fg-fold-marker: #8b8e94;
@@ -661,6 +665,7 @@
   --bg-text-search-result: #146a7d;
   --bg-text-search-result-current: #1d8aa3;
   --bg-matched-brace: #55585f;
+  --bg-matched-tag: #45474d;
   --bg-fold-placeholder: #33353b;
   --fg-fold-placeholder: #ccced3;
   --fg-fold-marker: #9fa2a9;

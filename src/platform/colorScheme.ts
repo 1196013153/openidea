@@ -121,6 +121,8 @@ const SCHEME_VARS = new Set<string>([
   "--bg-editor-inline",
   "--fg-completion-match",
   "--fg-search-match",
+  "--matched-brace-weight",
+  "--bg-matched-tag",
 ]);
 
 type Vars = Map<string, string>;

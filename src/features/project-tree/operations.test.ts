@@ -11,6 +11,7 @@ const node = (path: string, dir = false): ProjectNode => ({
   root: path === "/p",
   entry: null,
   ignored: false,
+  excluded: false,
   symlink: false,
 });
 

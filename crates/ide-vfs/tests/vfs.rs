@@ -71,6 +71,9 @@ fn read_dir_sorting_and_flags() {
     assert!(get("build").ignored);
     assert!(get("a.log").ignored);
     assert!(get("node_modules").ignored);
+    // Excluded (settings) vs only git-ignored, like IDEA's excluded folders.
+    assert!(get("node_modules").excluded && get(".git").excluded);
+    assert!(!get("build").excluded && !get("a.log").excluded);
     assert!(!get("src").ignored && !get("B.md").ignored && !get(".gitignore").ignored);
     assert_eq!(get("src").kind, EntryKind::Dir);
     assert_eq!(get("B.md").kind, EntryKind::File);
@@ -99,7 +102,7 @@ fn read_dir_sorting_and_flags() {
     assert_eq!(ignored, BTreeSet::from(["local.txt", "other.log"]));
 
     let nm = read_dir(&r.join("node_modules"), &excludes).unwrap();
-    assert!(nm.iter().all(|e| e.ignored), "children of excluded dirs are excluded");
+    assert!(nm.iter().all(|e| e.ignored && e.excluded), "children of excluded dirs are excluded");
 
     assert_eq!(read_dir(&r.join("B.md"), &excludes).unwrap_err().kind, ErrorKind::InvalidInput);
     assert_eq!(read_dir(&r.join("missing"), &excludes).unwrap_err().kind, ErrorKind::NotFound);

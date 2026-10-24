@@ -36,6 +36,8 @@ export interface ProjectNode {
   root: boolean;
   entry: FileEntry | null;
   ignored: boolean;
+  /** Excluded by the exclude settings / Project Structure (not just git-ignored). */
+  excluded: boolean;
   symlink: boolean;
   /** Placeholder row for the inline "new file / folder" editor. */
   placeholder?: "file" | "dir";
@@ -120,6 +122,7 @@ export function buildModel(
     root: true,
     entry: null,
     ignored: false,
+    excluded: false,
     symlink: false,
   };
   byKey.set(rootNode.key, rootNode);
@@ -137,6 +140,7 @@ export function buildModel(
         root: false,
         entry,
         ignored: entry.ignored,
+        excluded: entry.excluded,
         symlink: entry.kind === "symlink",
       };
     }
@@ -151,7 +155,7 @@ export function buildModel(
         const visible = visibleEntries(listing, opts);
         if (visible.length !== 1) break;
         const only = visible[0]!;
-        if (!isDirEntry(only) || only.ignored !== entry.ignored) break;
+        if (!isDirEntry(only) || only.ignored !== entry.ignored || only.excluded !== entry.excluded) break;
         if (placeholder && placeholder.parent === only.path) break;
         end = only;
         chain.push(only.path);
@@ -168,6 +172,7 @@ export function buildModel(
       root: false,
       entry: end,
       ignored: entry.ignored,
+      excluded: entry.excluded,
       symlink: entry.kind === "symlink",
     };
   };
@@ -186,6 +191,7 @@ export function buildModel(
         root: false,
         entry: null,
         ignored: false,
+        excluded: false,
         symlink: false,
         placeholder: placeholder.kind,
       };
@@ -312,6 +318,7 @@ const sameEntry = (a: FileEntry, b: FileEntry) =>
   a.size === b.size &&
   a.mtimeMs === b.mtimeMs &&
   a.ignored === b.ignored &&
+  a.excluded === b.excluded &&
   a.hidden === b.hidden;
 
 /**

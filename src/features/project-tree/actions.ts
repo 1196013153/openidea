@@ -50,6 +50,7 @@ function nodesFrom(arg: unknown): ProjectNode[] {
       root: p === useProjectTree.getState().root,
       entry: null,
       ignored: false,
+      excluded: false,
       symlink: false,
     };
   });

@@ -24,7 +24,8 @@ pub struct VcsSettings {
 impl Default for VcsSettings {
     fn default() -> Self {
         Self {
-            show_dirty_directories: true,
+            // IDEA's VcsConfiguration.SHOW_DIRTY_RECURSIVELY is off by default.
+            show_dirty_directories: false,
             limit_history: true,
             history_limit: 1000,
             git: GitSettings::default(),

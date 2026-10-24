@@ -1,6 +1,6 @@
 /**
  * IDEA-style project identity: a colour slot (1–9, like RecentProject.ColorN)
- * derived from the project name, and the two-letter initials shown in the
+ * derived from the project name, and the initials shown in the
  * title bar's project widget.
  */
 
@@ -13,15 +13,29 @@ export function projectColorIndex(name: string): number {
   return (Math.abs(h) % PROJECT_COLOR_COUNT) + 1;
 }
 
-/** "py-demo" → "PD", "openidea" → "OP", "MyProject" → "MP". */
+/**
+ * IDEA's AvatarUtils.initials: two camel-case capitals, else the first letters
+ * of the first and last words, else one letter. "py-demo" → "PD",
+ * "MyProject" → "MP", "idea" → "I".
+ */
 export function projectInitials(name: string): string {
-  const words = name
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return [...words[0]!].slice(0, 2).join("").toUpperCase();
-  return (words[0]![0]! + words[1]![0]!).toUpperCase();
+  const text = name.trim();
+  const camel = camelInitials(text);
+  if (camel.length === 2) return camel;
+  for (const separators of [" ", ",", "-", "_", ".", "`'\""]) {
+    const words = text.split(new RegExp(`[${separators}]`)).filter(Boolean);
+    if (words.length >= 2) return ([...words[0]!][0]! + [...words.at(-1)!][0]!).toUpperCase();
+  }
+  return camel || "?";
+}
+
+/** First letter plus the next capital of the leading word: "MyProject" → "MP", "idea" → "I". */
+function camelInitials(text: string): string {
+  const word = /\p{L}[\p{L}\p{N}]*/u.exec(text)?.[0] ?? "";
+  const [first, ...rest] = [...word];
+  if (!first) return "";
+  const capital = rest.find((c) => c !== c.toLowerCase());
+  return (first + (capital ?? "")).toUpperCase();
 }
 
 /**

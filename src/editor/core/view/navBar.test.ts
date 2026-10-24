@@ -17,7 +17,7 @@ describe("navigation bar popup model", () => {
   });
 
   it("lists folder children without IDE-hidden names, and symbol children", () => {
-    const e = (name: string, kind: FileEntry["kind"]) => ({ name, path: `/p/${name}`, kind, size: 0, mtimeMs: 0, ignored: false, hidden: false }) as FileEntry;
+    const e = (name: string, kind: FileEntry["kind"]) => ({ name, path: `/p/${name}`, kind, size: 0, mtimeMs: 0, ignored: false, excluded: false, hidden: false }) as FileEntry;
     expect(dirChildren([e(".git", "dir"), e("src", "dir"), e("a.ts", "file")]).map((c) => `${c.kind}:${c.label}`)).toEqual(["dir:src", "file:a.ts"]);
     expect(symbolChildren("/p/a.ts", [sym("A", [sym("b")])]).map((c) => c.label)).toEqual(["A"]);
   });

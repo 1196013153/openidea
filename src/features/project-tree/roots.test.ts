@@ -26,13 +26,14 @@ const MAVEN: RootFolder[] = [
 
 describe("folder icons", () => {
   it("follow detected and marked roots", () => {
-    const kind = (rel: string, ignored = false) => folderKind({ path: `/p/${rel}`, ignored }, MAVEN, "/p");
+    const kind = (rel: string, excluded = false) => folderKind({ path: `/p/${rel}`, excluded }, MAVEN, "/p");
     expect(kind("src/main/java")).toBe("source");
     expect(kind("src/test/java")).toBe("test");
     expect(kind("src/test/resources")).toBe("testResources");
     expect(kind("target")).toBe("excluded");
     expect(kind("src")).toBe("plain");
     expect(kind("docs", true)).toBe("excluded");
+    expect(kind(".github")).toBe("github");
   });
 });
 
