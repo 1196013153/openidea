@@ -25,11 +25,13 @@ The app updates itself from GitHub releases.
 
 ## Screenshots
 
-![Editor with rust-analyzer inlay hints](docs/media/editor.jpg)
-
-| | |
-|---|---|
-| ![Search Everywhere](docs/media/search-everywhere.jpg) | ![Debugger stopped at a breakpoint](docs/media/debug.jpg) |
+<p align="center">
+  <img src="docs/media/editor.jpg" alt="Editor with rust-analyzer inlay hints" width="100%">
+</p>
+<p align="center">
+  <img src="docs/media/search-everywhere.jpg" alt="Search Everywhere" width="49%">
+  <img src="docs/media/debug.jpg" alt="Debugger stopped at a breakpoint" width="49%">
+</p>
 
 ## Features
 
