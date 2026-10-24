@@ -2859,7 +2859,7 @@ export type MenuNode = { kind: "submenu"; id: string; label: string; children: M
 
 /**
  *  Who stands on each side of the conflicts of the operation in progress (merge editor
- *  titles, IDEA's `GitDefaultMergeDialogCustomizer`).
+ *  titles, as IDEA labels them).
  */
 export type MergeSides = {
 	/**  `merge`, `rebase`, `cherry-pick`, `revert`…; `None` outside an operation. */
