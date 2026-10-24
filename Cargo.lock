@@ -4392,6 +4392,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ide-web"
+version = "0.1.12"
+dependencies = [
+ "ide-core",
+ "open",
+ "parking_lot",
+ "percent-encoding",
+ "serde",
+ "specta",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "ide-workspace"
 version = "0.1.12"
 dependencies = [
@@ -5844,6 +5860,7 @@ dependencies = [
  "ide-tools",
  "ide-vcs",
  "ide-vfs",
+ "ide-web",
  "ide-workspace",
  "parking_lot",
  "serde",

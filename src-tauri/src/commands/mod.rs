@@ -34,6 +34,7 @@ pub mod syntax;
 pub mod term;
 pub mod tools;
 pub mod vcs;
+pub mod web;
 pub mod window;
 
 use tauri_specta::collect_commands;
@@ -257,6 +258,9 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         debug::debug_redefine_classes,
         coverage::coverage_prepare,
         coverage::coverage_collect,
+        web::web_browsers,
+        web::web_url,
+        web::web_open,
         profiler::profiler_prepare,
         profiler::profiler_collect,
         plugin::plugin_subscribe,

@@ -158,6 +158,8 @@ export const intellijMacos: Record<string, string[]> = {
   "run.run": ["Ctrl+R"],
   "run.debug": ["Ctrl+D"],
   "run.runContext": ["Ctrl+Shift+R"],
+  // In HTML editors (keyWhen) Run opens the browser; listed later, so it wins over run.runContext.
+  "web.openInBrowser": ["Ctrl+Shift+R"],
   "run.debugContext": ["Ctrl+Shift+D"],
   "run.stop": ["Meta+F2"],
   "run.chooseConfig": ["Ctrl+Alt+R"],

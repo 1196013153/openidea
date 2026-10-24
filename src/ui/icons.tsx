@@ -251,6 +251,13 @@ const ICONS = {
   "db-postgres": "openidea/database/postgres",
   "db-mysql": "openidea/database/mysql",
   export: "openidea/general/export",
+  web: "openidea/general/web",
+  "browser-chrome": "openidea/browsers/chrome",
+  "browser-chromium": "openidea/browsers/chromium",
+  "browser-firefox": "openidea/browsers/firefox",
+  "browser-safari": "openidea/browsers/safari",
+  "browser-edge": "openidea/browsers/edge",
+  "browser-brave": "openidea/browsers/brave",
   // Tool-window-ish glyphs kept for actions and older callers
   structure: "toolwindows/structure",
   hierarchy: "toolwindows/hierarchy",

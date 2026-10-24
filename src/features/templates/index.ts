@@ -1,11 +1,12 @@
 /**
  * Live templates (⌘J, Tab expansion, Surround With ⌥⌘T), postfix completion
- * (`expr.if` …) and file templates ("New ▸ …").
+ * (`expr.if` …), Emmet (Tab expansion, Update Tag with Emmet) and file
+ * templates ("New ▸ …").
  */
 import { lazyComponent } from "@/ui";
 import { registerAction, registerActions, type Action } from "@/platform/actions";
 import { activeEditor, registerEditorContribution } from "@/editor/api";
-import { registerOverlay, registerSettingsPage } from "@/workbench/contributions";
+import { notifications, registerMenuGroup, registerOverlay, registerSettingsPage } from "@/workbench/contributions";
 import { insertLiveTemplate, surroundTarget, surroundWith, templateEditorExtension } from "./editor";
 import { ChooserHost } from "./popup/Chooser";
 import { NewFileDialogHost, openNewFileDialog } from "./files/NewFileDialog";
@@ -13,10 +14,32 @@ import { defaultDirectory } from "./files/create";
 import { fileTemplates, useFileTemplates } from "./files/store";
 import type { FileTemplate } from "./files/model";
 import { syncTemplatesFromStorage } from "./sync";
+import { tagAtCaret, updateTag } from "./emmet/editor";
+import { promptAbbreviation, UpdateTagDialogHost } from "./emmet/UpdateTagDialog";
 
 export { EXTRA_COMPLETION_KEY } from "./editor";
 
 const EDITOR_WHEN = "textEditorActive && !editorReadOnly && (editorFocus || popupOpen || !toolWindowFocus)";
+const MARKUP_PATH = /\.(html?|xhtml|shtml|vue|svelte|xml)$/i;
+
+async function updateTagWithEmmet() {
+  const editor = activeEditor();
+  if (!editor) return;
+  const tag = tagAtCaret(editor.view);
+  if (!tag) {
+    notifications().notify({ level: "info", title: "No tag at the caret", key: "emmet-update-tag" });
+    return;
+  }
+  const abbreviation = await promptAbbreviation(tag);
+  editor.view.focus();
+  if (abbreviation && !updateTag(editor.view, abbreviation))
+    notifications().notify({
+      level: "warning",
+      title: "Cannot update the tag",
+      body: `'${abbreviation}' does not describe a single element.`,
+      key: "emmet-update-tag",
+    });
+}
 
 interface NewFileArg {
   directory?: string;
@@ -106,6 +129,14 @@ export function activate(): () => void {
     registerEditorContribution({ id: "templates", order: 90, extensions: templateEditorExtension }),
     registerOverlay({ id: "templates.chooser", component: ChooserHost }),
     registerOverlay({ id: "templates.newFile", component: NewFileDialogHost }),
+    registerOverlay({ id: "templates.emmetUpdateTag", component: UpdateTagDialogHost }),
+    registerMenuGroup({
+      id: "templates.emmet",
+      menus: ["editor"],
+      order: 60,
+      items: (_menu, { paths: [path] }) =>
+        path && MARKUP_PATH.test(path) ? [{ kind: "action", action: "emmet.updateTag" }] : [],
+    }),
     registerActions([
       {
         id: "code.insertLiveTemplate",
@@ -130,6 +161,14 @@ export function activate(): () => void {
           const target = await surroundTarget(editor.view, editor.ctx);
           if (activeEditor()?.view === editor.view) surroundWith(editor.view, target);
         },
+      },
+      {
+        id: "emmet.updateTag",
+        title: "Update Tag with Emmet",
+        category: "Code",
+        when: `${EDITOR_WHEN} && (editorLangId == html || editorLangId == vue || editorLangId == svelte || editorLangId == xml)`,
+        keywords: ["emmet", "tag", "rename", "class", "attribute"],
+        run: updateTagWithEmmet,
       },
       {
         id: "templates.newFromTemplate",

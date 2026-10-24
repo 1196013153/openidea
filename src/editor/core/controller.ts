@@ -1076,6 +1076,8 @@ function openInMenu(path: string): MenuItem {
       { kind: "action", action: "navigate.selectIn", arg: { path }, label: "Project View" },
       { kind: "action", action: "project.revealInFinder", arg: path, label: revealLabel() },
       { kind: "action", action: "project.openInTerminal", arg: path, label: "Terminal" },
+      { kind: "separator" },
+      ...menuGroupItems("openIn", { paths: [path] }),
     ],
   };
 }

@@ -511,6 +511,12 @@ export const commands = {
 	coveragePrepare: (config: RunConfig) => typedError<CoveragePrepared, IdeError>(__TAURI_INVOKE("coverage_prepare", { config })),
 	/**  Reads the report a coverage run left behind. */
 	coverageCollect: (report: CoverageReportSpec) => typedError<CoverageSuite, IdeError>(__TAURI_INVOKE("coverage_collect", { report })),
+	/**  The browsers installed on this machine. */
+	webBrowsers: () => typedError<Browser[], IdeError>(__TAURI_INVOKE("web_browsers")),
+	/**  The built-in server's URL for `path` (started on first use). */
+	webUrl: (path: IpcPath) => typedError<string, IdeError>(__TAURI_INVOKE("web_url", { path })),
+	/**  Opens `url` in `browser` (an id from `web_browsers`), or the default browser. */
+	webOpen: (url: string, browser: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("web_open", { url, browser })),
 	/**  How to run `config` under a sampling profiler, or which profiler is missing. */
 	profilerPrepare: (config: RunConfig) => typedError<ProfilePrepared, IdeError>(__TAURI_INVOKE("profiler_prepare", { config })),
 	/**  Reads the profile a profiled run left behind. */
@@ -824,6 +830,13 @@ export type BreakpointState = {
 	line: number,
 	verified: boolean,
 	message: string | null,
+};
+
+/**  An installed browser. */
+export type Browser = {
+	/**  `chrome`, `firefox`, `safari`, `edge`, `brave`, `chromium`. */
+	id: string,
+	name: string,
 };
 
 export type BuildEvent = 

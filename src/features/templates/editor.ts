@@ -39,6 +39,7 @@ import {
 } from "./postfix/model";
 import { usePostfixSettings } from "./postfix/store";
 import { showChooser } from "./popup/store";
+import { expandEmmetAtCaret } from "./emmet/editor";
 
 export interface TemplateDocInfo {
   path: string;
@@ -446,8 +447,8 @@ export function templateEditorExtension(ctx: EditorDocContext): Extension {
           run: (view) => {
             if (view.state.readOnly || completionStatus(view.state) === "active") return false;
             if (expandPostfixAtCaret(view)) return true;
-            if (!useLiveTemplateOptions.getState().expandWithTab) return false;
-            return expandLiveTemplateAtCaret(view);
+            if (useLiveTemplateOptions.getState().expandWithTab && expandLiveTemplateAtCaret(view)) return true;
+            return expandEmmetAtCaret(view, ctx.language);
           },
         },
       ]),

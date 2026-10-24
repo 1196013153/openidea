@@ -511,8 +511,9 @@ export function projectViewRoots(map: ReadonlyMap<string, ProjectViewRootContrib
 // Context menu groups: features add items to the editor, project view and
 // editor tab context menus (IDEA's EditorPopupMenu / ProjectViewPopupMenu /
 // EditorTabPopupMenu / EditorGutterPopupMenu groups), e.g. "Run 'hi.ts'" from features/run.
+// `openIn` is the Open In › submenu those three menus share (Browser › from features/web).
 
-export type ContextMenuId = "editor" | "projectView" | "editorTab" | "editorGutter";
+export type ContextMenuId = "editor" | "projectView" | "editorTab" | "editorGutter" | "openIn";
 
 export interface MenuGroupContext {
   /** Files / directories the menu is for (absolute paths; a virtual URI for virtual documents). */

@@ -156,6 +156,8 @@ export const intellijWindows: Record<string, string[]> = {
   "run.run": ["Shift+F10"],
   "run.debug": ["Shift+F9"],
   "run.runContext": ["Ctrl+Shift+F10"],
+  // In HTML editors (keyWhen) Run opens the browser; listed later, so it wins over run.runContext.
+  "web.openInBrowser": ["Ctrl+Shift+F10"],
   "run.debugContext": [],
   "run.stop": ["Ctrl+F2"],
   "run.chooseConfig": ["Alt+Shift+F10"],

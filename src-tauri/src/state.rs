@@ -37,6 +37,8 @@ pub struct AppState {
     pub debugger: Arc<DebugManager>,
     /// WASM plugins (`ide-plugin`), shared by all windows.
     pub plugins: Arc<ide_plugin::PluginHost>,
+    /// The built-in web server (Open In › Browser, the editor's browser bar).
+    pub web: ide_web::WebServer,
     /// Broadcasts to every window.
     pub sink: SharedSink,
     /// One project per window, keyed by window label.
@@ -121,6 +123,7 @@ impl AppState {
             debugger: DebugManager::new(languages.clone()),
             sink: global_sink,
             plugins: crate::commands::plugin::create_host(&app, &data_dir)?,
+            web: ide_web::WebServer::new(),
             syntax,
             startup: Startup {
                 process_to_main,

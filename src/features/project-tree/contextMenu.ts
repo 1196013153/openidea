@@ -241,6 +241,8 @@ export function contextMenuItems(nodes: ProjectNode[]): MenuItem[] {
       folder && getAction("terminal.openAt")
         ? { id: "terminal", label: "Terminal", icon: "terminal", run: () => void delegate("terminal.openAt", folder) }
         : null,
+      { kind: "separator" },
+      ...menuGroupItems("openIn", menuGroupContext(nodes)),
     ]),
     { kind: "separator" },
   );

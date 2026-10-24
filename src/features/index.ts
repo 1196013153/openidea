@@ -26,6 +26,7 @@ import { activate as plugins, activateSettingsPages as pluginsPages } from "./pl
 import { activate as tools, activateSettingsPages as toolsPages } from "./tools";
 import { activate as scratch } from "./scratch";
 import { activate as viewers } from "./viewers";
+import { activate as web } from "./web";
 import { activate as analysis } from "./analysis";
 import { activate as services } from "./services";
 import { activate as github } from "./github";
@@ -58,6 +59,7 @@ const features: Array<[string, Activate]> = [
   ["tools", tools],
   ["scratch", scratch],
   ["viewers", viewers],
+  ["web", web],
   ["analysis", analysis],
   ["services", services],
   ["github", github],
