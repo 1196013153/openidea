@@ -124,7 +124,7 @@ async fn rust_analyzer_end_to_end() {
     mgr.did_open(doc, &main, &LanguageId::new("rust"), 1, MAIN_RS);
     retry("rust-analyzer ready", Duration::from_secs(60), || {
         let s = last_status(&events, "rust-analyzer");
-        if let Some((ServerStatus::Crashed | ServerStatus::Missing, msg)) = &s {
+        if let Some((ServerStatus::Crashed | ServerStatus::Missing | ServerStatus::Misconfigured, msg)) = &s {
             panic!("rust-analyzer failed: {msg:?}");
         }
         async move { matches!(s, Some((ServerStatus::Ready | ServerStatus::Busy, _))).then_some(()) }

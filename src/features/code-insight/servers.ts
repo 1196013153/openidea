@@ -126,12 +126,13 @@ export const STATUS_LABEL: Record<ServerStatus, string> = {
   crashed: "Crashed",
   stopped: "Stopped",
   missing: "Not installed",
+  misconfigured: "Not started",
 };
 
 /** One-line summary for the status bar. */
 export function serversSummary(servers: readonly ServerEntry[]): { text: string; tone: "ok" | "busy" | "error" | "idle" } | null {
   if (!servers.length) return null;
-  const bad = servers.filter((s) => s.status === "crashed" || s.status === "missing");
+  const bad = servers.filter((s) => s.status === "crashed" || s.status === "missing" || s.status === "misconfigured");
   const busy = servers.filter((s) => s.status === "starting" || s.status === "busy");
   const tone = bad.length ? "error" : busy.length ? "busy" : servers.some((s) => s.status === "ready") ? "ok" : "idle";
   const names = [...new Set(servers.map((s) => s.name))];

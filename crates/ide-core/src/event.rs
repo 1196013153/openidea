@@ -106,6 +106,9 @@ pub enum ServerStatus {
     Crashed,
     Stopped,
     Missing,
+    /// Not started: its configuration can't launch it (e.g. no JDK new enough);
+    /// the message says what to change, and a settings change retries.
+    Misconfigured,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

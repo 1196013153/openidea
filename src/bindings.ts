@@ -3397,7 +3397,12 @@ export type ServerInfo = {
 	pid: number | null,
 };
 
-export type ServerStatus = "starting" | "ready" | "busy" | "crashed" | "stopped" | "missing";
+export type ServerStatus = "starting" | "ready" | "busy" | "crashed" | "stopped" | "missing" | 
+/**
+ *  Not started: its configuration can't launch it (e.g. no JDK new enough);
+ *  the message says what to change, and a settings change retries.
+ */
+"misconfigured";
 
 /**  Exception filters of one session (see [`DebugManager::exception_filters`]). */
 export type SessionExceptionFilters = {

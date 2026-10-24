@@ -339,7 +339,7 @@ impl LspManager {
             if let Some(message) = &cfg.launch_error {
                 // A missing binary still asks to be installed first.
                 let missing = !me.launcher.available(&cfg, &root);
-                return Err(if missing { LaunchError::Missing } else { LaunchError::Failed(message.clone()) });
+                return Err(if missing { LaunchError::Missing } else { LaunchError::Config(message.clone()) });
             }
             me.launcher.launch(&cfg, &root, handler, Box::new(move |line| tail.push_stderr(line)))
         })
@@ -355,6 +355,13 @@ impl LspManager {
                 if server.finish_start(generation, Conn::Missing) {
                     server.set_status(&self.sink, ide_core::event::ServerStatus::Missing, Some(message));
                     self.attach_fallbacks();
+                }
+                return;
+            }
+            Err(LaunchError::Config(message)) => {
+                tracing::warn!("{}: {message}", server.name);
+                if server.finish_start(generation, Conn::Failed) {
+                    server.set_status(&self.sink, ide_core::event::ServerStatus::Misconfigured, Some(message));
                 }
                 return;
             }
@@ -1604,8 +1611,10 @@ impl LspManager {
                     s.reset_for_restart();
                     self.ensure_started(&s);
                 }
-                // Missing / crashed servers retry with the new configuration (e.g. a new PATH).
-                ide_core::event::ServerStatus::Missing | ide_core::event::ServerStatus::Crashed => {
+                // Missing / crashed / misconfigured servers retry with the new configuration (e.g. a new PATH).
+                ide_core::event::ServerStatus::Missing
+                | ide_core::event::ServerStatus::Crashed
+                | ide_core::event::ServerStatus::Misconfigured => {
                     s.reset_for_restart();
                     self.ensure_started(&s);
                 }
