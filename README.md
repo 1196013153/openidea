@@ -33,19 +33,6 @@ The app updates itself from GitHub releases.
   <img src="docs/media/debug.jpg" alt="Debugger stopped at a breakpoint" width="49%">
 </p>
 
-## Features
-
-- **IntelliJ habits**: the IDEA keymap (macOS and Windows), Search Everywhere on double Shift,
-  Goto File / Symbol / Action, tool windows on side stripes.
-- **Code insight**: completion, navigation, usages, inlay hints and diagnostics over LSP;
-  languages are plain TOML files in [`languages/`](languages).
-- **Run and debug**: run configurations, a DAP debugger with inline values, test runner,
-  coverage and profiler views.
-- **Git and GitHub**: commit, stash, branches, log with graph, diffs, pull requests.
-- **Tools**: terminal with split panes, database client, HTTP client, Docker services, TODO view.
-- **Plugins**: sandboxed WebAssembly components (wasmtime, WASI preview 2), see
-  [`plugins/`](plugins/README.md).
-
 ## Benchmark
 
 Opening [freqtrade](https://github.com/freqtrade/freqtrade) (Python, ~770 files)
