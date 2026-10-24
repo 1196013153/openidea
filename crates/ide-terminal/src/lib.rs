@@ -32,7 +32,7 @@ const KILL_GRACE: Duration = Duration::from_millis(1500);
 #[serde(rename_all = "camelCase")]
 pub struct TerminalOptions {
     pub cwd: ide_core::IpcPath,
-    /// Defaults to the user's login shell (`$SHELL`, or `COMSPEC` on Windows).
+    /// Defaults to the user's login shell (passwd entry, then `$SHELL`; PowerShell or `COMSPEC` on Windows).
     pub shell: Option<String>,
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
@@ -372,12 +372,32 @@ fn resolve_shell(shell: Option<&str>, args: &[String]) -> (String, Vec<String>) 
     (shell, args)
 }
 
+/// The account's login shell comes first: `$SHELL` is inherited from whatever
+/// launched the app (a terminal running another shell, `tauri dev`), so it may
+/// not be the shell the user picked.
 #[cfg(unix)]
 fn default_shell() -> String {
-    if let Some(shell) = std::env::var("SHELL").ok().filter(|s| !s.is_empty() && Path::new(s).exists()) {
+    let usable = |s: &String| !s.is_empty() && Path::new(s).exists();
+    if let Some(shell) = login_shell().filter(usable).or_else(|| std::env::var("SHELL").ok().filter(usable)) {
         return shell;
     }
     ["/bin/zsh", "/bin/bash", "/bin/sh"].into_iter().find(|p| Path::new(p).exists()).unwrap_or("/bin/sh").to_owned()
+}
+
+/// `pw_shell` of the current user's passwd entry.
+#[cfg(unix)]
+fn login_shell() -> Option<String> {
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: every pointer refers to a live local buffer of the stated size.
+    let rc = unsafe { libc::getpwuid_r(libc::getuid(), &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    if rc != 0 || result.is_null() || pwd.pw_shell.is_null() {
+        return None;
+    }
+    // SAFETY: on success `pw_shell` is a NUL-terminated string inside `buf`.
+    let shell = unsafe { std::ffi::CStr::from_ptr(pwd.pw_shell) };
+    Some(shell.to_string_lossy().into_owned())
 }
 
 #[cfg(windows)]
@@ -421,6 +441,13 @@ fn terminal_env(user: &BTreeMap<String, String>) -> BTreeMap<String, String> {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn login_shell_reads_the_passwd_entry() {
+        let shell = login_shell().expect("passwd entry");
+        assert!(shell.starts_with('/'), "{shell}");
+    }
     use std::sync::mpsc::Receiver;
 
     struct Harness {

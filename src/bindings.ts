@@ -3740,7 +3740,7 @@ export type TerminalInfo = {
 
 export type TerminalOptions = {
 	cwd: IpcPath,
-	/**  Defaults to the user's login shell (`$SHELL`, or `COMSPEC` on Windows). */
+	/**  Defaults to the user's login shell (passwd entry, then `$SHELL`; PowerShell or `COMSPEC` on Windows). */
 	shell: string | null,
 	args: string[],
 	env: { [key in string]: string },
