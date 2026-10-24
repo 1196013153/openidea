@@ -72,13 +72,28 @@
   flex: none;
   color: var(--fg-muted);
 }
-/* The label keeps its width (up to most of the row); a long detail (a path) is cut instead. */
+.sizer {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+/* Mirrors a List row: inset, padding and gap. */
+.sizerRow {
+  display: flex;
+  gap: 6px;
+  margin: 0 var(--list-inset, 6px);
+  padding: 0 8px;
+  white-space: nowrap;
+}
 .optionLabel {
   flex: 1 0 auto;
-  max-width: 70%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The label keeps its width (up to most of the row); a long detail (a path) is cut instead. */
+.withDetail {
+  max-width: 70%;
 }
 .detail {
   flex: 0 1 auto;

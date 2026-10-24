@@ -591,5 +591,10 @@ export function PullRequestsView() {
 export function PullRequestsHeader() {
   const availability = useGithub((s) => s.availability);
   if (availability?.kind !== "ready") return null;
-  return <span className={styles.repo}>{availability.repo.nameWithOwner}</span>;
+  const name = availability.repo.nameWithOwner;
+  return (
+    <span className={styles.repo} title={name}>
+      {name}
+    </span>
+  );
 }

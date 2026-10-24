@@ -127,6 +127,16 @@ export function Select<V extends string = string>({
         className={styles.popup}
       >
         <div tabIndex={-1} data-autofocus onKeyDown={onPopupKey} className={styles.popupInner}>
+          {/* Virtualised rows are absolutely positioned; this sizes the popup to the widest label. */}
+          <div aria-hidden className={styles.sizer}>
+            {options.map((o) => (
+              <div key={o.value} className={styles.sizerRow}>
+                <span className={styles.check} />
+                {o.icon && <Icon name={o.icon} size={14} />}
+                <span>{tx(o.label)}</span>
+              </div>
+            ))}
+          </div>
           <List
             items={options}
             getKey={(o) => o.value}
@@ -144,7 +154,7 @@ export function Select<V extends string = string>({
               <>
                 <span className={styles.check}>{o.value === value && <Icon name="check" size={12} />}</span>
                 {o.icon && <Icon name={o.icon} size={14} />}
-                <span className={styles.optionLabel}>{tx(o.label)}</span>
+                <span className={clsx(styles.optionLabel, o.detail && styles.withDetail)}>{tx(o.label)}</span>
                 {o.detail && (
                   <span className={styles.detail} title={o.detail}>
                     {tx(o.detail)}
