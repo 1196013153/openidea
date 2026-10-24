@@ -1085,3 +1085,72 @@ fn large_input_is_not_parsed() {
     let big = "a".repeat(MAX_PARSE_BYTES + 1);
     assert!(syntax().outline(&lang("rust"), &big).is_empty());
 }
+
+// --- web references -------------------------------------------------------------
+
+fn web_defs(id: &str, src: &str) -> Vec<(String, SymbolKind, u32, u32)> {
+    syntax()
+        .web_definitions(&lang(id), src)
+        .into_iter()
+        .map(|t| (t.name, t.kind, t.range.start.line, t.range.start.col))
+        .collect()
+}
+
+fn web_ref(id: &str, src: &str) -> Option<(WebReferenceKind, String, u32, u32)> {
+    let at = src.find('|').expect("caret marker");
+    let text = src.replace('|', "");
+    let line = text[..at].matches('\n').count() as u32;
+    let col = (at - text[..at].rfind('\n').map_or(0, |i| i + 1)) as u32;
+    syntax()
+        .web_reference_at(&lang(id), &text, Pos::new(line, col))
+        .map(|r| (r.kind, r.name, r.range.start.col, r.range.end.col))
+}
+
+#[test]
+fn web_definitions_of_stylesheets_and_style_elements() {
+    let css = ".a.b, div#main > .c:hover { color: var(--x); --y: 1px; }\n@media (x) { .d {} }\n";
+    assert_eq!(
+        web_defs("css", css),
+        vec![
+            (".a".into(), CSS_CLASS, 0, 1),
+            (".b".into(), CSS_CLASS, 0, 3),
+            ("#main".into(), CSS_ID, 0, 10),
+            (".c".into(), CSS_CLASS, 0, 18),
+            ("--y".into(), CSS_VARIABLE, 0, 45),
+            (".d".into(), CSS_CLASS, 1, 14),
+        ]
+    );
+    // Pseudo-classes (`:hover`) are not classes; nested SCSS rules parse with the CSS grammar.
+    assert!(!web_defs("css", css).iter().any(|d| d.0 == ".hover"));
+    assert!(web_defs("scss", ".card { &:hover { } .title { } }").iter().any(|d| d.0 == ".title"));
+    let html = "<p class=\"x\">\n<style>\n  .card { --gap: 2px }\n</style>";
+    assert_eq!(web_defs("html", html), vec![(".card".into(), CSS_CLASS, 2, 3), ("--gap".into(), CSS_VARIABLE, 2, 10)]);
+    assert!(syntax().tags(&lang("css"), css).iter().any(|t| t.name == ".a"));
+    assert!(syntax().has_symbols(&lang("css")) && syntax().has_symbols(&lang("vue")));
+}
+
+#[test]
+fn web_references_in_attributes_and_stylesheets() {
+    use WebReferenceKind::*;
+    assert_eq!(web_ref("html", r##"<div class="card bi|g">"##), Some((Class, "big".into(), 17, 20)));
+    assert_eq!(web_ref("html", r##"<div class="|card big">"##), Some((Class, "card".into(), 12, 16)));
+    assert_eq!(web_ref("html", r##"<div id="ma|in">"##), Some((Id, "main".into(), 9, 13)));
+    assert_eq!(web_ref("html", r##"<a href="#to|p">"##), Some((Anchor, "top".into(), 9, 13)));
+    assert_eq!(web_ref("html", r##"<a href="page.ht|ml">"##), None);
+    assert_eq!(
+        web_ref("html", r##"<p style="color: var(--ac|cent)">"##),
+        Some((CssVariable, "--accent".into(), 21, 29))
+    );
+    assert_eq!(web_ref("html", "<style>\n.a { color: var(--x|) }\n</style>").map(|r| r.1), Some("--x".into()));
+    assert_eq!(web_ref("css", ".a { color: var(--a|ccent, red) }"), Some((CssVariable, "--accent".into(), 16, 24)));
+    assert_eq!(web_ref("css", ".a { color: re|d }"), None);
+    assert_eq!(web_ref("vue", r##"<template><div class="ti|tle"/></template>"##).map(|r| r.0), Some(Class));
+}
+
+#[test]
+fn web_anchors_find_ids_and_names() {
+    let html = "<h2 id=\"top\">x</h2>\n<a name=\"top\"></a>\n<p class=\"top\">";
+    let found: Vec<(u32, u32)> =
+        syntax().web_anchors(&lang("html"), html, "top").into_iter().map(|r| (r.start.line, r.start.col)).collect();
+    assert_eq!(found, vec![(0, 8), (1, 9)]);
+}

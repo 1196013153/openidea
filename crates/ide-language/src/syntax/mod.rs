@@ -7,16 +7,18 @@ mod highlight;
 pub(crate) mod lines;
 mod outline;
 mod selection;
+mod web;
 
 use crate::{FoldRange, LanguageConfig, LanguageRegistry, SymbolTag};
 pub use cache::{MAX_CACHED_TREES, SyntaxCache, SyntaxCacheStats};
 use grammars::{SPECS, Spec};
 pub use highlight::{SyntaxHighlightKind, SyntaxHighlights};
-use ide_core::{LanguageId, OutlineItem, Range};
+use ide_core::{LanguageId, OutlineItem, Pos, Range};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use tree_sitter::{Language, Parser, Tree};
+pub use web::{CSS_CLASS, CSS_ID, CSS_VARIABLE, WebReference, WebReferenceKind};
 
 /// Texts larger than this are not parsed (minified bundles, generated dumps).
 pub const MAX_PARSE_BYTES: usize = 16 * 1024 * 1024;
@@ -117,6 +119,8 @@ impl Syntax {
         FP.get_or_init(|| {
             let mut h = blake3::Hasher::new();
             h.update(env!("CARGO_PKG_VERSION").as_bytes());
+            // Bump when web definitions (`.class`, `#id`, `--var` tags) change.
+            h.update(b"web-definitions-1");
             for s in SPECS {
                 h.update(s.name.as_bytes());
                 h.update(&Language::new(s.language).abi_version().to_le_bytes());
@@ -141,7 +145,8 @@ impl Syntax {
     /// Whether [`Syntax::tags`] can return anything for this language (data
     /// formats such as JSON only have an outline). Lets indexers skip parsing.
     pub fn has_symbols(&self, lang: &LanguageId) -> bool {
-        self.grammar(lang).and_then(Grammar::outline_query).is_some_and(|q| q.has_tags)
+        self.web_grammar(lang).is_some()
+            || self.grammar(lang).and_then(Grammar::outline_query).is_some_and(|q| q.has_tags)
     }
 
     pub fn outline(&self, lang: &LanguageId, text: &str) -> Vec<OutlineItem> {
@@ -158,11 +163,56 @@ impl Syntax {
     }
 
     pub fn tags(&self, lang: &LanguageId, text: &str) -> Vec<SymbolTag> {
-        self.analyze(lang, text, |g, tree, text| {
-            let query = g.outline_query()?;
-            Some(outline::tags(g, query, tree, text))
-        })
-        .unwrap_or_default()
+        let mut tags = self
+            .analyze(lang, text, |g, tree, text| {
+                let query = g.outline_query()?;
+                Some(outline::tags(g, query, tree, text))
+            })
+            .unwrap_or_default();
+        tags.extend(self.web_definitions(lang, text));
+        tags
+    }
+
+    /// The grammar web features parse `lang` with: its own for HTML and CSS, the
+    /// CSS grammar for SCSS / Less (selectors and custom properties parse alike),
+    /// HTML for Vue / Svelte single-file components.
+    fn web_grammar(&self, lang: &LanguageId) -> Option<&Grammar> {
+        let name = match lang.as_str() {
+            "scss" | "less" => "css",
+            "vue" | "svelte" => "html",
+            _ => self.grammar(lang).map(|g| g.spec.name)?,
+        };
+        web::is_web_grammar(name).then(|| self.grammar(&LanguageId::new(name))).flatten()
+    }
+
+    fn with_web_tree<R>(
+        &self,
+        lang: &LanguageId,
+        text: &str,
+        f: impl FnOnce(&Grammar, Option<&Grammar>, &Tree) -> R,
+    ) -> Option<R> {
+        let g = self.web_grammar(lang)?;
+        if text.len() > MAX_PARSE_BYTES {
+            return None;
+        }
+        let tree = parse(&g.language, text, None)?;
+        Some(f(g, self.grammar(&LanguageId::new("css")), &tree))
+    }
+
+    /// CSS class (`.card`), id (`#main`) and custom property (`--accent`)
+    /// definitions of a stylesheet or of the `<style>` elements of a document.
+    pub fn web_definitions(&self, lang: &LanguageId, text: &str) -> Vec<SymbolTag> {
+        self.with_web_tree(lang, text, |g, css, tree| web::definitions(g, css, tree, text)).unwrap_or_default()
+    }
+
+    /// The `class` / `id` / `href="#…"` / `var(--…)` reference at `pos`.
+    pub fn web_reference_at(&self, lang: &LanguageId, text: &str, pos: Pos) -> Option<WebReference> {
+        self.with_web_tree(lang, text, |g, css, tree| web::reference_at(g, css, tree, text, pos)).flatten()
+    }
+
+    /// Value ranges of the `id="name"` / `name="name"` attributes in an HTML document.
+    pub fn web_anchors(&self, lang: &LanguageId, text: &str, name: &str) -> Vec<Range> {
+        self.with_web_tree(lang, text, |_, _, tree| web::anchors(tree, text, name)).unwrap_or_default()
     }
 
     /// Highlighting from the grammar's own query; `None` without one.

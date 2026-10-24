@@ -121,6 +121,11 @@ impl ProjectIndex {
         matching::find_symbols(&d, &matching::Recents { paths: &recent }, query, filter, limit)
     }
 
+    /// Symbols named exactly `name` (of `kind`, if given): `.card` selectors for `class="card"`.
+    pub fn symbols_named(&self, name: &str, kind: Option<SymbolKind>, limit: usize) -> Vec<SymbolMatch> {
+        matching::symbols_named(&self.shared.data.read(), name, kind, limit)
+    }
+
     /// Incrementally re-indexes changed paths (called from the vfs watcher).
     /// Cheap: the work is queued for the indexing thread.
     pub fn update(&self, changed: &[PathBuf], removed: &[PathBuf]) {

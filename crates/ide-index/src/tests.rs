@@ -381,3 +381,21 @@ fn synthetic_index_answers_queries() {
     assert!(!s.find_symbols("PaySe", SymbolFilter::All, 20).is_empty());
     assert!(s.find_symbols("PaySe", SymbolFilter::Types, 20).iter().all(|m| m.kind == SymbolKind::Class));
 }
+
+#[test]
+fn css_selectors_are_found_by_exact_name() {
+    let f = Fixture::new(&[
+        ("web/a.css", ".card { --gap: 1px }\n.cardigan {}\n"),
+        ("web/b.scss", ".list { .card { } }\n"),
+        ("web/index.html", "<style>.card{}</style>\n<div class=\"card\"></div>\n"),
+    ]);
+    let idx = f.open();
+    let found: Vec<(String, u32)> = idx
+        .symbols_named(".card", Some(SymbolKind::Class), 10)
+        .into_iter()
+        .map(|m| (m.rel_path, m.range.start.line))
+        .collect();
+    assert_eq!(found, vec![("web/a.css".into(), 0), ("web/b.scss".into(), 0), ("web/index.html".into(), 0)]);
+    assert_eq!(idx.symbols_named("--gap", None, 10).len(), 1);
+    assert!(idx.symbols_named(".card", Some(SymbolKind::Field), 10).is_empty());
+}

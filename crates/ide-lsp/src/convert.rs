@@ -783,6 +783,27 @@ pub fn code_lens(conv: &Conv, path: &Path, l: lsp::CodeLens) -> CodeLens {
     CodeLens { range: conv.range(path, l.range), command: l.command.map(command) }
 }
 
+pub fn document_link(conv: &Conv, path: &Path, l: lsp::DocumentLink) -> Option<DocumentLink> {
+    let target = l.target?;
+    let target = target.as_str();
+    let (file, url) = match uri_to_path(target) {
+        Some(p) => (Some(p), None),
+        None => (None, Some(target.to_owned())),
+    };
+    let fragment = file
+        .as_ref()
+        .and_then(|_| target.split_once('#'))
+        .map(|(_, f)| percent_encoding::percent_decode_str(f).decode_utf8_lossy().into_owned())
+        .filter(|f| !f.is_empty());
+    Some(DocumentLink {
+        range: conv.range(path, l.range),
+        path: file.map(Into::into),
+        fragment,
+        url,
+        tooltip: l.tooltip,
+    })
+}
+
 pub fn call_item(conv: &Conv, item: &lsp::CallHierarchyItem, from_ranges: Vec<Range>) -> Option<HierarchyItem> {
     let (path, uri) = uri_target(item.uri.as_str());
     Some(HierarchyItem {
@@ -1111,5 +1132,26 @@ mod tests {
         assert_eq!(h.label, ": Vec<u8>");
         assert_eq!(h.kind, InlayKind::Type);
         assert!(h.padding_left && !h.padding_right);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn document_links_split_file_targets_and_urls() {
+        let conv = Conv::utf16();
+        let link = |target: Option<&str>| {
+            serde_json::from_value::<lsp::DocumentLink>(json!({
+                "range": { "start": { "line": 0, "character": 6 }, "end": { "line": 0, "character": 15 } },
+                "target": target,
+            }))
+            .unwrap()
+        };
+        let here = Path::new("/p/index.html");
+        let file = document_link(&conv, here, link(Some("file:///p/a%20b.md#L12"))).unwrap();
+        assert_eq!(file.path.as_deref(), Some(Path::new("/p/a b.md")));
+        assert_eq!(file.fragment.as_deref(), Some("L12"));
+        assert_eq!(file.range, Range::new(p(0, 6), p(0, 15)));
+        let web = document_link(&conv, here, link(Some("https://example.com/#top"))).unwrap();
+        assert_eq!((web.path, web.url.as_deref(), web.fragment), (None, Some("https://example.com/#top"), None));
+        assert!(document_link(&conv, here, link(None)).is_none());
     }
 }

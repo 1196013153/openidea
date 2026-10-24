@@ -214,6 +214,21 @@ pub struct CodeLens {
     pub command: Option<Command>,
 }
 
+/// A link in a document (`textDocument/documentLink`): an HTML `href`, a
+/// Markdown link, an `#include`, a JSON `$schema`…
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentLink {
+    pub range: Range,
+    /// A `file:` target.
+    pub path: Option<ide_core::IpcPath>,
+    /// The `#fragment` of a `file:` target (`L12`, `L12,5`, a heading or element id).
+    pub fragment: Option<String>,
+    /// Any other target (`https:`, …).
+    pub url: Option<String>,
+    pub tooltip: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum HierarchyDirection {

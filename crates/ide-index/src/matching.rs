@@ -7,6 +7,7 @@
 
 use crate::data::{FileEntry, IndexData, char_mask};
 use crate::{FileMatch, SymbolFilter, SymbolMatch};
+use ide_core::SymbolKind;
 use nucleo_matcher::{Config, Matcher, Utf32Str, Utf32String};
 use rayon::prelude::*;
 use std::cell::RefCell;
@@ -417,6 +418,33 @@ pub(crate) fn find_symbols(
             }
         })
         .collect()
+}
+
+/// Symbols named exactly `name` (and of `kind`, when given), by path then position.
+pub(crate) fn symbols_named(data: &IndexData, name: &str, kind: Option<SymbolKind>, limit: usize) -> Vec<SymbolMatch> {
+    let mask = char_mask(name);
+    let mut out: Vec<SymbolMatch> = data
+        .files
+        .iter()
+        .flatten()
+        .flat_map(|e| {
+            e.symbols.iter().filter(|s| s.mask == mask && &*s.name == name && kind.is_none_or(|k| s.kind == k)).map(
+                move |s| SymbolMatch {
+                    name: s.name.to_string(),
+                    kind: s.kind,
+                    container: s.container.as_deref().map(str::to_owned),
+                    path: e.path.clone().into(),
+                    rel_path: e.rel.to_string(),
+                    range: s.range,
+                    score: 0,
+                    indices: Vec::new(),
+                },
+            )
+        })
+        .collect();
+    out.sort_by(|a, b| a.rel_path.cmp(&b.rel_path).then_with(|| a.range.cmp(&b.range)));
+    out.truncate(limit);
+    out
 }
 
 #[cfg(test)]

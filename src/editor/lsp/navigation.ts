@@ -6,7 +6,15 @@
  */
 import { EditorSelection, Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { commands, isCancelled, type GotoKind, type Highlight, type Location, type Pos } from "@/platform/ipc";
+import {
+  commands,
+  isCancelled,
+  type GotoKind,
+  type Highlight,
+  type Location,
+  type Pos,
+  type WebReferenceKind,
+} from "@/platform/ipc";
 import {
   CONTRIBUTED_DEFINITION,
   activeEditor,
@@ -26,6 +34,7 @@ import { SYNTAX_NOTE, declarationFallback, isSelfTarget, localHighlights, type D
 import { showHint } from "./hint";
 import { caretAnchor, openPopup, type ListPopupItem } from "./popupStore";
 import { readManyFileLines } from "./files";
+import { documentLinks, followReference, knownLinks, linkReference, referenceAt, textReference } from "./links";
 import { serverBackoff } from "./availability";
 import { editorPrefs } from "@/platform/editorSettings";
 import { isVirtualUri, virtualContainer } from "@/platform/virtualDocs";
@@ -101,13 +110,18 @@ export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number)
   const pos = offsetToPos(view.state.doc, offset);
   let locs: DeclarationTarget[];
   let fromSyntax = false;
+  const declaration = kind === "definition" || kind === "declaration";
+  let serverDown = false;
   try {
     locs = dedupeLocations(await lspRequest(() => commands.lspGoto(doc.doc, pos, kind)));
   } catch (e) {
-    if (isCancelled(e) || (kind !== "definition" && kind !== "declaration")) {
+    if (isCancelled(e) || !declaration) {
       reportLspError(view, e, true);
       return;
     }
+    // Web references and links need no server.
+    if ((await gotoWebReference(view, doc, pos, offset)) || (await followReferenceAt(view, doc, offset))) return;
+    serverDown = isUnavailable(e);
     // Dumb mode: the server is not ready / failing — answer from the syntax tree.
     const fb = await gotoFallback(view, doc, pos);
     if (!fb) {
@@ -118,7 +132,14 @@ export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number)
     fromSyntax = true;
   }
   if (!locs.length) {
-    showHint(view, NOT_FOUND[kind]);
+    // The server has no definition here: a link (`href`, `#include`, Markdown) or a file path.
+    if (
+      declaration &&
+      !fromSyntax &&
+      ((await gotoWebReference(view, doc, pos, offset)) || (await followReferenceAt(view, doc, offset)))
+    )
+      return;
+    showHint(view, serverDown ? `${NOT_FOUND[kind]}: no language server is running for this file` : NOT_FOUND[kind]);
     return;
   }
   // IDEA: ⌘B on a declaration shows its usages.
@@ -142,6 +163,52 @@ export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number)
     title: `${TITLES[kind]} (${locs.length} found${fromSyntax ? ", based on syntax" : ""})`,
     items: await locationItems(locs),
   });
+}
+
+const WEB_LANGUAGES = new Set(["html", "css", "scss", "less", "vue", "svelte"]);
+
+const WEB_SIGIL: Record<WebReferenceKind, string> = { class: ".", id: "#", anchor: "#", cssVariable: "" };
+
+/**
+ * `class` / `id` attributes to their CSS selectors, `href="#x"` to the element,
+ * `var(--x)` to its declarations (no language server resolves these); false
+ * when there is no such reference at `pos`.
+ */
+async function gotoWebReference(view: EditorView, doc: EditorDocContext, pos: Pos, offset: number): Promise<boolean> {
+  if (!WEB_LANGUAGES.has(doc.language) || doc.virtual) return false;
+  let found;
+  try {
+    await whenSynced(view);
+    found = await lspRequest(() => commands.webGoto(doc.doc, pos));
+  } catch (e) {
+    console.debug("[web] goto", e);
+    return false;
+  }
+  if (!found) return false;
+  const { reference, targets } = found;
+  const label = `${WEB_SIGIL[reference.kind]}${reference.name}`;
+  if (!targets.length) showHint(view, `Cannot find declaration of '${label}'`);
+  else if (targets.length === 1) await navigateTo(targets[0]!);
+  else
+    openPopup({
+      kind: "list",
+      anchor: caretAnchor(view, offset),
+      title: `Choose Declaration of '${label}' (${targets.length} found)`,
+      items: await locationItems(targets),
+    });
+  return true;
+}
+
+/** Follows the link, URL or file path at `offset`; false when there is none. */
+async function followReferenceAt(view: EditorView, doc: EditorDocContext, offset: number): Promise<boolean> {
+  const ref = await referenceAt(view, doc, offset);
+  if (!ref) return false;
+  try {
+    await followReference(ref);
+  } catch (e) {
+    showHint(view, e instanceof Error ? e.message : String(e), { tone: "error" });
+  }
+  return true;
 }
 
 /** Declaration targets from the structure service; null when it cannot answer for this file. */
@@ -173,9 +240,13 @@ const linkField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+/** What ⌘-hover underlines: a whole link, URL or path, else the word. */
 function linkAt(view: EditorView, x: number, y: number) {
   const pos = view.posAtCoords({ x, y }, false);
   if (pos == null) return null;
+  const links = knownLinks(view);
+  const ref = (links && linkReference(view.state.doc, links, pos)) ?? textReference(view.state.doc, pos);
+  if (ref) return ref;
   const word = view.state.wordAt(pos);
   return word && word.from < word.to ? word : null;
 }
@@ -185,6 +256,12 @@ const linkPlugin = ViewPlugin.fromClass(
     last: { x: number; y: number } | null = null;
     constructor(readonly view: EditorView) {}
     show(meta: boolean) {
+      const doc = meta ? docOf(this.view) : null;
+      // Underline whole links once the server's links are in.
+      if (doc && !doc.virtual && !knownLinks(this.view))
+        void documentLinks(this.view, doc).then(() => {
+          if (this.view.state.field(linkField).size) this.show(true);
+        });
       const current = this.view.state.field(linkField);
       const target = meta && this.last ? linkAt(this.view, this.last.x, this.last.y) : null;
       let same = false;

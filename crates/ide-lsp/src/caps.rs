@@ -121,6 +121,7 @@ pub fn client_capabilities() -> Value {
                 "honorsChangeAnnotations": false
             },
             "codeLens": { "dynamicRegistration": false },
+            "documentLink": { "dynamicRegistration": false, "tooltipSupport": true },
             "formatting": { "dynamicRegistration": false },
             "rangeFormatting": { "dynamicRegistration": false },
             "rename": {
@@ -205,6 +206,7 @@ pub fn capability_key(method: &str) -> Option<&'static str> {
         "textDocument/inlayHint" => "inlayHintProvider",
         "textDocument/semanticTokens" | "textDocument/semanticTokens/full" => "semanticTokensProvider",
         "textDocument/codeLens" => "codeLensProvider",
+        "textDocument/documentLink" => "documentLinkProvider",
         "textDocument/prepareCallHierarchy" => "callHierarchyProvider",
         "textDocument/prepareTypeHierarchy" => "typeHierarchyProvider",
         _ => return None,

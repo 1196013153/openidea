@@ -1422,6 +1422,52 @@ impl LspManager {
         out.finish(Vec::new())
     }
 
+    /// The document's links; ones without a target are resolved when the server can.
+    pub async fn document_links(&self, doc: DocId) -> IdeResult<Vec<DocumentLink>> {
+        let (snap, targets) = self.doc_targets(doc, "document links", |c| c.has("documentLinkProvider")).await?;
+        let requests = targets.iter().map(|t| {
+            let params = json!({ "textDocument": snap.ident() });
+            async move {
+                let links = self
+                    .call::<_, Option<Vec<lsp::DocumentLink>>>(
+                        t,
+                        "textDocument/documentLink",
+                        params,
+                        None,
+                        DEFAULT_TIMEOUT,
+                    )
+                    .await?
+                    .unwrap_or_default();
+                if !t.caps().has_sub("documentLinkProvider", "resolveProvider") {
+                    return Ok::<_, IdeError>((t, links));
+                }
+                let resolved = join_all(links.into_iter().map(|l| async move {
+                    if l.target.is_some() {
+                        return l;
+                    }
+                    let original = l.clone();
+                    self.call::<_, lsp::DocumentLink>(t, "documentLink/resolve", l, None, DEFAULT_TIMEOUT)
+                        .await
+                        .unwrap_or(original)
+                }))
+                .await;
+                Ok((t, resolved))
+            }
+        });
+        let mut out = Outcome::new();
+        for r in join_all(requests).await {
+            match r {
+                Ok((t, links)) => {
+                    let conv = self.conv(t.enc());
+                    let acc = out.value.get_or_insert_with(Vec::new);
+                    acc.extend(links.into_iter().filter_map(|l| convert::document_link(&conv, &snap.path, l)));
+                }
+                Err(e) => out.fail(e),
+            }
+        }
+        out.finish(Vec::new())
+    }
+
     pub async fn call_hierarchy(
         &self,
         doc: DocId,

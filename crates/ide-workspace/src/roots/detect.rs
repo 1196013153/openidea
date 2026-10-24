@@ -192,6 +192,8 @@ fn module_roots(root: &Path, rel: &str, files: &[String], out: &mut Vec<SourceFo
         // A JVM build's `src` holds source sets, not JavaScript.
         if !has("pom.xml") && !GRADLE_FILES.iter().any(|f| has(f)) {
             add("src", RootKind::Source, "package.json");
+            // Served at `/` by Vite, Next and Create React App: `href="/logo.svg"` resolves here.
+            add("public", RootKind::Resources, "package.json");
             for t in ["test", "tests", "__tests__"] {
                 add(t, RootKind::Test, "package.json");
             }
@@ -330,6 +332,7 @@ mod tests {
             "flat/tests/",
             "web/package.json",
             "web/src/",
+            "web/public/",
             "web/__tests__/",
             "web/node_modules/x/package.json",
             "web/dist/",
@@ -351,6 +354,7 @@ mod tests {
                 "web/__tests__=Test@web/package.json",
                 "web/dist=Excluded@web/package.json",
                 "web/node_modules=Excluded@web/package.json",
+                "web/public=Resources@web/package.json",
                 "web/src=Source@web/package.json",
             ]
         );

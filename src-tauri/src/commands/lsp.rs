@@ -243,6 +243,17 @@ pub async fn lsp_code_lens(window: Window, state: State<'_, AppState>, doc: DocI
     project!(window, state).lsp.code_lens(doc).await
 }
 
+/// Links in a document (`href`s, Markdown links, `#include`s…) from its language servers.
+#[tauri::command]
+#[specta::specta]
+pub async fn lsp_document_links(
+    window: Window,
+    state: State<'_, AppState>,
+    doc: DocId,
+) -> IdeResult<Vec<DocumentLink>> {
+    project!(window, state).lsp.document_links(doc).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn lsp_call_hierarchy(
