@@ -99,3 +99,20 @@ export function hunksOverlapping(
   });
   return out;
 }
+
+/**
+ * Identity of a changed block that survives edits elsewhere in the file: its old and
+ * new text (an FNV-1a hash), plus how often the same block occurs before it.
+ */
+export function hunkKeys(text: string, hunks: readonly Pick<LineHunk, "start" | "lines" | "oldText">[]): string[] {
+  const seen = new Map<string, number>();
+  return hunks.map((h) => {
+    const body = `${h.oldText}\u0000${currentHunkText(text, h)}`;
+    let x = 0x811c9dc5;
+    for (let i = 0; i < body.length; i++) x = Math.imul(x ^ body.charCodeAt(i), 0x01000193);
+    const base = `${(x >>> 0).toString(36)}:${body.length}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return `${base}:${n}`;
+  });
+}

@@ -211,6 +211,8 @@ export function registerProjectActions(): () => void {
       category: "Project View",
       icon: "trash",
       when: FOCUS,
+      // Not while speed search (a popup) owns ⌫.
+      keyWhen: "!popupOpen",
       keywords: ["remove", "trash"],
       run: ({ arg }) => deleteSelection(nodesFrom(arg)),
     },
@@ -324,6 +326,7 @@ export function registerProjectActions(): () => void {
       category: "Project View",
       icon: "refresh",
       when: OPEN,
+      keyWhen: FOCUS,
       keywords: ["synchronize", "refresh"],
       run: ({ arg }) => reloadFromDisk(nodesFrom(arg)),
     },
@@ -333,6 +336,7 @@ export function registerProjectActions(): () => void {
       category: "Project View",
       icon: "expand-all",
       when: OPEN,
+      keyWhen: FOCUS,
       run: () => {
         const lead = leadNode();
         return expandAll(lead?.dir && !lead.root ? lead.path : undefined);
@@ -344,6 +348,7 @@ export function registerProjectActions(): () => void {
       category: "Project View",
       icon: "collapse-all",
       when: OPEN,
+      keyWhen: FOCUS,
       run: () => {
         collapseAll();
         treeHandle.current?.focus();

@@ -287,6 +287,7 @@ mod tests {
             detected: true,
             is_test: true,
             debug_adapter: None,
+            allow_parallel: false,
         }
     }
 

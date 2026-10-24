@@ -239,9 +239,14 @@ export function SettingsLayout() {
           placeholder=""
           aria-label="Search settings"
           onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
+            // IDEA: Esc clears the filter before it closes the dialog; ↑/↓ move through the pages, focus stays here.
+            if (e.key === "Escape" && query) {
               e.preventDefault();
-              treeRef.current?.focus();
+              e.stopPropagation();
+              onQuery("");
+            } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey && !e.metaKey && !e.ctrlKey) {
+              e.preventDefault();
+              treeRef.current?.moveSelection(e.key === "ArrowDown" ? 1 : -1);
             }
           }}
         />

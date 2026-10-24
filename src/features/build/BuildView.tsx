@@ -1,13 +1,13 @@
 /**
  * Build tool window (IDEA's Build view): the build → file → message tree on
  * the left, the raw console of the build on the right. Selecting a message
- * shows its source; Enter / double-click moves focus there.
+ * shows its full text on the right instead; Enter / double-click / F4 opens
+ * its source (as IDEA: selection shows, navigation jumps).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { basename, relativeDir, useProject } from "@/platform/project";
-import { editorService } from "@/workbench/contributions";
 import {
   EmptyState,
   Icon,
@@ -18,6 +18,7 @@ import {
   Spinner,
   Tree,
   fileIconName,
+  type TreeHandle,
   type TreeRowState,
   T,
 } from "@/ui";
@@ -25,6 +26,7 @@ import type { BuildMessage, Severity } from "@/platform/ipc";
 import {
   ROOT_KEY,
   fileChildren,
+  findNode,
   finishSummary,
   formatDuration,
   rootChildren,
@@ -32,20 +34,10 @@ import {
   type BuildNode,
   type BuildStatus,
 } from "./model";
-import { rerunBuild, useBuildRun } from "./store";
+import { navigateToMessage, rerunBuild, selectBuildNode, useBuildRun } from "./store";
 import styles from "./Build.module.css";
 
 const SEVERITY_ICON: Record<Severity, string> = { error: "error", warning: "warning", info: "info", hint: "info" };
-
-function openMessage(m: BuildMessage, focus: boolean) {
-  if (!m.path) return;
-  const start = m.range?.start;
-  void editorService().openFile(m.path, {
-    selection: start ? { line: start.line, col: start.col } : undefined,
-    focus,
-    preview: !focus,
-  });
-}
 
 function firstLocated(n: BuildNode): BuildMessage | undefined {
   if (n.kind === "message") return n.message;
@@ -79,9 +71,11 @@ export function BuildHeaderActions() {
 }
 
 function BuildTree() {
-  const { title, status, messages, durationMs } = useBuildRun();
+  const { title, status, messages, durationMs, selected } = useBuildRun();
   const root = useProject((s) => s.project?.root ?? "");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const tree = useRef<TreeHandle>(null);
+  const selection = useMemo(() => new Set(selected ? [selected] : []), [selected]);
   const roots = useMemo(() => (status ? [rootNode(title, status, messages)] : []), [title, status, messages]);
   const children = useMemo(() => rootChildren(messages), [messages]);
   const expanded = useMemo(() => {
@@ -90,6 +84,27 @@ function BuildTree() {
     for (const k of collapsed) keys.delete(k);
     return keys;
   }, [children, collapsed]);
+
+  // A selection made by the store (the first error of a failed build) expands
+  // its file, then is scrolled into view.
+  const [shown, setShown] = useState(selected);
+  if (shown !== selected) {
+    setShown(selected);
+    const file = selected?.split("\u0000")[0];
+    if (file && file !== selected && collapsed.has(file)) {
+      const next = new Set(collapsed);
+      next.delete(file);
+      setCollapsed(next);
+    }
+  }
+  useEffect(() => {
+    if (selected && tree.current?.leadKey() !== selected) tree.current?.reveal(selected);
+  }, [selected, expanded]);
+
+  const navigate = (n: BuildNode) => {
+    const m = firstLocated(n);
+    if (m) navigateToMessage(m, true);
+  };
 
   const getChildren = useCallback(
     (n: BuildNode): BuildNode[] | undefined =>
@@ -143,33 +158,42 @@ function BuildTree() {
   };
 
   return (
-    <Tree<BuildNode>
-      aria-label="Build"
-      roots={roots}
-      getKey={(n) => n.key}
-      getLabel={(n) => (n.kind === "root" ? n.title : n.kind === "file" ? basename(n.path) : n.message.text)}
-      getChildren={getChildren}
-      isExpandable={(n) => n.kind !== "message"}
-      expanded={expanded}
-      onExpandedChange={(_next, node, isOpen) =>
-        setCollapsed((prev) => {
-          const s = new Set(prev);
-          if (isOpen) s.delete(node.key);
-          else s.add(node.key);
-          return s;
-        })
-      }
-      renderNode={renderNode}
-      onActivate={(n) => {
-        const m = firstLocated(n);
-        if (m) openMessage(m, true);
+    <div
+      className={styles.treeHost}
+      onKeyDown={(e) => {
+        if (e.key !== "F4" || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !selected) return;
+        const n = findNode(messages, selected);
+        if (!n) return;
+        e.preventDefault();
+        e.stopPropagation();
+        navigate(n);
       }}
-      onSelectionChange={(_sel, lead) => {
-        if (lead?.kind === "message") openMessage(lead.message, false);
-      }}
-      multiSelect={false}
-      empty={<EmptyState title="No build output" />}
-    />
+    >
+      <Tree<BuildNode>
+        handleRef={tree}
+        aria-label="Build"
+        roots={roots}
+        getKey={(n) => n.key}
+        getLabel={(n) => (n.kind === "root" ? n.title : n.kind === "file" ? basename(n.path) : n.message.text)}
+        getChildren={getChildren}
+        isExpandable={(n) => n.kind !== "message"}
+        expanded={expanded}
+        onExpandedChange={(_next, node, isOpen) =>
+          setCollapsed((prev) => {
+            const s = new Set(prev);
+            if (isOpen) s.delete(node.key);
+            else s.add(node.key);
+            return s;
+          })
+        }
+        renderNode={renderNode}
+        selected={selection}
+        onActivate={navigate}
+        onSelectionChange={(_sel, lead) => selectBuildNode(lead?.key ?? null)}
+        multiSelect={false}
+        empty={<EmptyState title="No build output" />}
+      />
+    </div>
   );
 }
 
@@ -218,6 +242,34 @@ function BuildConsole() {
   );
 }
 
+/** Full text and location of the selected message (IDEA shows the node's own console). */
+function MessageDetail({ message }: { message: BuildMessage }) {
+  const root = useProject((s) => s.project?.root ?? "");
+  const start = message.range?.start;
+  const location = message.path
+    ? `${relativeDir(root, message.path) ? `${relativeDir(root, message.path)}/` : ""}${basename(message.path)}${
+        start ? `:${start.line + 1}:${start.col + 1}` : ""
+      }`
+    : null;
+  return (
+    <div className={styles.detail} tabIndex={0} role="document" aria-label="Build message">
+      {location && (
+        <button type="button" className={styles.detailLocation} onClick={() => navigateToMessage(message, true)}>
+          {location}
+        </button>
+      )}
+      <div className={clsx(styles.detailText, message.severity === "error" && styles.err)}>{message.text}</div>
+    </div>
+  );
+}
+
+function BuildOutput() {
+  const selected = useBuildRun((s) => s.selected);
+  const messages = useBuildRun((s) => s.messages);
+  const node = useMemo(() => (selected ? findNode(messages, selected) : undefined), [selected, messages]);
+  return node?.kind === "message" ? <MessageDetail message={node.message} /> : <BuildConsole />;
+}
+
 export function BuildView() {
   const hasBuild = useBuildRun((s) => s.status !== null);
   if (!hasBuild) {
@@ -237,7 +289,7 @@ export function BuildView() {
         </SplitPanel>
         <SplitHandle />
         <SplitPanel id="build-console" minSize="120px" className={styles.pane}>
-          <BuildConsole />
+          <BuildOutput />
         </SplitPanel>
       </SplitGroup>
     </div>

@@ -4,8 +4,17 @@
  * chooser, and document highlights (occurrences of the symbol at the caret,
  * plus the sticky find.highlightUsages variant).
  */
-import { EditorSelection, Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { EditorSelection, Prec, StateEffect, StateField, type Extension, type Text } from "@codemirror/state";
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  keymap,
+  showTooltip,
+  type DecorationSet,
+  type Tooltip,
+  type ViewUpdate,
+} from "@codemirror/view";
 import {
   commands,
   isCancelled,
@@ -36,9 +45,12 @@ import { caretAnchor, openPopup, type ListPopupItem } from "./popupStore";
 import { readManyFileLines } from "./files";
 import { documentLinks, followReference, knownLinks, linkReference, referenceAt, textReference } from "./links";
 import { serverBackoff } from "./availability";
+import { requestHover } from "./hover";
+import { declarationSummary, renderCode } from "./markdown";
 import { editorPrefs } from "@/platform/editorSettings";
 import { isVirtualUri, virtualContainer } from "@/platform/virtualDocs";
-import { hasPrimaryModifier, isMacHost } from "@/platform/keymap";
+import { hasPrimaryModifier, isMacHost, shortcutLabel } from "@/platform/keymap";
+import { create } from "zustand";
 
 export async function navigateTo(loc: Location) {
   await editorService().openFile(loc.path, {
@@ -227,49 +239,134 @@ async function gotoFallback(view: EditorView, doc: EditorDocContext, pos: Pos): 
 // ---------------------------------------------------------------------------
 // ⌘-hover link + ⌘-click
 
-const setLink = StateEffect.define<{ from: number; to: number } | null>();
+type NavInfo = NonNullable<ReturnType<typeof declarationSummary>>;
+
+interface LinkState {
+  from: number;
+  to: number;
+  /** Brief declaration info shown above the underlined element (IDEA's ⌘-hover tooltip). */
+  info: NavInfo | null;
+}
+
+const setLink = StateEffect.define<LinkState | null>();
 const linkMark = Decoration.mark({ class: "cm-lsp-link" });
 
-const linkField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(deco, tr) {
-    for (const e of tr.effects)
-      if (e.is(setLink)) return e.value ? Decoration.set([linkMark.range(e.value.from, e.value.to)]) : Decoration.none;
-    return tr.docChanged ? Decoration.none : deco;
+const linkField = StateField.define<LinkState | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setLink)) return e.value;
+    return tr.docChanged ? null : value;
   },
-  provide: (f) => EditorView.decorations.from(f),
+  provide: (f) => [
+    EditorView.decorations.from(f, (v) => (v ? Decoration.set([linkMark.range(v.from, v.to)]) : Decoration.none)),
+    showTooltip.from(f, (v): Tooltip | null => {
+      const info = v?.info;
+      if (!v || !info) return null;
+      return {
+        pos: v.from,
+        above: true,
+        create: (view) => {
+          const dom = document.createElement("div");
+          dom.className = "cm-lsp-hover cm-lsp-nav-info";
+          if ("code" in info) dom.appendChild(renderCode(info.code, info.language ?? docOf(view)?.uiMode ?? null, "cm-lsp-code"));
+          else dom.textContent = info.text;
+          return { dom };
+        },
+      };
+    }),
+  ],
 });
 
-/** What ⌘-hover underlines: a whole link, URL or path, else the word. */
-function linkAt(view: EditorView, x: number, y: number) {
+/** What ⌘-hover underlines: a whole link, URL or path (always navigable), else the word. */
+function linkAt(view: EditorView, x: number, y: number): { from: number; to: number; link: boolean } | null {
   const pos = view.posAtCoords({ x, y }, false);
   if (pos == null) return null;
   const links = knownLinks(view);
   const ref = (links && linkReference(view.state.doc, links, pos)) ?? textReference(view.state.doc, pos);
-  if (ref) return ref;
+  if (ref) return { from: ref.from, to: ref.to, link: true };
   const word = view.state.wordAt(pos);
-  return word && word.from < word.to ? word : null;
+  return word && word.from < word.to ? { from: word.from, to: word.to, link: false } : null;
+}
+
+/**
+ * Whether ⌘-click at `offset` would navigate somewhere, with the declaration
+ * info to show; null when there is no target (no underline then, as in IDEA).
+ */
+async function probeNavigation(view: EditorView, offset: number): Promise<{ info: NavInfo | null } | null> {
+  const doc = docOf(view);
+  let navigable = !!contributedAt<ContributedDefinition>(view.state, CONTRIBUTED_DEFINITION, offset);
+  if (!navigable && doc) {
+    const pos = offsetToPos(view.state.doc, offset);
+    try {
+      navigable = (await lspRequest(() => commands.lspGoto(doc.doc, pos, "definition"))).length > 0;
+    } catch (e) {
+      if (isCancelled(e)) return null;
+      if (isUnavailable(e)) navigable = !!(await gotoFallback(view, doc, pos))?.length;
+    }
+    if (!navigable && WEB_LANGUAGES.has(doc.language) && !doc.virtual)
+      navigable = !!(await lspRequest(() => commands.webGoto(doc.doc, pos)).catch(() => null))?.targets.length;
+  }
+  if (!navigable) return null;
+  const hover = await requestHover(view, offset).catch(() => null);
+  return { info: hover ? declarationSummary(hover.contents) : null };
 }
 
 const linkPlugin = ViewPlugin.fromClass(
   class {
     last: { x: number; y: number } | null = null;
+    /** Probe results per word (`from:to`) for the current document. */
+    private probed = new Map<string, { info: NavInfo | null } | null>();
+    private probedDoc: Text | null = null;
+    private probing: string | null = null;
     constructor(readonly view: EditorView) {}
-    show(meta: boolean) {
-      const doc = meta ? docOf(this.view) : null;
-      // Underline whole links once the server's links are in.
-      if (doc && !doc.virtual && !knownLinks(this.view))
-        void documentLinks(this.view, doc).then(() => {
-          if (this.view.state.field(linkField).size) this.show(true);
-        });
+    private set(value: LinkState | null) {
       const current = this.view.state.field(linkField);
-      const target = meta && this.last ? linkAt(this.view, this.last.x, this.last.y) : null;
-      let same = false;
-      current.between(0, this.view.state.doc.length, (from, to) => {
-        same = !!target && target.from === from && target.to === to;
+      if (current === value || (current && value && current.from === value.from && current.to === value.to && current.info === value.info))
+        return;
+      if (!current && !value) return;
+      this.view.dispatch({ effects: setLink.of(value) });
+    }
+    show(meta: boolean) {
+      const view = this.view;
+      const doc = meta ? docOf(view) : null;
+      // Underline whole links once the server's links are in.
+      if (doc && !doc.virtual && !knownLinks(view))
+        void documentLinks(view, doc).then(() => {
+          if (view.state.field(linkField)) this.show(true);
+        });
+      const target = meta && this.last ? linkAt(view, this.last.x, this.last.y) : null;
+      if (!target) {
+        this.probing = null;
+        this.set(null);
+        return;
+      }
+      if (target.link) {
+        this.probing = null;
+        this.set({ from: target.from, to: target.to, info: null });
+        return;
+      }
+      if (this.probedDoc !== view.state.doc) {
+        this.probed.clear();
+        this.probedDoc = view.state.doc;
+      }
+      const key = `${target.from}:${target.to}`;
+      if (this.probed.has(key)) {
+        const hit = this.probed.get(key);
+        this.set(hit ? { from: target.from, to: target.to, info: hit.info } : null);
+        return;
+      }
+      const current = view.state.field(linkField);
+      if (current && (current.from !== target.from || current.to !== target.to)) this.set(null);
+      if (this.probing === key) return;
+      this.probing = key;
+      const docAt = view.state.doc;
+      void probeNavigation(view, target.from).then((result) => {
+        if (view.state.doc !== docAt) return;
+        this.probed.set(key, result);
+        if (this.probing !== key) return;
+        this.probing = null;
+        if (result) this.set({ from: target.from, to: target.to, info: result.info });
       });
-      if (same || (!target && current.size === 0)) return;
-      this.view.dispatch({ effects: setLink.of(target) });
     }
   },
   {
@@ -314,7 +411,9 @@ interface HighlightState {
   sticky: boolean;
 }
 
-const setHighlights = StateEffect.define<{ items: Array<{ from: number; to: number; kind: Highlight["kind"] }>; sticky: boolean }>();
+type HighlightItem = { from: number; to: number; kind: Highlight["kind"] };
+
+const setHighlights = StateEffect.define<{ items: HighlightItem[]; sticky: boolean }>();
 
 const marks = {
   text: Decoration.mark({ class: "cm-lsp-occurrence" }),
@@ -334,20 +433,48 @@ const highlightField = StateField.define<HighlightState>({
           ),
           sticky: e.value.sticky,
         };
-    if (tr.docChanged) return { deco: Decoration.none, sticky: false };
+    // Kept (mapped) until recomputed; ⌘⇧F7 highlights survive edits until Escape.
+    if (tr.docChanged) return { deco: value.deco.map(tr.changes), sticky: value.sticky };
     return value;
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
 });
 
+/** IDEA's status bar text while ⌘⇧F7 highlights are shown. */
+export const useUsagesStatus = create<{ text: string | null; owner: EditorView | null }>(() => ({ text: null, owner: null }));
+
+function setUsagesStatus(owner: EditorView | null, text: string | null) {
+  useUsagesStatus.setState({ owner, text });
+}
+
+export function usagesStatusText(count: number, name: string, toggleKeys: string | null): string {
+  const again = toggleKeys ? `press ${toggleKeys} again to remove the highlighting, ` : "";
+  return `${count} ${count === 1 ? "usage" : "usages"} of ${name} found (${again}Escape to remove all highlighting)`;
+}
+
+function clearHighlights(view: EditorView) {
+  view.dispatch({ effects: setHighlights.of({ items: [], sticky: false }) });
+  if (useUsagesStatus.getState().owner === view) setUsagesStatus(null, null);
+}
+
 async function fetchHighlights(view: EditorView, sticky: boolean) {
   const doc = docOf(view);
   if (!doc) return;
+  await whenSynced(view);
   const state = view.state;
   const head = state.selection.main.head;
   const stale = () => view.state.doc !== state.doc || view.state.selection.main.head !== head;
-  const apply = (items: Array<{ from: number; to: number; kind: Highlight["kind"] }>) =>
-    view.dispatch({ effects: setHighlights.of({ items, sticky }) });
+  const apply = (items: HighlightItem[]) => {
+    view.dispatch({ effects: setHighlights.of({ items, sticky: sticky && items.length > 0 }) });
+    if (!sticky) return;
+    if (!items.length) {
+      if (useUsagesStatus.getState().owner === view) setUsagesStatus(null, null);
+      return;
+    }
+    const at = items.find((i) => i.from <= head && head <= i.to) ?? state.wordAt(head);
+    const name = at ? state.sliceDoc(at.from, at.to) : "";
+    setUsagesStatus(view, usagesStatusText(items.length, name ? `'${name}'` : "the element", shortcutLabel("find.highlightUsages") ?? null));
+  };
   let lspError: unknown = null;
   if (!serverBackoff.active(doc.doc)) {
     try {
@@ -388,8 +515,18 @@ async function syntaxHighlights(view: EditorView, doc: EditorDocContext, head: n
   }
 }
 
-/** ⌘⇧F7: highlight usages of the symbol at the caret until Escape. */
+/** ⌘⇧F7: highlight usages of the symbol at the caret until Escape; again on a highlighted usage removes them. */
 export function highlightUsages(view: EditorView) {
+  const st = view.state.field(highlightField, false);
+  const head = view.state.selection.main.head;
+  let onUsage = false;
+  st?.deco.between(head, head, (from, to) => {
+    if (from <= head && head <= to) onUsage = true;
+  });
+  if (st?.sticky && onUsage) {
+    clearHighlights(view);
+    return;
+  }
   void fetchHighlights(view, true);
 }
 
@@ -398,25 +535,27 @@ const highlightPlugin = ViewPlugin.fromClass(
     private request = debounce(() => void fetchHighlights(this.view, false), 300);
     constructor(private view: EditorView) {}
     update(u: ViewUpdate) {
-      if (u.docChanged) this.request.cancel();
-      if (!u.selectionSet || u.docChanged) return;
+      // Recomputed after caret moves and, like IDEA's daemon, after edits.
+      if (!u.selectionSet && !u.docChanged) return;
       const st = u.state.field(highlightField);
-      if (st.sticky) return;
-      // Code Editing › "Usages of element at caret".
-      if (!editorPrefs().codeEditing.highlightUsages) {
-        if (st.deco.size) queueMicrotask(() => this.view.dispatch({ effects: setHighlights.of({ items: [], sticky: false }) }));
+      if (st.sticky) {
+        this.request.cancel();
         return;
       }
-      const sel = u.state.selection.main;
-      if (!sel.empty) {
+      const clear = () => {
         this.request.cancel();
         if (st.deco.size) queueMicrotask(() => this.view.dispatch({ effects: setHighlights.of({ items: [], sticky: false }) }));
+      };
+      // Code Editing › "Usages of element at caret".
+      if (!editorPrefs().codeEditing.highlightUsages || !u.state.selection.main.empty) {
+        clear();
         return;
       }
       this.request();
     }
     destroy() {
       this.request.cancel();
+      if (useUsagesStatus.getState().owner === this.view) setUsagesStatus(null, null);
     }
   },
 );
@@ -434,7 +573,7 @@ export function navigationExtension(): Extension {
           run: (view) => {
             const st = view.state.field(highlightField, false);
             if (!st?.sticky) return false;
-            view.dispatch({ effects: setHighlights.of({ items: [], sticky: false }) });
+            clearHighlights(view);
             return true;
           },
         },

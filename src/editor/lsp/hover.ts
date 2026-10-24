@@ -13,7 +13,8 @@ import { isEmptyMarkup, languageForPath, renderMarkup } from "./markdown";
 import { docOf, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, rangeToOffsets } from "./positions";
 import { showHint } from "./hint";
-import { caretAnchor, openPopup } from "./popupStore";
+import { caretAnchor, focusPopup, openPopup, useLspPopup } from "./popupStore";
+import { selectedLookupDoc, showLookupDocs } from "./completion";
 import { readFileLines } from "./files";
 import { iconNode } from "./iconMarkup";
 import { editorPrefs } from "@/platform/editorSettings";
@@ -117,9 +118,31 @@ export function hoverExtension() {
   );
 }
 
-/** F1: documentation for the symbol at the caret in a sticky popup. */
+/**
+ * F1: documentation for the symbol at the caret in a sticky popup; in an open
+ * lookup, for its selected item. Again on an open popup: focuses it.
+ */
 export async function quickDocumentation(view: EditorView) {
+  if (useLspPopup.getState().popup?.kind === "doc") {
+    focusPopup();
+    return;
+  }
   const pos = view.state.selection.main.head;
+  const lookup = showLookupDocs(view);
+  if (lookup === "shown") return;
+  if (lookup === "showing") {
+    const doc = await selectedLookupDoc(view).catch(() => null);
+    if (!doc) showHint(view, "No documentation found");
+    else
+      openPopup({
+        kind: "doc",
+        anchor: caretAnchor(view, pos),
+        markup: doc.markup,
+        language: doc.language,
+        themeClasses: view.themeClasses,
+      });
+    return;
+  }
   try {
     const hover = await requestHover(view, pos);
     if (!hover) {

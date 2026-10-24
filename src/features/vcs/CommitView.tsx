@@ -1,6 +1,7 @@
 /** Commit tool window: change list with inclusion checkboxes, message, stashes. */
 import { useWorkflowSettings } from "@/platform/workflowSettings";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { tx } from "@/platform/i18n";
 import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
 import {
@@ -37,13 +38,13 @@ import { applyStash, commitChanges, dropStash, stashChanges } from "./changeOps"
 import { CommitOptionsPopup } from "./CommitOptions";
 import { useChangelists, withListDefaults } from "./changelists";
 import { moveToChangelist } from "./changelistsUi";
-import { messageHistory, setGroupByDir, useCommit, type CommitTab } from "./commitStore";
-import { openDiff, workingDiffData } from "./diffInput";
+import { messageHistory, setAmend, setGroupByDir, useCommit, type CommitTab } from "./commitStore";
+import { openDiff, withChain, workingDiffData } from "./diffInput";
 import { KIND_COLOR, KIND_LABEL, formatTime, stashLabel, stripSlash } from "./model";
 import { call, commands } from "@/platform/ipc";
 import { OperationBanner } from "./operations";
 import { ShelfPanel, loadShelves, useShelf } from "./shelf";
-import { currentRepo, loadStashes, refreshNow, useVcs } from "./store";
+import { loadStashes, refreshNow, useVcs } from "./store";
 import styles from "./CommitView.module.css";
 
 /** MIME type of changed files dragged between change lists (absolute paths, newline-separated). */
@@ -115,9 +116,16 @@ const bottomLeft = (el: HTMLElement) => {
   return { x: r.left, y: r.bottom + 2 };
 };
 
-function openNode(n: ChangeNode) {
+/** Opens a file's diff; F7 continues through the other files of its group, in tree order. */
+function openNode(n: ChangeNode, roots: readonly ChangeNode[]) {
   if (n.type !== "file" || !n.path) return;
-  void openDiff(workingDiffData(n.path), { preview: true });
+  const group = roots.find((g) => g.files.some((f) => f.path === n.files[0]?.path)) ?? null;
+  const paths: string[] = [];
+  const walk = (ns: readonly ChangeNode[]) =>
+    ns.forEach((x) => (x.type === "file" ? x.path && paths.push(x.path) : walk(x.children ?? [])));
+  walk(group ? [group] : [n]);
+  const items = paths.map((p) => workingDiffData(p));
+  void openDiff(withChain(items, Math.max(0, paths.indexOf(n.path))), { preview: true });
 }
 
 function listMenu(id: string, active: boolean, paths: string[]): MenuItem[] {
@@ -384,7 +392,7 @@ function ChangesPanel() {
                   selectedList: nodes.find((n) => n.changelist)?.changelist ?? null,
                 });
               }}
-              onActivate={openNode}
+              onActivate={(n) => openNode(n, roots)}
               onContextMenu={(node, sel, e: MouseEvent) => {
                 if (!node) return;
                 if (node.type === "group" && node.changelist) {
@@ -542,11 +550,23 @@ function CommitMessage({ included }: { included: number }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [emptyError, setEmptyError] = useState(false);
   const [busy, setBusy] = useState(false);
-  const amendMessage = useRef<string | null>(null);
+  const historyTick = useCommit((s) => s.historyTick);
+  const checkProblems = useCommit((s) => s.checkProblems);
+
+  // The failed checks concern what was about to be committed: editing it dismisses them.
+  useEffect(() => {
+    if (useCommit.getState().checkProblems.length) useCommit.setState({ checkProblems: [] });
+  }, [message, amend, included]);
 
   useEffect(() => {
     if (focusTick) ref.current?.focus();
   }, [focusTick]);
+  // Show Commit Message History (⌃M) asks through the store.
+  const [seenHistoryTick, setSeenHistoryTick] = useState(historyTick);
+  if (historyTick !== seenHistoryTick) {
+    setSeenHistoryTick(historyTick);
+    if (messageHistory().length) setHistoryOpen(true);
+  }
 
   const cfg = useWorkflowSettings((s) => s.vcs.commit);
   const first = message.split("\n")[0] ?? "";
@@ -554,34 +574,6 @@ function CommitMessage({ included }: { included: number }) {
   const problems = messageProblems(message, cfg).filter((p) => !p.startsWith("Subject line"));
   const margin = cfg.limitBody ? cfg.bodyLimit : cfg.subjectLimit;
   const showMargin = cfg.showRightMargin && (cfg.limitBody || cfg.limitSubject);
-
-  const setAmend = async (v: boolean) => {
-    useCommit.setState({ amend: v });
-    if (v && !useCommit.getState().message.trim()) {
-      try {
-        const [last] = await call(
-          commands.vcsLog(currentRepo(), {
-            branch: "HEAD",
-            path: null,
-            author: null,
-            text: null,
-            range: null,
-            skip: 0,
-            limit: 1,
-          }),
-        );
-        if (last && !useCommit.getState().message.trim()) {
-          amendMessage.current = last.message;
-          useCommit.setState({ message: last.message });
-        }
-      } catch {
-        // No commits yet.
-      }
-    } else if (!v && amendMessage.current !== null && useCommit.getState().message === amendMessage.current) {
-      useCommit.setState({ message: "" });
-      amendMessage.current = null;
-    }
-  };
 
   const commit = async (push: boolean) => {
     if (busy) return;
@@ -594,7 +586,6 @@ function CommitMessage({ included }: { included: number }) {
     setBusy(true);
     try {
       const id = await commitChanges();
-      amendMessage.current = null;
       if (id !== undefined && push) void executeAction("vcs.push");
     } finally {
       setBusy(false);
@@ -676,9 +667,30 @@ function CommitMessage({ included }: { included: number }) {
           {problems.join(" · ")}
         </div>
       )}
+      {checkProblems.length > 0 && (
+        <div className={styles.checkProblems} role="alert">
+          <Icon name="warning" size={14} className={styles.checkProblemsIcon} />
+          <div className={styles.checkProblemsList}>
+            {checkProblems.map((p, i) => (
+              <div key={i}>
+                <span className={styles.checkProblemTitle}>{tx(p.title)}</span>
+                {typeof p.text === "string" ? `: ${tx(p.text)}` : p.text}
+                {p.details && (
+                  <>
+                    {" "}
+                    <button type="button" className={styles.checkProblemLink} onClick={p.details.run}>
+                      {tx(p.details.label)}
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className={styles.commitActions}>
         <Button variant="primary" disabled={!canCommit} onClick={() => void commit(false)} title="⌘↩">
-          {amend ? "Amend Commit" : "Commit"}
+          <T>{checkProblems.length ? "Commit Anyway" : amend ? "Amend Commit" : "Commit"}</T>
         </Button>
         <Button
           className={styles.pushButton}

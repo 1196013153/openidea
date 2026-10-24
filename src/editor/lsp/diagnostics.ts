@@ -214,7 +214,7 @@ export function gotoDiagnostic(view: EditorView, dir: 1 | -1): boolean {
     dir === 1
       ? (list.find((p) => p.from > head) ?? list[0]!)
       : ([...list].reverse().find((p) => p.from < head && !(p.from <= head && head <= p.to)) ?? list[list.length - 1]!);
-  view.dispatch({ selection: EditorSelection.cursor(target.from), scrollIntoView: true, userEvent: "select" });
+  view.dispatch({ selection: EditorSelection.cursor(target.from), scrollIntoView: true, userEvent: "select.navigate" });
   showHint(view, target.diagnostic.message, {
     pos: target.from,
     tone: target.diagnostic.severity === "error" ? "error" : target.diagnostic.severity === "warning" ? "warning" : "info",

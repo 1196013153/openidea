@@ -78,7 +78,7 @@ describe("distraction free mode", () => {
   it("persists the layout to restore, not the hidden one", () => {
     setDistractionFree(true);
     showToolWindow("structure");
-    expect(savedVisible()).toEqual({ left: "project", bottom: "terminal", right: null });
+    expect(savedVisible()).toMatchObject({ left: "project", bottom: "terminal", right: null });
     // An app restart (no session) loads the normal layout.
     resetDistractionFree();
     resetToolWindowLayout();

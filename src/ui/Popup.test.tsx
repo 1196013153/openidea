@@ -57,6 +57,25 @@ describe("Popup", () => {
     expect(onClose).toHaveBeenCalledWith("outside");
   });
 
+  it("closes when the app window is deactivated, but not when focus moves into a frame", () => {
+    vi.useFakeTimers();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    try {
+      const onClose = vi.fn();
+      render(<Harness onClose={onClose} />);
+      fireEvent.blur(window);
+      act(() => void vi.runAllTimers());
+      expect(onClose).not.toHaveBeenCalled();
+      hasFocus.mockReturnValue(false);
+      fireEvent.blur(window);
+      act(() => void vi.runAllTimers());
+      expect(onClose).toHaveBeenCalledWith("outside");
+    } finally {
+      hasFocus.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("only the top-most layer handles Escape", () => {
     const outer = vi.fn();
     const inner = vi.fn();
@@ -106,6 +125,34 @@ describe("Menu", () => {
     expect(onClose).toHaveBeenCalled();
     expect(actionRun).toHaveBeenCalled();
     dispose();
+  });
+});
+
+describe("Dialog deactivation", () => {
+  it("closes popups but not modal dialogs when the app window loses focus", () => {
+    vi.useFakeTimers();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    try {
+      const popup = vi.fn();
+      const modal = vi.fn();
+      render(
+        <>
+          <Dialog open onClose={modal} title="Modal">
+            <p>body</p>
+          </Dialog>
+          <Dialog open onClose={popup} position="top" aria-label="Popup">
+            <p>body</p>
+          </Dialog>
+        </>,
+      );
+      fireEvent.blur(window);
+      act(() => void vi.runAllTimers());
+      expect(popup).toHaveBeenCalledTimes(1);
+      expect(modal).not.toHaveBeenCalled();
+    } finally {
+      hasFocus.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });
 

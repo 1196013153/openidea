@@ -44,6 +44,8 @@ export interface TreeHandle {
   /** Selects `key` (must be visible, i.e. ancestors expanded) and scrolls to it. */
   reveal(key: string): void;
   leadKey(): string | null;
+  /** Selects the next (1) / previous (-1) row, for a filter field that keeps the focus (Settings search). */
+  moveSelection(dir: 1 | -1): void;
 }
 
 export interface TreeProps<T> {
@@ -263,6 +265,14 @@ export function Tree<T>(props: TreeProps<T>) {
       virtualizer.scrollToIndex(i, { align: "center" });
     },
     leadKey: () => lead,
+    moveSelection: (dir: 1 | -1) => {
+      const key = lead != null && selected.has(lead) ? lead : ([...selected][0] ?? null);
+      const from = key != null ? (indexOfKey.get(key) ?? -1) : -1;
+      const i = from < 0 ? step(-1, 1) : step(from, dir);
+      if (i < 0 || i === from || !rows[i]) return;
+      selectIndex(i);
+      virtualizer.scrollToIndex(i);
+    },
   }));
 
   const findMatch = (from: number, dir: 1 | -1, inclusive: boolean, q = query, wrap = true): number => {

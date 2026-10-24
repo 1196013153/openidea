@@ -7,7 +7,7 @@ import { getContext, setContext } from "@/platform/context";
 import { call, commands } from "@/platform/ipc";
 import { notifications, toolWindowService } from "@/workbench/contributions";
 import { executeAction, registerActions, type Action } from "@/platform/actions";
-import { newBranch, rebaseOnto } from "./branchOps";
+import { checkoutDetached, newBranch, rebaseOnto } from "./branchOps";
 import { openUrl } from "./issueLinks";
 import { commitWebUrl } from "./model";
 import {
@@ -31,7 +31,6 @@ import {
   showResetDialog,
   showTagDialog,
 } from "./operations";
-import { runOp, saveAll } from "./ops";
 import {
   dropCommits,
   editCommitMessage,
@@ -121,10 +120,7 @@ function shelfArg(arg: unknown) {
 }
 
 async function checkoutCommit(c: Commit) {
-  await saveAll();
-  await runOp(`Checkout ${c.shortId}`, () => call(commands.vcsCheckout(currentRepo(), c.id, false)), {
-    success: `Checked out ${c.shortId} (detached HEAD)`,
-  });
+  await checkoutDetached(c.id, c.shortId);
 }
 
 /** Keeps `vcsOperation` (rebase / merge / cherry-pick / revert / am / "") in sync for `when` clauses. */

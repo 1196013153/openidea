@@ -255,6 +255,18 @@ export const lspTheme = EditorView.theme({
   ".cm-lsp-occurrence-write": {
     backgroundColor: "var(--bg-identifier-under-caret-write, color-mix(in srgb, var(--danger) 12%, transparent))",
   },
+  ".cm-lsp-nav-info": { padding: "4px 8px" },
+
+  // --- in-place rename (inplaceRename.ts) ------------------------------------
+  ".cm-lsp-inplace": {
+    backgroundColor: "var(--bg-identifier-under-caret, color-mix(in srgb, var(--accent) 14%, transparent))",
+  },
+  ".cm-lsp-inplace-primary": {
+    outline: "1px solid var(--focus-ring)",
+    outlineOffset: "-1px",
+    borderRadius: "2px",
+  },
+  ".cm-lsp-inplace-hint": { color: "var(--fg-secondary)", fontSize: "var(--fs-small)", padding: "3px 8px" },
 
   // --- floating lightbulb (intentions.ts) -----------------------------------
   ".cm-lsp-bulb": {

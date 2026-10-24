@@ -140,7 +140,7 @@ describe("debugger actions (IDEA parity)", () => {
       "debug.forceRunToCursor": ["Meta+Alt+F9"],
       "debug.showExecutionPoint": ["Alt+F10"],
       "debug.setValue": ["F2"],
-      "debug.jumpToSource": ["F4"],
+      "debug.jumpToSource": ["F4", "Meta+Down"],
       "debug.resetFrame": undefined,
       "debug.toggleMethodBreakpoint": undefined,
       "debug.toggleFieldWatchpoint": undefined,
@@ -249,5 +249,22 @@ describe("debugger actions (IDEA parity)", () => {
     await settle();
     expect(ipc.debugAttachableProcesses).toHaveBeenCalled();
     expect(useOverlays.getState().attach?.processes?.map((p) => p.pid)).toEqual([9]);
+  });
+
+  it("Evaluate prefills the expression at the caret, or the whole selection", async () => {
+    paused();
+    const doc = "total = order.items\nfor i in x:\n  pass";
+    editor.current = {
+      ctx: { path: "/p/a.py", language: "python" },
+      view: { state: EditorState.create({ doc, selection: { anchor: doc.indexOf("items") + 2 } }) },
+    };
+    await executeAction("debug.evaluate");
+    expect(useOverlays.getState().evaluate?.expression).toBe("order.items");
+    editor.current = {
+      ctx: { path: "/p/a.py", language: "python" },
+      view: { state: EditorState.create({ doc, selection: { anchor: 0, head: doc.indexOf("\n  pass") } }) },
+    };
+    await executeAction("debug.evaluate");
+    expect(useOverlays.getState().evaluate?.expression).toBe("total = order.items\nfor i in x:");
   });
 });

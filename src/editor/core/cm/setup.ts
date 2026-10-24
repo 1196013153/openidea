@@ -20,12 +20,12 @@ import {
   type LanguageSupport,
   type MatchResult,
 } from "@codemirror/language";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { history, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches } from "@codemirror/search";
 import type { EditorConfigProps } from "@/bindings";
 import type { EditorSettings } from "@/platform/ipc";
-import { editorPrefs, type EditorExtras } from "@/platform/editorSettings";
+import { editorPrefs, lineCommentStyleFor, type EditorExtras } from "@/platform/editorSettings";
 import { editorContributions, type EditorDocContext } from "@/editor/api";
 import { distractionFreeWidth, isDistractionFree } from "@/workbench/distractionFree";
 import { openideaHighlightStyle } from "./highlight";
@@ -42,6 +42,8 @@ import { caretExtension, fontZoom, methodLinesField, prefsExtension, softWrapAct
 import { commentTokens } from "./languages";
 import { multiCaretMouse } from "./multiCaret";
 import { columnModeExtension } from "./columnMode";
+import { tabKeymap } from "./smartKeys";
+import { editorBaseKeymap } from "./baseKeymap";
 import { clipboardHistoryExtension } from "../clipboardHistory";
 import type { LanguageInfo } from "../backend";
 
@@ -241,6 +243,8 @@ export function prefsFor(o: {
     hardWrapAt: hardWrapAt(o.settings, o.info),
     readOnly: o.readOnly,
     distractionFree: isDistractionFree(),
+    language: o.info?.id,
+    commentStyle: lineCommentStyleFor(prefsOf(o.settings), o.info?.id),
   });
 }
 
@@ -298,7 +302,8 @@ export function baseExtensions(o: SetupOptions): Extension {
     overviewLane,
     codeLensExtension,
     EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": `Editor for ${o.ctx.path}` }),
-    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    tabKeymap,
+    keymap.of([...closeBracketsKeymap, ...editorBaseKeymap, indentWithTab]),
     compartments.language.of(o.language ?? []),
     compartments.comments.of(commentTokens(o.info)),
     compartments.indent.of(indentExtension(o.indent ?? effectiveIndent(o.settings, o.info))),

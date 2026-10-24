@@ -18,6 +18,7 @@ import { attachDocument, type DocumentAttachment } from "@/editor/api";
 import { setContext } from "@/platform/context";
 import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
+import { tx } from "@/platform/i18n";
 import { IconButton, Select, Spinner } from "@/ui";
 import { editorService, type EditorInput } from "@/workbench/contributions";
 import { languageFor, viewerBase } from "./cm";
@@ -32,9 +33,24 @@ import {
   type HighlightPolicy,
   type IgnorePolicy,
 } from "./diffOptions";
-import { diffTitle, isIndex, isWorktree, loadSide, sideFile, sideKey, sideLabel, type DiffData, type DiffSide } from "./diffInput";
+import {
+  chainNeighbour,
+  diffTitle,
+  isIndex,
+  isWorktree,
+  loadSide,
+  openDiff,
+  sideFile,
+  sideKey,
+  sideLabel,
+  type DiffData,
+  type DiffSide,
+} from "./diffInput";
 import { diffAnnotations } from "./diffAnnotations";
+import { groupOf } from "./changes";
+import { inclusionGutter } from "./hunkInclusion";
 import { hunksOverlapping } from "./hunks";
+import { effectiveKind, stripSlash } from "./model";
 import { errorMessage, logConsole, readWorkingText, runOp, saveAll } from "./ops";
 import { refreshNow, useVcs } from "./store";
 import styles from "./DiffEditor.module.css";
@@ -167,6 +183,11 @@ export function DiffEditor({ input }: { input: EditorInput }) {
     setChunkInfo((p) => (p.count === chunks.length && p.current === current ? p : { count: chunks.length, current }));
   }, []);
 
+  // A HEAD ↔ working file diff of a tracked change: blocks can be left out of the commit.
+  const includable = useVcs((s) => {
+    const fs = s.status.find((f) => stripSlash(f.path) === path);
+    return !!fs && groupOf(fs) === "changes" && effectiveKind(fs) === "modified";
+  }) && left.type === "rev" && left.rev === "HEAD" && !left.path && isWorktree(right);
   const editableA = !!attached?.a && !attached.a.readOnly;
   const editableB = !!attached?.b && !attached.b.readOnly;
   const ready = !!attached && !!statics && lang !== null;
@@ -197,6 +218,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
     const override = whitespaceDiff(opts.ignore);
     const diffConfig = override ? { override } : undefined;
     const highlightChanges = opts.highlight === "words";
+    const inclusion = includable ? inclusionGutter(path, textA) : [];
     const side = (att: DocumentAttachment | null, editable: boolean, notes?: "left" | "right"): Extension[] => [
       viewerBase({ readOnly: !editable }),
       lang,
@@ -222,6 +244,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
             side(attached.b, editableB, "right"),
             listener,
             focusTracker("b"),
+            inclusion,
             editableB ? hoverRevert((_v, i) => merge && applyChunk(merge, i, "a")) : [],
           ],
         },
@@ -245,6 +268,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
           side(attached.b, editableB, "right"),
           listener,
           focusTracker("b"),
+          inclusion,
           unifiedMergeView({
             original: textA,
             highlightChanges,
@@ -273,7 +297,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
     }
     viewsRef.current = views;
     requestAnimationFrame(updateChunkInfo);
-  }, [attached, statics, lang, opts.mode, opts.collapse, opts.ignore, opts.highlight, editableA, editableB, updateChunkInfo, data.annotations]);
+  }, [attached, statics, lang, opts.mode, opts.collapse, opts.ignore, opts.highlight, editableA, editableB, updateChunkInfo, data.annotations, includable, path]);
 
   useEffect(
     () => () => {
@@ -283,15 +307,31 @@ export function DiffEditor({ input }: { input: EditorInput }) {
     [],
   );
 
-  // Reveal the requested line once.
+  // Reveal the requested line (or the first / last difference) once.
   const revealed = useRef(false);
   useEffect(() => {
     const v = viewsRef.current?.b;
-    if (!v || revealed.current || data.line == null || !ready) return;
+    if (!v || revealed.current || (data.line == null && !data.reveal) || !ready) return;
     revealed.current = true;
-    const line = v.state.doc.line(Math.min(v.state.doc.lines, Math.max(1, data.line + 1)));
-    v.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
-  }, [ready, statics, data.line]);
+    let at: number | undefined;
+    if (data.line != null) at = v.state.doc.line(Math.min(v.state.doc.lines, Math.max(1, data.line + 1))).from;
+    else {
+      const chunks = getChunks(v.state)?.chunks ?? [];
+      at = (data.reveal === "last" ? chunks[chunks.length - 1] : chunks[0])?.fromB;
+    }
+    if (at === undefined) return;
+    v.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "center" }) });
+    updateChunkInfo();
+  }, [ready, statics, data.line, data.reveal, updateChunkInfo]);
+
+  // IDEA: past the last (first) difference F7 (Shift+F7) first hints, then moves along the chain.
+  const [navHint, setNavHint] = useState<string | null>(null);
+  const pendingFile = useRef<0 | 1 | -1>(0);
+  useEffect(() => {
+    if (!navHint) return;
+    const t = setTimeout(() => setNavHint(null), 2500);
+    return () => clearTimeout(t);
+  }, [navHint]);
 
   const step = useCallback(
     (dir: 1 | -1) => {
@@ -299,6 +339,26 @@ export function DiffEditor({ input }: { input: EditorInput }) {
       if (!views) return;
       // Navigate in the focused pane of a side-by-side diff.
       const v = focusedSide.current === "a" && views.a ? views.a : views.b;
+      const onA = v !== views.b;
+      const chunks = getChunks(v.state)?.chunks ?? [];
+      const head = v.state.selection.main.head;
+      const start = (c: Chunk) => (onA ? c.fromA : c.fromB);
+      const more = dir === 1 ? chunks.some((c) => start(c) > head) : chunks.some((c) => start(c) < head);
+      if (!more) {
+        const neighbour = chainNeighbour(data, dir);
+        if (!neighbour) return;
+        if (pendingFile.current === dir) {
+          pendingFile.current = 0;
+          setNavHint(null);
+          void openDiff(neighbour, { preview: true });
+        } else {
+          pendingFile.current = dir;
+          setNavHint(dir === 1 ? "Press again to go to the next file" : "Press again to go to the previous file");
+        }
+        return;
+      }
+      pendingFile.current = 0;
+      setNavHint(null);
       (dir === 1 ? goToNextChunk : goToPreviousChunk)({ state: v.state, dispatch: (tr) => v.dispatch(tr) });
       if (v !== views.b) {
         // Mirror the caret into the right pane so the counter follows.
@@ -309,7 +369,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
       }
       updateChunkInfo();
     },
-    [updateChunkInfo],
+    [updateChunkInfo, data],
   );
 
   const jumpToSource = useCallback(() => {
@@ -529,6 +589,11 @@ export function DiffEditor({ input }: { input: EditorInput }) {
         aria-label={diffTitle(data)}
         role="region"
       />
+      {navHint && (
+        <div className={styles.navHint} role="status">
+          {tx(navHint)}
+        </div>
+      )}
     </div>
   );
 }

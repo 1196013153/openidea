@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { usePlatform } from "@/platform/platformInfo";
 import { Button, IconButton } from "./Button";
 import { Icon } from "./icons";
-import { FOCUSABLE, openLayer, trapTab } from "./popupState";
+import { FOCUSABLE, onWindowDeactivate, openLayer, trapTab } from "./popupState";
 import { useTx } from "@/platform/i18n";
 import styles from "./Dialog.module.css";
 
@@ -116,6 +116,8 @@ export interface DialogProps {
   "aria-label"?: string;
   /** Close when clicking outside (default: only for `top` popups). */
   dismissOnBackdrop?: boolean;
+  /** Close when the app window loses focus (default: popups only; never modal dialogs). */
+  closeOnDeactivate?: boolean;
   /** @deprecated Dialogs never dim the window behind them; kept for call sites. */
   transparentBackdrop?: boolean;
   /** @deprecated Every centred dialog has window chrome; kept for call sites. */
@@ -193,6 +195,7 @@ function DialogInner({
   position = "center",
   className,
   dismissOnBackdrop,
+  closeOnDeactivate,
   platform: platformOverride,
   icon,
   ...aria
@@ -223,6 +226,12 @@ function DialogInner({
       window.removeEventListener("blur", onBlur);
     };
   }, []);
+
+  const cancelOnDeactivate = closeOnDeactivate ?? popup;
+  useEffect(() => {
+    if (!cancelOnDeactivate) return;
+    return onWindowDeactivate(() => onCloseRef.current());
+  }, [cancelOnDeactivate]);
 
   useEffect(() => {
     const layer = openLayer(() => ref.current);

@@ -276,3 +276,10 @@
   color: var(--fg-search-match, inherit);
   border-radius: 2px;
 }
+
+.statusMessage {
+  color: var(--fg-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

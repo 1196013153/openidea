@@ -107,6 +107,47 @@ fn rebase_conflict_then_continue() {
 }
 
 #[test]
+fn merge_versions_put_the_users_work_on_the_left() {
+    // Rebase: git's "ours" is main; the user's commit (topic) must be `ours` here.
+    let fx = diverged();
+    let repo = fx.repo();
+    let topic = fx.git(&["rev-parse", "topic"]);
+    assert!(repo.rebase("main").is_err());
+    let v = repo.merge_versions(&fx.path("f.txt")).unwrap();
+    assert_eq!(v.ours.as_deref(), Some("topic\n"));
+    assert_eq!(v.theirs.as_deref(), Some("main\n"));
+    assert_eq!(v.base.as_deref(), Some("base\n"));
+    assert!(v.sides.reversed);
+    assert_eq!(v.sides.operation.as_deref(), Some("rebase"));
+    assert_eq!(v.sides.branch.as_deref(), Some("topic"));
+    assert_eq!(v.sides.other_branch.as_deref(), Some("main"));
+    assert_eq!(v.sides.commit.as_deref(), Some(&topic[..8]));
+    let (cancel, out) = quiet();
+    repo.abort_operation(&cancel, &out).unwrap();
+
+    // Merge: not swapped; the merged branch is named.
+    assert!(repo.merge("main").is_err());
+    let v = repo.merge_versions(&fx.path("f.txt")).unwrap();
+    assert_eq!(v.ours.as_deref(), Some("topic\n"));
+    assert_eq!(v.theirs.as_deref(), Some("main\n"));
+    assert!(!v.sides.reversed);
+    assert_eq!(v.sides.branch.as_deref(), Some("topic"));
+    assert_eq!(v.sides.other_branch.as_deref(), Some("main"));
+    repo.abort_operation(&cancel, &out).unwrap();
+
+    // Cherry-pick: not swapped; the picked commit is named.
+    let main = fx.git(&["rev-parse", "main"]);
+    assert!(repo.cherry_pick(std::slice::from_ref(&main), &cancel, &out).is_err());
+    let v = repo.merge_versions(&fx.path("f.txt")).unwrap();
+    assert_eq!(v.ours.as_deref(), Some("topic\n"));
+    assert!(!v.sides.reversed);
+    assert_eq!(v.sides.operation.as_deref(), Some("cherry-pick"));
+    assert_eq!(v.sides.commit.as_deref(), Some(&main[..8]));
+    repo.abort_operation(&cancel, &out).unwrap();
+    assert_eq!(repo.merge_sides().unwrap(), MergeSides { branch: Some("topic".into()), ..Default::default() });
+}
+
+#[test]
 fn rebase_conflict_then_abort_and_skip() {
     let fx = diverged();
     let repo = fx.repo();
@@ -262,6 +303,11 @@ fn compare_with_local_lists_differences() {
         got,
         vec![("a.txt", ChangeKind::Modified), ("b.txt", ChangeKind::Modified), ("c.txt", ChangeKind::Added)]
     );
+    // Between two revisions the working tree does not count.
+    let files = fx.repo().diff_revisions(&one, "HEAD").unwrap();
+    let got: Vec<(&str, ChangeKind)> = files.iter().map(|f| (f.path.as_str(), f.kind)).collect();
+    assert_eq!(got, vec![("a.txt", ChangeKind::Modified), ("c.txt", ChangeKind::Added)]);
+    assert!(fx.repo().diff_revisions("-x", "HEAD").is_err());
 }
 
 #[test]
@@ -448,6 +494,12 @@ fn push_branch_and_up_to_revision() {
     assert_eq!(git_in(&bare, &["rev-parse", "side"]), c2);
     assert_eq!(fx.git(&["rev-parse", "--abbrev-ref", "side@{upstream}"]), "origin/side");
     assert!(repo.push_branch("nope", None, false, &cancel, &out).is_err());
+
+    // An edited target: same remote, another branch name; the upstream stays as it was.
+    repo.push_branch_to("main", None, "review/main", false, &cancel, &out).unwrap();
+    assert_eq!(git_in(&bare, &["rev-parse", "review/main"]), c3);
+    assert_eq!(fx.git(&["rev-parse", "--abbrev-ref", "main@{upstream}"]), "origin/main");
+    assert!(repo.push_branch_to("main", None, "bad..name", false, &cancel, &out).is_err());
 }
 
 #[test]

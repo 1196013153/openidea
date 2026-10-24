@@ -4,12 +4,13 @@
  */
 import { registerEditorContribution } from "@/editor/api";
 import { executeAction, getAction, registerActions } from "@/platform/actions";
-import { setContext } from "@/platform/context";
+import { getContext, setContext } from "@/platform/context";
 import { onIdeEvent, type RunConfig } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { onWorkflowSettingsChange } from "@/platform/workflowSettings";
-import { showContextMenu, lazyComponent } from "@/ui";
+import { showContextMenu, lazyComponent, type MenuItem } from "@/ui";
 import {
+  menuGroupItems,
   notifications,
   registerMenuGroup,
   registerOverlay,
@@ -42,6 +43,7 @@ import {
   failedTests,
   onRunExited,
   rerunFailed,
+  rerunSession,
   resetRuns,
   runningSessions,
   saveUserConfigs,
@@ -64,7 +66,7 @@ async function runSelected() {
   await ensureConfigs();
   const config = selectedConfig();
   if (!config) {
-    useRun.setState({ chooserOpen: true });
+    useRun.setState({ chooserOpen: true, chooserMode: "run" });
     return;
   }
   await startRun(config);
@@ -100,7 +102,7 @@ async function debugSelected() {
   await ensureConfigs();
   const config = selectedConfig();
   if (!config) {
-    useRun.setState({ chooserOpen: true });
+    useRun.setState({ chooserOpen: true, chooserMode: "debug" });
     return;
   }
   await debugConfig(config);
@@ -134,21 +136,50 @@ function configFromArg(arg: unknown): RunConfig | undefined {
   return arg as RunConfig;
 }
 
+/**
+ * IDEA's Stop: in the Run or Debug tool window, the selected tab's process; otherwise the
+ * only running process, or a chooser of every running one (run sessions and the
+ * `stopProcess` items other features contribute, e.g. debug sessions).
+ */
 function stopAction() {
+  const ctx = getContext();
+  if (ctx.toolWindowFocus && ctx.activeToolWindow === "debug" && getAction("debug.stop")) {
+    void executeAction("debug.stop");
+    return;
+  }
   const running = runningSessions();
-  if (running.length === 0) return;
-  if (running.length === 1) {
-    void stopSession(running[0]!.id);
+  const { activeSession } = useRun.getState();
+  if (ctx.toolWindowFocus && ctx.activeToolWindow === "run") {
+    const active = running.find((s) => s.id === activeSession);
+    if (active) {
+      void stopSession(active.id);
+      return;
+    }
+  }
+  const items = [
+    ...running.map((s): MenuItem => ({ label: s.config.name, verbatim: true, icon: "run", run: () => void stopSession(s.id) })),
+    ...menuGroupItems("stopProcess", { paths: [] }),
+  ].filter((i): i is MenuItem & { run: () => void } => "run" in i && !!i.run);
+  if (items.length === 0) return;
+  if (items.length === 1) {
+    items[0]!.run();
     return;
   }
   const anchor = document.querySelector("[data-run-chooser]")?.getBoundingClientRect();
   const at = anchor ? { x: anchor.left, y: anchor.bottom + 4 } : { x: window.innerWidth / 2 - 120, y: 44 };
   showContextMenu(at, [
     { kind: "header", label: "Stop Process" },
-    ...running.map((s) => ({ label: s.config.name, icon: "stop", run: () => void stopSession(s.id) })),
+    ...items,
     { kind: "separator" },
-    { label: "Stop All", icon: "stop", danger: true, run: () => running.forEach((s) => void stopSession(s.id)) },
+    { label: "Stop All", icon: "stop", danger: true, run: () => items.forEach((i) => i.run()) },
   ]);
+}
+
+/** IDEA's Rerun (⌘R / Ctrl+F5 in the Run tool window): restarts the selected tab without asking. */
+function rerunActive() {
+  const { activeSession, sessions } = useRun.getState();
+  const id = activeSession ?? sessions[sessions.length - 1]?.id;
+  if (id) rerunSession(id);
 }
 
 function useRunningCount(): number | null {
@@ -244,17 +275,26 @@ export function activate(): () => void {
         run: () => stopAction(),
       },
       {
+        id: "run.rerun",
+        title: "Rerun",
+        category: "Run",
+        icon: "rerun",
+        when: "projectOpen && activeToolWindow == 'run'",
+        run: () => rerunActive(),
+      },
+      {
         id: "run.chooseConfig",
         title: "Select Run/Debug Configuration…",
+        description: "Run a configuration (hold Shift to debug); the title bar widget passes \"select\" to only select one",
         category: "Run",
         when: "projectOpen",
-        run: async () => {
+        run: async ({ arg }) => {
           if (useRun.getState().chooserOpen || chooserJustClosed()) {
             useRun.setState({ chooserOpen: false });
             return;
           }
           await ensureConfigs();
-          useRun.setState({ chooserOpen: true });
+          useRun.setState({ chooserOpen: true, chooserMode: arg === "select" ? "select" : "run" });
         },
       },
       {
@@ -342,7 +382,7 @@ export function activate(): () => void {
           await ensureConfigs();
           const target = config !== undefined ? configFromArg(config) : selectedConfig();
           if (!target) {
-            useRun.setState({ chooserOpen: true });
+            useRun.setState({ chooserOpen: true, chooserMode: "run" });
             return;
           }
           await runWithExecutor(target, executor);

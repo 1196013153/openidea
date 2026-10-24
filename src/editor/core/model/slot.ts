@@ -23,11 +23,13 @@ import { showContextMenu } from "@/ui";
 import { baseExtensions, compartments, contributionExtensions } from "../cm/setup";
 import { gutterMenuItems, inGutterMenuArea } from "../gutterMenu";
 import type { DocModel } from "./document";
+import { isNavigation } from "./navHistory";
 
 export interface SlotHost {
   onFocus(slot: EditorSlot): void;
   onBlur(slot: EditorSlot): void;
-  onSelection(slot: EditorSlot): void;
+  /** `navigatedFrom`: the caret before a navigation transaction (mouse click, find, jump…). */
+  onSelection(slot: EditorSlot, navigatedFrom?: { line: number; col: number }): void;
   onUserEdit(slot: EditorSlot, tr: Transaction): void;
   onContextMenu(slot: EditorSlot, e: MouseEvent): void;
   /** Escape in the editor (close the find bar…); return true when handled. */
@@ -175,7 +177,13 @@ export class EditorSlot {
   private onTransactions(trs: readonly Transaction[], view: EditorView) {
     view.update(trs);
     let selection = false;
+    let navigatedFrom: { line: number; col: number } | undefined;
     for (const tr of trs) {
+      if (!navigatedFrom && tr.selection && isNavigation(tr)) {
+        const head = tr.startState.selection.main.head;
+        const line = tr.startState.doc.lineAt(head);
+        navigatedFrom = { line: line.number - 1, col: head - line.from };
+      }
       if (tr.docChanged && !isExternalChange(tr)) {
         this.model.onLocal(tr.changes, this);
         if (tr.isUserEvent("input") || tr.isUserEvent("delete") || tr.isUserEvent("move") || tr.isUserEvent("undo") || tr.isUserEvent("redo"))
@@ -183,7 +191,7 @@ export class EditorSlot {
       }
       if (tr.selection || tr.docChanged) selection = true;
     }
-    if (selection) this.host.onSelection(this);
+    if (selection) this.host.onSelection(this, navigatedFrom);
   }
 
   /** Applies a transaction as if the user made it (synced, undoable). */

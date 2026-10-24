@@ -5,12 +5,17 @@
  * ⌘W, ⌘F (find) and ⌘/⌥ arrow navigation, and Ctrl+Shift+C / V (copy / paste
  * on Windows and Linux, where Ctrl+C must reach the shell).
  *
+ * With "Override IDE shortcuts" on, a Ctrl or Escape stroke still reaches the IDE when the
+ * keymap binds it to one of IDEA's terminal-allowed actions (Find Action, Go to
+ * File…).
+ *
  * Registered on `window` in the capture phase during feature activation, i.e.
  * before `installKeyboardDispatcher`, so `stopImmediatePropagation` keeps the
  * dispatcher from seeing these strokes. Until the terminal runtime has loaded
  * there is no terminal, so there is nothing to handle.
  */
 import { executeAction } from "@/platform/actions";
+import { effectiveBindings, strokeOf } from "@/platform/keymap";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { terminalRuntime } from "./loader";
 
@@ -21,6 +26,7 @@ export type TerminalKeyResult =
   | { kind: "clear" }
   | { kind: "close" }
   | { kind: "find" }
+  | { kind: "clearSelection" }
   | { kind: "pass" };
 
 type KeyLike = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
@@ -62,8 +68,61 @@ export function terminalKeyAction(e: KeyLike, hasSelection: boolean): TerminalKe
     if (e.code === "Space") return { kind: "send", data: "\x00" };
     return { kind: "pass" };
   }
-  if (!meta && !ctrl && !alt && e.key === "Escape") return { kind: "send", data: "\x1b" };
+  if (!meta && !ctrl && !alt && e.key === "Escape") {
+    // IDEA's Terminal.Escape: a selection is cleared first.
+    return hasSelection && !shift ? { kind: "clearSelection" } : { kind: "send", data: "\x1b" };
+  }
   return { kind: "pass" };
+}
+
+/**
+ * Actions whose shortcuts the terminal leaves to the IDE (the same set
+ * IDEA allows). Next/Previous
+ * Tab are left out as on Windows/Linux, where the shell needs those keys.
+ */
+const ALLOWED_ACTION_IDS = new Set([
+  "toolwindow.terminal",
+  "toolwindow.project",
+  "toolwindow.bookmarks",
+  "toolwindow.find",
+  "toolwindow.run",
+  "toolwindow.debug",
+  "toolwindow.problems",
+  "toolwindow.structure",
+  "toolwindow.services",
+  "toolwindow.commit",
+  "toolwindow.git",
+  "toolwindow.hideActive",
+  "toolwindow.hideAll",
+  "toolwindow.maximize",
+  "window.next",
+  "window.previous",
+  "navigate.showBookmarks",
+  "find.inPath",
+  "navigate.findAction",
+  "navigate.gotoFile",
+  "navigate.gotoClass",
+  "navigate.gotoSymbol",
+  "vcs.push",
+  "file.settings",
+  "navigate.recentFiles",
+  "navigate.switcher",
+  "navigate.switcherBack",
+  "terminal.new",
+  "terminal.find",
+  "terminal.clear",
+  "terminal.closeSession",
+  "terminal.splitRight",
+  "terminal.splitDown",
+]);
+
+/** Whether `stroke` starts a binding of an allowed action. */
+export function isAllowedIdeShortcut(stroke: string, bindings: ReadonlyArray<readonly [string, string]>): boolean {
+  return bindings.some(([binding, id]) => {
+    if (!ALLOWED_ACTION_IDS.has(id) || (binding !== stroke && !binding.startsWith(`${stroke} `))) return false;
+    // Ctrl+E stays with the shell (end of line), as in IDEA.
+    return !(id === "navigate.recentFiles" && stroke === "Ctrl+E");
+  });
 }
 
 export function installTerminalKeys(target: Window = window): () => void {
@@ -87,6 +146,10 @@ export function installTerminalKeys(target: Window = window): () => void {
     // keys it doesn't bind still get to xterm through its own key handling.
     const t = workflowSettings().terminal;
     if (action.kind === "send" && (e.ctrlKey || e.key === "Escape") && !t.overrideIdeShortcuts) return;
+    if (action.kind === "send" && (e.ctrlKey || e.key === "Escape")) {
+      const stroke = strokeOf(e);
+      if (stroke && isAllowedIdeShortcut(stroke, effectiveBindings())) return;
+    }
     // "Move focus to the Editor with Escape": the IDE keymap's Escape (Focus Editor) runs instead.
     if (action.kind === "send" && e.key === "Escape" && t.escapeToEditor) return;
     switch (action.kind) {
@@ -101,6 +164,9 @@ export function installTerminalKeys(target: Window = window): () => void {
         break;
       case "copy":
         session.copySelection();
+        break;
+      case "clearSelection":
+        session.clearSelection();
         break;
       case "clear":
         session.clear();

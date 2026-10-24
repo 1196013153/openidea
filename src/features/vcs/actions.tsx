@@ -1,5 +1,5 @@
 /** VCS actions (ids match keymaps/intellij-macos.ts where bound). */
-import { registerActions, type Action } from "@/platform/actions";
+import { executeAction, registerActions, type Action } from "@/platform/actions";
 import { getContext } from "@/platform/context";
 import { activeEditor, editorsFor } from "@/editor/api";
 import { Menu, type MenuItem } from "@/ui";
@@ -7,13 +7,20 @@ import { editorService, maybeEditorService, notifications, toolWindowService } f
 import { annotationsShown, toggleAnnotations } from "./blame";
 import { showBranchesPopup } from "./BranchWidget";
 import { checkoutRevision, newBranch } from "./branchOps";
-import { addToVcs, isNestedRepoEntry, rollbackCandidates, showRollbackDialog, stashChanges } from "./changeOps";
-import { useCommit } from "./commitStore";
+import {
+  addToVcs,
+  commitChanges,
+  isNestedRepoEntry,
+  rollbackCandidates,
+  showRollbackDialog,
+  stashChanges,
+} from "./changeOps";
+import { setAmend, useCommit } from "./commitStore";
 import { gotoConflict, resolveAtCaret, showConflictsDialog } from "./conflictsUi";
 import { focusedDiffNavigator } from "./diffNavigator";
 import { openDiff, workingDiffData } from "./diffInput";
 import { openDialog } from "./dialogs";
-import { gotoChange } from "./gutter";
+import { gotoChange, rollbackSelectedLines } from "./gutter";
 import { openLocalHistory } from "./localHistoryKind";
 import { revealCommit, setLogFilters, useGitLog, emptyFilters } from "./logStore";
 import { allRepos, runRemote } from "./ops";
@@ -23,6 +30,7 @@ import { showCloneDialog } from "./clone";
 import { refreshNow, repoName } from "./store";
 
 const VCS = "vcsAvailable";
+const IN_COMMIT_WINDOW = "vcsAvailable && activeToolWindow == commit";
 
 function argPath(arg: unknown): string | undefined {
   if (typeof arg === "string") return arg;
@@ -127,6 +135,38 @@ export function registerVcsActions(): () => void {
       run: () => showCommitWindow(),
     },
     {
+      id: "vcs.commitAndPush",
+      title: "Commit and Push…",
+      category: "Git",
+      icon: "git-push",
+      when: VCS,
+      run: async () => {
+        const { message, amend } = useCommit.getState();
+        // Nothing to commit with yet: IDEA shows the commit window with the message field focused.
+        if (!message.trim() && !amend) return showCommitWindow();
+        const id = await commitChanges();
+        if (id !== undefined) void executeAction("vcs.push");
+      },
+    },
+    {
+      id: "vcs.toggleAmend",
+      title: "Amend Commit",
+      category: "Git",
+      when: VCS,
+      keyWhen: IN_COMMIT_WINDOW,
+      toggled: () => useCommit.getState().amend,
+      run: () => void setAmend(!useCommit.getState().amend),
+    },
+    {
+      id: "vcs.showMessageHistory",
+      title: "Show Commit Message History",
+      category: "Git",
+      icon: "history",
+      when: VCS,
+      keyWhen: IN_COMMIT_WINDOW,
+      run: () => useCommit.setState((s) => ({ historyTick: s.historyTick + 1 })),
+    },
+    {
       id: "vcs.clone",
       title: "Get from Version Control…",
       category: "Git",
@@ -169,6 +209,9 @@ export function registerVcsActions(): () => void {
       keywords: ["revert", "discard"],
       run: ({ arg }) => {
         const explicit = argPaths(arg);
+        // IDEA: in the editor, with the caret on changed lines, ⌥⌘Z is Rollback Lines.
+        const ed = activeEditor();
+        if (!explicit?.length && ed?.view.hasFocus && rollbackSelectedLines(ed.view)) return;
         const sel = useCommit.getState().selection;
         const paths = explicit?.length ? explicit : commitWindowFocused() && sel.length ? sel : undefined;
         if (paths) {

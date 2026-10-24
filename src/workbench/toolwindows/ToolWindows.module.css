@@ -46,6 +46,35 @@
   grid-area: editor;
 }
 
+/* A side: primary and split areas, each an island; stacked on the left and right, side by side at the bottom. */
+.side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.sideRow {
+  flex-direction: row;
+}
+/* --split-a / --split-b: the stored ratio (SidePanel), moved directly while the splitter is dragged. */
+.areaFirst {
+  flex: var(--split-a, 1) 1 0px;
+}
+.areaSecond {
+  flex: var(--split-b, 1) 1 0px;
+}
+.island[hidden] {
+  display: none;
+}
+.side > .splitGap {
+  flex: none;
+  height: var(--island-gap);
+}
+.sideRow > .splitGap {
+  height: auto;
+  width: var(--island-gap);
+}
+
 /* Islands: rounded surfaces on the frame background, separated by gaps. */
 .island {
   position: relative;
@@ -167,6 +196,21 @@
 }
 .stripeSpacer {
   flex: 1;
+}
+.stripeGroup {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: inherit;
+}
+/* Between a stripe group's primary and split windows. */
+.stripeSeparator {
+  flex: none;
+  width: 16px;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--border);
 }
 .stripeButton {
   position: relative;

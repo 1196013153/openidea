@@ -1,4 +1,5 @@
 .root {
+  position: relative;
   flex: 1;
   height: 100%;
   min-height: 0;
@@ -206,4 +207,20 @@
   margin-top: 2px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.navHint {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 6px 12px;
+  border: 1px solid var(--border-tooltip);
+  border-radius: var(--radius-tooltip);
+  background: var(--bg-tooltip);
+  color: var(--fg-tooltip);
+  box-shadow: var(--shadow-tooltip);
+  font-size: var(--fs-small);
+  pointer-events: none;
 }

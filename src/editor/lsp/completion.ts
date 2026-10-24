@@ -11,7 +11,9 @@ import {
   autocompletion,
   completeFromList,
   completionStatus,
+  currentCompletions,
   pickedCompletion,
+  selectedCompletion,
   snippet,
   startCompletion,
   type Completion,
@@ -22,7 +24,7 @@ import {
 } from "@codemirror/autocomplete";
 import { EditorSelection, Prec, type Text } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap, type ViewUpdate } from "@codemirror/view";
-import { commands, isTauri, nextRequestId, type CompletionItem, type RequestId } from "@/platform/ipc";
+import { commands, isTauri, nextRequestId, type CompletionItem, type Markup, type RequestId } from "@/platform/ipc";
 import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter } from "./completionItems";
 import { lspSnippetToCm, snippetVariables } from "./snippet";
 import { docOf, isUnavailable, lspDoc, lspRequest, reportLspError } from "./lsp";
@@ -33,6 +35,8 @@ import { triggerSignatureHelp } from "./signature";
 import { serverBackoff } from "./availability";
 import { pathCompletionSource } from "./fileReferences";
 import { editorPrefs } from "@/platform/editorSettings";
+import { showHint } from "./hint";
+import { inplaceRenameActive } from "./inplaceRename";
 
 interface RequestContext {
   doc: number;
@@ -66,10 +70,28 @@ function resolveItem(doc: number, item: CompletionItem): Promise<CompletionItem>
   return p;
 }
 
+/**
+ * F1 in the lookup (IDEA's documentation popup next to the lookup): docs then
+ * follow the selection until the lookup closes. Without the auto-popup setting
+ * the info panel waits for this.
+ */
+let docsRequested = false;
+const docWaiters = new Set<() => void>();
+
 function renderInfo(c: LspCompletion): Promise<CompletionInfo> {
   const prefs = editorPrefs().completion;
-  if (!prefs.showDocumentation) return Promise.resolve(null);
-  const delay = Math.max(0, prefs.documentationDelay);
+  if (!prefs.showDocumentation && !docsRequested)
+    return new Promise((resolve) => {
+      const show = () => {
+        docWaiters.delete(show);
+        resolve(buildInfo(c, 0));
+      };
+      docWaiters.add(show);
+    });
+  return buildInfo(c, docsRequested ? 0 : Math.max(0, prefs.documentationDelay));
+}
+
+function buildInfo(c: LspCompletion, delay: number): Promise<CompletionInfo> {
   const wait = delay ? new Promise<void>((r) => setTimeout(r, delay)) : Promise.resolve();
   return Promise.all([resolveItem(c.req.doc, c.lsp), wait]).then(([item]) => {
     c.resolved = item;
@@ -81,6 +103,35 @@ function renderInfo(c: LspCompletion): Promise<CompletionInfo> {
     if (hasDoc) dom.appendChild(renderMarkup(item.documentation!, c.req.language));
     return dom;
   });
+}
+
+function resetLookupDocs() {
+  docsRequested = false;
+  docWaiters.clear();
+}
+
+/**
+ * F1 while the lookup is open: shows the selected item's docs beside it
+ * (`shown`), or reports that they are already showing (`showing`) so the
+ * caller can open them focused instead. `none` without an open lookup.
+ */
+export function showLookupDocs(view: EditorView): "shown" | "showing" | "none" {
+  if (completionStatus(view.state) !== "active" || !selectedCompletion(view.state)) return "none";
+  if (docsRequested || editorPrefs().completion.showDocumentation) return "showing";
+  docsRequested = true;
+  for (const show of [...docWaiters]) show();
+  return "shown";
+}
+
+/** Documentation of the selected lookup item as markup (detail as a code block), or null. */
+export async function selectedLookupDoc(view: EditorView): Promise<{ markup: Markup; language: string | null } | null> {
+  const c = selectedCompletion(view.state);
+  if (!c || !isLsp(c)) return null;
+  const item = await resolveItem(c.req.doc, c.lsp);
+  const parts: string[] = [];
+  if (item.detail) parts.push("```" + (c.req.language ?? "") + "\n" + item.detail + "\n```");
+  if (!isEmptyMarkup(item.documentation)) parts.push(item.documentation!.value);
+  return parts.length ? { markup: { kind: "markdown", value: parts.join("\n\n") }, language: c.req.language } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +256,9 @@ async function fallback(ctx: CompletionContext): Promise<CompletionResult | null
 }
 
 export function makeCompletion(item: CompletionItem, req: RequestContext): LspCompletion {
-  return Object.assign(toCmCompletion(item), {
+  // The lookup handles commit characters itself (focused lookups only, see `lookupKeys`).
+  const { commitCharacters: _server, ...cm } = toCmCompletion(item);
+  return Object.assign(cm, {
     lsp: item,
     req,
     apply: applyLsp,
@@ -282,7 +335,6 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
     // "All letters" must re-check case on every keystroke.
     validFor: list.isIncomplete || (prefs.matchCase && prefs.caseSensitivity === "all") ? undefined : VALID_FOR,
     filter: true,
-    ...(prefs.insertOnSpecialKeys ? { commitCharacters: [" ", ".", "(", ",", ";"] } : {}),
   };
 }
 
@@ -301,7 +353,102 @@ export function matchesCase(label: string, typed: string, mode: string): boolean
 
 /** Show suggestions as you type: sources only answer explicit requests when it is off. */
 function gated(source: CompletionSource): CompletionSource {
-  return (ctx) => (!ctx.explicit && !editorPrefs().completion.autoPopup ? null : source(ctx));
+  return (ctx) =>
+    !ctx.explicit && (!editorPrefs().completion.autoPopup || inplaceRenameActive(ctx.state)) ? null : source(ctx);
+}
+
+// ---------------------------------------------------------------------------
+// Lookup focus, commit characters, explicit invocation
+
+/**
+ * As in IDEA, these finish a *focused* lookup with the selected
+ * item before being typed; an unfocused auto-popup just
+ * closes on them unless Settings › Code Completion › "Insert selected
+ * suggestion by pressing space, dot…" is on.
+ */
+export const COMMIT_CHARS = [".", ",", ";", "=", " ", ":", "("];
+
+/** Lookups the user engaged with: opened explicitly (⌃Space) or navigated with ↑/↓. */
+const focusedLookups = new WeakSet<EditorView>();
+/** Explicit invocations waiting for their first result (single candidate → insert it). */
+const explicitPending = new WeakSet<EditorView>();
+
+const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown"]);
+
+/** Whether typing `ch` finishes the open lookup with its selected item. */
+export function commitsLookup(ch: string, focused: boolean, insertOnSpecialKeys: boolean, itemChars: readonly string[] = []): boolean {
+  if (!focused && !insertOnSpecialKeys) return false;
+  return COMMIT_CHARS.includes(ch) || itemChars.includes(ch);
+}
+
+const lookupKeys = Prec.highest(
+  EditorView.domEventHandlers({
+    keydown(e, view) {
+      if (e.isComposing || completionStatus(view.state) !== "active") return false;
+      if (NAVIGATION_KEYS.has(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        focusedLookups.add(view);
+        return false;
+      }
+      if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return false;
+      const selected = selectedCompletion(view.state);
+      if (!selected) return false;
+      const itemChars = isLsp(selected) ? selected.lsp.commitCharacters : (selected.commitCharacters ?? []);
+      if (!commitsLookup(e.key, focusedLookups.has(view), editorPrefs().completion.insertOnSpecialKeys, itemChars)) return false;
+      if (!acceptCompletion(view)) return false;
+      // A call snippet already opened the parenthesis: the typed one is consumed.
+      const head = view.state.selection.main.head;
+      if (e.key === "(" && view.state.sliceDoc(head - 1, head) === "(") {
+        e.preventDefault();
+        return true;
+      }
+      return false;
+    },
+  }),
+);
+
+/** IDEA inserts a sole candidate right away on explicit invocation. */
+const AUTO_INSERT_DELAY = 80; // past CodeMirror's interactionDelay
+
+const lookupTracker = ViewPlugin.fromClass(
+  class {
+    private prev: ReturnType<typeof completionStatus> = null;
+    constructor(private view: EditorView) {}
+    update(u: ViewUpdate) {
+      const status = completionStatus(u.state);
+      const prev = this.prev;
+      this.prev = status;
+      if (status === prev && status !== "active") return;
+      const view = this.view;
+      if (status === null) {
+        focusedLookups.delete(view);
+        resetLookupDocs();
+        if (explicitPending.has(view)) {
+          explicitPending.delete(view);
+          if (prev === "pending" && !u.docChanged) queueMicrotask(() => showHint(view, "No suggestions", { timeout: 2000 }));
+        }
+      } else if (status === "active" && explicitPending.has(view)) {
+        explicitPending.delete(view);
+        const options = currentCompletions(u.state);
+        if (options.length === 1) {
+          const doc = u.state.doc;
+          setTimeout(() => {
+            const now = currentCompletions(view.state);
+            if (view.state.doc === doc && completionStatus(view.state) === "active" && now.length === 1 && now[0] === options[0])
+              acceptCompletion(view);
+          }, AUTO_INSERT_DELAY);
+        }
+      }
+    }
+  },
+);
+
+/** ⌃Space: explicit completion (a focused lookup; a sole candidate is inserted at once). */
+export function explicitCompletion(view: EditorView): boolean {
+  explicitPending.add(view);
+  const started = startCompletion(view);
+  if (!started) explicitPending.delete(view);
+  else focusedLookups.add(view);
+  return started;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +506,7 @@ const completionFooter = ViewPlugin.fromClass(
 
 export function completionExtension() {
   return [
+    lookupKeys,
     autocompletion({
       override: [gated(lspCompletionSource), gated(contributedSource), gated(pathCompletionSource)],
       icons: false,
@@ -374,6 +522,7 @@ export function completionExtension() {
       tooltipClass: () => "cm-lsp-completion",
     }),
     completionFooter,
+    lookupTracker,
     Prec.highest(
       keymap.of([
         {

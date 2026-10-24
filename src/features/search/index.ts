@@ -71,7 +71,7 @@ function jumpBookmark(dir: 1 | -1) {
 export function activate(): void | (() => void) {
   const se = (tab: Parameters<typeof showSearchEverywhere>[0]) => () => {
     closeAllPopups("everywhere");
-    showSearchEverywhere(tab, { query: editorSelectionText() ?? undefined, toggleOnRepeat: tab === "all" });
+    showSearchEverywhere(tab, { query: editorSelectionText() ?? undefined });
   };
 
   const disposers: Array<() => void> = [
@@ -87,6 +87,8 @@ export function activate(): void | (() => void) {
       title: "Structure",
       icon: "toolwindow-structure",
       anchor: "left",
+      // Left Bottom (split), as in IDEA: shows below Project.
+      secondary: true,
       order: 20,
       component: lazyComponent(() => import("./structure/StructureView").then((m) => m.StructureView)),
     }),
@@ -94,8 +96,9 @@ export function activate(): void | (() => void) {
       id: "bookmarks",
       title: "Bookmarks",
       icon: "toolwindow-bookmarks",
-      // Same anchor as Project/Structure, so it sits in their stripe group (the lower group holds bottom windows).
+      // Left Bottom (split) with Structure, as in IDEA.
       anchor: "left",
+      secondary: true,
       order: 30,
       component: lazyComponent(() => import("./bookmarks/BookmarksView").then((m) => m.BookmarksView)),
       headerActions: lazyComponent(() => import("./bookmarks/BookmarksView").then((m) => m.BookmarksActions)),

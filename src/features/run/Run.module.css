@@ -166,26 +166,6 @@
   text-decoration-color: currentColor;
 }
 
-/* stdin */
-
-.stdin {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 6px 0 10px;
-  border-top: 1px solid var(--border);
-}
-.stdinPrompt {
-  color: var(--accent);
-  flex: none;
-}
-.stdinInput {
-  flex: 1;
-  min-width: 0;
-}
-
 /* Test runner */
 
 .testPane {
@@ -389,6 +369,25 @@
 .chooserTemporary {
   opacity: 0.55;
 }
+.chooserCaption {
+  padding: 6px 10px 0;
+  color: var(--fg-secondary);
+  font-weight: 500;
+}
+.chooserMnemonic {
+  flex: none;
+  width: 8px;
+  color: var(--fg-subtle);
+  font-family: var(--font-keys);
+  font-size: var(--fs-small);
+}
+/* IDEA's popup ad text. */
+.chooserHint {
+  padding: 4px 10px 0;
+  border-top: 1px solid var(--border-popup);
+  color: var(--fg-faint);
+  font-size: var(--fs-small);
+}
 .chooserActions {
   display: flex;
   margin-right: -4px;
@@ -572,4 +571,42 @@
 }
 .fold:hover {
   color: var(--fg);
+}
+.foldToggle {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 2px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--fg-faint);
+  vertical-align: middle;
+  cursor: pointer;
+}
+.foldToggle:hover {
+  color: var(--fg);
+  background: var(--bg-fold-placeholder);
+}
+
+/* Typed console input: echoed in the same colour once sent. */
+.userInput {
+  color: var(--ansi-green);
+}
+.inputCaret {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: transparent;
+}
+.console:focus .inputCaret {
+  background: var(--fg);
+  animation: caretBlink 1s steps(1) infinite;
+}
+@keyframes caretBlink {
+  50% {
+    background: transparent;
+  }
 }

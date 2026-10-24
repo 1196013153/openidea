@@ -48,6 +48,14 @@ pub fn term_kill(state: State<'_, AppState>, id: TerminalId) -> IdeResult<()> {
     state.terminals.kill(id)
 }
 
+/// Whether the session is running a command (closing its tab asks first). A
+/// `tcgetpgrp` or one process snapshot: async only to stay off the main thread.
+#[tauri::command]
+#[specta::specta]
+pub async fn term_is_busy(state: State<'_, AppState>, id: TerminalId) -> IdeResult<bool> {
+    state.terminals.is_busy(id)
+}
+
 /// Shell used when Settings › Terminal › Shell path is empty.
 #[tauri::command]
 #[specta::specta]

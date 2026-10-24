@@ -76,6 +76,20 @@ describe("Settings dialog", () => {
     expect(dialog.querySelectorAll("mark").length).toBeGreaterThan(0);
   });
 
+  it("Esc in the search field clears the filter first; ↓ selects the next page keeping the focus", async () => {
+    const dialog = await openDialog("appearance");
+    const search = within(dialog).getByLabelText("Search settings");
+    fireEvent.change(search, { target: { value: "soft wrap" } });
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+    const before = useSettingsDialog.getState().pageId;
+    search.focus();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(useSettingsDialog.getState().pageId).not.toBe(before);
+    expect(document.activeElement).toBe(search);
+  });
+
   it("stages edits and writes them on Apply", async () => {
     const dialog = await openDialog("editor.general");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Soft-wrap files/ }));

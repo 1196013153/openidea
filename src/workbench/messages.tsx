@@ -29,6 +29,10 @@ export interface MessageRequest {
   cancel?: boolean;
   /** "Don't ask again" and similar, shown under the text. */
   checkbox?: string;
+  /** Initial state of `checkbox` (default unchecked). */
+  checked?: boolean;
+  /** Closes the dialog from outside (work finished meanwhile): resolves with button `dismissed`. */
+  signal?: AbortSignal;
   /** Defaults to `question`. */
   icon?: MessageIconKind;
   width?: number;
@@ -54,19 +58,18 @@ let seq = 0;
 export const ask: Ask = (request) =>
   new Promise((resolve) => {
     const id = ++seq;
-    useMessages.setState((s) => ({
-      stack: [
-        ...s.stack,
-        {
-          ...request,
-          id,
-          resolve: (r) => {
-            useMessages.setState((st) => ({ stack: st.stack.filter((m) => m.id !== id) }));
-            resolve(r);
-          },
-        },
-      ],
-    }));
+    let settled = false;
+    const finish = (r: MessageResult) => {
+      if (settled) return;
+      settled = true;
+      request.signal?.removeEventListener("abort", onAbort);
+      useMessages.setState((st) => ({ stack: st.stack.filter((m) => m.id !== id) }));
+      resolve(r);
+    };
+    const onAbort = () => finish({ button: "dismissed", checked: !!request.checked });
+    if (request.signal?.aborted) return onAbort();
+    request.signal?.addEventListener("abort", onAbort);
+    useMessages.setState((s) => ({ stack: [...s.stack, { ...request, id, resolve: finish }] }));
   });
 
 export interface ConfirmOptions {
@@ -76,6 +79,8 @@ export interface ConfirmOptions {
   ok: string;
   icon?: MessageIconKind;
   checkbox?: string;
+  /** Initial state of `checkbox`. */
+  checked?: boolean;
 }
 
 /** OK / Cancel question; resolves `null` when cancelled, else the checkbox state. */
@@ -85,13 +90,14 @@ export async function confirmChecked(opts: ConfirmOptions): Promise<{ checked: b
     body: opts.message,
     icon: opts.icon,
     checkbox: opts.checkbox,
+    checked: opts.checked,
     buttons: [{ id: "ok", label: opts.ok, primary: true }],
   });
   return r.button === "ok" ? { checked: r.checked } : null;
 }
 
 /** OK / Cancel question; resolves true for OK. */
-export async function confirm(opts: Omit<ConfirmOptions, "checkbox">): Promise<boolean> {
+export async function confirm(opts: Omit<ConfirmOptions, "checkbox" | "checked">): Promise<boolean> {
   return (await confirmChecked(opts)) !== null;
 }
 
@@ -118,7 +124,7 @@ export function MessagesHost() {
 }
 
 function MessageDialog({ message }: { message: Pending }) {
-  const [checked, setChecked] = useState(false);
+  const [checked, setChecked] = useState(!!message.checked);
   const done = (button: string) => message.resolve({ button, checked });
   const declared: DialogButton[] = message.buttons.map((b) => ({
     label: b.label,

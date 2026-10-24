@@ -55,7 +55,11 @@ export function RunWidget() {
         aria-haspopup="listbox"
         aria-expanded={chooserOpen}
         data-run-chooser=""
-        onClick={() => void executeAction(selected || configs.length ? "run.chooseConfig" : "run.editConfigs")}
+        onClick={() =>
+          void (selected || configs.length
+            ? executeAction("run.chooseConfig", "select")
+            : executeAction("run.editConfigs"))
+        }
       >
         {selected && (
           // IDEA: the configuration's type icon, with a status dot on its top-right corner while active.

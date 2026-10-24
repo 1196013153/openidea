@@ -12,6 +12,8 @@ import {
   unselectOccurrence,
 } from "./editing";
 import { toggleCaret } from "./multiCaret";
+import { enterInLineComment, lineCommentStyle } from "./comments";
+import { languages } from "@codemirror/language-data";
 
 /** Brace languages in miniature: one unit deeper after a line ending in `{`. */
 const javascript = () =>
@@ -108,18 +110,24 @@ describe("join lines", () => {
 });
 
 describe("toggle case", () => {
-  it("upper-cases mixed text and lower-cases upper-case text", () => {
+  it("lower-cases text with any upper-case letter, upper-cases the rest", () => {
     const v = make("[fooBar]");
     toggleCase(v);
-    expect(v.state.doc.toString()).toBe("FOOBAR");
-    toggleCase(v);
     expect(v.state.doc.toString()).toBe("foobar");
+    toggleCase(v);
+    expect(v.state.doc.toString()).toBe("FOOBAR");
   });
 
-  it("uses the word at the caret without a selection", () => {
+  it("selects the word at the caret without a selection", () => {
     const v = make("one tw|o three");
     toggleCase(v);
-    expect(show(v)).toBe("one TW|O three");
+    expect(show(v)).toBe("one [TWO] three");
+  });
+
+  it("decides once for all carets", () => {
+    const v = make("[abc] [Def]");
+    toggleCase(v);
+    expect(v.state.doc.toString()).toBe("abc def");
   });
 });
 
@@ -157,17 +165,68 @@ describe("multiple carets", () => {
 
 describe("comment with line comment", () => {
   const comments = EditorState.languageData.of(() => [{ commentTokens: { line: "//" } }]);
+  const indented = [comments, lineCommentStyle.of({ atFirstColumn: false, addSpace: true })];
 
-  it("moves the caret to the next line without a selection", () => {
-    const v = make("a|b\ncd\n", comments);
+  it("comments at the first column without a space and moves the caret down", () => {
+    const v = make("  a|b\n  cd\n", comments);
     commentLine(v);
-    expect(show(v)).toBe("// ab\nc|d\n");
+    expect(show(v)).toBe("//  ab\n  cd|\n");
   });
 
-  it("keeps a selection where it is", () => {
-    const v = make("[ab\ncd]\n", comments);
+  it("moves every caret down", () => {
+    const v = make("a|\nb\nc|\nd\n", comments);
     commentLine(v);
-    expect(v.state.doc.toString()).toBe("// ab\n// cd\n");
-    expect(v.state.doc.lineAt(v.state.selection.main.head).number).toBe(2);
+    expect(show(v)).toBe("//a\nb|\n//c\nd|\n");
+  });
+
+  it("keeps the caret after the prefix on an empty line", () => {
+    const v = make("f {\n  |\n  b", indented);
+    commentLine(v);
+    expect(show(v)).toBe("f {\n  // |\n  b");
+    const w = make("a\n|\nb", comments);
+    commentLine(w);
+    expect(show(w)).toBe("a\n//|\nb");
+  });
+
+  it("uncomments with or without the space", () => {
+    const v = make("[//a\n  // b\n]c", comments);
+    commentLine(v);
+    expect(v.state.doc.toString()).toBe("a\n   b\nc");
+    const w = make("[//a\n  // b\n]c", indented);
+    commentLine(w);
+    expect(w.state.doc.toString()).toBe("a\n  b\nc");
+  });
+
+  it("comments at the smallest indent of the lines when not at the first column", () => {
+    const v = make("[  a\n    b\n\n  c]", indented);
+    commentLine(v);
+    expect(v.state.doc.toString()).toBe("  // a\n  //   b\n  //\n  // c");
+  });
+
+  it("restores a whole-line selection from its first line's start", () => {
+    const v = make("x\n[ab\ncd\n]", comments);
+    commentLine(v);
+    expect(show(v)).toBe("x\n[//ab\n//cd\n]");
+  });
+});
+
+describe("enter in a line comment", async () => {
+  const ext = await languages.find((l) => l.name === "JavaScript")!.load();
+
+  it("continues the comment with its own spacing", () => {
+    const v = make("  //  one |two", ext);
+    expect(enterInLineComment(v)).toBe(true);
+    expect(show(v)).toBe("  //  one \n  //  |two");
+  });
+
+  it("splits a trailing comment onto a commented line", () => {
+    const v = make("f(); // one |two", ext);
+    enterInLineComment(v);
+    expect(show(v)).toBe("f(); // one \n|// two");
+  });
+
+  it("does nothing at the end of the comment or outside one", () => {
+    expect(enterInLineComment(make("// one|", ext))).toBe(false);
+    expect(enterInLineComment(make("f(|x)", ext))).toBe(false);
   });
 });

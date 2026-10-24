@@ -10,7 +10,6 @@ import { call, commands, isTauri, onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { maybeEditorService, toolWindowService } from "@/workbench/contributions";
-import { ask } from "@/workbench/messages";
 import { baseName, relTo } from "./model";
 import { logConsole } from "./ops";
 import { currentRepo, useVcs } from "./store";
@@ -160,23 +159,17 @@ async function modifyFile(path: string, mods: Modifications) {
 }
 
 // ---------------------------------------------------------------------------
-// Dialogs
+// Problems
 
-type Choice = "commit" | "review" | "cancel";
-
-async function choiceDialog(title: string, body: ReactNode, reviewLabel?: string): Promise<Choice> {
-  const r = await ask({
-    title,
-    body,
-    icon: "warning",
-    width: 520,
-    buttons: [
-      // IDEA's check-in handlers default to Review when there is something to review.
-      ...(reviewLabel ? [{ id: "review", label: reviewLabel, primary: true }] : []),
-      { id: "commit", label: "Commit Anyway", primary: !reviewLabel },
-    ],
-  });
-  return r.button as Choice;
+/**
+ * A failed before-commit check, shown in the commit panel (as IDEA)
+ * while the Commit button turns into "Commit Anyway".
+ */
+export interface CommitProblem {
+  title: string;
+  text: ReactNode;
+  /** "Review" / "Show details" link. */
+  details?: { label: string; run: () => void };
 }
 
 function plural(n: number, word: string) {
@@ -193,26 +186,26 @@ export interface CommitCandidate {
 }
 
 /**
- * Runs the configured before-commit modifications and checks for the files
- * about to be committed. Resolves false when the user cancels the commit.
+ * Runs the configured before-commit modifications and checks for the files about to
+ * be committed. Resolves the problems found; the commit goes ahead only without any.
  */
-export async function runCommitChecks(files: readonly CommitCandidate[], amend: boolean): Promise<boolean> {
+export async function runCommitChecks(files: readonly CommitCandidate[], amend: boolean): Promise<CommitProblem[]> {
   const { commit, git } = workflowSettings().vcs;
   const branch = useVcs.getState().branch;
+  const problems: CommitProblem[] = [];
 
   if (git.warnDetachedHead && branch && (!branch.head || branch.operation === "rebase")) {
     const rebase = branch.operation === "rebase";
-    const choice = await choiceDialog(
-      rebase ? "Commit During Rebase" : "Commit in Detached HEAD",
-      rebase
+    problems.push({
+      title: rebase ? "Commit during rebase" : "Commit in detached HEAD",
+      text: rebase
         ? "A rebase is in progress. The commit will become part of the rebased history; usually you continue the rebase instead."
         : "HEAD is detached: the commit won't belong to any branch and may be lost after checking out another branch. Create a branch first to keep it.",
-    );
-    if (choice !== "commit") return false;
+    });
   }
 
   const existing = files.filter((f) => f.exists).map((f) => f.path);
-  if (!isTauri() || !existing.length) return true;
+  if (!isTauri() || !existing.length) return problems;
 
   const mods: Modifications = {
     reformat: commit.reformat,
@@ -252,16 +245,20 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
       const parts = [errors && plural(errors, "error"), warnings && plural(warnings, "warning")]
         .filter(Boolean)
         .join(" and ");
-      const choice = await choiceDialog("Code Analysis", `${parts} found in ${plural(n, "file")}.`, "Review");
-      if (choice === "review") {
-        try {
-          toolWindowService().show("problems", true);
-        } catch {
-          // no Problems tool window
-        }
-        return false;
-      }
-      if (choice === "cancel") return false;
+      problems.push({
+        title: "Code analysis",
+        text: `${parts} found in ${plural(n, "file")}`,
+        details: {
+          label: "Review",
+          run: () => {
+            try {
+              toolWindowService().show("problems", true);
+            } catch {
+              // no Problems tool window
+            }
+          },
+        },
+      });
     }
   }
 
@@ -280,30 +277,31 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
       }
     }
     if (hits.length) {
-      const choice = await choiceDialog(
-        "TODO",
-        <>
-          <div>{plural(hits.length, "TODO item")} found in the changed lines:</div>
-          <ul className={styles.todoList}>
-            {hits.slice(0, 20).map((h, i) => (
-              <li key={i}>
-                <button
-                  type="button"
-                  className={styles.linkButton}
-                  onClick={() =>
-                    void maybeEditorService()?.openFile(h.path, { selection: { line: h.line, col: 0 }, focus: true })
-                  }
-                >
-                  {relTo(root, h.path)}:{h.line + 1}
-                </button>{" "}
-                {h.text}
-              </li>
-            ))}
-            {hits.length > 20 && <li>…</li>}
-          </ul>
-        </>,
-      );
-      if (choice !== "commit") return false;
+      problems.push({
+        title: "TODO",
+        text: (
+          <>
+            <div>{plural(hits.length, "TODO item")} found in the changed lines:</div>
+            <ul className={styles.todoList}>
+              {hits.slice(0, 20).map((h, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    className={styles.linkButton}
+                    onClick={() =>
+                      void maybeEditorService()?.openFile(h.path, { selection: { line: h.line, col: 0 }, focus: true })
+                    }
+                  >
+                    {relTo(root, h.path)}:{h.line + 1}
+                  </button>{" "}
+                  {h.text}
+                </li>
+              ))}
+              {hits.length > 20 && <li>…</li>}
+            </ul>
+          </>
+        ),
+      });
     }
   }
 
@@ -319,18 +317,19 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
         }
       }
       if (crlf.length) {
-        const choice = await choiceDialog(
-          "Line Separators Warning",
-          <>
-            {plural(crlf.length, "file")} ({crlf.slice(0, 5).map(baseName).join(", ")}
-            {crlf.length > 5 ? ", …" : ""}) contain CRLF line separators and core.autocrlf is not set, so they would be
-            committed with CRLF. Convert them with the line separator widget in the status bar, or set{" "}
-            <code>git config core.autocrlf input</code>.
-          </>,
-        );
-        if (choice !== "commit") return false;
+        problems.push({
+          title: "Line separators",
+          text: (
+            <>
+              {plural(crlf.length, "file")} ({crlf.slice(0, 5).map(baseName).join(", ")}
+              {crlf.length > 5 ? ", …" : ""}) contain CRLF line separators and core.autocrlf is not set, so they would be
+              committed with CRLF. Convert them with the line separator widget in the status bar, or set{" "}
+              <code>git config core.autocrlf input</code>.
+            </>
+          ),
+        });
       }
     }
   }
-  return true;
+  return problems;
 }

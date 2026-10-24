@@ -31,7 +31,7 @@ import {
   type MenuItem,
   T,
 } from "@/ui";
-import { commitFileDiffData, openDiff } from "./diffInput";
+import { commitFileDiffData, openDiff, withChain } from "./diffInput";
 import { laneColor, type GraphRow } from "./graph";
 import {
   extendCommitSelection,
@@ -733,7 +733,15 @@ function CommitDetails({ commits }: { commits: Commit[] }) {
       </div>
     );
 
-  const open = (f: ChangedFile) => void openDiff(commitFileDiffData(commit, f));
+  const open = (f: ChangedFile) => {
+    const all = files ?? [f];
+    void openDiff(
+      withChain(
+        all.map((x) => commitFileDiffData(commit, x)),
+        Math.max(0, all.indexOf(f)),
+      ),
+    );
+  };
   const [subject, ...bodyLines] = commit.message.replace(/\s+$/, "").split("\n");
   const body = bodyLines.join("\n").replace(/^\n+/, "");
 

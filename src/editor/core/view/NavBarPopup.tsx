@@ -210,3 +210,111 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
     </Popup>
   );
 }
+
+/**
+ * The status bar navigation bar's popup (as IDEA's navigation bar): clicking
+ * a segment lists its children; a folder lists its own (← goes back), a file
+ * or symbol opens.
+ */
+export function NavChildrenPopup({
+  segment,
+  anchor,
+  onClose,
+}: {
+  segment: NavSegment;
+  anchor: HTMLElement;
+  onClose: () => void;
+}) {
+  const [stack, setStack] = useState<NavSegment[]>([segment]);
+  const top = stack[stack.length - 1]!;
+  const outline = useOutline((s) => s[top.path]);
+  const [loaded, setLoaded] = useState<{ top: NavSegment; items: NavChild[] } | null>(null);
+  const [active, setActive] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const items = loaded?.top === top ? loaded.items : null;
+
+  useEffect(() => {
+    let alive = true;
+    void childrenOf(top, outline)
+      .catch((): NavChild[] => [])
+      .then((list) => {
+        if (!alive) return;
+        setLoaded({ top, items: list });
+        setActive(0);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [top, outline]);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [active, items]);
+
+  const choose = (child: NavChild) => {
+    if (child.kind === "dir") return setStack((s) => [...s, { kind: "dir", path: child.path, label: child.label }]);
+    onClose();
+    if (child.kind === "file") void editorController().openFile(child.path, { focus: true });
+    else {
+      const p = child.item.selection_range.start;
+      void editorController().openFile(child.path, { selection: { line: p.line, col: p.col }, focus: true });
+    }
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const n = items?.length ?? 0;
+    let handled = true;
+    if (e.key === "ArrowDown" && n) setActive((a) => (a + 1) % n);
+    else if (e.key === "ArrowUp" && n) setActive((a) => (a - 1 + n) % n);
+    else if (e.key === "Enter" || (e.key === "ArrowRight" && items?.[active]?.kind === "dir")) {
+      const child = items?.[active];
+      if (child) choose(child);
+    } else if (e.key === "ArrowLeft" && stack.length > 1) setStack((s) => s.slice(0, -1));
+    else handled = false;
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  return (
+    <Popup open anchor={anchor} placement="top-start" onClose={onClose} aria-label={top.label} className={styles.popup}>
+      <div
+        ref={listRef}
+        className={styles.childList}
+        role="listbox"
+        aria-label={top.label}
+        tabIndex={0}
+        data-autofocus
+        aria-activedescendant={items?.length ? `navbar-child-${active}` : undefined}
+        onKeyDown={onKeyDown}
+      >
+        {stack.length > 1 && (
+          <div className={styles.childHeader}>
+            <Icon name={iconOf(top)} size={14} />
+            <span className={styles.rowLabel}>{top.label}</span>
+          </div>
+        )}
+        {items?.length === 0 && (
+          <div className={styles.empty}>
+            <T>Nothing here</T>
+          </div>
+        )}
+        {items?.map((c, i) => (
+          <div
+            key={`${c.path}:${c.label}:${i}`}
+            id={`navbar-child-${i}`}
+            role="option"
+            aria-selected={i === active}
+            className={clsx(styles.row, i === active && styles.rowActive)}
+            onMouseEnter={() => setActive(i)}
+            onClick={() => choose(c)}
+          >
+            <Icon name={iconOf(c)} size={14} />
+            <span className={styles.rowLabel}>{c.label}</span>
+            {c.kind === "dir" && <Icon name="chevron-right" size={12} className={styles.rowChevron} />}
+          </div>
+        ))}
+      </div>
+    </Popup>
+  );
+}

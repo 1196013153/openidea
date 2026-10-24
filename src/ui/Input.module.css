@@ -79,6 +79,20 @@
   /* The frame's focus ring stands in for the global :focus-visible outline. */
   outline: none;
 }
+.multiline {
+  height: auto;
+  align-items: flex-start;
+  padding-block: 4px;
+}
+.multiline .leading {
+  margin-top: 3px;
+}
+.searchArea {
+  resize: none;
+  font-family: inherit;
+  line-height: 20px;
+  padding: 0;
+}
 .invalid .searchInput {
   color: var(--danger);
 }

@@ -1,11 +1,12 @@
 /**
  * Editor tabs and splits as pure state transitions (IDEA semantics):
  *  - one preview tab per pane (italic), replaced by the next preview, promoted
- *    to a regular tab when edited or opened explicitly;
+ *    to a regular tab when edited or opened explicitly, closed when another
+ *    regular tab opens;
  *  - pinned tabs stay at the front and survive Close Others / Close Tabs to the
  *    Right / Close All but Pinned;
- *  - new tabs open right of the active tab; closing activates the most
- *    recently used tab of the pane;
+ *  - new tabs open right of the active tab; closing activates the left
+ *    neighbour (or the right one / the most recently used, per settings);
  *  - splits form a tree of rows / columns; an emptied pane collapses away
  *    unless it is the last one.
  */
@@ -48,7 +49,7 @@ export interface TabsState {
 const MAX_CLOSED = 50;
 
 /** Editor Tabs › "When the current tab is closed, activate": set from settings by the controller. */
-export const tabOptions: { activateOnClose: "mru" | "left" | "right" } = { activateOnClose: "mru" };
+export const tabOptions: { activateOnClose: "mru" | "left" | "right" } = { activateOnClose: "left" };
 let seq = 0;
 const nextId = (p: string) => `${p}${++seq}`;
 
@@ -150,7 +151,15 @@ export function openTab(
     }
     tabs.splice(index, 0, tab);
   }
-  pane = { ...pane, tabs, mru: activate ? mru : [...mru, tab.id] };
+  let active = pane.active;
+  if (!tab.preview && tabs.some((t) => t.preview)) {
+    // A new regular editor closes the preview tab (IDEA trims previews on every open).
+    const previews = new Set(tabs.filter((t) => t.preview).map((t) => t.id));
+    tabs.splice(0, tabs.length, ...tabs.filter((t) => !previews.has(t.id)));
+    mru = mru.filter((id) => !previews.has(id));
+    if (active && previews.has(active)) active = null;
+  }
+  pane = { ...pane, tabs, active, mru: activate ? mru : [...mru, tab.id] };
   pane = activate ? touch(pane, tab.id) : { ...pane, active: pane.active ?? tab.id };
   return { state: { ...withPane(s, pane), activePane: activate ? paneId : s.activePane }, tabId: tab.id };
 }

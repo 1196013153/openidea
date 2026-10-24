@@ -186,6 +186,7 @@ export const commands = {
 	markRecent: (path: string) => typedError<null, IdeError>(__TAURI_INVOKE("mark_recent", { path })),
 	/**  Recently opened files, most recent first (⌘E). */
 	recentFiles: () => typedError<IpcPath[], IdeError>(__TAURI_INVOKE("recent_files")),
+	removeRecent: (path: string) => typedError<null, IdeError>(__TAURI_INVOKE("remove_recent", { path })),
 	/**  The web reference at `pos` of `doc` and its targets; `None` when there is no reference. */
 	webGoto: (doc: DocId, pos: Pos) => typedError<{
 	reference: WebReference,
@@ -290,8 +291,14 @@ export const commands = {
 	vcsStagePatch: (patch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stage_patch", { patch })),
 	vcsDiscard: (paths: string[]) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_discard", { paths })),
 	vcsCommit: (repo: string | null, message: string, options: CommitOptions) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_commit", { repo, message, options })),
-	vcsCheckout: (repo: string | null, branch: string, create: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_checkout", { repo, branch, create })),
-	vcsDeleteBranch: (repo: string | null, branch: string, force: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_delete_branch", { repo, branch, force })),
+	vcsCheckout: (repo: string | null, branch: string, create: boolean, options: {
+	mode?: CheckoutMode,
+	/**  Required when checking out a remote branch whose local namesake is ahead of it. */
+	diverged?: DivergedLocal | null,
+} | null) => typedError<CheckoutOutcome, IdeError>(__TAURI_INVOKE("vcs_checkout", { repo, branch, create, options })),
+	vcsDeleteBranch: (repo: string | null, branch: string) => typedError<DeletedBranch, IdeError>(__TAURI_INVOKE("vcs_delete_branch", { repo, branch })),
+	/**  "Restore" of the branch-deleted notification. */
+	vcsRestoreBranch: (repo: string | null, deleted: DeletedBranch) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_restore_branch", { repo, deleted })),
 	/**  New Branch: creates `name` at `start` (HEAD when absent), optionally checking it out. */
 	vcsCreateBranch: (repo: string | null, name: string, start: string | null, checkout: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_create_branch", { repo, name, start, checkout })),
 	/**
@@ -307,7 +314,8 @@ export const commands = {
 	vcsStashDrop: (repo: string | null, index: number) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_drop", { repo, index })),
 	/**  Network operation; progress lines stream through `on_output`. Cancellable. */
 	vcsRemote: (repo: string | null, request: RequestId, op: RemoteOp, onOutput: Channel<string>) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_remote", { repo, request, op, onOutput })),
-	vcsConflictVersions: (path: string) => typedError<ConflictVersions, IdeError>(__TAURI_INVOKE("vcs_conflict_versions", { path })),
+	/**  The user's side is `ours` (sides swapped during a rebase, as in IDEA). */
+	vcsConflictVersions: (path: string) => typedError<MergeVersions, IdeError>(__TAURI_INVOKE("vcs_conflict_versions", { path })),
 	vcsDiffText: (path: string, staged: boolean) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_diff_text", { path, staged })),
 	/**  Line hunks between two arbitrary texts (diff viewer, commit dialog). */
 	vcsDiffHunks: (oldText: string, newText: string) => __TAURI_INVOKE<LineHunk[]>("vcs_diff_hunks", { oldText, newText }),
@@ -336,6 +344,8 @@ export const commands = {
 	vcsTags: (repo: string | null) => typedError<string[], IdeError>(__TAURI_INVOKE("vcs_tags", { repo })),
 	/**  Compare with Local: tracked files that differ between `rev` and the working tree. */
 	vcsDiffWithWorktree: (repo: string | null, rev: string) => typedError<ChangedFile[], IdeError>(__TAURI_INVOKE("vcs_diff_with_worktree", { repo, rev })),
+	/**  Files that differ between two revisions (the "N files updated" of Update Project). */
+	vcsDiffRevisions: (repo: string | null, from: string, to: string) => typedError<ChangedFile[], IdeError>(__TAURI_INVOKE("vcs_diff_revisions", { repo, from, to })),
 	vcsCreatePatch: (source: PatchSource) => typedError<string, IdeError>(__TAURI_INVOKE("vcs_create_patch", { source })),
 	vcsPatchPreview: (patch: string) => typedError<PatchFile[], IdeError>(__TAURI_INVOKE("vcs_patch_preview", { patch })),
 	vcsApplyPatch: (patch: string) => typedError<ApplyOutcome, IdeError>(__TAURI_INVOKE("vcs_apply_patch", { patch })),
@@ -358,14 +368,19 @@ export const commands = {
 	termWrite: (id: TerminalId, data: string) => typedError<null, IdeError>(__TAURI_INVOKE("term_write", { id, data })),
 	termResize: (id: TerminalId, cols: number, rows: number) => typedError<null, IdeError>(__TAURI_INVOKE("term_resize", { id, cols, rows })),
 	termKill: (id: TerminalId) => typedError<null, IdeError>(__TAURI_INVOKE("term_kill", { id })),
+	/**
+	 *  Whether the session is running a command (closing its tab asks first). A
+	 *  `tcgetpgrp` or one process snapshot: async only to stay off the main thread.
+	 */
+	termIsBusy: (id: TerminalId) => typedError<boolean, IdeError>(__TAURI_INVOKE("term_is_busy", { id })),
 	/**  Shell used when Settings › Terminal › Shell path is empty. */
 	termDefaultShell: () => __TAURI_INVOKE<string>("term_default_shell"),
 	/**  Installed shells for the Terminal's "New Predefined Session" menu. */
 	termAvailableShells: () => __TAURI_INVOKE<string[]>("term_available_shells"),
 	/**  Detected configs followed by user-defined ones (user ids win on conflict). */
-	runConfigs: () => typedError<RunConfig[], IdeError>(__TAURI_INVOKE("run_configs")),
-	runSaveConfigs: (configs: RunConfig[]) => typedError<null, IdeError>(__TAURI_INVOKE("run_save_configs", { configs })),
-	runStart: (config: RunConfig, onOutput: Channel<OutputChunk>) => typedError<RunInfo, IdeError>(__TAURI_INVOKE("run_start", { config, onOutput })),
+	runConfigs: () => typedError<RunConfig_Serialize[], IdeError>(__TAURI_INVOKE("run_configs")),
+	runSaveConfigs: (configs: RunConfig_Deserialize[]) => typedError<null, IdeError>(__TAURI_INVOKE("run_save_configs", { configs })),
+	runStart: (config: RunConfig_Deserialize, onOutput: Channel<OutputChunk>) => typedError<RunInfo, IdeError>(__TAURI_INVOKE("run_start", { config, onOutput })),
 	runStop: (id: RunId) => typedError<null, IdeError>(__TAURI_INVOKE("run_stop", { id })),
 	runStdin: (id: RunId, data: string) => typedError<null, IdeError>(__TAURI_INVOKE("run_stdin", { id, data })),
 	runList: () => __TAURI_INVOKE<RunInfo[]>("run_list"),
@@ -521,7 +536,7 @@ export const commands = {
 	 *  How to run `config` with coverage: the command to launch and where its report will be,
 	 *  or which tool is missing.
 	 */
-	coveragePrepare: (config: RunConfig) => typedError<CoveragePrepared, IdeError>(__TAURI_INVOKE("coverage_prepare", { config })),
+	coveragePrepare: (config: RunConfig_Deserialize) => typedError<CoveragePrepared_Serialize, IdeError>(__TAURI_INVOKE("coverage_prepare", { config })),
 	/**  Reads the report a coverage run left behind. */
 	coverageCollect: (report: CoverageReportSpec) => typedError<CoverageSuite, IdeError>(__TAURI_INVOKE("coverage_collect", { report })),
 	/**  The browsers installed on this machine. */
@@ -531,7 +546,7 @@ export const commands = {
 	/**  Opens `url` in `browser` (an id from `web_browsers`), or the default browser. */
 	webOpen: (url: string, browser: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("web_open", { url, browser })),
 	/**  How to run `config` under a sampling profiler, or which profiler is missing. */
-	profilerPrepare: (config: RunConfig) => typedError<ProfilePrepared, IdeError>(__TAURI_INVOKE("profiler_prepare", { config })),
+	profilerPrepare: (config: RunConfig_Deserialize) => typedError<ProfilePrepared_Serialize, IdeError>(__TAURI_INVOKE("profiler_prepare", { config })),
 	/**  Reads the profile a profiled run left behind. */
 	profilerCollect: (spec: ProfileSpec) => typedError<Profile, IdeError>(__TAURI_INVOKE("profiler_collect", { spec })),
 	/**  Routes this window's plugin events to `on_event` (replaces an earlier subscription). */
@@ -975,6 +990,39 @@ export type ChangelistState = {
 
 export type CheckStatus = "pending" | "success" | "failure" | "cancelled" | "skipped" | "neutral";
 
+/**
+ *  How Checkout treats local changes that the switch would overwrite (IDEA's Smart
+ *  Checkout dialog).
+ */
+export type CheckoutMode = 
+/**  Fail with [`CheckoutOutcome::LocalChanges`] and change nothing. */
+"normal" | 
+/**  Stash local changes, switch, and restore them (conflicts are left to resolve). */
+"smart" | 
+/**  Discard the local changes in the way (`git switch --discard-changes`). */
+"force";
+
+export type CheckoutOptions = {
+	mode?: CheckoutMode,
+	/**  Required when checking out a remote branch whose local namesake is ahead of it. */
+	diverged?: DivergedLocal | null,
+};
+
+/**
+ *  Result of [`Repo::checkout_with`]; the non-`Done` variants other than `Conflicts`
+ *  left the repository untouched.
+ */
+export type CheckoutOutcome = { kind: "done" } | 
+/**  These local changes (repository-relative paths) would be overwritten. */
+{ kind: "localChanges"; files: string[] } | 
+/**  Local branch `local` has commits that remote branch `remote` does not. */
+{ kind: "localBranchAhead"; local: string; remote: string } | 
+/**
+ *  Switched, but restoring the local changes (Smart Checkout) or the rebase stopped
+ *  on conflicts in these files.
+ */
+{ kind: "conflicts"; files: string[] };
+
 export type ClearCachesResult = {
 	/**  Syntax trees dropped (they are rebuilt on demand). */
 	syntaxTrees: number,
@@ -1092,6 +1140,12 @@ export type CommitOptions = {
 	author: string | null,
 	/**  False skips the pre-commit and commit-msg hooks (`--no-verify`). */
 	runHooks: boolean,
+	/**
+	 *  Files committed with only some of their changes (IDEA's partial commit). They are
+	 *  committed through a temporary index, so neither the working tree nor the other
+	 *  entries of the index change; afterwards their index entries match the new commit.
+	 */
+	partial?: PartialCommitFile[],
 };
 
 /**  Version Control › Commit: commit checks and commit-message inspections. */
@@ -1163,12 +1217,6 @@ export type ComposeOp = "start" | "stop" | "restart" |
 /**  Stops and removes the project's containers and networks. */
 "down";
 
-export type ConflictVersions = {
-	base: string | null,
-	ours: string | null,
-	theirs: string | null,
-};
-
 /**  Build, Execution, Deployment › Console. */
 export type ConsoleSettings = {
 	softWrap?: boolean,
@@ -1182,9 +1230,15 @@ export type ConsoleSettings = {
 
 export type ContainerOp = "start" | "stop" | "restart" | "pause" | "unpause" | "kill";
 
-export type CoveragePrepared = { status: "ready"; runner: string; 
+export type CoveragePrepared = CoveragePrepared_Serialize | CoveragePrepared_Deserialize;
+
+export type CoveragePrepared_Deserialize = ({ status: "ready"; runner: string; 
 /**  What to launch instead of the configuration. */
-launch: RunConfig; report: CoverageReportSpec } | { status: "missingTool"; tool: string; message: string; install: InstallCommand | null } | { status: "unsupported"; reason: string };
+launch: RunConfig_Deserialize; report: CoverageReportSpec }) & { install?: never; message?: never; reason?: never; tool?: never } | ({ status: "missingTool"; tool: string; message: string; install: InstallCommand | null }) & { launch?: never; reason?: never; report?: never; runner?: never } | ({ status: "unsupported"; reason: string }) & { install?: never; launch?: never; message?: never; report?: never; runner?: never; tool?: never };
+
+export type CoveragePrepared_Serialize = ({ status: "ready"; runner: string; 
+/**  What to launch instead of the configuration. */
+launch: RunConfig_Serialize; report: CoverageReportSpec }) & { install?: never; message?: never; reason?: never; tool?: never } | ({ status: "missingTool"; tool: string; message: string; install: InstallCommand | null }) & { launch?: never; reason?: never; report?: never; runner?: never } | ({ status: "unsupported"; reason: string }) & { install?: never; launch?: never; message?: never; report?: never; runner?: never; tool?: never };
 
 /**  Where the report of a prepared run will be, and how to read it. */
 export type CoverageReportSpec = 
@@ -1458,6 +1512,17 @@ export type DebuggerSettings = {
 	python?: PythonDebuggerSettings,
 };
 
+/**  A deleted local branch, enough to restore it (IDEA's "Restore" notification action). */
+export type DeletedBranch = {
+	name: string,
+	/**  The commit the branch pointed at. */
+	tip: string,
+	/**  Its upstream (`origin/x`), restored with it. */
+	upstream: string | null,
+	/**  It was not fully merged: its own commits are now unreachable from any branch. */
+	unmerged: boolean,
+};
+
 export type Diagnostic = {
 	range: Range,
 	severity: Severity,
@@ -1476,6 +1541,13 @@ export type DirectoryHistory = {
 	/**  Files with history that no longer exist on disk. */
 	deleted: IpcPath[],
 };
+
+/**  Checking out remote `origin/x` while local `x` has commits `origin/x` lacks. */
+export type DivergedLocal = 
+/**  Rebase local `x` onto `origin/x` (IDEA "Rebase onto Remote"). */
+"rebase" | 
+/**  Reset local `x` to `origin/x` (IDEA "Drop Local Commits"). */
+"reset";
 
 /**  An open document buffer. */
 export type DocId = number;
@@ -2229,6 +2301,14 @@ export type HttpResponse = {
 
 export type HunkKind = "added" | "modified" | "deleted";
 
+/**  A hunk identified by its line ranges (0-based), see [`LineHunk`]. */
+export type HunkRange = {
+	start: number,
+	lines: number,
+	oldStart: number,
+	oldLines: number,
+};
+
 /**
  *  The single error type that crosses the IPC boundary.
  * 
@@ -2448,6 +2528,10 @@ export type LanguageCodeStyle_Deserialize = {
 	tabSize?: number | null,
 	indent?: number | null,
 	hardWrapAt?: number | null,
+	/**  Comment Code › Line comment at first column. */
+	lineCommentAtFirstColumn?: boolean | null,
+	/**  Comment Code › Add a space at line comment start. */
+	lineCommentAddSpace?: boolean | null,
 };
 
 /**  Editor › Code Style › <Language> › Tabs and Indents (unset fields inherit). */
@@ -2456,6 +2540,10 @@ export type LanguageCodeStyle_Serialize = {
 	tabSize?: number | null,
 	indent?: number | null,
 	hardWrapAt?: number | null,
+	/**  Comment Code › Line comment at first column. */
+	lineCommentAtFirstColumn?: boolean | null,
+	/**  Comment Code › Add a space at line comment start. */
+	lineCommentAddSpace?: boolean | null,
 };
 
 /**  Language identifier, e.g. `rust`, `typescript`, `kotlin`. Matches LSP `languageId`. */
@@ -2769,6 +2857,39 @@ export type MenuNode = { kind: "submenu"; id: string; label: string; children: M
 /**  A disabled placeholder such as "No Recent Projects". */
 { kind: "placeholder"; id: string; label: string } | { kind: "separator" };
 
+/**
+ *  Who stands on each side of the conflicts of the operation in progress (merge editor
+ *  titles, IDEA's `GitDefaultMergeDialogCustomizer`).
+ */
+export type MergeSides = {
+	/**  `merge`, `rebase`, `cherry-pick`, `revert`…; `None` outside an operation. */
+	operation: string | null,
+	/**
+	 *  Git's "ours" is not the user's work: during a rebase stage 2 holds the commits
+	 *  rebased onto and stage 3 the user's commit being replayed. [`MergeVersions`] is
+	 *  already swapped; conflict markers in the file are not.
+	 */
+	reversed: boolean,
+	/**  The current branch (for a rebase: the branch being rebased). */
+	branch: string | null,
+	/**
+	 *  Short id of the commit being applied (REBASE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD)
+	 *  or merged (MERGE_HEAD).
+	 */
+	commit: string | null,
+	/**  The other branch: the one being merged, or the one rebased onto. */
+	otherBranch: string | null,
+};
+
+/**  The versions of a conflicted file as the merge editor shows them. */
+export type MergeVersions = {
+	base: string | null,
+	/**  The user's side ("Accept Yours"): git's stage 2, or stage 3 when `sides.reversed`. */
+	ours: string | null,
+	theirs: string | null,
+	sides: MergeSides,
+};
+
 /**  Per-function totals (a recursive function's samples count once in `total`). */
 export type MethodStat = {
 	frame: number,
@@ -2855,6 +2976,13 @@ export type OutlineItem = {
 export type OutputChunk = { kind: "stdout"; text: string } | { kind: "stderr"; text: string } | 
 /**  System message from the IDE (command line echo, exit code). */
 { kind: "system"; text: string };
+
+/**  A file of a partial commit: which of its changes against HEAD to commit. */
+export type PartialCommitFile = {
+	path: IpcPath,
+	/**  The hunks to commit, as [`diff_hunks`] of the HEAD and on-disk texts reports them. */
+	hunks: HunkRange[],
+};
 
 /**  One file of a patch (Apply Patch preview). */
 export type PatchFile = {
@@ -3094,7 +3222,11 @@ export type ProfileNode = {
 	children: number[],
 };
 
-export type ProfilePrepared = { status: "ready"; profiler: string; launch: RunConfig; spec: ProfileSpec } | { status: "missingTool"; tool: string; message: string; install: ProfilerInstall | null; homepage: string | null } | { status: "unsupported"; reason: string };
+export type ProfilePrepared = ProfilePrepared_Serialize | ProfilePrepared_Deserialize;
+
+export type ProfilePrepared_Deserialize = ({ status: "ready"; profiler: string; launch: RunConfig_Deserialize; spec: ProfileSpec }) & { homepage?: never; install?: never; message?: never; reason?: never; tool?: never } | ({ status: "missingTool"; tool: string; message: string; install: ProfilerInstall | null; homepage: string | null }) & { launch?: never; profiler?: never; reason?: never; spec?: never } | ({ status: "unsupported"; reason: string }) & { homepage?: never; install?: never; launch?: never; message?: never; profiler?: never; spec?: never; tool?: never };
+
+export type ProfilePrepared_Serialize = ({ status: "ready"; profiler: string; launch: RunConfig_Serialize; spec: ProfileSpec }) & { homepage?: never; install?: never; message?: never; reason?: never; tool?: never } | ({ status: "missingTool"; tool: string; message: string; install: ProfilerInstall | null; homepage: string | null }) & { launch?: never; profiler?: never; reason?: never; spec?: never } | ({ status: "unsupported"; reason: string }) & { homepage?: never; install?: never; launch?: never; message?: never; profiler?: never; spec?: never; tool?: never };
 
 /**  Where a prepared run's profile will be, and how to read it. */
 export type ProfileSpec = 
@@ -3266,8 +3398,11 @@ export type RemoteOp = { op: "fetch" } | { op: "pull"; rebase: boolean } | { op:
 tags?: PushTags | null } | 
 /**  Deletes a remote branch; `branch` is the remote-tracking name (`origin/feature`). */
 { op: "deleteBranch"; branch: string } | 
-/**  Pushes local `branch` (only up to `revision` when set) to its upstream. */
-{ op: "pushBranch"; branch: string; revision: string | null; force_with_lease: boolean } | 
+/**
+ *  Pushes local `branch` (only up to `revision` when set) to its upstream, or to
+ *  remote branch `target` of the same remote.
+ */
+{ op: "pushBranch"; branch: string; revision: string | null; force_with_lease: boolean; target?: string | null } | 
 /**  Fast-forwards local `branch` (not checked out) to its upstream. */
 { op: "updateBranch"; branch: string };
 
@@ -3312,7 +3447,9 @@ export type ReviewEvent = "approve" | "requestChanges" | "comment";
 
 export type RootKind = "source" | "test" | "resources" | "testResources" | "excluded";
 
-export type RunConfig = {
+export type RunConfig = RunConfig_Serialize | RunConfig_Deserialize;
+
+export type RunConfig_Deserialize = {
 	/**  Stable id, e.g. `npm:dev`, `cargo:run:app`, or a uuid for user-defined. */
 	id: string,
 	name: string,
@@ -3328,6 +3465,28 @@ export type RunConfig = {
 	isTest: boolean,
 	/**  DAP adapter that can debug this config, if any. */
 	debugAdapter: string | null,
+	/**  "Allow multiple instances": Run on a running config starts another one instead of restarting it. */
+	allowParallel?: boolean,
+};
+
+export type RunConfig_Serialize = {
+	/**  Stable id, e.g. `npm:dev`, `cargo:run:app`, or a uuid for user-defined. */
+	id: string,
+	name: string,
+	/**  `npm` | `cargo` | `gradle` | `maven` | `go` | `python` | `pytest` | `make` | `shell` … */
+	kind: string,
+	command: string,
+	args: string[],
+	cwd: IpcPath | null,
+	env: { [key in string]: string },
+	/**  Detected configs are regenerated; user configs persist in `.openidea/run.toml`. */
+	detected: boolean,
+	/**  Test runner configs render results in the test tree. */
+	isTest: boolean,
+	/**  DAP adapter that can debug this config, if any. */
+	debugAdapter: string | null,
+	/**  "Allow multiple instances": Run on a running config starts another one instead of restarting it. */
+	allowParallel?: boolean,
 };
 
 /**  A process started from a run configuration. */
@@ -3595,7 +3754,7 @@ export type SmartKeysSettings = {
 	/**  Reformat on paste: `none` | `indentBlock` | `indentEachLine`. */
 	reformatOnPaste?: string,
 	smartIndent?: boolean,
-	/**  Backspace › Unindent: `nearest` indent position | `none`. */
+	/**  Backspace › Unindent: `autoindent` (proper indent position) | `nearest` indent position | `none`. */
 	backspaceUnindent?: string,
 };
 

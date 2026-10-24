@@ -404,7 +404,7 @@ export class EditorController implements SlotHost {
         path: slot?.model.path ?? nonTextTab?.input.path ?? null,
         doc: slot?.model.doc ?? null,
       });
-      if (slot) this.recordNav(slot);
+      if (slot) this.recordNav(slot, true);
     }
     this.scheduleStatus();
   }
@@ -431,8 +431,13 @@ export class EditorController implements SlotHost {
     if (this.autoSave()) void slot.model.save("auto").catch(() => {});
   }
 
-  onSelection(slot: EditorSlot) {
+  onSelection(slot: EditorSlot, navigatedFrom?: { line: number; col: number }) {
     if (slot !== this.activeSlot) return;
+    if (navigatedFrom && this.navSuppress === 0 && !slot.disposed) {
+      // The place left behind is where the caret was right before the navigation.
+      this.nav.update({ path: slot.model.path, ...navigatedFrom });
+      this.recordNav(slot, true);
+    }
     // The status bar reflects the view state synchronously (programmatic and
     // synthetic selection changes included); events / history are throttled.
     this.publishStatus(slot);
@@ -661,10 +666,11 @@ export class EditorController implements SlotHost {
 
   // --- navigation history --------------------------------------------------------------
 
-  private recordNav(slot: EditorSlot) {
+  /** `navigation`: the caret got here by a navigation (see NavigationHistory.update). */
+  private recordNav(slot: EditorSlot, navigation = false) {
     if (this.navSuppress > 0 || slot.disposed) return;
     const c = slot.caret();
-    this.nav.update({ path: slot.model.path, line: c.line, col: c.col });
+    this.nav.update({ path: slot.model.path, line: c.line, col: c.col }, navigation);
   }
 
   async navigateTo(loc: NavigationLocation | null) {
@@ -804,7 +810,7 @@ export class EditorController implements SlotHost {
       }
     } finally {
       this.navSuppress--;
-      if (this.navSuppress === 0 && this.activeSlot) this.recordNav(this.activeSlot);
+      if (this.navSuppress === 0 && this.activeSlot) this.recordNav(this.activeSlot, true);
     }
   }
 
@@ -871,6 +877,10 @@ export class EditorController implements SlotHost {
   }
   togglePin(paneId: string, tabId: string) {
     this.apply((s) => togglePin(s, paneId, tabId));
+  }
+  /** Turns a preview tab into a regular one (double-click on the tab). */
+  keepTab(paneId: string, tabId: string) {
+    this.apply((s) => (s.panes[paneId] ? promoteTab(s, paneId, tabId) : s));
   }
   /** Drag & drop; the tab keeps its id (and slot) when moved within a pane. */
   moveTab(fromPane: string, tabId: string, toPane: string, index: number) {
@@ -974,6 +984,23 @@ export class EditorController implements SlotHost {
     }
     const pane = document.querySelector<HTMLElement>(`[data-pane-id="${useTabs.getState().activePane}"]`);
     pane?.querySelector<HTMLElement>("[data-editor-focus], .cm-content")?.focus({ preventScroll: true });
+  }
+
+  openPaths(): string[] {
+    const s = useTabs.getState();
+    const out = new Set<string>();
+    for (const id of paneIds(s)) for (const t of s.panes[id]?.tabs ?? []) if (t.input.path) out.add(t.input.path);
+    return [...out];
+  }
+
+  closePath(path: string) {
+    this.apply((s) => {
+      const keys = new Set<string>();
+      for (const pane of Object.values(s.panes)) for (const t of pane.tabs) if (t.input.path === path) keys.add(t.input.key);
+      let next = s;
+      for (const key of keys) next = closeKey(next, key);
+      return next;
+    });
   }
 
   activePath(): string | null {

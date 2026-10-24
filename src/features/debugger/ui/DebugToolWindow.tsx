@@ -372,6 +372,8 @@ function VariablesPane({ session }: { session: DebugSession }) {
     rows: [],
   });
   const frame = session.status === "paused" ? session.selectedFrame : null;
+  // Same thread and stack depth across stops: compare like with like.
+  const changeScope = `${session.id}:${session.selectedThread}:${session.frames.findIndex((f) => f.id === frame)}`;
 
   // Scopes + first scope's variables of the selected frame.
   useEffect(() => {
@@ -520,6 +522,7 @@ function VariablesPane({ session }: { session: DebugSession }) {
           roots={roots}
           session={session.id}
           generation={stopSeq * 100000 + (frame ?? 0)}
+          changes={{ epoch: stopSeq, scope: changeScope }}
           aria-label="Variables"
         />
       )}

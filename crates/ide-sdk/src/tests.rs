@@ -46,6 +46,7 @@ fn run(kind: &str, command: &str, args: &[&str]) -> RunConfig {
         detected: true,
         is_test: false,
         debug_adapter: None,
+        allow_parallel: false,
     }
 }
 

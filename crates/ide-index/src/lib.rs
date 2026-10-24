@@ -159,6 +159,26 @@ impl ProjectIndex {
         self.shared.enqueue(Job::SaveRecent);
     }
 
+    /// Drops a file from Recent Files (Delete in the ⌘E popup).
+    pub fn remove_recent(&self, path: &Path) {
+        let path = match path.to_str() {
+            Some(s) if ide_core::text::is_virtual_uri(s) => path.to_owned(),
+            _ => match self.normalize(path) {
+                Some(p) => p,
+                None => return,
+            },
+        };
+        {
+            let mut r = self.shared.recent.lock();
+            let before = r.len();
+            r.retain(|p| p != &path);
+            if r.len() == before {
+                return;
+            }
+        }
+        self.shared.enqueue(Job::SaveRecent);
+    }
+
     /// Recently opened files, most recent first.
     pub fn recent_files(&self) -> Vec<PathBuf> {
         self.shared.recent.lock().clone()

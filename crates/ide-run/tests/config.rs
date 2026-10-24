@@ -16,6 +16,7 @@ fn sample() -> Vec<RunConfig> {
             detected: false,
             is_test: false,
             debug_adapter: Some("codelldb".into()),
+            allow_parallel: true,
         },
         RunConfig {
             id: "user:tests".into(),
@@ -28,6 +29,7 @@ fn sample() -> Vec<RunConfig> {
             detected: false,
             is_test: true,
             debug_adapter: None,
+            allow_parallel: false,
         },
     ]
 }

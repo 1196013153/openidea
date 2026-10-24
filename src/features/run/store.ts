@@ -44,6 +44,8 @@ interface SessionRuntime {
   lineListeners: Array<(text: string) => void>;
   /** Called once the process exited (run executors: collect a coverage report…). */
   onExit?: (exitCode: number | null, stopped: boolean) => void;
+  /** User input typed into the console, not yet sent (IDEA: Enter sends the line). */
+  input: string;
 }
 
 interface RunState {
@@ -58,6 +60,11 @@ interface RunState {
   /** Output version per session (re-render trigger for the console). */
   versions: Record<string, number>;
   chooserOpen: boolean;
+  /**
+   * What the chooser does with a configuration: `select` it (title bar widget), or `run` /
+   * `debug` it (⌃⌥R; holding Shift swaps the executor, as IDEA).
+   */
+  chooserMode: "select" | "run" | "debug";
   editorOpen: boolean;
   /** Config to preselect when the edit dialog opens. */
   editTarget: string | null;
@@ -75,6 +82,7 @@ export const useRun = create<RunState>(() => ({
   activeSession: null,
   versions: {},
   chooserOpen: false,
+  chooserMode: "select",
   editorOpen: false,
   editTarget: null,
   editDirty: false,
@@ -230,6 +238,26 @@ export async function saveTemporary(id: string): Promise<void> {
   selectConfig(id);
 }
 
+/** Whether the chooser's Delete may remove `id` (user and temporary configurations; detected ones come back). */
+export function canDeleteConfig(id: string): boolean {
+  const { configs, temporary } = useRun.getState();
+  const config = configs.find((c) => c.id === id);
+  return !!config && (temporary.includes(id) || !config.detected);
+}
+
+/** Deletes a user or temporary configuration. */
+export async function deleteConfig(id: string): Promise<void> {
+  if (!canDeleteConfig(id)) return;
+  const { configs, temporary, selectedId } = useRun.getState();
+  if (selectedId === id) selectConfig(null);
+  if (temporary.includes(id)) {
+    useRun.setState({ configs: configs.filter((c) => c.id !== id), temporary: temporary.filter((t) => t !== id) });
+    persistTemporary();
+    return;
+  }
+  await saveUserConfigs(configs.filter((c) => !c.detected && !temporary.includes(c.id) && c.id !== id));
+}
+
 /** Persists user configurations and reloads the merged list. */
 export async function saveUserConfigs(user: RunConfig[]): Promise<void> {
   await call(commands.runSaveConfigs(user.map((c) => ({ ...c, detected: false }))));
@@ -303,6 +331,7 @@ function newRuntime(config: RunConfig): SessionRuntime {
     flushHandle: null,
     generation: 0,
     lineListeners: [],
+    input: "",
   };
   return runtime;
 }
@@ -323,13 +352,19 @@ export async function startRun(
   } = {},
 ): Promise<RunSession | null> {
   const state = useRun.getState();
-  let session =
-    (reuse ? state.sessions.find((s) => s.id === reuse) : undefined) ??
-    state.sessions.find((s) => s.config.id === config.id && s.status !== "running" && s.status !== "starting");
-  if (session && (session.status === "running" || session.status === "starting")) {
-    if (workflowSettings().run.confirmRerun && !(await confirmRerun(session.config.name))) return null;
-    await stopSession(session.id);
+  const busy = (s: RunSession) => s.status === "running" || s.status === "starting";
+  let session = reuse ? state.sessions.find((s) => s.id === reuse) : undefined;
+  // As in IDEA, a configuration that doesn't allow parallel
+  // runs asks before stopping its running instances; rerunning a tab restarts it without asking.
+  const others = config.allowParallel ? [] : state.sessions.filter((s) => s.config.id === config.id && busy(s) && s.id !== session?.id);
+  if (others.length) {
+    if (workflowSettings().run.confirmRerun && !(await confirmRerun(config.name, others.length + (session && busy(session) ? 1 : 0))))
+      return null;
+    await Promise.all(others.map((s) => stopSession(s.id)));
+    session ??= others[0];
   }
+  if (session && busy(session)) await stopSession(session.id);
+  session ??= state.sessions.find((s) => s.config.id === config.id && !busy(s));
 
   try {
     await maybeEditorService()?.saveAll();
@@ -600,6 +635,19 @@ export function rerunFailed(sessionId: string): boolean {
   return true;
 }
 
+/** Whether the console takes typed input: the process runs and its stdin is open. */
+export function acceptsInput(session: RunSession): boolean {
+  return session.status === "running" && session.runId !== null && !session.stdinClosed;
+}
+
+/** Replaces the pending (typed, unsent) console input. */
+export function setPendingInput(sessionId: string, text: string) {
+  const rt = runtimes.get(sessionId);
+  if (!rt || rt.input === text) return;
+  rt.input = text;
+  bump(sessionId);
+}
+
 export async function sendStdin(sessionId: string, text: string): Promise<void> {
   const session = getSession(sessionId);
   if (!session || session.runId === null || session.status !== "running") return;
@@ -666,6 +714,7 @@ export function resetRuns() {
     activeSession: null,
     versions: {},
     chooserOpen: false,
+    chooserMode: "select",
     editorOpen: false,
     editTarget: null,
     editDirty: false,

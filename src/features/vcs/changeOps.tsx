@@ -1,15 +1,16 @@
 /** Local change operations: commit, rollback, add, stash. */
 import { useState } from "react";
-import type { FileStatus } from "@/bindings";
+import type { FileStatus, PartialCommitFile } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { Checkbox, Dialog, Icon, fileIconName } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { commitRepos, groupOf, planCommit, renamedFromPath } from "./changes";
 import { useChangelists, withListDefaults } from "./changelists";
 import { runCommitChecks } from "./commitChecks";
-import { rememberMessage, useCommit } from "./commitStore";
+import { forgetAmendDraft, rememberMessage, useCommit } from "./commitStore";
 import { confirmDialog, openDialog, promptText } from "./dialogs";
-import { KIND_COLOR, baseName, dirName, effectiveKind, relTo, stripSlash } from "./model";
+import { hunkKeys } from "./hunks";
+import { KIND_COLOR, baseName, dirName, effectiveKind, relTo, rootOf, stripSlash } from "./model";
 import { logConsole, runOp, saveAll } from "./ops";
 import { currentRepo, loadStashes, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
@@ -47,17 +48,30 @@ export async function commitChanges(): Promise<string | undefined> {
     return undefined;
   }
   const candidates = plan.included.map((f) => ({ path: stripSlash(f.path), exists: effectiveKind(f) !== "deleted" }));
-  if (!(await runCommitChecks(candidates, amend))) return undefined;
+  // IDEA: failed checks show in the commit panel; the next Commit ("Commit Anyway") skips them.
+  if (!useCommit.getState().checkProblems.length) {
+    const problems = await runCommitChecks(candidates, amend);
+    if (problems.length) {
+      useCommit.setState({ checkProblems: problems });
+      return undefined;
+    }
+  }
+  const partial = await partialCommitFiles(plan.partial);
   // Like IDEA, every repository with included changes gets a commit with the same message.
-  const repos = commitRepos(plan.included, useVcs.getState().roots, currentRepo());
+  const roots = useVcs.getState().roots;
+  const repos = commitRepos(plan.included, roots, currentRepo());
   const id = await runOp(
     amend ? "Amend commit" : "Commit",
     async () => {
       if (plan.unstage.length) await call(commands.vcsUnstage(plan.unstage));
-      if (plan.stage.length) await call(commands.vcsStage(plan.stage));
-      const options = { amend, signOff, author: author.trim() || null, runHooks };
+      const stage = [...plan.stage, ...partial.whole];
+      if (stage.length) await call(commands.vcsStage(stage));
       let id = "";
-      for (const repo of repos) id = await call(commands.vcsCommit(repo, message.trim(), options));
+      for (const repo of repos) {
+        const files = partial.files.filter((f) => (rootOf(f.path, roots) ?? null) === repo || repos.length === 1);
+        const options = { amend, signOff, author: author.trim() || null, runHooks, partial: files };
+        id = await call(commands.vcsCommit(repo, message.trim(), options));
+      }
       return id;
     },
     {
@@ -71,9 +85,35 @@ export async function commitChanges(): Promise<string | undefined> {
   );
   if (id !== undefined) {
     rememberMessage(message);
-    useCommit.setState({ message: "", amend: false, checks: new Map() });
+    forgetAmendDraft();
+    useCommit.setState({ message: "", amend: false, checks: new Map(), excludedHunks: new Map(), checkProblems: [] });
   }
   return id;
+}
+
+/**
+ * The included blocks of files committed partially, as hunk ranges against HEAD of the
+ * text on disk (saved just before). A file whose blocks are all included again (e.g. it
+ * was edited since) is committed whole.
+ */
+async function partialCommitFiles(paths: readonly string[]): Promise<{ files: PartialCommitFile[]; whole: string[] }> {
+  const files: PartialCommitFile[] = [];
+  const whole: string[] = [];
+  const excludedHunks = useCommit.getState().excludedHunks;
+  for (const path of paths) {
+    const [head, disk] = await Promise.all([call(commands.vcsFileAt(path, "HEAD")), call(commands.fsReadText(path))]);
+    const hunks = await commands.vcsDiffHunks(head ?? "", disk);
+    const keys = hunkKeys(disk, hunks);
+    const excluded = excludedHunks.get(path) ?? excludedHunks.get(`${path}/`);
+    const chosen = hunks.filter((_, i) => !excluded?.has(keys[i]!));
+    if (chosen.length === hunks.length) whole.push(path);
+    else
+      files.push({
+        path,
+        hunks: chosen.map(({ start, lines, oldStart, oldLines }) => ({ start, lines, oldStart, oldLines })),
+      });
+  }
+  return { files, whole };
 }
 
 /** Files the Rollback action applies to by default. */

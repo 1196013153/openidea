@@ -40,6 +40,13 @@ pub fn mark_recent(window: Window, state: State<'_, AppState>, path: PathBuf) ->
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn remove_recent(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<()> {
+    state.project(window.label())?.index.remove_recent(&path);
+    Ok(())
+}
+
 /// Recently opened files, most recent first (⌘E).
 #[tauri::command]
 #[specta::specta]

@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useWorkflowSettings } from "@/platform/workflowSettings";
-import { EmptyState, Icon, IconButton, Input, SplitGroup, SplitHandle, SplitPanel, Tabs, type TabItem, T } from "@/ui";
+import { EmptyState, IconButton, SplitGroup, SplitHandle, SplitPanel, Tabs, type TabItem, T } from "@/ui";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { ConsoleModel } from "./console";
 import { ConsoleView } from "./ConsoleView";
 import { runDirectory } from "./navigate";
 import {
+  acceptsInput,
   clearConsole,
   closeSession,
   closeStdin,
@@ -15,6 +16,7 @@ import {
   rerunSession,
   runtime,
   sendStdin,
+  setPendingInput,
   stopSession,
   useRun,
   type RunSession,
@@ -33,52 +35,6 @@ function sessionIcon(s: RunSession): string {
   return s.config.isTest ? "check" : "run";
 }
 
-function StdinBar({ session }: { session: RunSession }) {
-  const [value, setValue] = useState("");
-  const disabled = session.status !== "running" || session.stdinClosed;
-  return (
-    <form
-      className={styles.stdin}
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (disabled) return;
-        void sendStdin(session.id, value);
-        setValue("");
-      }}
-    >
-      <Icon name="chevron-right" size={12} className={styles.stdinPrompt} />
-      <Input
-        variant="bare"
-        mono
-        className={styles.stdinInput}
-        aria-label="Standard input"
-        placeholder={
-          session.stdinClosed ? "stdin closed" : disabled ? "Process is not running" : "Send to stdin (Enter)"
-        }
-        value={value}
-        disabled={disabled}
-        data-autofocus=""
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "d" && e.ctrlKey) {
-            e.preventDefault();
-            void closeStdin(session.id);
-          }
-        }}
-      />
-      <IconButton
-        icon="close"
-        size="small"
-        iconSize={12}
-        title="Close stdin (send EOF)"
-        shortcut="⌃D"
-        disabled={disabled}
-        onClick={() => void closeStdin(session.id)}
-      />
-    </form>
-  );
-}
-
 function SessionPanel({ session }: { session: RunSession }) {
   const version = useRun((s) => s.versions[session.id] ?? 0);
   const rt = runtime(session.id);
@@ -87,7 +43,6 @@ function SessionPanel({ session }: { session: RunSession }) {
   const defaultWrap = useWorkflowSettings((s) => s.console.softWrap);
   const [wrapOverride, setWrapOverride] = useState<boolean | null>(null);
   const softWrap = wrapOverride ?? defaultWrap;
-  const [showStdin, setShowStdin] = useState(false);
   const [selectedTest, setSelectedTest] = useState<string | null>(null);
   const running = session.status === "running" || session.status === "starting";
   const cwd = runDirectory(session.config.cwd);
@@ -124,16 +79,31 @@ function SessionPanel({ session }: { session: RunSession }) {
         onFollowChange={setFollow}
         cwd={cwd}
         onClear={() => clearConsole(session.id)}
+        input={
+          !testModel && acceptsInput(session)
+            ? {
+                pending: rt.input,
+                onChange: (text) => setPendingInput(session.id, text),
+                onSubmit: (line) => void sendStdin(session.id, line),
+                onEof: () => void closeStdin(session.id),
+              }
+            : undefined
+        }
         aria-label={`${session.config.name} output`}
       />
-      {showStdin && <StdinBar session={session} />}
     </div>
   );
 
   return (
     <div className={styles.session}>
       <div className={styles.toolbar} role="toolbar" aria-orientation="vertical" aria-label="Run actions">
-        <IconButton icon="rerun" iconSize={14} title="Rerun" onClick={() => rerunSession(session.id)} />
+        <IconButton
+          icon="rerun"
+          iconSize={14}
+          title="Rerun"
+          shortcut={shortcutLabel("run.rerun")}
+          onClick={() => rerunSession(session.id)}
+        />
         {rt.tests && (
           <IconButton
             icon="rerun"
@@ -162,13 +132,6 @@ function SessionPanel({ session }: { session: RunSession }) {
           onClick={() => setFollow((v) => !v)}
         />
         <IconButton icon="soft-wrap" iconSize={14} title="Soft-Wrap" pressed={softWrap} onClick={toggleWrap} />
-        <IconButton
-          icon="keyboard"
-          iconSize={14}
-          title="Show Input Field"
-          pressed={showStdin}
-          onClick={() => setShowStdin((v) => !v)}
-        />
         <IconButton icon="trash" iconSize={14} title="Clear All" onClick={() => clearConsole(session.id)} />
         <div className={styles.toolbarSep} />
         <IconButton

@@ -288,3 +288,31 @@ export function gotoChange(view: EditorView, dir: 1 | -1): EditorHunk | undefine
   view.focus();
   return target;
 }
+
+/** Hunks touched by the selection (a deletion counts on the line its marker is on). */
+export function hunksInSelection(state: EditorState): EditorHunk[] {
+  const doc = state.doc;
+  return editorHunks(state).filter((h) =>
+    state.selection.ranges.some((r) => {
+      const first = doc.lineAt(r.from).from;
+      const last = doc.lineAt(r.to).to;
+      if (h.kind === "deleted" || h.to <= h.from) {
+        const marker = doc.lineAt(Math.min(h.from, doc.length)).from;
+        return first <= marker && marker <= last;
+      }
+      return h.from <= last && first < h.to;
+    }),
+  );
+}
+
+/** IDEA's Rollback Lines: restores the hunks touched by the selection; false when there are none. */
+export function rollbackSelectedLines(view: EditorView): boolean {
+  const hunks = hunksInSelection(view.state);
+  if (!hunks.length) return false;
+  view.dispatch({
+    changes: hunks.map((h) => ({ from: h.from, to: h.to, insert: h.oldText })),
+    userEvent: "input.rollback",
+    scrollIntoView: true,
+  });
+  return true;
+}

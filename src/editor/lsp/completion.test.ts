@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { CompletionItem } from "@/bindings";
 import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter } from "./completionItems";
-import { applyLspCompletion, makeCompletion } from "./completion";
+import { applyLspCompletion, commitsLookup, completionExtension, explicitCompletion, makeCompletion } from "./completion";
+import type { CompletionSource } from "@codemirror/autocomplete";
 
 function item(over: Partial<CompletionItem> = {}): CompletionItem {
   return {
@@ -159,5 +160,57 @@ describe("applying completions", () => {
     expect(view.state.doc.toString()).toBe("println!(arg)");
     const sel = view.state.selection.main;
     expect(view.state.sliceDoc(sel.from, sel.to)).toBe("arg");
+  });
+});
+
+describe("lookup commit characters", () => {
+  it("finishes only focused lookups unless the setting asks for it (IDEA)", () => {
+    expect(commitsLookup(".", true, false)).toBe(true);
+    expect(commitsLookup(".", false, false)).toBe(false);
+    expect(commitsLookup(".", false, true)).toBe(true);
+    expect(commitsLookup("-", true, false)).toBe(false);
+    expect(commitsLookup("[", true, false, ["["])).toBe(true);
+  });
+
+  it("leaves server commit characters to the lookup", () => {
+    const req = { doc: 1, path: "/a.ts", language: "typescript", pos: 0, text: EditorState.create().doc };
+    expect(makeCompletion(item({ commitCharacters: ["."] }), req).commitCharacters).toBeUndefined();
+  });
+});
+
+describe("explicit completion", () => {
+  // jsdom has no layout; CodeMirror measures text when the tooltip is positioned.
+  Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+
+  function editor(labels: string[]) {
+    const source: CompletionSource = (ctx) => {
+      const word = ctx.matchBefore(/\w*/);
+      return { from: word?.from ?? ctx.pos, options: labels.map((label) => ({ label })) };
+    };
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: "pri",
+        selection: { anchor: 3 },
+        extensions: [completionExtension(), EditorState.languageData.of(() => [{ openideaCompletion: source }])],
+      }),
+      parent: document.body,
+    });
+    return view;
+  }
+
+  it("inserts a sole candidate right away (IDEA)", async () => {
+    const view = editor(["println"]);
+    explicitCompletion(view);
+    await vi.waitFor(() => expect(view.state.doc.toString()).toBe("println"), { timeout: 2000 });
+    view.destroy();
+  });
+
+  it("shows the list when there are several candidates", async () => {
+    const view = editor(["println", "print"]);
+    explicitCompletion(view);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(view.state.doc.toString()).toBe("pri");
+    view.destroy();
   });
 });

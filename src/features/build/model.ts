@@ -35,7 +35,14 @@ const count = (messages: readonly BuildMessage[], s: Severity) => messages.filte
 
 /** Root node of the tree for the current build. */
 export function rootNode(title: string, status: BuildStatus, messages: readonly BuildMessage[]): BuildNode {
-  return { kind: "root", key: ROOT_KEY, title, status, errors: count(messages, "error"), warnings: count(messages, "warning") };
+  return {
+    kind: "root",
+    key: ROOT_KEY,
+    title,
+    status,
+    errors: count(messages, "error"),
+    warnings: count(messages, "warning"),
+  };
 }
 
 /** Children of the root: files with messages (errors first), then messages about the build itself. */
@@ -61,7 +68,9 @@ export function rootChildren(messages: readonly BuildMessage[]): BuildNode[] {
     ),
   }));
   const worst = (n: BuildNode) => (n.kind === "file" ? Math.min(...n.messages.map((m) => RANK[m.severity])) : 0);
-  files.sort((a, b) => worst(a) - worst(b) || (a.kind === "file" && b.kind === "file" ? a.path.localeCompare(b.path) : 0));
+  files.sort(
+    (a, b) => worst(a) - worst(b) || (a.kind === "file" && b.kind === "file" ? a.path.localeCompare(b.path) : 0),
+  );
   return [...files, ...general];
 }
 
@@ -99,4 +108,25 @@ export function finishSummary(result: Pick<BuildResult, "success" | "errors" | "
 /** Files that received build diagnostics (to clear before the next build). */
 export function messageFiles(messages: readonly BuildMessage[]): string[] {
   return [...new Set(messages.filter((m) => m.path && m.range).map((m) => m.path!))];
+}
+
+/** The node with `key` in the tree of `messages` (root excluded). */
+export function findNode(messages: readonly BuildMessage[], key: string): BuildNode | undefined {
+  for (const c of rootChildren(messages)) {
+    if (c.key === key) return c;
+    if (c.kind === "file") {
+      const hit = fileChildren(c).find((m) => m.key === key);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
+}
+
+/** The first error in tree order, selected (and navigated to) when a build fails. */
+export function firstError(messages: readonly BuildMessage[]): Extract<BuildNode, { kind: "message" }> | undefined {
+  for (const c of rootChildren(messages)) {
+    const leaves = c.kind === "file" ? fileChildren(c) : [c];
+    for (const n of leaves) if (n.kind === "message" && n.message.severity === "error") return n;
+  }
+  return undefined;
 }

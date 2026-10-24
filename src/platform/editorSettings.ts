@@ -20,6 +20,34 @@ export interface LanguageCodeStyle {
   tabSize?: number;
   indent?: number;
   hardWrapAt?: number;
+  /** Code Generation › Comment Code (unset: the language's default, see `lineCommentDefaults`). */
+  lineCommentAtFirstColumn?: boolean;
+  lineCommentAddSpace?: boolean;
+}
+
+/**
+ * IDEA's per-language Comment Code defaults: line comments at the first column
+ * without a space, except where the language's code
+ * style says otherwise (Python's indented `# `; Go and Rust's indented `// `).
+ */
+const LINE_COMMENT_DEFAULTS: Record<string, { atFirstColumn: boolean; addSpace: boolean }> = {
+  python: { atFirstColumn: false, addSpace: true },
+  go: { atFirstColumn: false, addSpace: true },
+  rust: { atFirstColumn: false, addSpace: true },
+};
+
+export function lineCommentDefaults(language: string | undefined): { atFirstColumn: boolean; addSpace: boolean } {
+  return (language && LINE_COMMENT_DEFAULTS[language]) || { atFirstColumn: true, addSpace: false };
+}
+
+/** Effective Comment Code style of a language: Code Style override, else the language default. */
+export function lineCommentStyleFor(prefs: EditorExtras, language: string | undefined): { atFirstColumn: boolean; addSpace: boolean } {
+  const base = lineCommentDefaults(language);
+  const own = language ? prefs.codeStyle.languages[language] : undefined;
+  return {
+    atFirstColumn: typeof own?.lineCommentAtFirstColumn === "boolean" ? own.lineCommentAtFirstColumn : base.atFirstColumn,
+    addSpace: typeof own?.lineCommentAddSpace === "boolean" ? own.lineCommentAddSpace : base.addSpace,
+  };
 }
 
 export const EDITOR_EXTRA_DEFAULTS = {
@@ -52,16 +80,16 @@ export const EDITOR_EXTRA_DEFAULTS = {
     intentionBulb: true,
     distractionFreeWidth: 80,
   },
-  breadcrumbs: { show: false, placement: "bottom", disabledLanguages: [] as string[] },
+  breadcrumbs: { show: true, placement: "bottom", disabledLanguages: [] as string[] },
   completion: {
     matchCase: true,
     caseSensitivity: "first",
     autoPopup: true,
     insertOnSpecialKeys: false,
-    showDocumentation: true,
+    showDocumentation: false,
     documentationDelay: 500,
     parameterInfo: true,
-    parameterInfoDelay: 300,
+    parameterInfoDelay: 1000,
   },
   autoImport: { addUnambiguous: false, optimizeOnTheFly: false },
   folding: { showOutline: true, fileHeader: true, imports: true, docComments: false },
@@ -73,9 +101,9 @@ export const EDITOR_EXTRA_DEFAULTS = {
     showCloseButton: true,
     previewTab: true,
     openAtEnd: false,
-    tabLimit: 10,
-    closingPolicy: "unchanged",
-    activateOnClose: "mru",
+    tabLimit: 30,
+    closingPolicy: "lru",
+    activateOnClose: "left",
   },
   smartKeys: {
     smartHome: true,
@@ -83,10 +111,10 @@ export const EDITOR_EXTRA_DEFAULTS = {
     pairBrackets: true,
     pairQuotes: true,
     surroundSelection: true,
-    tabOutOfPair: false,
+    tabOutOfPair: true,
     reformatOnPaste: "indentBlock",
     smartIndent: true,
-    backspaceUnindent: "nearest",
+    backspaceUnindent: "autoindent",
   },
   codeEditing: {
     highlightUsages: true,

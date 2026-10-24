@@ -215,3 +215,8 @@
   min-width: 0;
   min-height: 0;
 }
+/* Push dialog: the editable target branch. */
+.targetInput {
+  width: 220px;
+  margin-left: 6px;
+}

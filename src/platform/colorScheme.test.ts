@@ -24,7 +24,7 @@ describe("color schemes", () => {
 
   it("coerces editor settings to their defaults' shape", () => {
     const v = validateEditorExtras({ tabs: { tabLimit: "x", placement: "none" }, codeStyle: { languages: { go: { useTab: true } } } });
-    expect(v.tabs.tabLimit).toBe(10);
+    expect(v.tabs.tabLimit).toBe(30);
     expect(v.tabs.placement).toBe("none");
     expect(v.codeStyle.languages.go).toEqual({ useTab: true });
     expect(v.general.softWrapFiles).toContain("*.md");

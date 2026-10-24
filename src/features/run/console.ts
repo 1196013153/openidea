@@ -280,6 +280,11 @@ export class ConsoleModel {
     this.pendingCR = false;
   }
 
+  /** The last line while it is still being written (no newline yet), e.g. a prompt. */
+  get openLine(): ConsoleLine | null {
+    return this.open;
+  }
+
   get size() {
     return this.lines.length;
   }

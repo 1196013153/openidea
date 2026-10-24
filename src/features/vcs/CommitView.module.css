@@ -293,3 +293,37 @@
   color: var(--link-hover);
   text-decoration: underline;
 }
+/* Failed before-commit checks (IDEA's commit checks failure panel). */
+.checkProblems {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  max-height: 120px;
+  overflow: auto;
+  padding: 4px 10px 0;
+  color: var(--fg-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.4;
+}
+.checkProblemsIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+.checkProblemsList {
+  min-width: 0;
+}
+.checkProblemTitle {
+  color: var(--fg);
+}
+.checkProblemLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.checkProblemLink:hover {
+  text-decoration: underline;
+}

@@ -260,6 +260,7 @@ mod tests {
             detected: false,
             is_test: false,
             debug_adapter: None,
+            allow_parallel: false,
         }
     }
 

@@ -56,7 +56,7 @@ async function gotoMethod(view: EditorView, dir: 1 | -1) {
   const target = methodStop(at.outline, at.caret, dir);
   if (!target) return;
   const pos = posToOffset(view.state.doc, target);
-  view.dispatch({ selection: EditorSelection.cursor(pos), scrollIntoView: true, userEvent: "select" });
+  view.dispatch({ selection: EditorSelection.cursor(pos), scrollIntoView: true, userEvent: "select.navigate" });
 }
 
 /** Without a type hierarchy: languages whose servers answer "super" through another request. */

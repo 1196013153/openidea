@@ -9,6 +9,7 @@ import { MessagesHost } from "@/workbench/messages";
 import { FileRefactorDialogHost } from "./FileRefactorDialogs";
 import { setRefactorBackendForTests } from "./fileRefactor";
 import { ProjectView } from "./ProjectView";
+import { beginNew } from "./operations";
 import { initProjectTree, setViewOption, useProjectTree } from "./store";
 
 const ROOT = "/w/acme";
@@ -70,18 +71,29 @@ describe("ProjectView", () => {
     await waitFor(() => expect(rows()).toEqual(["acme/w/acme", "build", "src", "App.kt", "Util.kt", "README.md"]));
   });
 
-  it("opens files on double click and previews on single click", async () => {
+  it("opens files on double click and previews on single click only when enabled", async () => {
     const { row, rows } = setup();
     await waitFor(() => expect(rows()).toContain("README.md"));
     const content = row("README.md").querySelector("[data-project-path]")!;
     fireEvent.click(content, { detail: 1 });
-    expect(openFile).toHaveBeenLastCalledWith("/w/acme/README.md", { preview: true, focus: false });
+    expect(openFile).not.toHaveBeenCalled();
     fireEvent.doubleClick(row("README.md"));
     expect(openFile).toHaveBeenLastCalledWith("/w/acme/README.md", { preview: undefined, focus: true });
-    act(() => setViewOption("previewTab", false));
-    openFile.mockClear();
+    act(() => setViewOption("previewTab", true));
     fireEvent.click(content, { detail: 1 });
-    expect(openFile).not.toHaveBeenCalled();
+    expect(openFile).toHaveBeenLastCalledWith("/w/acme/README.md", { preview: true, focus: false });
+    act(() => setViewOption("previewTab", false));
+  });
+
+  it("cancels a new file when its name field loses focus", async () => {
+    const { rows } = setup();
+    await waitFor(() => expect(rows()).toContain("README.md"));
+    await act(() => beginNew("file", ROOT));
+    const input = await screen.findByRole("textbox", { name: "New file name" });
+    fireEvent.change(input, { target: { value: "Notes.md" } });
+    await act(async () => void fireEvent.blur(input));
+    expect(useProjectTree.getState().editing).toBeNull();
+    expect(fs.nodes.has("/w/acme/Notes.md")).toBe(false);
   });
 
   it("publishes the focus context key", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockAt, parseConflicts, resolveAll, resolutionText } from "../conflicts";
+import { blockAt, mergeTitles, parseConflicts, resolveAll, resolutionText } from "../conflicts";
 
 const text = [
   "keep\n",
@@ -40,5 +40,37 @@ describe("parseConflicts", () => {
     const [a] = parseConflicts(text);
     expect(resolutionText(a!, "both")).toBe("ours 1\nours 2\ntheirs\n");
     expect(resolutionText(a!, "base")).toBe("base\n");
+  });
+
+  it("swaps sides during a rebase, where the user's commit is the >>>>>>> section", () => {
+    expect(resolveAll(text, "ours", true)).toBe("keep\ntheirs\ntail\nonly theirs\n");
+    expect(resolveAll(text, "theirs", true)).toBe("keep\nours 1\nours 2\ntail\n");
+    const [a] = parseConflicts(text);
+    expect(resolutionText(a!, "both", true)).toBe("theirs\nours 1\nours 2\n");
+    expect(resolutionText(a!, "base", true)).toBe("base\n");
+  });
+});
+
+describe("mergeTitles", () => {
+  const sides = (operation: string | null, extra: Record<string, string | boolean | null> = {}) => ({
+    operation,
+    reversed: operation === "rebase",
+    branch: "feature",
+    commit: "abc12345",
+    otherBranch: "main",
+    ...extra,
+  });
+  it("names the sides like IDEA for each operation", () => {
+    expect(mergeTitles(sides("rebase"))).toEqual({
+      yours: "Rebasing abc12345 from feature",
+      theirs: "Already rebased commits and commits from main",
+    });
+    expect(mergeTitles(sides("rebase", { otherBranch: null })).theirs).toBe("Already rebased commits");
+    expect(mergeTitles(sides("merge"))).toEqual({ yours: "Changes from feature", theirs: "Changes from main" });
+    expect(mergeTitles(sides("cherry-pick"))).toEqual({
+      yours: "Local Changes",
+      theirs: "Changes from cherry-pick abc12345",
+    });
+    expect(mergeTitles(null)).toEqual({ yours: "Your version", theirs: "Theirs (incoming)" });
   });
 });

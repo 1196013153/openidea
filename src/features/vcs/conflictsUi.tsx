@@ -148,7 +148,8 @@ export function resolveAtCaret(how: Resolution): boolean {
     return false;
   }
   view.dispatch({
-    changes: { from: block.from, to: block.to, insert: resolutionText(block, how) },
+    // During a rebase the user's commit is git's "theirs" section, as in the merge editor.
+    changes: { from: block.from, to: block.to, insert: resolutionText(block, how, inProgress() === "rebase") },
     userEvent: "input.resolve",
     scrollIntoView: true,
   });

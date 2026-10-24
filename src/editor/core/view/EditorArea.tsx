@@ -1,11 +1,13 @@
 /**
  * The editor area: split layout of panes, each with IDEA-style tabs (preview
  * tab in italics, pinned tabs, modified dot, file icons coloured by file
- * decorations, middle-click close, context menu) and the active editor.
+ * decorations, middle-click close, Alt+click close others, double-click to
+ * keep a preview / maximize the editor, context menu) and the active editor.
  */
 import { Fragment, useMemo, useRef, useState, type DragEvent, type FocusEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { useShallow } from "zustand/react/shallow";
+import { executeAction } from "@/platform/actions";
 import { setContext } from "@/platform/context";
 import { useEditorPrefs } from "@/platform/editorSettings";
 import { basename, dirname } from "@/platform/project";
@@ -252,6 +254,12 @@ function PaneView({ paneId }: { paneId: string }) {
         dnd={dnd}
         onSelect={(id) => ctrl.activate(paneId, id)}
         onClose={(id) => ctrl.closeTab(paneId, id)}
+        onCloseOthers={(id) => ctrl.closeOthers(paneId, id)}
+        onDoubleClick={(id) => {
+          // IDEA: a preview tab becomes a regular one; any other tab maximizes the editor.
+          if (pane.tabs.find((t) => t.id === id)?.preview) ctrl.keepTab(paneId, id);
+          else void executeAction("toolwindow.hideAll");
+        }}
         onContextMenu={(id, e) => {
           const tab = pane.tabs.find((t) => t.id === id);
           if (!tab) return;

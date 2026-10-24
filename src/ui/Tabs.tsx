@@ -4,6 +4,8 @@
  * an overflow dropdown listing every tab when they don't fit.
  */
 import {
+  createContext,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -59,11 +61,25 @@ export function dropIndex(x: number, rects: ReadonlyArray<{ left: number; width:
   return rects.length;
 }
 
+/** A tab strip as seen from its container: close the selected tab if it can be closed. */
+export interface TabStripHandle {
+  closeSelected(): boolean;
+}
+
+/**
+ * Lets a container (a tool window header) reach the tab strips rendered inside
+ * it: each `Tabs` registers itself with the nearest provided function.
+ */
+export const TabStripRegistry = createContext<((handle: TabStripHandle) => () => void) | null>(null);
+
 export interface TabsProps {
   items: TabItem[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onClose?: (id: string) => void;
+  /** Alt+click on a close button (IDEA: close all other tabs). */
+  onCloseOthers?: (id: string) => void;
+  onDoubleClick?: (id: string) => void;
   onContextMenu?: (id: string, e: MouseEvent) => void;
   /** `editor`: 30px with separators (editor tabs); `compact`: 28px plain (popups, tool window sub-tabs). */
   variant?: "editor" | "compact";
@@ -82,6 +98,8 @@ export function Tabs({
   activeId,
   onSelect,
   onClose,
+  onCloseOthers,
+  onDoubleClick,
   onContextMenu,
   variant = "editor",
   trailing,
@@ -97,6 +115,25 @@ export function Tabs({
   const moreRef = useRef<HTMLButtonElement>(null);
   const [drop, setDrop] = useState<number | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+
+  const register = useContext(TabStripRegistry);
+  const latest = useRef({ items, activeId, onClose });
+  useLayoutEffect(() => {
+    latest.current = { items, activeId, onClose };
+  });
+  useEffect(
+    () =>
+      register?.({
+        closeSelected: () => {
+          const { items, activeId, onClose } = latest.current;
+          const item = items.find((it) => it.id === activeId);
+          if (!item || !onClose || item.closable === false) return false;
+          onClose(item.id);
+          return true;
+        },
+      }),
+    [register],
+  );
 
   const accepts = (e: DragEvent) => !!dnd && [...e.dataTransfer.types].includes(dnd.type);
   const indexAt = (x: number) =>
@@ -248,6 +285,7 @@ export function Tabs({
                 className={styles.tabButton}
                 style={item.color ? { color: item.color } : undefined}
                 onClick={() => onSelect(item.id)}
+                onDoubleClick={onDoubleClick ? () => onDoubleClick(item.id) : undefined}
                 onKeyDown={(e) => onKeyDown(e, index, item)}
                 {...tooltipAttrs(item.tooltip)}
               >
@@ -270,7 +308,8 @@ export function Tabs({
                     className={styles.close}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onClose!(item.id);
+                      if (e.altKey && onCloseOthers) onCloseOthers(item.id);
+                      else onClose!(item.id);
                     }}
                   />
                 </span>

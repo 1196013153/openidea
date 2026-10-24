@@ -5,7 +5,8 @@ import { call, commands } from "@/platform/ipc";
 import { tx } from "@/platform/i18n";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { notifications } from "@/workbench/contributions";
-import { Checkbox, Dialog, List, Select, Spinner, T } from "@/ui";
+import { Checkbox, Dialog, Input, List, Select, Spinner, T } from "@/ui";
+import { ask } from "@/workbench/messages";
 import { openDialog } from "./dialogs";
 import { formatTime } from "./model";
 import { allRepos, lastRemoteFailure, runRemote, saveAll } from "./ops";
@@ -301,14 +302,28 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
     };
   }, [head, upstream, explicit, revision]);
 
-  const target = upstream ? upstream.slice(upstream.indexOf("/") + 1) : head;
+  const remote = upstream ? upstream.slice(0, upstream.indexOf("/")) : null;
+  const defaultTarget = upstream ? upstream.slice(upstream.indexOf("/") + 1) : head;
+  // IDEA's push target is editable: another name pushes to that branch of the same remote.
+  const [targetName, setTargetName] = useState(defaultTarget ?? "");
+  const edited = targetName.trim();
+  const retarget = !!head && !!edited && edited !== defaultTarget;
+  const target = retarget ? edited : defaultTarget;
+  const targetLabel = retarget ? `${remote ? `${remote}/` : ""}${edited}` : (upstream ?? "new remote branch");
   const protectedTarget = !!target && isProtectedBranch(target);
   const push = async () => {
+    if (force && !protectedTarget && !(await confirmForcePush(remote ? `${remote}/${target}` : (target ?? "")))) return;
     onClose();
-    if (explicit && head) {
+    if ((explicit || retarget) && head) {
       await runRemote(
-        { op: "pushBranch", branch: head, revision, force_with_lease: force && !protectedTarget },
-        `${revision ? `${head} up to ${revision.slice(0, 8)}` : head} → ${upstream ?? "new remote branch"}`,
+        {
+          op: "pushBranch",
+          branch: head,
+          revision,
+          force_with_lease: force && !protectedTarget,
+          target: retarget ? edited : null,
+        },
+        `${revision ? `${head} up to ${revision.slice(0, 8)}` : head} → ${targetLabel}`,
       );
       return;
     }
@@ -339,7 +354,7 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
               label="Force (with lease)"
             />
           </span>
-          {!explicit && (
+          {!explicit && !retarget && (
             <>
               <Checkbox
                 checked={setUpstream || !upstream}
@@ -377,10 +392,20 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
         {!head
           ? "HEAD is detached; check out a branch to push."
           : upstream
-            ? `${head}${revision ? ` up to ${revision.slice(0, 8)}` : ""} → ${upstream}`
+            ? `${head}${revision ? ` up to ${revision.slice(0, 8)}` : ""} → ${remote}/`
             : revision
-              ? `${head} has no upstream: commits up to ${revision.slice(0, 8)} will be pushed as a new branch.`
-              : `${head} has no upstream: it will be pushed as a new branch and tracked.`}
+              ? `${head} has no upstream: commits up to ${revision.slice(0, 8)} will be pushed as a new branch:`
+              : `${head} has no upstream: it will be pushed as a new branch and tracked:`}
+        {head && (
+          <Input
+            aria-label="Target branch"
+            mono
+            value={targetName}
+            onChange={(e) => setTargetName(e.target.value)}
+            className={styles.targetInput}
+          />
+        )}
+        {retarget && <span className={styles.hint}> {tx("New")}</span>}
       </div>
       <div style={{ height: 300, display: "flex", flexDirection: "column", padding: "0 14px 14px" }}>
         {error ? (
@@ -410,6 +435,38 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
       </div>
     </Dialog>
   );
+}
+
+const SILENT_FORCE_PUSH_KEY = "openidea.vcs.silentForcePushTargets";
+
+function silentForcePushTargets(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(SILENT_FORCE_PUSH_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** IDEA's force push confirmation, with "Don't warn about this target". */
+async function confirmForcePush(target: string): Promise<boolean> {
+  if (target && silentForcePushTargets().includes(target)) return true;
+  const r = await ask({
+    title: "Force Push",
+    body: `You're going to force push to '${target}'. It may overwrite commits at the remote. Are you sure you want to proceed?`,
+    icon: "warning",
+    checkbox: target ? "Don't warn about this target" : undefined,
+    buttons: [{ id: "force", label: "Force Push", primary: true }],
+  });
+  if (r.button !== "force") return false;
+  if (r.checked && target) {
+    try {
+      localStorage.setItem(SILENT_FORCE_PUSH_KEY, JSON.stringify([...silentForcePushTargets(), target]));
+    } catch {
+      // Not remembered: the next force push asks again.
+    }
+  }
+  return true;
 }
 
 /** Settings › Git › Protected branches: `;`/`,`-separated globs (`*`, `?`). */

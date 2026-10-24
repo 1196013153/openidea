@@ -1,8 +1,9 @@
 /** Editor actions (ids from keymaps/intellij-macos.ts). */
 import { EditorSelection, type EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { deleteLine, moveLineDown, moveLineUp, toggleBlockComment } from "@codemirror/commands";
+import { addCursorAbove, addCursorBelow, deleteLine, moveLineDown, moveLineUp, toggleBlockComment } from "@codemirror/commands";
 import { foldAll, syntaxTree, toggleFold, unfoldAll } from "@codemirror/language";
+import { acceptCompletion, completionStatus } from "@codemirror/autocomplete";
 import { executeAction, registerActions, type Action } from "@/platform/actions";
 import { getContext } from "@/platform/context";
 import { editorController, useGotoLine, useTabs } from "./controller";
@@ -26,6 +27,7 @@ import type { EditorSlot } from "./model/slot";
 import { findAgain, openFindBar } from "./view/FindBar";
 import { foldAtCaret, foldSelection, unfoldAtCaret } from "./cm/folding";
 import { reverseLines, sortLines } from "./cm/lines";
+import { cursorCodeBlockEnd, cursorCodeBlockStart, scrollToCenter, splitLine } from "./cm/caretCommands";
 import { isColumnMode, toggleColumnMode } from "./cm/columnMode";
 import { pasteAsPlainText, pasteFromHistory, unwrapAtCaret } from "./extras";
 import { cyclicExpandWord } from "./wordCompletion";
@@ -67,7 +69,8 @@ function withView(run: (view: EditorView, slot: EditorSlot) => unknown) {
 
 // --- extend / shrink selection ---------------------------------------------------
 
-const stacks = new WeakMap<EditorSlot, SelectionStack>();
+/** One stack per selection range (by index): ⌥↑ / ⌥↓ work on every caret. */
+const stacks = new WeakMap<EditorSlot, SelectionStack[]>();
 
 /** Syntax-tree candidates when the backend has nothing (or the language isn't parsed there). */
 export function syntaxCandidates(state: EditorState, sel: SimpleRange): SimpleRange[] {
@@ -115,35 +118,40 @@ export function reusableChain(chain: BackendChain | undefined, counter: number, 
 
 const chains = new WeakMap<EditorSlot, BackendChain>();
 
+/** Backend candidates around `current` (the cached chain for repeated extends of one range). */
+async function backendCandidates(slot: EditorSlot, current: SimpleRange, cache: boolean): Promise<SimpleRange[]> {
+  const model = slot.model;
+  const cached = cache ? reusableChain(chains.get(slot), model.changeCounter, current) : null;
+  if (cached) return cached;
+  try {
+    await model.sync.whenIdle();
+    const counter = model.changeCounter;
+    const ranges = await model.manager.backend.selectionRanges(model.doc, current.from);
+    if (counter !== model.changeCounter || !slot.view) return [];
+    const candidates = rangesFromBackend(slot.view.state, ranges);
+    if (cache) chains.set(slot, { counter, pos: current.from, ranges: candidates });
+    return candidates;
+  } catch {
+    return []; // fall back to the syntax tree
+  }
+}
+
 async function extend(slot: EditorSlot) {
   const view = slot.view;
   if (!view) return;
-  const main = view.state.selection.main;
-  const current = { from: main.from, to: main.to };
-  let candidates: SimpleRange[] = [];
-  const model = slot.model;
-  const cached = reusableChain(chains.get(slot), model.changeCounter, current);
-  if (cached) {
-    candidates = cached;
-  } else {
-    try {
-      await model.sync.whenIdle();
-      const counter = model.changeCounter;
-      const ranges = await model.manager.backend.selectionRanges(model.doc, current.from);
-      if (counter === model.changeCounter && slot.view) {
-        candidates = rangesFromBackend(slot.view.state, ranges);
-        chains.set(slot, { counter, pos: current.from, ranges: candidates });
-      }
-    } catch {
-      // fall back to the syntax tree
-    }
-  }
+  const before = view.state.selection;
+  const currents = before.ranges.map((r) => ({ from: r.from, to: r.to }));
+  const candidates = await Promise.all(currents.map((c, i) => backendCandidates(slot, c, i === before.mainIndex)));
   const v = slot.view;
-  if (!v || !v.state.selection.main.eq(main)) return;
-  const all = [...candidates, ...syntaxCandidates(v.state, current)];
-  const r = extendSelection(stacks.get(slot) ?? emptyStack(), current, all);
-  stacks.set(slot, r.state);
-  if (r.next) v.dispatch({ selection: EditorSelection.single(r.next.from, r.next.to), scrollIntoView: true, userEvent: "select.extend" });
+  if (!v || !v.state.selection.eq(before)) return;
+  const prev = stacks.get(slot) ?? [];
+  const results = currents.map((c, i) =>
+    extendSelection(prev[i] ?? emptyStack(), c, [...candidates[i]!, ...syntaxCandidates(v.state, c)]),
+  );
+  stacks.set(slot, results.map((r) => r.state));
+  if (!results.some((r) => r.next)) return;
+  const ranges = results.map((r, i) => (r.next ? EditorSelection.range(r.next.from, r.next.to) : before.ranges[i]!));
+  v.dispatch({ selection: EditorSelection.create(ranges, before.mainIndex), scrollIntoView: true, userEvent: "select.extend" });
 }
 
 /** Extend / shrink run in order: a quick ⌥↑⌥↑ extends twice although extending waits for the backend. */
@@ -158,10 +166,13 @@ function queueSelection(slot: EditorSlot, step: (slot: EditorSlot) => void | Pro
 function shrink(slot: EditorSlot) {
   const view = slot.view;
   if (!view) return;
-  const main = view.state.selection.main;
-  const r = shrinkSelection(stacks.get(slot) ?? emptyStack(), { from: main.from, to: main.to });
-  stacks.set(slot, r.state);
-  if (r.next) view.dispatch({ selection: EditorSelection.single(r.next.from, r.next.to), scrollIntoView: true, userEvent: "select.shrink" });
+  const sel = view.state.selection;
+  const prev = stacks.get(slot) ?? [];
+  const results = sel.ranges.map((r, i) => shrinkSelection(prev[i] ?? emptyStack(), { from: r.from, to: r.to }));
+  stacks.set(slot, results.map((r) => r.state));
+  if (!results.some((r) => r.next)) return;
+  const ranges = results.map((r, i) => (r.next ? EditorSelection.range(r.next.from, r.next.to) : sel.ranges[i]!));
+  view.dispatch({ selection: EditorSelection.create(ranges, sel.mainIndex), scrollIntoView: true, userEvent: "select.shrink" });
 }
 
 // --- structural editing without a Lezer tree ------------------------------------------
@@ -221,8 +232,10 @@ function moveStatement(view: EditorView, slot: EditorSlot, up: boolean) {
  * Complete Current Statement: tree-sitter knows what is missing where (and
  * which multi-line statement the caret is in) for stream-mode languages, and
  * places Java's `;` better than the line heuristics; the heuristics finish the line.
+ * With the completion lookup open, its selected item is inserted first (IDEA).
  */
 function completeCurrentStatement(view: EditorView, slot: EditorSlot) {
+  if (completionStatus(view.state) === "active") acceptCompletion(view);
   const language = slot.model.getMeta().language;
   const sel = view.state.selection;
   if ((hasLezerTree(view.state) && language !== "java") || sel.ranges.length > 1) return completeStatement(language)(view);
@@ -335,6 +348,12 @@ export function registerEditorActions(): () => void {
     text("code.completeStatement", "Complete Current Statement", (v, slot) => completeCurrentStatement(v, slot)),
     text("code.startNewLine", "Start New Line", (v) => startNewLine(v)),
     text("code.startNewLineBefore", "Start New Line Before Current", (v) => startNewLineBefore(v)),
+    text("code.splitLine", "Split Line", (v) => splitLine(v)),
+    text("editor.scrollToCenter", "Scroll to Center", (v) => scrollToCenter(v), { category: "Editor Actions" }),
+    text("editor.codeBlockStart", "Move Caret to Code Block Start", (v) => cursorCodeBlockStart(v), { category: "Editor Actions" }),
+    text("editor.codeBlockEnd", "Move Caret to Code Block End", (v) => cursorCodeBlockEnd(v), { category: "Editor Actions" }),
+    text("editor.cloneCaretAbove", "Clone Caret Above", (v) => addCursorAbove(v), { category: "Editor Actions" }),
+    text("editor.cloneCaretBelow", "Clone Caret Below", (v) => addCursorBelow(v), { category: "Editor Actions" }),
     text("code.joinLines", "Join Lines", (v) => joinLines(v)),
     text("code.toggleCase", "Toggle Case", (v) => toggleCase(v), { keywords: ["upper", "lower"] }),
     text("code.addCaretsToLineEnds", "Add Carets to Ends of Selected Lines", (v) => addCaretsToLineEnds(v), { category: "Edit" }),
@@ -543,6 +562,8 @@ export function registerEditorActions(): () => void {
       category: "Edit",
       icon: "copy",
       when: "textEditorActive",
+      // ⇧⌘C / Ctrl+Shift+C stays with the terminal (copy) and other tool windows.
+      keyWhen: "editorFocus || !toolWindowFocus",
       run: () => {
         const p = ctrl.activePath();
         if (p) void navigator.clipboard?.writeText(p);

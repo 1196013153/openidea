@@ -8,7 +8,7 @@
 import { useId, useState } from "react";
 import { Button, Checkbox, Input, type SelectOption, T } from "@/ui";
 import { commands, isTauri, type LanguageInfo_Serialize as LanguageInfo } from "@/platform/ipc";
-import { ENCODING_CHOICES, type LanguageCodeStyle } from "@/platform/editorSettings";
+import { ENCODING_CHOICES, lineCommentDefaults, type LanguageCodeStyle } from "@/platform/editorSettings";
 import { NumberInput, Row } from "../../components/Form";
 import { useSetting } from "../../components/context";
 import type { PageSpec } from "../spec";
@@ -127,6 +127,8 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
     tabSize: own.tabSize ?? base.tabSize,
     indent: own.indent ?? own.tabSize ?? base.tabSize,
     hardWrapAt: own.hardWrapAt ?? wrap,
+    lineCommentAtFirstColumn: own.lineCommentAtFirstColumn ?? lineCommentDefaults(lang.id).atFirstColumn,
+    lineCommentAddSpace: own.lineCommentAddSpace ?? lineCommentDefaults(lang.id).addSpace,
   };
   const set = (patch: Partial<LanguageCodeStyle>) => {
     const next = { ...own, ...patch };
@@ -183,6 +185,27 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
           />
         </Row>
       </section>
+      {lang.lineComment && (
+        <section aria-label="Comment Code">
+          <div className={styles.previewTitle}>
+            <T>Comment Code</T>
+          </div>
+          <div className={styles.check}>
+            <Checkbox
+              checked={eff.lineCommentAtFirstColumn}
+              onChange={(v) => set({ lineCommentAtFirstColumn: v })}
+              label="Line comment at first column"
+            />
+          </div>
+          <div className={styles.check}>
+            <Checkbox
+              checked={eff.lineCommentAddSpace}
+              onChange={(v) => set({ lineCommentAddSpace: v })}
+              label="Add a space at line comment start"
+            />
+          </div>
+        </section>
+      )}
       <div className={styles.schemeRow}>
         <Button size="small" disabled={!all?.[lang.id]} onClick={reset}>
           <T>Reset to Language Defaults</T>
@@ -209,7 +232,7 @@ export async function codeStyleLanguagePages(): Promise<PageSpec[]> {
       group: "Editor",
       order: 100,
       projectScope: true,
-      keywords: ["Tabs and Indents", "Tab size", "Indent", "Use tab character", "Hard wrap at"],
+      keywords: ["Tabs and Indents", "Tab size", "Indent", "Use tab character", "Hard wrap at", "Comment Code", "Line comment at first column"],
       component: () => <LanguageStyle lang={lang} />,
     }));
 }

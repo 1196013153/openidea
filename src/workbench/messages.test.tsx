@@ -64,4 +64,24 @@ describe("message dialogs", () => {
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Delete" })));
     expect(result).toEqual({ checked: true });
   });
+
+  it("starts with the given checkbox state and can be dismissed from outside", async () => {
+    render(<MessagesHost />);
+    const abort = new AbortController();
+    let result: MessageResult | undefined;
+    act(() => {
+      void ask({
+        title: "Delete",
+        body: "Delete 'a'?",
+        checkbox: "Safe delete",
+        checked: true,
+        signal: abort.signal,
+        buttons: [{ id: "ok", label: "Delete", primary: true }],
+      }).then((r) => (result = r));
+    });
+    expect(screen.getByRole("checkbox", { name: "Safe delete" })).toBeChecked();
+    await act(async () => abort.abort());
+    expect(result).toEqual({ button: "dismissed", checked: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });

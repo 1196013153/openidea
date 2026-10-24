@@ -1,11 +1,11 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { HighlightedText, Icon, IconButton, List, Popup, SearchField, fuzzyMatch, listNavigate, T } from "@/ui";
 import type { RunConfig } from "@/platform/ipc";
 import { commandLine, configIcon, groupConfigs } from "./configs";
-import { saveTemporary, selectConfig, startRun, useRun } from "./store";
+import { canDeleteConfig, deleteConfig, saveTemporary, selectConfig, startRun, useRun } from "./store";
 import styles from "./Run.module.css";
 
 type Row =
@@ -54,7 +54,19 @@ export function ConfigChooserOverlay() {
   return <ConfigChooser />;
 }
 
+/** Numeric mnemonics (IDEA: 1–9 run the Nth configuration while the search is empty). */
+export function mnemonics(rows: readonly Row[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (r.type !== "config") continue;
+    if (out.size >= 9) break;
+    out.set(r.key, out.size + 1);
+  }
+  return out;
+}
+
 function ConfigChooser() {
+  const mode = useRun((s) => s.chooserMode);
   const configs = useRun((s) => s.configs);
   const selectedId = useRun((s) => s.selectedId);
   const temporary = useRun((s) => s.temporary);
@@ -81,8 +93,27 @@ function ConfigChooser() {
     useRun.setState({ chooserOpen: false });
   };
   const clamped = Math.min(active, rows.length - 1);
+  const numbers = useMemo(
+    () => (mode === "select" || query ? new Map<string, number>() : mnemonics(rows)),
+    [mode, query, rows],
+  );
+  // IDEA: holding Shift switches to the alternative executor (Run ⇄ Debug) and updates the caption.
+  const [shift, setShift] = useState(false);
+  useEffect(() => {
+    const track = (e: globalThis.KeyboardEvent) => setShift(e.shiftKey);
+    const reset = () => setShift(false);
+    window.addEventListener("keydown", track, true);
+    window.addEventListener("keyup", track, true);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", track, true);
+      window.removeEventListener("keyup", track, true);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
+  const executor = mode === "select" ? "select" : shift ? (mode === "run" ? "debug" : "run") : mode;
 
-  const activate = (row: Row | undefined, mode: "select" | "run" | "debug" = "select") => {
+  const activate = (row: Row | undefined, how: "select" | "run" | "debug" | "edit" = executor) => {
     if (!row) return;
     close();
     if (row.type === "edit") {
@@ -95,15 +126,43 @@ function ConfigChooser() {
     }
     if (row.type !== "config") return;
     selectConfig(row.config.id);
-    if (mode === "run") void startRun(row.config);
-    if (mode === "debug") void executeAction("run.debug");
+    if (how === "edit") void executeAction("run.editConfigs", row.config.id);
+    if (how === "run") void startRun(row.config);
+    if (how === "debug") void executeAction("run.debug");
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    const row = rows[clamped];
     if (e.key === "Enter") {
       e.preventDefault();
-      activate(rows[clamped], e.shiftKey ? "debug" : e.altKey || e.metaKey ? "run" : "select");
+      // The widget (select mode) keeps Shift+Enter = Debug and Alt/⌘+Enter = Run.
+      activate(row, mode !== "select" ? executor : e.shiftKey ? "debug" : e.altKey || e.metaKey ? "run" : "select");
       return;
+    }
+    if (e.key === "F4" && row?.type === "config") {
+      e.preventDefault();
+      activate(row, "edit");
+      return;
+    }
+    const input = e.target as HTMLInputElement;
+    if (
+      e.key === "Delete" &&
+      row?.type === "config" &&
+      canDeleteConfig(row.config.id) &&
+      input.selectionStart === query.length
+    ) {
+      e.preventDefault();
+      void deleteConfig(row.config.id);
+      return;
+    }
+    if (numbers.size && !e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-9]$|^Numpad[1-9]$/.test(e.code)) {
+      const n = Number(e.code.slice(-1));
+      const target = rows.find((r) => numbers.get(r.key) === n);
+      if (target) {
+        e.preventDefault();
+        activate(target, e.shiftKey ? (mode === "run" ? "debug" : "run") : mode);
+        return;
+      }
     }
     const next = listNavigate(e.key, { items: rows, active: clamped, isSection, wrap: true });
     if (next !== null) {
@@ -124,6 +183,11 @@ function ConfigChooser() {
       className={styles.chooser}
       trapFocus
     >
+      {mode !== "select" && (
+        <div className={styles.chooserCaption}>
+          <T>{executor === "debug" ? "Debug" : "Run"}</T>
+        </div>
+      )}
       <div className={styles.chooserSearch}>
         <SearchField
           value={query}
@@ -181,6 +245,7 @@ function ConfigChooser() {
                   size={13}
                   className={clsx(styles.chooserIcon, temporary.includes(c.id) && styles.chooserTemporary)}
                 />
+                {numbers.size > 0 && <span className={styles.chooserMnemonic}>{numbers.get(r.key) ?? ""}</span>}
                 <span className={clsx(styles.chooserName, c.id === selectedId && styles.chooserSelected)}>
                   {r.indices ? <HighlightedText text={c.name} indices={r.indices} /> : c.name}
                 </span>
@@ -218,6 +283,15 @@ function ConfigChooser() {
           }}
         />
       </div>
+      {mode !== "select" && (
+        <div className={styles.chooserHint}>
+          <T>
+            {mode === "run"
+              ? "Hold Shift to Debug, F4 to edit, Delete to remove"
+              : "Hold Shift to Run, F4 to edit, Delete to remove"}
+          </T>
+        </div>
+      )}
     </Popup>
   );
 }

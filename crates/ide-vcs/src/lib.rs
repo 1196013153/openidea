@@ -136,6 +136,30 @@ pub struct CommitOptions {
     pub author: Option<String>,
     /// False skips the pre-commit and commit-msg hooks (`--no-verify`).
     pub run_hooks: bool,
+    /// Files committed with only some of their changes (IDEA's partial commit). They are
+    /// committed through a temporary index, so neither the working tree nor the other
+    /// entries of the index change; afterwards their index entries match the new commit.
+    #[serde(default)]
+    pub partial: Vec<PartialCommitFile>,
+}
+
+/// A file of a partial commit: which of its changes against HEAD to commit.
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PartialCommitFile {
+    pub path: ide_core::IpcPath,
+    /// The hunks to commit, as [`diff_hunks`] of the HEAD and on-disk texts reports them.
+    pub hunks: Vec<HunkRange>,
+}
+
+/// A hunk identified by its line ranges (0-based), see [`LineHunk`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct HunkRange {
+    pub start: u32,
+    pub lines: u32,
+    pub old_start: u32,
+    pub old_lines: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -235,6 +259,106 @@ pub struct ApplyOutcome {
     pub applied: Vec<String>,
     /// Repository-relative paths left with conflicts (index stages for the merge UI).
     pub conflicts: Vec<String>,
+}
+
+/// How Checkout treats local changes that the switch would overwrite (IDEA's Smart
+/// Checkout dialog).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckoutMode {
+    /// Fail with [`CheckoutOutcome::LocalChanges`] and change nothing.
+    #[default]
+    Normal,
+    /// Stash local changes, switch, and restore them (conflicts are left to resolve).
+    Smart,
+    /// Discard the local changes in the way (`git switch --discard-changes`).
+    Force,
+}
+
+/// Checking out remote `origin/x` while local `x` has commits `origin/x` lacks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum DivergedLocal {
+    /// Rebase local `x` onto `origin/x` (IDEA "Rebase onto Remote").
+    Rebase,
+    /// Reset local `x` to `origin/x` (IDEA "Drop Local Commits").
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutOptions {
+    #[serde(default)]
+    pub mode: CheckoutMode,
+    /// Required when checking out a remote branch whose local namesake is ahead of it.
+    #[serde(default)]
+    pub diverged: Option<DivergedLocal>,
+}
+
+/// Result of [`Repo::checkout_with`]; the non-`Done` variants other than `Conflicts`
+/// left the repository untouched.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CheckoutOutcome {
+    Done,
+    /// These local changes (repository-relative paths) would be overwritten.
+    LocalChanges {
+        files: Vec<String>,
+    },
+    /// Local branch `local` has commits that remote branch `remote` does not.
+    LocalBranchAhead {
+        local: String,
+        remote: String,
+    },
+    /// Switched, but restoring the local changes (Smart Checkout) or the rebase stopped
+    /// on conflicts in these files.
+    Conflicts {
+        files: Vec<String>,
+    },
+}
+
+/// A deleted local branch, enough to restore it (IDEA's "Restore" notification action).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedBranch {
+    pub name: String,
+    /// The commit the branch pointed at.
+    pub tip: String,
+    /// Its upstream (`origin/x`), restored with it.
+    pub upstream: Option<String>,
+    /// It was not fully merged: its own commits are now unreachable from any branch.
+    pub unmerged: bool,
+}
+
+/// Who stands on each side of the conflicts of the operation in progress (merge editor
+/// titles, as IDEA labels them).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeSides {
+    /// `merge`, `rebase`, `cherry-pick`, `revert`…; `None` outside an operation.
+    pub operation: Option<String>,
+    /// Git's "ours" is not the user's work: during a rebase stage 2 holds the commits
+    /// rebased onto and stage 3 the user's commit being replayed. [`MergeVersions`] is
+    /// already swapped; conflict markers in the file are not.
+    pub reversed: bool,
+    /// The current branch (for a rebase: the branch being rebased).
+    pub branch: Option<String>,
+    /// Short id of the commit being applied (REBASE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD)
+    /// or merged (MERGE_HEAD).
+    pub commit: Option<String>,
+    /// The other branch: the one being merged, or the one rebased onto.
+    pub other_branch: Option<String>,
+}
+
+/// The versions of a conflicted file as the merge editor shows them.
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeVersions {
+    pub base: Option<String>,
+    /// The user's side ("Accept Yours"): git's stage 2, or stage 3 when `sides.reversed`.
+    pub ours: Option<String>,
+    pub theirs: Option<String>,
+    pub sides: MergeSides,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
@@ -416,7 +540,7 @@ impl Repo {
     /// Commits the index; returns the new HEAD commit id. An empty message with
     /// `amend` keeps the previous message.
     pub fn commit(&self, message: &str, amend: bool, sign_off: bool) -> IdeResult<String> {
-        let options = CommitOptions { amend, sign_off, author: None, run_hooks: true };
+        let options = CommitOptions { amend, sign_off, author: None, run_hooks: true, partial: Vec::new() };
         write::commit(self, message, &options)
     }
     /// Commits with the Commit Options popup's choices.
@@ -428,6 +552,13 @@ impl Repo {
     /// detached.
     pub fn checkout(&self, branch: &str, create: bool) -> IdeResult<()> {
         write::checkout(self, branch, create)
+    }
+    /// [`Repo::checkout`] as IDEA does it: local changes in the way are reported (or
+    /// stashed / discarded per `options.mode`), and a remote branch whose local namesake
+    /// is behind fast-forwards that branch, while one that is ahead is reported (or
+    /// rebased / reset per `options.diverged`).
+    pub fn checkout_with(&self, branch: &str, create: bool, options: &CheckoutOptions) -> IdeResult<CheckoutOutcome> {
+        write::checkout_with(self, branch, create, options)
     }
     /// Creates branch `name` at `start` (default HEAD), optionally switching to it. A
     /// remote-tracking start point (`origin/x`) becomes the new branch's upstream.
@@ -443,6 +574,16 @@ impl Repo {
     /// Deletes a local branch (`git branch -d`, `-D` when `force`).
     pub fn delete_branch(&self, branch: &str, force: bool) -> IdeResult<()> {
         write::delete_branch(self, branch, force)
+    }
+    /// Deletes a local branch as IDEA does: without asking, force-deleting one that is not
+    /// fully merged (reported as `unmerged`), and returning what [`Repo::restore_branch`]
+    /// needs to undo it.
+    pub fn delete_branch_restorable(&self, branch: &str) -> IdeResult<DeletedBranch> {
+        write::delete_branch_restorable(self, branch)
+    }
+    /// Recreates a deleted branch at its old tip, with its upstream.
+    pub fn restore_branch(&self, deleted: &DeletedBranch) -> IdeResult<()> {
+        write::restore_branch(self, deleted)
     }
     /// Renames a local branch (`git branch -m`); its upstream configuration moves with it.
     pub fn rename_branch(&self, from: &str, to: &str) -> IdeResult<()> {
@@ -523,7 +664,20 @@ impl Repo {
         cancel: &CancellationToken,
         on_output: &dyn Fn(String),
     ) -> IdeResult<()> {
-        write::push_branch(self, branch, revision, force_with_lease, cancel, on_output)
+        write::push_branch(self, branch, revision, None, force_with_lease, cancel, on_output)
+    }
+    /// [`Repo::push_branch`] to remote branch `target` instead of the upstream's name (the
+    /// Push dialog's editable target).
+    pub fn push_branch_to(
+        &self,
+        branch: &str,
+        revision: Option<&str>,
+        target: &str,
+        force_with_lease: bool,
+        cancel: &CancellationToken,
+        on_output: &dyn Fn(String),
+    ) -> IdeResult<()> {
+        write::push_branch(self, branch, revision, Some(target), force_with_lease, cancel, on_output)
     }
     /// Fast-forwards a local branch that is not checked out to its upstream (Branches ›
     /// Update). Fails when the branch has diverged.
@@ -586,6 +740,10 @@ impl Repo {
     pub fn tags(&self) -> IdeResult<Vec<String>> {
         ops::tags(self)
     }
+    /// Files that differ between revisions `from` and `to`.
+    pub fn diff_revisions(&self, from: &str, to: &str) -> IdeResult<Vec<ChangedFile>> {
+        ops::diff_revisions(self, from, to)
+    }
     /// Tracked files whose working-tree content differs from `rev`.
     pub fn diff_with_worktree(&self, rev: &str) -> IdeResult<Vec<ChangedFile>> {
         ops::diff_with_worktree(self, rev)
@@ -618,6 +776,18 @@ impl Repo {
         shelf::unshelve(self, shelf_dir, id, remove)
     }
 
+    /// Who is on each side of the conflicts of the operation in progress.
+    pub fn merge_sides(&self) -> IdeResult<MergeSides> {
+        ops::merge_sides(self)
+    }
+    /// The versions of a conflicted file with the user's work as `ours`, as IDEA's merge
+    /// dialog shows them (sides swapped during a rebase).
+    pub fn merge_versions(&self, path: &Path) -> IdeResult<MergeVersions> {
+        let (base, ours, theirs) = self.conflict_versions(path)?;
+        let sides = self.merge_sides()?;
+        let (ours, theirs) = if sides.reversed { (theirs, ours) } else { (ours, theirs) };
+        Ok(MergeVersions { base, ours, theirs, sides })
+    }
     /// For conflict resolution: (base, ours, theirs) versions of a conflicted file.
     pub fn conflict_versions(&self, path: &Path) -> IdeResult<(Option<String>, Option<String>, Option<String>)> {
         let rel = self.rel_path(path)?;

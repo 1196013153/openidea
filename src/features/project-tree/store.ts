@@ -39,7 +39,8 @@ export const DEFAULT_VIEW_OPTIONS: ViewOptions = {
   autoscrollFromSource: false,
   autoscrollToSource: false,
   singleClickOpen: false,
-  previewTab: true,
+  // IDEA's "Enable Preview Tab" is off by default.
+  previewTab: false,
 };
 
 export type Editing =

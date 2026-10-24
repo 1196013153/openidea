@@ -4,7 +4,7 @@ import { registerActions, type Action } from "@/platform/actions";
 import { activeEditor, editorsFor, registerSaveParticipant, type TextEditorHandle } from "@/editor/api";
 import { maybeEditorService } from "@/workbench/contributions";
 import { useProject } from "@/platform/project";
-import { startCompletion } from "./completion";
+import { explicitCompletion } from "./completion";
 import { triggerSignatureHelp } from "./signature";
 import { quickDefinition, quickDocumentation } from "./hover";
 import { expressionTypeInfo } from "./typeInfo";
@@ -99,7 +99,7 @@ export function registerActionsOnSave(): () => void {
 
 export function registerLspActions(): () => void {
   return registerActions([
-    editorAction("code.completion", "Basic", "Code Completion", (v) => startCompletion(v), {
+    editorAction("code.completion", "Basic", "Code Completion", (v) => explicitCompletion(v), {
       icon: "list",
       keywords: ["code completion", "basic completion", "autocomplete"],
     }),

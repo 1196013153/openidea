@@ -18,12 +18,12 @@ import {
   type TabItem,
 } from "@/ui";
 import {
-  closePane,
-  closeTab,
   getSession,
   newTab,
   publishFocus,
   renameTab,
+  requestClosePane,
+  requestCloseTab,
   selectTab,
   tabTitle,
   useTerminals,
@@ -92,7 +92,7 @@ function paneMenu(e: MouseEvent, key: string) {
     { kind: "separator" },
     { kind: "action", action: "terminal.splitRight" },
     { kind: "action", action: "terminal.splitDown" },
-    { label: "Close Session", icon: "close", run: () => closePane(key) },
+    { label: "Close Session", icon: "close", run: () => void requestClosePane(key) },
   ];
   if (exited)
     items.splice(
@@ -241,10 +241,9 @@ export function TerminalTabs() {
     };
   });
 
-  const onClose = (id: string) => {
-    const last = tabs.length === 1;
-    closeTab(id);
-    if (last) toolWindowService().hide("terminal");
+  const onClose = async (id: string) => {
+    if (!(await requestCloseTab(id))) return;
+    if (useTerminals.getState().tabs.length === 0) toolWindowService().hide("terminal");
   };
 
   const tabMenu = (id: string, e: MouseEvent) => {
@@ -253,11 +252,13 @@ export function TerminalTabs() {
     showContextMenu(e, [
       { label: "Rename Session…", icon: "edit", run: () => setRenaming({ id, anchor }) },
       { kind: "separator" },
-      { label: "Close Tab", icon: "close", run: () => onClose(id) },
+      { label: "Close Tab", icon: "close", run: () => void onClose(id) },
       {
         label: "Close Other Tabs",
         disabled: tabs.length < 2,
-        run: () => tabs.filter((t) => t.id !== id).forEach((t) => closeTab(t.id)),
+        run: async () => {
+          for (const t of tabs.filter((x) => x.id !== id)) if (!(await requestCloseTab(t.id))) return;
+        },
       },
     ]);
   };
@@ -301,7 +302,7 @@ export function TerminalTabs() {
             if (tab) getSession(tab.activePane)?.focus();
           });
         }}
-        onClose={onClose}
+        onClose={(id) => void onClose(id)}
         onContextMenu={tabMenu}
         panelIdPrefix={TAB_PREFIX}
         trailing={

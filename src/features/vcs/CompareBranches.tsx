@@ -12,9 +12,9 @@ import styles from "./common.module.css";
 const LIMIT = 2000;
 
 /** Commits reachable from `to` but not from `from` (git's `from..to`), computed by git, unbounded by any window. */
-const commitsBetween = (from: string, to: string) =>
+const commitsBetween = (from: string, to: string, repo: string | null = currentRepo()) =>
   call(
-    commands.vcsLog(currentRepo(), {
+    commands.vcsLog(repo, {
       branch: null,
       path: null,
       author: null,
@@ -28,6 +28,80 @@ const commitsBetween = (from: string, to: string) =>
 export function showCompareBranches(branch: string) {
   const current = useVcs.getState().branch?.head ?? "HEAD";
   openDialog((close) => <CompareDialog branch={branch} current={current} onClose={close} />);
+}
+
+/** IDEA's "View Commits" of a notification: the commits of `from..to`. */
+export function showCommitRange(title: string, from: string, to: string, repo: string | null = currentRepo()) {
+  openDialog((close) => <RangeDialog title={title} from={from} to={to} repo={repo} onClose={close} />);
+}
+
+function RangeDialog(props: { title: string; from: string; to: string; repo: string | null; onClose: () => void }) {
+  const { title, from, to, repo, onClose } = props;
+  const [commits, setCommits] = useState<Commit[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    commitsBetween(from, to, repo)
+      .then((c) => alive && setCommits(c))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      alive = false;
+    };
+  }, [from, to, repo]);
+  return (
+    <Dialog open title={title} onClose={onClose} width={640} buttons={[{ label: "Close", role: "cancel" }]}>
+      <CommitList commits={commits} error={error} onClose={onClose} />
+    </Dialog>
+  );
+}
+
+function CommitList({
+  commits,
+  error,
+  onClose,
+}: {
+  commits: Commit[] | null;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div style={{ height: 320, display: "flex", flexDirection: "column" }}>
+      {error ? (
+        <div className={styles.error} style={{ padding: 14 }}>
+          {error}
+        </div>
+      ) : !commits ? (
+        <div className={styles.empty}>
+          <Spinner size={14} />
+        </div>
+      ) : (
+        <List
+          items={commits}
+          getKey={(c) => c.id}
+          rowHeight={22}
+          aria-label="Commits"
+          className={styles.grow}
+          empty={
+            <span>
+              <T>No commits</T>
+            </span>
+          }
+          onActivate={(c) => {
+            onClose();
+            void executeAction("vcs.showCommit", c.id);
+          }}
+          renderItem={(c) => (
+            <span className={styles.commitRow} style={{ flex: 1, padding: 0 }}>
+              <span className={styles.commitHash}>{c.shortId}</span>
+              <span className={styles.commitSubject}>{c.summary}</span>
+              <span className={styles.commitMeta}>{c.author}</span>
+              <span className={styles.commitMeta}>{formatTime(c.timeMs)}</span>
+            </span>
+          )}
+        />
+      )}
+    </div>
+  );
 }
 
 function CompareDialog({ branch, current, onClose }: { branch: string; current: string; onClose: () => void }) {
@@ -72,42 +146,7 @@ function CompareDialog({ branch, current, onClose }: { branch: string; current: 
           },
         ]}
       />
-      <div style={{ height: 320, display: "flex", flexDirection: "column" }}>
-        {error ? (
-          <div className={styles.error} style={{ padding: 14 }}>
-            {error}
-          </div>
-        ) : !data ? (
-          <div className={styles.empty}>
-            <Spinner size={14} />
-          </div>
-        ) : (
-          <List
-            items={list}
-            getKey={(c) => c.id}
-            rowHeight={22}
-            aria-label="Commits"
-            className={styles.grow}
-            empty={
-              <span>
-                <T>No commits</T>
-              </span>
-            }
-            onActivate={(c) => {
-              onClose();
-              void executeAction("vcs.showCommit", c.id);
-            }}
-            renderItem={(c) => (
-              <span className={styles.commitRow} style={{ flex: 1, padding: 0 }}>
-                <span className={styles.commitHash}>{c.shortId}</span>
-                <span className={styles.commitSubject}>{c.summary}</span>
-                <span className={styles.commitMeta}>{c.author}</span>
-                <span className={styles.commitMeta}>{formatTime(c.timeMs)}</span>
-              </span>
-            )}
-          />
-        )}
-      </div>
+      <CommitList commits={data ? list : null} error={error} onClose={onClose} />
     </Dialog>
   );
 }

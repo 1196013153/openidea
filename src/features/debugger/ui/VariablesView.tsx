@@ -95,19 +95,70 @@ function message(key: string, text: string): VarNode {
   };
 }
 
+/**
+ * Values changed since the previous stop (IDEA paints them in a
+ * distinct colour). Values are remembered per
+ * `scope` (e.g. thread + frame depth) so switching frames doesn't compare unrelated locals.
+ */
+export class ValueChanges {
+  private scopes = new Map<string, { epoch: number; prev: Map<string, string>; cur: Map<string, string> }>();
+
+  /** Starts `epoch` for `scope`: the values seen in the earlier epoch become the baseline. */
+  enter(scope: string, epoch: number) {
+    const s = this.scopes.get(scope);
+    if (!s) {
+      if (this.scopes.size >= 64) this.scopes.delete(this.scopes.keys().next().value!);
+      this.scopes.set(scope, { epoch, prev: new Map(), cur: new Map() });
+    } else if (s.epoch !== epoch) {
+      s.prev = s.cur.size ? s.cur : s.prev;
+      s.cur = new Map();
+      s.epoch = epoch;
+    }
+  }
+
+  record(scope: string, key: string, value: string) {
+    this.scopes.get(scope)?.cur.set(key, value);
+  }
+
+  changed(scope: string, key: string, value: string): boolean {
+    const prev = this.scopes.get(scope)?.prev.get(key);
+    return prev !== undefined && prev !== value;
+  }
+}
+
+const tracksChanges = (n: VarNode) => (n.kind === "var" || n.kind === "watch") && !n.error;
+
+/** Shared by every view: the variables pane remounts while the program runs between stops. */
+const valueChanges = new ValueChanges();
+
 export interface VariablesViewProps {
   roots: VarRoot[];
   session: DebugSessionId | null;
   /** Changing it drops loaded children (new stop); expansion is kept and re-loaded. */
   generation?: number;
+  /** Highlight values changed since the previous `epoch` (stop) within the same `scope`. */
+  changes?: { epoch: number; scope: string };
+  /** Keys of nodes expanded initially (e.g. the root of a value hint). */
+  defaultExpanded?: readonly string[];
+  /** Keyboard focus goes to the tree on mount. */
+  autoFocus?: boolean;
   "aria-label"?: string;
   className?: string;
 }
 
-export function VariablesView({ roots, session, generation = 0, className, ...aria }: VariablesViewProps) {
+export function VariablesView({
+  roots,
+  session,
+  generation = 0,
+  changes,
+  defaultExpanded,
+  autoFocus,
+  className,
+  ...aria
+}: VariablesViewProps) {
   const [cache, setCache] = useState<{ gen: number; map: Map<string, VarNode[]> }>({ gen: generation, map: new Map() });
   const children = cache.gen === generation ? cache.map : null;
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(defaultExpanded));
   const loading = useRef(new Set<string>());
   const tree = useRef<TreeHandle>(null);
 
@@ -123,6 +174,19 @@ export function VariablesView({ roots, session, generation = 0, className, ...ar
     walk(nodes);
     return m;
   }, [nodes, children]);
+
+  if (changes) valueChanges.enter(changes.scope, changes.epoch);
+  const changeScope = changes?.scope;
+  useEffect(() => {
+    if (changeScope == null) return;
+    for (const n of byKey.values()) if (tracksChanges(n)) valueChanges.record(changeScope, n.key, n.value);
+  }, [byKey, changeScope]);
+  const isChanged = (n: VarNode) =>
+    !!changes && tracksChanges(n) && valueChanges.changed(changes.scope, n.key, n.value);
+
+  useEffect(() => {
+    if (autoFocus) tree.current?.focus();
+  }, [autoFocus]);
 
   const load = useCallback(
     async (node: VarNode) => {
@@ -206,7 +270,11 @@ export function VariablesView({ roots, session, generation = 0, className, ...ar
     if (!node || node.kind === "message") return;
     e.preventDefault();
     const items: MenuItem[] = [];
-    if (editable(node)) items.push({ label: "Set Value…", icon: "edit", shortcut: "F2", run: () => startEdit(node) }, { kind: "separator" });
+    if (editable(node))
+      items.push(
+        { label: "Set Value…", icon: "edit", shortcut: "F2", run: () => startEdit(node) },
+        { kind: "separator" },
+      );
     if (node.kind === "watch") items.push({ label: "Remove Watch", icon: "minus", run: () => removeWatch(node.name) });
     if (node.kind !== "scope") {
       items.push({ label: "Copy Value", icon: "copy", run: () => void navigator.clipboard?.writeText(node.value) });
@@ -219,7 +287,10 @@ export function VariablesView({ roots, session, generation = 0, className, ...ar
           icon: "breakpoint-field",
           run: () => void addWatchpointFor(session!, node),
         });
-      items.push({ kind: "separator" }, { label: "Jump to Source", shortcut: "F4", run: () => void jumpToDeclaration(node) });
+      items.push(
+        { kind: "separator" },
+        { label: "Jump to Source", shortcut: "F4", run: () => void jumpToDeclaration(node) },
+      );
     }
     if (items.length) showContextMenu(e, items);
   };
@@ -271,7 +342,7 @@ export function VariablesView({ roots, session, generation = 0, className, ...ar
               }}
             />
           ) : (
-            <VarRow node={n} />
+            <VarRow node={n} changed={isChanged(n)} />
           )
         }
       />
@@ -337,7 +408,7 @@ function nodeIcon(node: VarNode): string {
   return node.depth0 ? "variable" : "field";
 }
 
-function VarRow({ node }: { node: VarNode }) {
+function VarRow({ node, changed }: { node: VarNode; changed: boolean }) {
   if (node.kind === "message") return <span className={styles.message}>{node.name}</span>;
   if (node.kind === "scope")
     return (
@@ -350,7 +421,9 @@ function VarRow({ node }: { node: VarNode }) {
   return (
     <span className={styles.row}>
       <Icon name={nodeIcon(node)} size={16} className={styles.nodeIcon} />
-      <span className={clsx(styles.name, node.kind === "var" && styles.varName)}>{node.name}</span>
+      <span className={clsx(styles.name, node.kind === "var" && styles.varName, changed && styles.changed)}>
+        {node.name}
+      </span>
       <span className={styles.eq}>=</span>
       {node.error ? (
         <span className={styles.error}>{node.error}</span>

@@ -4,6 +4,9 @@
  * as a cancellable background task and a notification when it finishes.
  * Compiler messages reach the Problems view and editors as `build`
  * diagnostics, published (and cleared on the next build) by the backend.
+ *
+ * Like IDEA, the tool window is not shown when a build starts; a failed build
+ * shows it, selects the first error and opens its location in the editor.
  */
 import { create } from "zustand";
 import { Channel } from "@tauri-apps/api/core";
@@ -23,7 +26,7 @@ import {
 import { useProject } from "@/platform/project";
 import { maybeEditorService, notifications, toolWindowService } from "@/workbench/contributions";
 import { removeTask, upsertTask } from "@/workbench/tasks";
-import { appendOutput, finishSummary, messageFiles, type BuildStatus, type ConsoleLine } from "./model";
+import { appendOutput, finishSummary, firstError, messageFiles, type BuildStatus, type ConsoleLine } from "./model";
 
 export const BUILD_TASK_ID = "build:compile";
 export const BUILD_RUNNING = "build.running";
@@ -71,6 +74,8 @@ export interface BuildState {
   lines: ConsoleLine[];
   /** Files with diagnostics from the last build. */
   files: string[];
+  /** Key of the selected tree node (a message node shows its detail beside the tree). */
+  selected: string | null;
 }
 
 const INITIAL: BuildState = {
@@ -85,6 +90,7 @@ const INITIAL: BuildState = {
   messages: [],
   lines: [],
   files: [],
+  selected: null,
 };
 
 export const useBuildRun = create<BuildState>(() => INITIAL);
@@ -124,11 +130,6 @@ export async function startBuild(kind: BuildKind, file: string | null = null): P
   useBuildRun.setState({ ...INITIAL, request, kind, file, title: taskTitle, status: "running", files: previous });
   setContext(BUILD_RUNNING, true);
   upsertTask({ id: BUILD_TASK_ID, title: taskTitle, message: null, fraction: null, done: false, cancel });
-  try {
-    toolWindowService().show("build", false);
-  } catch {
-    // No workbench (tests / settings window).
-  }
   await maybeEditorService()
     ?.saveAll()
     .catch(() => undefined);
@@ -173,8 +174,12 @@ export async function startBuild(kind: BuildKind, file: string | null = null): P
       title: summary,
       key: "build-finished",
       sticky: false,
-      actions: result.success && !result.warnings ? undefined : [{ label: "Show Build", run: () => toolWindowService().show("build", true) }],
+      actions:
+        result.success && !result.warnings
+          ? undefined
+          : [{ label: "Show Build", run: () => toolWindowService().show("build", true) }],
     });
+    if (!result.success) showFailure();
   } catch (e) {
     clearTimeout(timer);
     flush();
@@ -189,7 +194,14 @@ export async function startBuild(kind: BuildKind, file: string | null = null): P
         lines: appendOutput(s.lines, `${text}\n`, "err"),
         messages: [...s.messages, { severity: "error", text, path: null, range: null, code: null }],
       }));
-      notifications().notify({ group: "run", level: "error", title: "Build failed", body: text, key: "build-finished" });
+      notifications().notify({
+        group: "run",
+        level: "error",
+        title: "Build failed",
+        body: text,
+        key: "build-finished",
+      });
+      showFailure();
     }
   } finally {
     if (useBuildRun.getState().request === request) useBuildRun.setState({ request: null });
@@ -197,6 +209,35 @@ export async function startBuild(kind: BuildKind, file: string | null = null): P
     upsertTask({ id: BUILD_TASK_ID, title: taskTitle, message: null, fraction: 1, done: true });
   }
   return result;
+}
+
+/** Opens the source of a build message; `focus` moves focus to the editor (otherwise a preview). */
+export function navigateToMessage(m: BuildMessage, focus: boolean) {
+  if (!m.path) return;
+  const start = m.range?.start;
+  void maybeEditorService()
+    ?.openFile(m.path, { selection: start ? { line: start.line, col: start.col } : undefined, focus, preview: !focus })
+    .catch(() => undefined);
+}
+
+export function selectBuildNode(key: string | null) {
+  if (useBuildRun.getState().selected !== key) useBuildRun.setState({ selected: key });
+}
+
+/**
+ * A failed build activates the tool window without focusing it, selects the
+ * first error and navigates to it, as IDEA does by default.
+ */
+function showFailure() {
+  try {
+    toolWindowService().show("build", false);
+  } catch {
+    // No workbench (tests / settings window).
+  }
+  const first = firstError(useBuildRun.getState().messages);
+  if (!first) return;
+  selectBuildNode(first.key);
+  navigateToMessage(first.message, true);
 }
 
 export function stopBuild() {

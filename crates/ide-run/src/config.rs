@@ -11,6 +11,7 @@
 //! env = { RUST_LOG = "debug" }
 //! is-test = false
 //! debug-adapter = "codelldb"
+//! allow-parallel = true
 //! ```
 
 use crate::RunConfig;
@@ -51,6 +52,8 @@ struct FileConfig {
     is_test: bool,
     #[serde(alias = "debugAdapter", alias = "debug_adapter")]
     debug_adapter: Option<String>,
+    #[serde(default, alias = "allowParallel", alias = "allow_parallel")]
+    allow_parallel: bool,
 }
 
 fn slug(s: &str) -> String {
@@ -91,6 +94,7 @@ pub(crate) fn load(root: &Path) -> IdeResult<Vec<RunConfig>> {
             detected: false,
             is_test: c.is_test,
             debug_adapter: c.debug_adapter.filter(|d| !d.is_empty()),
+            allow_parallel: c.allow_parallel,
         });
     }
     Ok(out)
@@ -120,6 +124,9 @@ fn to_table(c: &RunConfig) -> Table {
     }
     if let Some(adapter) = &c.debug_adapter {
         t.insert("debug-adapter", value(adapter));
+    }
+    if c.allow_parallel {
+        t.insert("allow-parallel", value(true));
     }
     t
 }

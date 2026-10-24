@@ -343,6 +343,13 @@ function EditConfigsDialog() {
                   label="Show results in the test runner"
                 />
               </Field>
+              <Field label="">
+                <Checkbox
+                  checked={!!current.allowParallel}
+                  onChange={(allowParallel) => update({ allowParallel })}
+                  label="Allow multiple instances"
+                />
+              </Field>
               <Field label="Debug adapter">
                 <Select
                   value={current.debugAdapter ?? ""}

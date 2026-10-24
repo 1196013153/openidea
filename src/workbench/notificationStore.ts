@@ -85,7 +85,8 @@ interface NotificationState {
 
 export const useNotifications = create<NotificationState>(() => ({ items: [] }));
 
-export const BALLOON_TIMEOUT: Record<NotificationLevel, number | null> = { info: 6000, warning: 10000, error: null };
+/** IDEA fades balloons out after 10 s; errors stay until dismissed (as IDEA's sticky error groups). */
+export const BALLOON_TIMEOUT: Record<NotificationLevel, number | null> = { info: 10000, warning: 10000, error: null };
 const MAX_HISTORY = 200;
 let seq = 0;
 

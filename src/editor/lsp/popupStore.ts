@@ -75,9 +75,15 @@ interface PopupState {
   popup: LspPopup | null;
   /** Bumped per open so React remounts a popup of the same kind. */
   seq: number;
+  /** Bumped to move focus into the open popup (F1 on an open documentation popup). */
+  focusSeq: number;
 }
 
-export const useLspPopup = create<PopupState>(() => ({ popup: null, seq: 0 }));
+export const useLspPopup = create<PopupState>(() => ({ popup: null, seq: 0, focusSeq: 0 }));
+
+export function focusPopup() {
+  useLspPopup.setState((s) => ({ focusSeq: s.focusSeq + 1 }));
+}
 
 export function openPopup(popup: LspPopup) {
   useLspPopup.setState((s) => ({ popup, seq: s.seq + 1 }));

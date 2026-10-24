@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ToolWindowContribution } from "@/workbench/contributions";
 import { fromNavigationHistory, recordLocation, renameLocations, type RecentLocation } from "../common/locations";
-import { filterLocations, filterRecentFiles, initialFileIndex, switcherToolWindows } from "../recent/model";
+import {
+  filterLocations,
+  filterRecentFiles,
+  initialFileIndex,
+  switcherPaths,
+  switcherSelection,
+  switcherToolWindows,
+} from "../recent/model";
 
 const loc = (path: string, line: number, extra: Partial<RecentLocation> = {}): RecentLocation => ({
   path,
@@ -64,6 +71,19 @@ describe("recent files switcher", () => {
     expect(initialFileIndex(items, "/p/src/Main.kt", "")).toBe(1);
     expect(initialFileIndex(items, "/p/other", "")).toBe(0);
     expect(initialFileIndex(items, "/p/src/Main.kt", "m")).toBe(0);
+  });
+
+  it("lists only open files in the switcher, most recent first", () => {
+    expect(switcherPaths(["/c", "/x", "/a", "/c"], ["/a", "/b", "/c"])).toEqual(["/c", "/a", "/b"]);
+  });
+
+  it("moves the switcher selection past the end of the files into the tool windows", () => {
+    expect(switcherSelection(1, 0, 3, 2)).toEqual({ column: "files", index: 1 });
+    expect(switcherSelection(1, 2, 3, 2)).toEqual({ column: "tools", index: 0 });
+    expect(switcherSelection(1, 4, 3, 2)).toEqual({ column: "files", index: 0 });
+    expect(switcherSelection(0, -1, 3, 2)).toEqual({ column: "tools", index: 1 });
+    expect(switcherSelection(3, -1, 3, 2)).toEqual({ column: "files", index: 2 });
+    expect(switcherSelection(0, 0, 0, 0)).toBeNull();
   });
 
   it("orders tool windows by stripe", () => {

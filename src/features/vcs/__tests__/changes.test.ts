@@ -5,7 +5,9 @@ import {
   buildChangeTree,
   commitRepos,
   initialCheck,
+  hunkIncluded,
   planCommit,
+  toggledHunk,
   type CheckState,
   type ChangeNode,
 } from "../changes";
@@ -142,5 +144,29 @@ describe("commit inclusion", () => {
     expect(aggregateCheck([status[0]!, status[3]!], checks)).toMatchObject({ checked: true, indeterminate: false });
     expect(aggregateCheck([status[0]!, status[4]!], checks)).toMatchObject({ checked: false, indeterminate: true });
     expect(aggregateCheck([status[1]!], checks)).toMatchObject({ checked: false, indeterminate: true });
+  });
+
+  it("commits a file with excluded blocks partially, without staging it", () => {
+    const checks = new Map<string, CheckState>([["/r/src/main/kotlin/App.kt", "hunks"]]);
+    const plan = planCommit(status, checks);
+    expect(plan.partial).toEqual(["/r/src/main/kotlin/App.kt"]);
+    expect(plan.stage).not.toContain("/r/src/main/kotlin/App.kt");
+    expect(plan.included.map((f) => f.relPath)).toContain("src/main/kotlin/App.kt");
+    expect(aggregateCheck([status[0]!], checks)).toMatchObject({ checked: false, indeterminate: true });
+  });
+
+  it("toggles single blocks: tri-state file, all in → all, all out → none", () => {
+    const all = ["a", "b", "c"];
+    const one = toggledHunk("all", undefined, all, "b");
+    expect(one).toEqual({ check: "hunks", excluded: new Set(["b"]) });
+    expect(hunkIncluded(one.check, one.excluded, "a")).toBe(true);
+    expect(hunkIncluded(one.check, one.excluded, "b")).toBe(false);
+    expect(toggledHunk(one.check, one.excluded, all, "b")).toEqual({ check: "all", excluded: new Set() });
+    // From an unchecked file, ticking one block includes just that block.
+    const picked = toggledHunk("none", undefined, all, "c");
+    expect(picked).toEqual({ check: "hunks", excluded: new Set(["a", "b"]) });
+    expect(toggledHunk("hunks", new Set(["a", "b"]), all, "c").check).toBe("none");
+    // Keys of blocks that no longer exist are dropped.
+    expect(toggledHunk("hunks", new Set(["gone", "a"]), all, "b").excluded).toEqual(new Set(["a", "b"]));
   });
 });
