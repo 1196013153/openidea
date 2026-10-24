@@ -177,6 +177,27 @@ pub fn locate(root: &Path, names: &[String]) -> Option<PathBuf> {
 
 /// Creates `bin_dir/<command>` that runs `target`: a shell wrapper on Unix
 /// (keeps the target's own directory layout intact), a `.cmd` shim on Windows.
+/// Like [`link_executable`], with `env` set for `target`.
+pub fn env_wrapper(bin_dir: &Path, command: &str, target: &Path, env: &[(&str, &Path)]) -> IdeResult<PathBuf> {
+    fs::create_dir_all(bin_dir)?;
+    #[cfg(unix)]
+    {
+        let quote = |p: &Path| format!("'{}'", p.to_string_lossy().replace('\'', r"'\''"));
+        let vars: String = env.iter().map(|(k, v)| format!("{k}={} ", quote(v))).collect();
+        let link = bin_dir.join(command);
+        fs::write(&link, format!("#!/bin/sh\n{vars}exec {} \"$@\"\n", quote(target)))?;
+        make_executable(&link)?;
+        Ok(link)
+    }
+    #[cfg(not(unix))]
+    {
+        let link = bin_dir.join(format!("{command}.cmd"));
+        let vars: String = env.iter().map(|(k, v)| format!("set \"{k}={}\"\r\n", v.display())).collect();
+        fs::write(&link, format!("@echo off\r\nsetlocal\r\n{vars}\"{}\" %*\r\n", target.display()))?;
+        Ok(link)
+    }
+}
+
 pub fn link_executable(bin_dir: &Path, command: &str, target: &Path) -> IdeResult<PathBuf> {
     fs::create_dir_all(bin_dir)?;
     #[cfg(unix)]

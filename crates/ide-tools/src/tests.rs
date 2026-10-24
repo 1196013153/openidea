@@ -68,10 +68,12 @@ fn everything_missing_on_an_empty_system() {
     assert!(vtsls.languages.iter().any(|l| l == "TypeScript"));
     assert!(vtsls.unavailable_reason.as_deref().unwrap().contains("npm"));
     // Servers without an installer are listed with their manual hint.
-    let ruby = find(&list, "solargraph");
-    assert_eq!(ruby.install_method, None);
-    assert!(!ruby.can_install);
-    assert_eq!(ruby.status, ToolStatus::Missing);
+    let hls = find(&list, "haskell-language-server");
+    assert_eq!(hls.install_method, None);
+    assert!(!hls.can_install);
+    assert_eq!(hls.status, ToolStatus::Missing);
+    // Gem tools need Ruby.
+    assert!(find(&list, "solargraph").unavailable_reason.as_deref().unwrap().contains("Ruby"));
     // Shared npm package: each server is its own row.
     assert_eq!(find(&list, "vscode-css-language-server").install_method.as_deref(), Some("npm"));
     assert!(find(&list, "delve").kind == ToolKind::Debugger);
@@ -155,7 +157,7 @@ fn bin_dirs_cover_every_managed_layout() {
 fn unknown_or_manual_tools_cannot_be_installed() {
     let env = Env::new();
     let tools = env.tools();
-    let err = tools.install("solargraph", &langs(), &CancellationToken::new(), &|_| {}).unwrap_err();
+    let err = tools.install("haskell-language-server", &langs(), &CancellationToken::new(), &|_| {}).unwrap_err();
     assert_eq!(err.kind, ErrorKind::Unavailable);
     assert!(err.message.contains("cannot be installed automatically"));
     assert_eq!(tools.info("nope", &langs()).unwrap_err().kind, ErrorKind::NotFound);
@@ -335,4 +337,48 @@ fn elixir_ls_needs_elixir_and_lists_its_debugger() {
     let list = env.tools().list(&langs());
     assert!(find(&list, "elixir-ls").can_install);
     assert!(find(&list, "elixir-ls-debugger").can_install);
+}
+
+#[cfg(unix)]
+#[test]
+fn gem_install_wraps_stubs_with_gem_home() {
+    let env = Env::new();
+    // `gem install --no-document --install-dir <home> --bindir <bin> solargraph`
+    env.script(
+        &env.sys,
+        "gem",
+        r#"home="$4"; bin="$6"; /bin/mkdir -p "$home/gems/solargraph-0.50.0" "$bin"
+printf '#!/bin/sh\necho "$GEM_HOME"\n' > "$bin/solargraph"; /bin/chmod +x "$bin/solargraph""#,
+    );
+    let tools = env.tools();
+    let info = tools.install("solargraph", &langs(), &CancellationToken::new(), &|_| {}).unwrap();
+    assert_eq!(info.status, ToolStatus::Installed);
+    assert_eq!(info.version.as_deref(), Some("0.50.0"));
+    let wrapper = env.root.join("solargraph/bin/solargraph");
+    assert_eq!(info.path.as_deref(), Some(wrapper.as_path()));
+    let out = std::process::Command::new(&wrapper).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), env.root.join("solargraph/gems").to_string_lossy());
+}
+
+#[cfg(unix)]
+#[test]
+fn dotnet_tool_install_into_tool_path() {
+    let env = Env::new();
+    env.script(
+        &env.sys,
+        "dotnet",
+        r#"case "$2" in
+install) /bin/mkdir -p "$5"; printf '#!/bin/sh\necho "$DOTNET_ROOT"\n' > "$5/csharp-ls"; /bin/chmod +x "$5/csharp-ls" ;;
+list) printf 'Package Id      Version      Commands\n----\ncsharp-ls       0.15.0       csharp-ls\n' ;;
+esac
+[ "$1" = --list-runtimes ] && echo 'Microsoft.NETCore.App 9.0.1 [/opt/dotnet/shared/Microsoft.NETCore.App]'
+exit 0"#,
+    );
+    let info = env.tools().install("csharp-ls", &langs(), &CancellationToken::new(), &|_| {}).unwrap();
+    assert_eq!(info.status, ToolStatus::Installed);
+    assert_eq!(info.version.as_deref(), Some("0.15.0"));
+    let wrapper = env.root.join("csharp-ls/bin/csharp-ls");
+    assert_eq!(info.path.as_deref(), Some(wrapper.as_path()));
+    let out = std::process::Command::new(&wrapper).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "/opt/dotnet");
 }

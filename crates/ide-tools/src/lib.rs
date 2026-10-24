@@ -120,7 +120,9 @@ fn bin_dirs_in(root: &Path, platform: Platform) -> Vec<PathBuf> {
 fn managed_bin_dir(root: &Path, spec: &ToolSpec, platform: Platform) -> Option<PathBuf> {
     match spec.method {
         Method::Npm { .. } => Some(root.join("node_modules").join(".bin")),
-        Method::Go { .. } | Method::Release { .. } => Some(root.join(spec.name).join("bin")),
+        Method::Go { .. } | Method::Gem { .. } | Method::DotnetTool { .. } | Method::Release { .. } => {
+            Some(root.join(spec.name).join("bin"))
+        }
         Method::PipVenv { .. } => {
             Some(root.join(spec.name).join("venv").join(if platform.os == Os::Windows { "Scripts" } else { "bin" }))
         }
@@ -376,6 +378,10 @@ impl Tools {
                 "npm or pnpm is required: install Node.js (https://nodejs.org)",
             ),
             Method::Go { .. } => need(self.which("go").is_some(), "Go is required (https://go.dev/dl)"),
+            Method::Gem { .. } => need(self.which("gem").is_some(), "Ruby is required (https://www.ruby-lang.org)"),
+            Method::DotnetTool { .. } => {
+                need(self.which("dotnet").is_some(), ".NET SDK is required (https://dotnet.microsoft.com/download)")
+            }
             Method::PipVenv { .. } => need(
                 self.which("uv").is_some() || self.python().is_some(),
                 "Python 3 or uv is required (https://www.python.org)",
@@ -593,6 +599,8 @@ impl Tools {
             }
             Method::Npm { packages } => self.install_npm(packages, cancel, emit)?,
             Method::Go { module } => self.install_go(spec, module, cancel, emit)?,
+            Method::Gem { gem } => self.install_gem(spec, gem, cancel, emit)?,
+            Method::DotnetTool { package } => self.install_dotnet_tool(spec, package, cancel, emit)?,
             Method::PipVenv { package } => self.install_venv(spec, package, cancel, emit)?,
             Method::PipUser { package, .. } => self.install_pip_user(package, cancel, emit)?,
             Method::PipTarget { package, .. } => self.install_pip_target(spec, package, cancel, emit)?,
@@ -670,6 +678,96 @@ impl Tools {
             })
         });
         self.write_manifest(spec.name, &Manifest { version, source: Some(module.to_string()) })
+    }
+
+    fn install_gem(&self, spec: &ToolSpec, gem: &str, cancel: &CancellationToken, emit: Emit) -> IdeResult<()> {
+        let dir = self.root.join(spec.name);
+        let _ = std::fs::remove_dir_all(&dir);
+        let home = dir.join("gems");
+        std::fs::create_dir_all(&home)?;
+        let mut c = self.command(self.which("gem").expect("checked"));
+        c.args(["install", "--no-document", "--install-dir"]).arg(&home).arg("--bindir").arg(home.join("bin")).arg(gem);
+        let result = run_streamed(c, cancel, emit).and_then(|_| {
+            // RubyGems' stubs only find their gems through GEM_HOME / GEM_PATH.
+            let env = [("GEM_HOME", home.as_path()), ("GEM_PATH", home.as_path())];
+            for cmd in spec.commands {
+                let stub = self
+                    .exe_in(&home.join("bin"), cmd)
+                    .ok_or_else(|| IdeError::new(ErrorKind::Io, format!("gem {gem} did not install `{cmd}`")))?;
+                archive::env_wrapper(&dir.join("bin"), cmd, &stub, &env)?;
+            }
+            Ok(())
+        });
+        if let Err(e) = result {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(e);
+        }
+        // `gems/gems/<gem>-<version>/`
+        let version = std::fs::read_dir(home.join("gems")).ok().and_then(|entries| {
+            entries.flatten().find_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.strip_prefix(&format!("{gem}-"))
+                    .filter(|v| v.starts_with(|c: char| c.is_ascii_digit()))
+                    .map(String::from)
+            })
+        });
+        self.write_manifest(spec.name, &Manifest { version, source: Some(format!("rubygems:{gem}")) })
+    }
+
+    fn install_dotnet_tool(
+        &self,
+        spec: &ToolSpec,
+        package: &str,
+        cancel: &CancellationToken,
+        emit: Emit,
+    ) -> IdeResult<()> {
+        let dir = self.root.join(spec.name);
+        let _ = std::fs::remove_dir_all(&dir);
+        let tool = dir.join("tool");
+        std::fs::create_dir_all(&tool)?;
+        let dotnet = self.which("dotnet").expect("checked");
+        let mut c = self.command(&dotnet);
+        c.args(["tool", "install", package, "--tool-path"]).arg(&tool);
+        let result = run_streamed(c, cancel, emit).and_then(|_| {
+            // The tool's apphost looks for .NET in the default location only; a
+            // Homebrew / user-local SDK must be named through DOTNET_ROOT.
+            let root = self.dotnet_root(&dotnet);
+            for cmd in spec.commands {
+                let exe = self
+                    .exe_in(&tool, cmd)
+                    .ok_or_else(|| IdeError::new(ErrorKind::Io, format!("{package} did not install `{cmd}`")))?;
+                match &root {
+                    Some(root) => archive::env_wrapper(&dir.join("bin"), cmd, &exe, &[("DOTNET_ROOT", root)])?,
+                    None => archive::link_executable(&dir.join("bin"), cmd, &exe)?,
+                };
+            }
+            Ok(())
+        });
+        if let Err(e) = result {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(e);
+        }
+        // `Package Id      Version      Commands` table.
+        let mut c = self.command(&dotnet);
+        c.args(["tool", "list", "--tool-path"]).arg(&tool);
+        let version = run_quiet(c, Duration::from_secs(20)).and_then(|(_, out)| {
+            out.lines().find_map(|l| {
+                let mut cols = l.split_whitespace();
+                cols.next().filter(|id| id.eq_ignore_ascii_case(package))?;
+                cols.next().map(String::from)
+            })
+        });
+        self.write_manifest(spec.name, &Manifest { version, source: Some(format!("nuget:{package}")) })
+    }
+
+    /// The .NET install `dotnet` runs from: `Microsoft.NETCore.App 9.0.1 [<root>/shared/Microsoft.NETCore.App]`.
+    fn dotnet_root(&self, dotnet: &Path) -> Option<PathBuf> {
+        let mut c = self.command(dotnet);
+        c.arg("--list-runtimes");
+        let (_, out) = run_quiet(c, Duration::from_secs(20))?;
+        let line = out.lines().find(|l| l.starts_with("Microsoft.NETCore.App "))?;
+        let shared = line.rsplit_once('[')?.1.trim_end().strip_suffix(']')?;
+        Path::new(shared).parent()?.parent().map(Path::to_path_buf)
     }
 
     fn install_venv(&self, spec: &ToolSpec, package: &str, cancel: &CancellationToken, emit: Emit) -> IdeResult<()> {
@@ -951,7 +1049,12 @@ impl Tools {
                     run_streamed(c, &cancel, &quiet)?;
                 }
             }
-            Method::Go { .. } | Method::PipVenv { .. } | Method::PipTarget { .. } | Method::Release { .. } => {
+            Method::Go { .. }
+            | Method::Gem { .. }
+            | Method::DotnetTool { .. }
+            | Method::PipVenv { .. }
+            | Method::PipTarget { .. }
+            | Method::Release { .. } => {
                 let dir = self.root.join(spec.name);
                 if dir.exists() {
                     std::fs::remove_dir_all(&dir)?;
