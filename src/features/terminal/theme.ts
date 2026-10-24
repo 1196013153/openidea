@@ -92,9 +92,8 @@ export function buildTheme(read: TokenReader): ITheme {
     selectionBackground: toHex(selection ?? mix(bg, accent, 0.32)),
     selectionInactiveBackground: toHex(selection ? mix(bg, selection, 0.6) : mix(bg, accent, 0.18)),
     selectionForeground: undefined,
-    scrollbarSliderBackground: toHex(mix(bg, fg, 0.14)),
-    scrollbarSliderHoverBackground: toHex(mix(bg, fg, 0.24)),
-    scrollbarSliderActiveBackground: toHex(mix(bg, fg, 0.32)),
+    // The overview ruler (search matches beside the scrollbar) needs no separator line.
+    overviewRulerBorder: toHex(bg),
     black: toHex(black),
     red: toHex(red),
     green: toHex(green),

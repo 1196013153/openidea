@@ -176,6 +176,8 @@ export class TerminalSession {
       drawBoldTextInBrightColors: false,
       minimumContrastRatio: 1,
       smoothScrollDuration: 0,
+      // Same width as the IDE's scrollbars (global.css); the slider is styled there too (Terminal.module.css).
+      overviewRuler: { width: 10 },
       theme: readTerminalTheme(),
     });
     this.term.loadAddon(this.fit);
