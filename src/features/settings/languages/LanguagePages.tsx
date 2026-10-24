@@ -7,7 +7,8 @@ import { useId, useMemo } from "react";
 import { IconButton, Input, type SelectOption } from "@/ui";
 import { Row, Section, Select, Toggle } from "../components/Form";
 import { choosePath } from "./api";
-import { SdkField, tildify, useDetected, useProjectSetting } from "./components";
+import { useSetting } from "../components/context";
+import { SdkField, tildify, useDetected } from "./components";
 import styles from "./Sdk.module.css";
 
 function PathInput({
@@ -26,7 +27,7 @@ function PathInput({
   /** Browse for a file instead of a directory. */
   file?: boolean;
 }) {
-  const [value, set] = useProjectSetting<string>(k);
+  const [value, set] = useSetting<string>(k);
   const id = useId();
   return (
     <Row label={label} htmlFor={id} hint={hint}>
@@ -59,7 +60,7 @@ function SdkRow({
   hint,
   ...field
 }: { k: string; label: string; hint?: string } & Omit<Parameters<typeof SdkField>[0], "value" | "onChange">) {
-  const [value, set] = useProjectSetting<string>(k);
+  const [value, set] = useSetting<string>(k);
   return (
     <Row label={label} hint={hint}>
       <SdkField {...field} value={value} onChange={set} />
@@ -71,7 +72,7 @@ function SdkRow({
 // Node.js
 
 export function NodePage() {
-  const [pm, setPm] = useProjectSetting<string>("languages.node.packageManager");
+  const [pm, setPm] = useSetting<string>("languages.node.packageManager");
   const { list } = useDetected("packageManager");
   const pmOptions = useMemo<SelectOption[]>(
     () => [
@@ -112,10 +113,10 @@ export function NodePage() {
 // Rust
 
 export function RustPage() {
-  const [toolchain] = useProjectSetting<string>("languages.rust.toolchain");
-  const [checkOnSave, setCheckOnSave] = useProjectSetting<boolean>("languages.rust.checkOnSave");
-  const [checkCommand, setCheckCommand] = useProjectSetting<string>("languages.rust.checkCommand");
-  const [rustfmtArgs, setRustfmtArgs] = useProjectSetting<string>("languages.rust.rustfmtArgs");
+  const [toolchain] = useSetting<string>("languages.rust.toolchain");
+  const [checkOnSave, setCheckOnSave] = useSetting<boolean>("languages.rust.checkOnSave");
+  const [checkCommand, setCheckCommand] = useSetting<string>("languages.rust.checkCommand");
+  const [rustfmtArgs, setRustfmtArgs] = useSetting<string>("languages.rust.rustfmtArgs");
   const { list } = useDetected("rust");
   const selected = list.find((s) => s.path === toolchain);
   const argsId = useId();
@@ -216,7 +217,7 @@ export function GoPage() {
 // Java
 
 export function JavaPage() {
-  const [vmArgs, setVmArgs] = useProjectSetting<string>("languages.java.jdtlsVmArgs");
+  const [vmArgs, setVmArgs] = useSetting<string>("languages.java.jdtlsVmArgs");
   const id = useId();
   return (
     <div className={styles.page}>
@@ -234,6 +235,17 @@ export function JavaPage() {
         />
       </Section>
       <Section title="Language Server">
+        <SdkRow
+          k="languages.java.jdtlsJdk"
+          label="JDK"
+          kind="jdk"
+          emptyLabel="Auto"
+          emptyDetail="the project JDK if new enough, else the first installed JDK that is"
+          directory
+          browseTitle="Select JDK Home Directory"
+          aria-label="Language server JDK"
+          hint="Runs jdtls only, like IDEA's JDK for importer; the project keeps compiling and running with the Project JDK. jdtls needs JDK 21 or newer (recent releases 25). The jdtls executable itself is set in Language Servers."
+        />
         <Row
           label="JVM options"
           htmlFor={id}
@@ -295,7 +307,7 @@ export function MavenPage() {
 // TypeScript
 
 export function TypeScriptPage() {
-  const [version, setVersion] = useProjectSetting<string>("languages.typescript.version");
+  const [version, setVersion] = useSetting<string>("languages.typescript.version");
   const { list } = useDetected("typeScript");
   const workspace = list.find((s) => s.source === "workspace");
   const options = useMemo<SelectOption[]>(() => {

@@ -7,8 +7,9 @@ import { choosePath, detectSdks, useSdks, type Sdk, type SdkKind } from "./api";
 import styles from "./Sdk.module.css";
 
 /**
- * Interpreter / toolchain settings belong to the project (like IDEA's project
- * SDK): with a project open they are written to `.openidea/settings.toml`.
+ * Settings that only make sense per project (Project Structure): with a project
+ * open they are written to `.openidea/settings.toml`. Toolchain pages instead
+ * follow the page's Global / This project switch (`defaultScope: "project"`).
  */
 export function useProjectSetting<T>(key: string): [T, (v: T) => void] {
   const hasProject = useProject((s) => !!s.project);

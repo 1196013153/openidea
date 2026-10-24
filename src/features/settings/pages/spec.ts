@@ -37,6 +37,8 @@ export interface PageSpec {
   keywords?: string[];
   /** Offers the Global / This project scope switch. */
   projectScope?: boolean;
+  /** Scope shown first with a project open (toolchains belong to the project, like IDEA's project SDK). */
+  defaultScope?: "global" | "project";
   sections?: SectionSpec[];
   /** Rendered below the sections (previews). */
   footer?: ComponentType;

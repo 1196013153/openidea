@@ -109,6 +109,14 @@ pub fn settings_get(window: Window, state: State<'_, AppState>) -> Settings {
     }
 }
 
+/// Defaults plus the global layer, without any project's values: what new
+/// projects (and projects without their own value) get.
+#[tauri::command]
+#[specta::specta]
+pub fn settings_get_global(state: State<'_, AppState>) -> Settings {
+    state.global_settings.effective()
+}
+
 /// `value` is JSON text, e.g. `14` or `"dark"`. Every window (for a project
 /// value: that project's windows) is told (`IdeEvent::SettingsChanged`) so it
 /// re-reads its effective settings.

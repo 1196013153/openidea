@@ -33,6 +33,7 @@ import {
   selectPage,
   setPageScope,
   setQuery,
+  settingsTitle,
   useSettingsDialog,
   type Scope,
 } from "../model/staging";
@@ -99,10 +100,13 @@ function PageHost({
 }) {
   const pageId = node?.key ?? "";
   const hasProject = useProject((s) => !!s.project);
+  const newProjects = useSettingsDialog((s) => s.newProjects);
   const spec = page ? builtinSpec(page.id) : undefined;
-  const projectScope = !!spec?.projectScope && hasProject;
-  const chosen = useSettingsDialog((s) => s.scopes[pageId]);
+  const projectScope = !!spec?.projectScope && hasProject && !newProjects;
+  const chosen = useSettingsDialog((s) => s.scopes[pageId]) ?? spec?.defaultScope;
   const scope: Scope = projectScope && chosen === "project" ? "project" : "global";
+  // Where a project value is the norm, say what the global one is for.
+  const globalNote = newProjects || (projectScope && scope === "global" && spec?.defaultScope === "project");
   const ctx = useMemo(() => ({ pageId, scope }), [pageId, scope]);
   if (!node) return <EmptyState title="Nothing found" icon="search" />;
   const Body = page?.component;
@@ -142,6 +146,12 @@ function PageHost({
           <T>Saved to .openidea/settings.toml in this project; overrides the global value.</T>
         </div>
       )}
+      {globalNote && (
+        <div className={styles.scopeNote}>
+          <Icon name="info" size={14} />
+          <T>Saved to the global settings: used by new projects and by projects without their own value.</T>
+        </div>
+      )}
       <div className={styles.pageBody}>
         <PageErrorBoundary pageId={pageId}>{Body ? <Body /> : <GroupPage node={node} />}</PageErrorBoundary>
       </div>
@@ -155,12 +165,16 @@ export function SettingsDialog() {
   return <SettingsDialogInner />;
 }
 
+export function useSettingsTitle(): string {
+  return useSettingsDialog((s) => settingsTitle(s.newProjects));
+}
+
 function SettingsDialogInner() {
   return (
     <Dialog
       open
       onClose={closeSettings}
-      title="Settings"
+      title={useSettingsTitle()}
       width={980}
       className={styles.dialog}
       footerStart={<SettingsStatus />}
@@ -283,8 +297,8 @@ export function SettingsLayout() {
 
 /** OK / Cancel / Apply, ordered per platform by the dialog primitive. */
 function useSettingsButtons(): DialogButton[] {
-  const { staged, base, saving } = useSettingsDialog();
-  const pending = useMemo(() => pendingChanges({ base, staged }).length > 0, [base, staged]);
+  const { staged, base, globalBase, saving } = useSettingsDialog();
+  const pending = useMemo(() => pendingChanges({ base, globalBase, staged }).length > 0, [base, globalBase, staged]);
   const ok = async () => {
     if (await applySettings()) closeSettings();
   };

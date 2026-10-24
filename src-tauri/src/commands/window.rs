@@ -24,7 +24,8 @@ pub async fn window_new(app: AppHandle) -> IdeResult<String> {
     windows::create_window(&app, None).map(|w| w.label().to_owned())
 }
 
-/// Opens this window's Settings window on `page` (or focuses it and navigates).
+/// Opens this window's Settings window on `page` (or focuses it and navigates);
+/// `new_projects` edits the global layer only ("Settings for New Projects").
 /// `background` (`#rrggbb`) paints a new window until its page has loaded.
 #[tauri::command]
 #[specta::specta]
@@ -32,9 +33,10 @@ pub async fn window_open_settings(
     app: AppHandle,
     window: WebviewWindow,
     page: Option<String>,
+    new_projects: bool,
     background: Option<String>,
 ) -> IdeResult<()> {
-    windows::open_settings_window(&app, &window, page, background)
+    windows::open_settings_window(&app, &window, page, new_projects, background)
 }
 
 /// Focuses the next / previous window (⌘` / ⇧⌘`).

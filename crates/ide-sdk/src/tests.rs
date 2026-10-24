@@ -1,5 +1,5 @@
 use crate::apply::{
-    apply_to_run_configs, configure_server, maven_command, maven_options, project_jdk, python_interpreter,
+    apply_to_run_configs, configure_server, jdtls_jdk, maven_command, maven_options, project_jdk, python_interpreter,
     terminal_activation, tsdk,
 };
 use crate::python::parse_pip_list;
@@ -200,6 +200,25 @@ fn project_jdk_and_maven_settings() {
 
     s.languages.java.jdk = "missing".into();
     assert_eq!(project_jdk(tmp.path(), &s), None);
+}
+
+#[test]
+fn jdtls_jdk_setting() {
+    if cfg!(windows) {
+        return; // Unix paths
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    fake_jdk(&tmp.path().join("jdk17"));
+    let mut s = Settings::default();
+    assert_eq!(jdtls_jdk(tmp.path(), &s), Ok(None));
+    // Separate from the project JDK, which run configurations keep using.
+    s.languages.java.jdk = "jdk17".into();
+    assert_eq!(jdtls_jdk(tmp.path(), &s), Ok(None));
+    s.languages.java.jdtls_jdk = "jdk17/bin".into();
+    assert_eq!(jdtls_jdk(tmp.path(), &s).unwrap().map(|j| j.major), Some(17));
+    // A chosen path that is not a JDK is an error, not a silent fallback.
+    s.languages.java.jdtls_jdk = "missing".into();
+    assert!(jdtls_jdk(tmp.path(), &s).unwrap_err().contains("is not a JDK home"));
 }
 
 #[test]

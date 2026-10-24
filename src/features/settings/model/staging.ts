@@ -24,6 +24,10 @@ export interface SettingsDialogState {
   query: string;
   /** Effective settings when the dialog opened / last applied. */
   base: ValidSettings;
+  /** Defaults + global layer (no project values): what the Global scope edits. */
+  globalBase: ValidSettings;
+  /** "Settings for New Projects": every page edits the global layer. */
+  newProjects: boolean;
   staged: Record<string, StagedChange>;
   /** Scope chosen per page (Global / This project). */
   scopes: Record<string, Scope>;
@@ -38,6 +42,8 @@ export const useSettingsDialog = create<SettingsDialogState>(() => ({
   pageId: DEFAULT_PAGE,
   query: "",
   base: validateSettings(undefined),
+  globalBase: validateSettings(undefined),
+  newProjects: false,
   staged: {},
   scopes: {},
   saving: false,
@@ -46,18 +52,44 @@ export const useSettingsDialog = create<SettingsDialogState>(() => ({
 
 const stageKey = (scope: Scope, key: string) => `${scope}|${key}`;
 
-export function openSettings(pageId?: string) {
+export function openSettings(pageId?: string, opts: { newProjects?: boolean } = {}) {
   const s = useSettingsDialog.getState();
+  const base = validateSettings(useProject.getState().settings);
   useSettingsDialog.setState({
     open: true,
     pageId: pageId ?? s.pageId,
     query: "",
-    base: validateSettings(useProject.getState().settings),
+    base,
+    globalBase: base,
+    newProjects: opts.newProjects ?? false,
     staged: {},
     saving: false,
     error: null,
   });
+  void loadGlobalBase();
 }
+
+/** With a project open the effective settings include its values; the Global scope shows the global layer. */
+async function loadGlobalBase() {
+  if (!isTauri() || !useProject.getState().project) return;
+  try {
+    const globalBase = validateSettings(await commands.settingsGetGlobal());
+    useSettingsDialog.setState((s) => (s.open ? { globalBase } : {}));
+  } catch (e) {
+    console.warn("cannot load global settings", e);
+  }
+}
+
+/** IDEA's File › New Projects Setup › Settings for New Projects. */
+export const settingsTitle = (newProjects: boolean) => (newProjects ? "Settings for New Projects" : "Settings");
+
+export function setNewProjects(newProjects: boolean) {
+  useSettingsDialog.setState({ newProjects });
+}
+
+type Bases = Pick<SettingsDialogState, "base" | "globalBase">;
+
+const baseFor = (s: Bases, scope: Scope) => (scope === "global" ? s.globalBase : s.base);
 
 export function closeSettings() {
   useSettingsDialog.setState({ open: false, staged: {}, error: null, saving: false });
@@ -76,17 +108,17 @@ export function setPageScope(pageId: string, scope: Scope) {
 }
 
 /** Current value of `key` as the page shows it: staged edit, else the effective value. */
-export function stagedValue(s: Pick<SettingsDialogState, "base" | "staged">, scope: Scope, key: string): unknown {
+export function stagedValue(s: Bases & Pick<SettingsDialogState, "staged">, scope: Scope, key: string): unknown {
   const hit = s.staged[stageKey(scope, key)];
-  return hit ? hit.value : getAt(s.base, key);
+  return hit ? hit.value : getAt(baseFor(s, scope), key);
 }
 
 export function stage(page: string, scope: Scope, key: string, value: unknown) {
   useSettingsDialog.setState((s) => {
     const staged = { ...s.staged };
     const id = stageKey(scope, key);
-    // Back to the effective value: nothing to write.
-    if (deepEqual(value, getAt(s.base, key))) delete staged[id];
+    // Back to the scope's current value: nothing to write.
+    if (deepEqual(value, getAt(baseFor(s, scope), key))) delete staged[id];
     else staged[id] = { scope, key, value, page };
     return { staged, error: null };
   });
@@ -101,9 +133,9 @@ export function resetPage(page: string) {
 }
 
 /** Writes to perform, global layer first so a project value still wins afterwards. */
-export function pendingChanges(s: Pick<SettingsDialogState, "base" | "staged">): StagedChange[] {
+export function pendingChanges(s: Bases & Pick<SettingsDialogState, "staged">): StagedChange[] {
   return Object.values(s.staged)
-    .filter((c) => !deepEqual(c.value, getAt(s.base, c.key)))
+    .filter((c) => !deepEqual(c.value, getAt(baseFor(s, c.scope), c.key)))
     .sort((a, b) => (a.scope === b.scope ? a.key.localeCompare(b.key) : a.scope === "global" ? -1 : 1));
 }
 
@@ -164,11 +196,19 @@ export async function applySettings(deps?: PersistDeps): Promise<boolean> {
   useSettingsDialog.setState({ saving: true, error: null });
   const { written, error } = await persistChanges(changes, deps);
   const done = new Set(written);
+  const base = validateSettings(useProject.getState().settings);
   useSettingsDialog.setState((st) => ({
     saving: false,
     error,
-    base: validateSettings(useProject.getState().settings),
+    base,
+    // Written global values right away; the backend's copy follows.
+    globalBase: useProject.getState().project
+      ? changes
+          .filter((c) => c.scope === "global" && done.has(stageKey(c.scope, c.key)))
+          .reduce((g, c) => setAt(g, c.key, c.value), st.globalBase)
+      : base,
     staged: Object.fromEntries(Object.entries(st.staged).filter(([k]) => !done.has(k))),
   }));
+  await loadGlobalBase();
   return error === null;
 }

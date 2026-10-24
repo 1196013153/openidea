@@ -13,6 +13,7 @@ export interface LanguagesValid {
   typescript: { version: string };
   java: {
     jdk: string;
+    jdtlsJdk: string;
     jdtlsVmArgs: string;
     maven: { home: string; userSettings: string; localRepository: string };
   };
@@ -34,7 +35,7 @@ export const DEFAULT_LANGUAGES: LanguagesValid = {
   rust: { toolchain: "", stdlib: "", checkOnSave: true, checkCommand: "check", rustfmtArgs: "" },
   go: { goroot: "", gopath: "" },
   typescript: { version: "bundled" },
-  java: { jdk: "", jdtlsVmArgs: "", maven: { home: "", userSettings: "", localRepository: "" } },
+  java: { jdk: "", jdtlsJdk: "", jdtlsVmArgs: "", maven: { home: "", userSettings: "", localRepository: "" } },
 };
 
 export const DEFAULT_PROJECT_STRUCTURE: ProjectStructureValid = {
@@ -101,6 +102,7 @@ export function validateLanguages(raw: unknown): LanguagesValid {
     typescript: { version: text(ts.version, d.typescript.version) || d.typescript.version },
     java: {
       jdk: text(java.jdk, d.java.jdk),
+      jdtlsJdk: text(java.jdtlsJdk, d.java.jdtlsJdk),
       jdtlsVmArgs: text(java.jdtlsVmArgs, d.java.jdtlsVmArgs),
       maven: {
         home: text(maven.home, d.java.maven.home),

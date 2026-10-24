@@ -13,6 +13,8 @@ export const LANGUAGES_GROUP = "Languages & Frameworks";
 export const LANGUAGE_PAGES: PageSpec[] = [
   {
     id: "python.interpreter",
+    projectScope: true,
+    defaultScope: "project",
     title: "Python Interpreter",
     group: LANGUAGES_GROUP,
     order: 403,
@@ -41,6 +43,8 @@ export const LANGUAGE_PAGES: PageSpec[] = [
   },
   {
     id: "languages.go",
+    projectScope: true,
+    defaultScope: "project",
     title: "Go",
     group: LANGUAGES_GROUP,
     order: 390,
@@ -49,6 +53,8 @@ export const LANGUAGE_PAGES: PageSpec[] = [
   },
   {
     id: "languages.java",
+    projectScope: true,
+    defaultScope: "project",
     title: "Java",
     group: LANGUAGES_GROUP,
     order: 395,
@@ -57,6 +63,8 @@ export const LANGUAGE_PAGES: PageSpec[] = [
       "project sdk",
       "java home",
       "jdtls",
+      "language server jdk",
+      "jdk for importer",
       "jvm options",
       "vmargs",
       "lombok",
@@ -67,6 +75,8 @@ export const LANGUAGE_PAGES: PageSpec[] = [
   },
   {
     id: "languages.node",
+    projectScope: true,
+    defaultScope: "project",
     title: "Node.js",
     group: LANGUAGES_GROUP,
     order: 402,
@@ -75,6 +85,8 @@ export const LANGUAGE_PAGES: PageSpec[] = [
   },
   {
     id: "languages.rust",
+    projectScope: true,
+    defaultScope: "project",
     title: "Rust",
     group: LANGUAGES_GROUP,
     order: 404,
@@ -92,6 +104,8 @@ export const LANGUAGE_PAGES: PageSpec[] = [
   },
   {
     id: "languages.typescript",
+    projectScope: true,
+    defaultScope: "project",
     title: "TypeScript",
     group: LANGUAGES_GROUP,
     order: 405,

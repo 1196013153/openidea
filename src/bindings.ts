@@ -23,6 +23,11 @@ export const commands = {
 	/**  Effective settings for the window's project, or global settings without one. */
 	settingsGet: () => __TAURI_INVOKE<Settings_Serialize>("settings_get"),
 	/**
+	 *  Defaults plus the global layer, without any project's values: what new
+	 *  projects (and projects without their own value) get.
+	 */
+	settingsGetGlobal: () => __TAURI_INVOKE<Settings_Serialize>("settings_get_global"),
+	/**
 	 *  `value` is JSON text, e.g. `14` or `"dark"`. Every window (for a project
 	 *  value: that project's windows) is told (`IdeEvent::SettingsChanged`) so it
 	 *  re-reads its effective settings.
@@ -429,10 +434,11 @@ export const commands = {
 	/**  Opens an empty (welcome) window; returns its label. */
 	windowNew: () => typedError<string, IdeError>(__TAURI_INVOKE("window_new")),
 	/**
-	 *  Opens this window's Settings window on `page` (or focuses it and navigates).
+	 *  Opens this window's Settings window on `page` (or focuses it and navigates);
+	 *  `new_projects` edits the global layer only ("Settings for New Projects").
 	 *  `background` (`#rrggbb`) paints a new window until its page has loaded.
 	 */
-	windowOpenSettings: (page: string | null, background: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_settings", { page, background })),
+	windowOpenSettings: (page: string | null, newProjects: boolean, background: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_settings", { page, newProjects, background })),
 	/**  Focuses the next / previous window (⌘` / ⇧⌘`). */
 	windowCycle: (forward: boolean) => __TAURI_INVOKE<void>("window_cycle", { forward }),
 	windowToggleFullscreen: () => typedError<boolean, IdeError>(__TAURI_INVOKE("window_toggle_fullscreen")),
@@ -442,6 +448,8 @@ export const commands = {
 	project: IpcPath | null,
 	/**  Settings windows: the page to show. */
 	settingsPage: string | null,
+	/**  Settings windows: edit the global layer only ("Settings for New Projects"). */
+	newProjects: boolean,
 } | null>("window_take_launch"),
 	windowCloseContext: () => __TAURI_INVOKE<CloseContext>("window_close_context"),
 	/**  Projects open in project windows, in window order (title bar project widget). */
@@ -2368,6 +2376,12 @@ export type JavaSettings = {
 	 */
 	jdk?: string,
 	/**
+	 *  JDK home the Java language server (jdtls) runs on, apart from the project
+	 *  JDK (IDEA's "JDK for importer"); empty = the project JDK when new enough,
+	 *  else the first installed one that is.
+	 */
+	jdtlsJdk?: string,
+	/**
 	 *  Extra JVM options for the Java language server (jdtls), space-separated
 	 *  (VS Code's `java.jdt.ls.vmargs`).
 	 */
@@ -2442,6 +2456,8 @@ export type Launch = {
 	project: IpcPath | null,
 	/**  Settings windows: the page to show. */
 	settingsPage: string | null,
+	/**  Settings windows: edit the global layer only ("Settings for New Projects"). */
+	newProjects: boolean,
 };
 
 export type LaunchConfig = {
