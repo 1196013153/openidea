@@ -14,6 +14,6 @@ root-markers = ["mix.exs"]
 install-hint = "Install ElixirLS (https://github.com/elixir-lsp/elixir-ls/releases) and expose language_server.sh as `elixir-ls`"
 
 [debugger]
-adapter = "elixir-ls"
+adapter = "elixir-ls-debugger"
 command = "elixir-ls-debugger"
 install-hint = "Install ElixirLS and expose debug_adapter.sh as `elixir-ls-debugger`"

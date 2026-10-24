@@ -78,6 +78,8 @@ pub struct ToolSpec {
     /// Version query: a command (looked up next to the main binary first) and its args.
     pub version: Option<(&'static str, &'static [&'static str])>,
     pub homepage: &'static str,
+    /// Runtimes the tool runs on, found on `PATH`: command and why it is needed.
+    pub needs: &'static [(&'static str, &'static str)],
 }
 
 impl ToolSpec {
@@ -94,6 +96,9 @@ use Os::{Linux, Mac, Windows};
 use ToolKind::{Debugger, LanguageServer, Plugin};
 
 const V: Option<(&str, &[&str])> = None;
+const ELIXIR: &[(&str, &str)] = &[("elixir", "Elixir is required (https://elixir-lang.org/install.html)")];
+const ELIXIR_LS_ASSETS: &[AssetRule] =
+    &[any_arch(Mac, "elixir-ls-v*.zip"), any_arch(Linux, "elixir-ls-v*.zip"), any_arch(Windows, "elixir-ls-v*.zip")];
 const fn ver(cmd: &'static str) -> Option<(&'static str, &'static [&'static str])> {
     Some((cmd, &["--version"]))
 }
@@ -107,6 +112,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Rustup { component: "rust-analyzer" },
         version: ver("rust-analyzer"),
         homepage: "https://rust-analyzer.github.io",
+        needs: &[],
     },
     ToolSpec {
         name: "vtsls",
@@ -116,6 +122,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["@vtsls/language-server"] },
         version: V,
         homepage: "https://github.com/yioneko/vtsls",
+        needs: &[],
     },
     ToolSpec {
         name: "typescript-language-server",
@@ -125,6 +132,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["typescript-language-server", "typescript"] },
         version: ver("typescript-language-server"),
         homepage: "https://github.com/typescript-language-server/typescript-language-server",
+        needs: &[],
     },
     ToolSpec {
         name: "pyright",
@@ -134,6 +142,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["pyright"] },
         version: ver("pyright"),
         homepage: "https://github.com/microsoft/pyright",
+        needs: &[],
     },
     ToolSpec {
         name: "basedpyright",
@@ -143,6 +152,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::PipVenv { package: "basedpyright" },
         version: ver("basedpyright"),
         homepage: "https://docs.basedpyright.com",
+        needs: &[],
     },
     ToolSpec {
         name: "bash-language-server",
@@ -152,6 +162,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["bash-language-server"] },
         version: ver("bash-language-server"),
         homepage: "https://github.com/bash-lsp/bash-language-server",
+        needs: &[],
     },
     ToolSpec {
         name: "yaml-language-server",
@@ -161,6 +172,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["yaml-language-server"] },
         version: V,
         homepage: "https://github.com/redhat-developer/yaml-language-server",
+        needs: &[],
     },
     ToolSpec {
         name: "vscode-json-language-server",
@@ -170,6 +182,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["vscode-langservers-extracted"] },
         version: V,
         homepage: "https://github.com/hrsh7th/vscode-langservers-extracted",
+        needs: &[],
     },
     ToolSpec {
         name: "vscode-css-language-server",
@@ -179,6 +192,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["vscode-langservers-extracted"] },
         version: V,
         homepage: "https://github.com/hrsh7th/vscode-langservers-extracted",
+        needs: &[],
     },
     ToolSpec {
         name: "vscode-html-language-server",
@@ -188,6 +202,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["vscode-langservers-extracted"] },
         version: V,
         homepage: "https://github.com/hrsh7th/vscode-langservers-extracted",
+        needs: &[],
     },
     ToolSpec {
         name: "dockerfile-language-server",
@@ -197,6 +212,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["dockerfile-language-server-nodejs"] },
         version: V,
         homepage: "https://github.com/rcjsuen/dockerfile-language-server",
+        needs: &[],
     },
     ToolSpec {
         name: "svelte-language-server",
@@ -206,6 +222,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["svelte-language-server"] },
         version: V,
         homepage: "https://github.com/sveltejs/language-tools",
+        needs: &[],
     },
     ToolSpec {
         name: "vue-language-server",
@@ -215,6 +232,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["@vue/language-server"] },
         version: V,
         homepage: "https://github.com/vuejs/language-tools",
+        needs: &[],
     },
     ToolSpec {
         name: "graphql-lsp",
@@ -224,6 +242,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["graphql-language-service-cli"] },
         version: V,
         homepage: "https://github.com/graphql/graphiql",
+        needs: &[],
     },
     ToolSpec {
         name: "intelephense",
@@ -233,6 +252,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Npm { packages: &["intelephense"] },
         version: V,
         homepage: "https://intelephense.com",
+        needs: &[],
     },
     ToolSpec {
         name: "gopls",
@@ -242,6 +262,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Go { module: "golang.org/x/tools/gopls@latest" },
         version: Some(("gopls", &["version"])),
         homepage: "https://pkg.go.dev/golang.org/x/tools/gopls",
+        needs: &[],
     },
     ToolSpec {
         name: "sqls",
@@ -251,6 +272,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Go { module: "github.com/sqls-server/sqls@latest" },
         version: Some(("sqls", &["--version"])),
         homepage: "https://github.com/sqls-server/sqls",
+        needs: &[],
     },
     ToolSpec {
         name: "delve",
@@ -260,6 +282,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::Go { module: "github.com/go-delve/delve/cmd/dlv@latest" },
         version: Some(("dlv", &["version"])),
         homepage: "https://github.com/go-delve/delve",
+        needs: &[],
     },
     ToolSpec {
         name: "debugpy",
@@ -269,6 +292,7 @@ pub static TOOLS: &[ToolSpec] = &[
         method: Method::PipTarget { package: "debugpy", module: "debugpy" },
         version: V,
         homepage: "https://github.com/microsoft/debugpy",
+        needs: &[],
     },
     ToolSpec {
         name: "clangd",
@@ -286,6 +310,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: ver("clangd"),
         homepage: "https://clangd.llvm.org",
+        needs: &[],
     },
     ToolSpec {
         name: "lua-language-server",
@@ -305,6 +330,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: ver("lua-language-server"),
         homepage: "https://luals.github.io",
+        needs: &[],
     },
     ToolSpec {
         name: "marksman",
@@ -323,6 +349,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: ver("marksman"),
         homepage: "https://github.com/artempyanykh/marksman",
+        needs: &[],
     },
     ToolSpec {
         name: "taplo",
@@ -342,6 +369,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: ver("taplo"),
         homepage: "https://taplo.tamasfe.dev",
+        needs: &[],
     },
     ToolSpec {
         name: "zls",
@@ -361,6 +389,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: ver("zls"),
         homepage: "https://github.com/zigtools/zls",
+        needs: &[],
     },
     ToolSpec {
         name: "terraform-ls",
@@ -380,6 +409,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: Some(("terraform-ls", &["version"])),
         homepage: "https://github.com/hashicorp/terraform-ls",
+        needs: &[],
     },
     ToolSpec {
         name: "codelldb",
@@ -404,6 +434,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: V,
         homepage: "https://github.com/vadimcn/codelldb",
+        needs: &[],
     },
     ToolSpec {
         name: "js-debug",
@@ -422,6 +453,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: V,
         homepage: "https://github.com/microsoft/vscode-js-debug",
+        needs: &[],
     },
     ToolSpec {
         name: "jdtls",
@@ -439,6 +471,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: V,
         homepage: "https://github.com/eclipse-jdtls/eclipse.jdt.ls",
+        needs: &[],
     },
     ToolSpec {
         name: "java-debug",
@@ -457,6 +490,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: V,
         homepage: "https://github.com/microsoft/java-debug",
+        needs: &[],
     },
     ToolSpec {
         name: "lombok",
@@ -475,6 +509,7 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: V,
         homepage: "https://projectlombok.org",
+        needs: &[],
     },
     ToolSpec {
         name: "kotlin-lsp",
@@ -498,6 +533,37 @@ pub static TOOLS: &[ToolSpec] = &[
         },
         version: V,
         homepage: "https://github.com/Kotlin/kotlin-lsp",
+        needs: &[],
+    },
+    // ElixirLS ships launcher scripts only: on first start they build the server
+    // with the Elixir / OTP found for the project (Mix.install, needs network).
+    ToolSpec {
+        name: "elixir-ls",
+        display: "ElixirLS",
+        kind: LanguageServer,
+        commands: &["elixir-ls"],
+        method: Method::Release {
+            source: ReleaseSource::GitHub { repo: "elixir-lsp/elixir-ls" },
+            assets: ELIXIR_LS_ASSETS,
+            locate: &["language_server.sh", "language_server.bat"],
+        },
+        version: V,
+        homepage: "https://github.com/elixir-lsp/elixir-ls",
+        needs: ELIXIR,
+    },
+    ToolSpec {
+        name: "elixir-ls-debugger",
+        display: "ElixirLS Debugger",
+        kind: Debugger,
+        commands: &["elixir-ls-debugger"],
+        method: Method::Release {
+            source: ReleaseSource::GitHub { repo: "elixir-lsp/elixir-ls" },
+            assets: ELIXIR_LS_ASSETS,
+            locate: &["debug_adapter.sh", "debug_adapter.bat"],
+        },
+        version: V,
+        homepage: "https://github.com/elixir-lsp/elixir-ls",
+        needs: ELIXIR,
     },
 ];
 

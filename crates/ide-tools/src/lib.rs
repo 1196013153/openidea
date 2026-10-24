@@ -222,11 +222,8 @@ fn usages(langs: &[LanguageConfig]) -> BTreeMap<String, Usage> {
         if let Some(d) = &l.debugger {
             // An adapter named like a server but launched differently (ElixirLS's
             // `elixir-ls-debugger`) is a tool of its own, listed by its command.
-            let name = if servers.contains(d.adapter.as_str()) && !TOOLS.iter().any(|t| t.name == d.adapter) {
-                &d.command
-            } else {
-                &d.adapter
-            };
+            let name =
+                if servers.contains(d.adapter.as_str()) && d.command != d.adapter { &d.command } else { &d.adapter };
             add(name, &d.command, ToolKind::Debugger, d.install_hint.as_ref(), &l.name);
         }
     }
@@ -365,6 +362,12 @@ impl Tools {
 
     /// Requirement check for installing `spec` right now.
     fn unavailable_reason(&self, spec: &ToolSpec) -> Option<String> {
+        self.installer_missing(spec)
+            .or_else(|| spec.needs.iter().find(|(cmd, _)| self.which(cmd).is_none()).map(|(_, why)| why.to_string()))
+    }
+
+    /// What the install method itself lacks (npm, a build for this platform, …).
+    fn installer_missing(&self, spec: &ToolSpec) -> Option<String> {
         let need = |ok: bool, msg: &str| (!ok).then(|| msg.to_string());
         match spec.method {
             Method::Rustup { .. } => need(self.which("rustup").is_some(), "rustup is required (https://rustup.rs)"),

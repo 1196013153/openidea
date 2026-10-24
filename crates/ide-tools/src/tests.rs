@@ -317,3 +317,22 @@ fn a_debugger_named_like_its_server_is_listed_by_its_command() {
     assert_eq!((debugger.kind, debugger.command.as_str()), (ToolKind::Debugger, "elixir-ls-debugger"));
     assert_eq!(debugger.languages, vec!["Elixir".to_string()]);
 }
+
+#[cfg(unix)]
+#[test]
+fn elixir_ls_needs_elixir_and_lists_its_debugger() {
+    let env = Env::new();
+    env.script(&env.sys, "curl", "exit 0");
+    let list = env.tools().list(&langs());
+    let server = find(&list, "elixir-ls");
+    assert_eq!(server.install_method.as_deref(), Some("GitHub release"));
+    assert!(!server.can_install);
+    assert!(server.unavailable_reason.as_deref().unwrap().contains("Elixir is required"));
+    let debugger = find(&list, "elixir-ls-debugger");
+    assert_eq!((debugger.kind, debugger.languages.as_slice()), (ToolKind::Debugger, ["Elixir".to_string()].as_slice()));
+
+    env.script(&env.sys, "elixir", "exit 0");
+    let list = env.tools().list(&langs());
+    assert!(find(&list, "elixir-ls").can_install);
+    assert!(find(&list, "elixir-ls-debugger").can_install);
+}
