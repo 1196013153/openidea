@@ -15,7 +15,11 @@ interface SeState {
   ctx: ContextKeys;
   /** Bumped on every (re)open so the field re-selects its text. */
   session: number;
+  /** Code preview of the selected result under the list (remembered). */
+  preview: boolean;
 }
+
+const PREVIEW_KEY = "openidea.search.everywherePreview.v1";
 
 export const useSearchEverywhere = create<SeState>(() => ({
   open: false,
@@ -25,7 +29,13 @@ export const useSearchEverywhere = create<SeState>(() => ({
   fileSet: "all",
   ctx: {},
   session: 0,
+  preview: loadJson<unknown>(PREVIEW_KEY, false) === true,
 }));
+
+export function setSearchEverywherePreview(preview: boolean) {
+  useSearchEverywhere.setState({ preview });
+  saveJson(PREVIEW_KEY, preview);
+}
 
 /** Opens (or re-targets) the dialog. Re-invoking the same scope toggles "include non-project items", like IDEA. */
 export function showSearchEverywhere(tab: SeTab, opts: { query?: string; toggleOnRepeat?: boolean } = {}) {
@@ -63,4 +73,33 @@ export function recentActions(): string[] {
 
 export function pushRecentAction(id: string) {
   saveJson(RECENT_ACTIONS_KEY, [id, ...recentActions().filter((x) => x !== id)].slice(0, MAX_RECENT_ACTIONS));
+}
+
+const HISTORY_KEY = "openidea.search.everywhereHistory.v1";
+const MAX_HISTORY = 50;
+
+interface HistoryEntry {
+  tab: SeTab;
+  query: string;
+}
+
+function loadHistory(): HistoryEntry[] {
+  const v = loadJson<unknown>(HISTORY_KEY, []);
+  return Array.isArray(v)
+    ? v.filter((x): x is HistoryEntry => typeof x?.tab === "string" && typeof x?.query === "string")
+    : [];
+}
+
+/** Queries that led somewhere in `tab`, newest first. */
+export function searchHistory(tab: SeTab): string[] {
+  return loadHistory()
+    .filter((e) => e.tab === tab)
+    .map((e) => e.query);
+}
+
+export function pushSearchHistory(tab: SeTab, query: string) {
+  const q = query.trim();
+  if (!q) return;
+  const rest = loadHistory().filter((e) => e.tab !== tab || e.query !== q);
+  saveJson(HISTORY_KEY, [{ tab, query: q }, ...rest].slice(0, MAX_HISTORY));
 }

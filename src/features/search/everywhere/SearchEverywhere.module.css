@@ -1,10 +1,16 @@
 .dialog {
   --se-bg-header: var(--bg-frame, var(--bg-app));
-  max-height: 72vh;
+  max-height: 80vh;
   margin-top: 9vh;
   background: var(--bg-popup, var(--bg-elev));
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
+}
+/* The list shrinks to fit (the footer stays visible) instead of the dialog body scrolling. */
+.dialog > :global([data-dialog-body]) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .header {
   flex: none;
@@ -50,6 +56,9 @@
   flex: none;
   color: var(--fg);
 }
+.scope {
+  color: var(--fg);
+}
 .headerButton {
   flex: none;
 }
@@ -72,7 +81,22 @@
 }
 .magnifier {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 22px;
+  padding: 0 2px;
+  border: none;
+  border-radius: var(--radius-small);
+  background: none;
   color: var(--fg-subtle);
+}
+.magnifier:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.magnifier:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
 }
 .query {
   flex: 1;
@@ -104,6 +128,12 @@
 .list {
   flex: 1;
   min-height: 0;
+}
+.preview {
+  flex: none;
+  display: flex;
+  height: 220px;
+  border-top: 1px solid var(--border-popup);
 }
 .section {
   font-family: var(--font-ui);
@@ -142,6 +172,45 @@
 }
 .code {
   font-family: var(--font-ui);
+  color: var(--fg);
+  tab-size: 2;
+}
+/* Lezer classHighlighter tokens of text hits (same colours as the Markdown preview). */
+.code :global(.tok-keyword),
+.code :global(.tok-modifier),
+.code :global(.tok-controlKeyword),
+.code :global(.tok-operatorKeyword) {
+  color: var(--syn-keyword);
+}
+.code :global(.tok-string),
+.code :global(.tok-string2) {
+  color: var(--syn-string);
+}
+.code :global(.tok-number),
+.code :global(.tok-bool),
+.code :global(.tok-atom) {
+  color: var(--syn-number);
+}
+.code :global(.tok-typeName),
+.code :global(.tok-className),
+.code :global(.tok-namespace) {
+  color: var(--syn-type);
+}
+.code :global(.tok-comment) {
+  color: var(--syn-comment);
+}
+.code :global(.tok-meta),
+.code :global(.tok-macroName) {
+  color: var(--syn-annotation);
+}
+.code :global(.tok-propertyName) {
+  color: var(--syn-property);
+}
+.code :global(.tok-variableName.tok-definition) {
+  color: var(--syn-function);
+}
+.repeat {
+  color: var(--fg-faint);
 }
 .lineSuffix {
   color: var(--fg-muted);

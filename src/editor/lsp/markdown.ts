@@ -81,33 +81,54 @@ export function languageForPath(path: string): string | null {
   return LanguageDescription.matchFilename(languages, name)?.name ?? null;
 }
 
-/** Replaces `el`'s text with highlighted spans (no-op when the language is unknown). */
-export async function highlightInto(el: HTMLElement, text: string, language: string | null): Promise<void> {
+export interface CodeToken {
+  from: number;
+  to: number;
+  /** Lezer `classHighlighter` classes (`tok-string` …). */
+  cls: string;
+}
+
+/** Highlighted ranges of `text`; empty when the language is unknown or its grammar fails to load. */
+export async function highlightTokens(text: string, language: string | null): Promise<CodeToken[]> {
   const desc = language ? findLanguage(language) : null;
-  if (!desc) return;
+  if (!desc) return [];
   try {
     const support = desc.support ?? (await desc.load());
     const tree = support.language.parser.parse(text);
-    const frag = document.createDocumentFragment();
+    const out: CodeToken[] = [];
+    let pos = 0;
     highlightCode(
       text,
       tree,
       classHighlighter,
       (t, cls) => {
-        if (!cls) frag.appendChild(document.createTextNode(t));
-        else {
-          const span = document.createElement("span");
-          span.className = cls;
-          span.textContent = t;
-          frag.appendChild(span);
-        }
+        if (cls) out.push({ from: pos, to: pos + t.length, cls });
+        pos += t.length;
       },
-      () => frag.appendChild(document.createTextNode("\n")),
+      () => pos++,
     );
-    el.replaceChildren(frag);
+    return out;
   } catch {
-    // Grammar failed to load: keep the plain text.
+    return [];
   }
+}
+
+/** Replaces `el`'s text with highlighted spans (no-op when the language is unknown). */
+export async function highlightInto(el: HTMLElement, text: string, language: string | null): Promise<void> {
+  const tokens = await highlightTokens(text, language);
+  if (!tokens.length) return;
+  const frag = document.createDocumentFragment();
+  let pos = 0;
+  for (const t of tokens) {
+    if (t.from > pos) frag.appendChild(document.createTextNode(text.slice(pos, t.from)));
+    const span = document.createElement("span");
+    span.className = t.cls;
+    span.textContent = text.slice(t.from, t.to);
+    frag.appendChild(span);
+    pos = t.to;
+  }
+  if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+  el.replaceChildren(frag);
 }
 
 function highlightBlocks(root: HTMLElement, fallback: string | null) {

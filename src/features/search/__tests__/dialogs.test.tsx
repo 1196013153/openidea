@@ -34,7 +34,8 @@ vi.mock("../find/windowStore", async (orig) => ({
 const { allActions } = await import("@/platform/actions");
 (globalThis as unknown as { __actions: typeof allActions }).__actions = allActions;
 const { SearchEverywhereOverlay } = await import("../everywhere/SearchEverywhere");
-const { showSearchEverywhere, hideSearchEverywhere, useSearchEverywhere } = await import("../everywhere/store");
+const { showSearchEverywhere, hideSearchEverywhere, useSearchEverywhere, pushSearchHistory, searchHistory } =
+  await import("../everywhere/store");
 const { FindInFilesOverlay } = await import("../find/FindInFiles");
 const { showFindPopup, hideFindPopup } = await import("../find/store");
 
@@ -62,15 +63,65 @@ describe("Search Everywhere dialog", () => {
     await tick();
     const results = within(document.getElementById("se-results")!);
     expect(results.queryByText("Files")).toBeNull();
-    expect(screen.getByText("src/OrderController.kt")).toBeInTheDocument();
-
-    // ↓ moves from the file row to the action row.
+    // All mixes sources by relevance: the shorter prefix hit (the action) leads.
     fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByText("src/OrderController.kt")).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
     await tick();
     expect(useSearchEverywhere.getState().open).toBe(false);
     expect(run).toHaveBeenCalled();
     dispose();
+  });
+
+  it("the preview toggle is remembered", async () => {
+    render(<SearchEverywhereOverlay />);
+    act(() => showSearchEverywhere("all"));
+    await tick();
+    const toggle = screen.getByRole("button", { name: "Preview" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(toggle);
+    expect(useSearchEverywhere.getState().preview).toBe(true);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(localStorage.getItem("openidea.search.everywherePreview.v1")).toBe("true");
+    fireEvent.click(toggle);
+    expect(useSearchEverywhere.getState().preview).toBe(false);
+  });
+
+  it("/ lists scope commands; picking one or typing '/files q' switches the tab", async () => {
+    render(<SearchEverywhereOverlay />);
+    act(() => showSearchEverywhere("all", { query: "" }));
+    await tick();
+    const input = screen.getByLabelText("Search query");
+    fireEvent.change(input, { target: { value: "/fi" } });
+    await tick();
+    expect(within(document.getElementById("se-results")!).getByText("/files")).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(useSearchEverywhere.getState()).toMatchObject({ tab: "files", query: "", open: true });
+
+    fireEvent.change(input, { target: { value: "/text order" } });
+    expect(useSearchEverywhere.getState()).toMatchObject({ tab: "text", query: "order" });
+  });
+
+  it("⌥↑ / ⌥↓ browse the tab's search history and restore the draft", async () => {
+    localStorage.removeItem("openidea.search.everywhereHistory.v1");
+    pushSearchHistory("all", "older");
+    pushSearchHistory("all", "newer");
+    pushSearchHistory("files", "other tab");
+    render(<SearchEverywhereOverlay />);
+    act(() => showSearchEverywhere("all", { query: "draft" }));
+    await tick();
+    const input = screen.getByLabelText("Search query");
+    const key = (k: string) => fireEvent.keyDown(input, { key: k, altKey: true });
+    key("ArrowUp");
+    expect(useSearchEverywhere.getState().query).toBe("newer");
+    key("ArrowUp");
+    key("ArrowUp");
+    expect(useSearchEverywhere.getState().query).toBe("older");
+    key("ArrowDown");
+    key("ArrowDown");
+    expect(useSearchEverywhere.getState().query).toBe("draft");
+    expect(searchHistory("all")).toEqual(["newer", "older"]);
   });
 
   it("⇥ cycles scopes and repeating the scope action toggles non-project items", async () => {

@@ -178,6 +178,8 @@ const ICONS = {
   regex: "inline/regex",
   case: "inline/matchCase",
   word: "inline/exactWords",
+  "text-match": "openidea/nodes/textMatch",
+  "open-in-tool-window": "general/openInToolWindow",
   "preserve-case": "openidea/inline/preserveCase",
   filter: "general/filter",
   refresh: "general/refresh",

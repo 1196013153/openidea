@@ -22,8 +22,10 @@ import {
   T,
 } from "@/ui";
 import { useFileDecoration } from "@/workbench/contributions";
+import { highlightTokens, languageForPath, type CodeToken } from "@/editor/lsp/markdown";
 import { badgeKind, basename, openLocation, relDir } from "../common/open";
 import { parseLocationQuery } from "../common/query";
+import { CodePreview, type PreviewHighlight } from "../find/parts";
 import { SeController, type SeSnapshot } from "./controller";
 import { ipcDeps } from "./deps";
 import {
@@ -33,13 +35,21 @@ import {
   TABS,
   buildRows,
   isSectionRow,
+  parseCommand,
   stableIndex,
   topResultSettled,
   type SeRow,
   type SeTab,
   type SectionId,
 } from "./model";
-import { hideSearchEverywhere, pushRecentAction, useSearchEverywhere } from "./store";
+import {
+  hideSearchEverywhere,
+  pushRecentAction,
+  pushSearchHistory,
+  searchHistory,
+  setSearchEverywherePreview,
+  useSearchEverywhere,
+} from "./store";
 import styles from "./SearchEverywhere.module.css";
 
 type SeScope = "allPlaces" | ProjectFileSet;
@@ -52,7 +62,10 @@ const SE_SCOPES: Array<{ value: SeScope; label: string }> = [
 ];
 
 const ROW = 24;
-const MAX_LIST = 528;
+const MAX_LIST = 672;
+const MIN_LIST = 10 * ROW;
+/** List cap while the preview pane takes the lower part of the popup. */
+const MAX_LIST_PREVIEW = 312;
 const DEBOUNCE_MS = 60;
 
 export function SearchEverywhereOverlay() {
@@ -70,6 +83,7 @@ function SearchEverywhereDialog() {
   const fileSet = useSearchEverywhere((s) => s.fileSet);
   const session = useSearchEverywhere((s) => s.session);
   const ctx = useSearchEverywhere((s) => s.ctx);
+  const preview = useSearchEverywhere((s) => s.preview);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -78,7 +92,13 @@ function SearchEverywhereDialog() {
   const [snap, setSnap] = useState<SeSnapshot | null>(null);
   const [controller] = useState(() => new SeController(ipcDeps(ctx), setSnap));
   const [sel, setSel] = useState<Selection>({ key: null, index: -1, moved: false });
-  const [menu, setMenu] = useState<{ anchor: Element; items: MenuItem[] } | null>(null);
+  const [menu, setMenu] = useState<{
+    anchor: Element;
+    items: MenuItem[];
+    placement: "right-start" | "bottom-start";
+  } | null>(null);
+  /** Position in the tab's history while ⌥↑/⌥↓ browse it (-1 = the typed draft). */
+  const history = useRef({ pos: -1, draft: "" });
   const [toggleTick, setToggleTick] = useState(0);
   const bumpToggles = () => setToggleTick((t) => t + 1);
 
@@ -98,28 +118,67 @@ function SearchEverywhereDialog() {
     setSel({ key: null, index: -1, moved: false });
   }
 
+  // "/fi" lists scope commands instead of searching.
+  const listing = useMemo(() => {
+    const c = parseCommand(query);
+    return c?.kind === "list" ? c.rows : null;
+  }, [query]);
+  const searchQuery = parseCommand(debounced)?.kind === "list" ? "" : debounced;
+
   useEffect(() => {
-    controller.run({ query: debounced, tab, includeNonProject, fileSet: tab === "all" ? null : fileSet, extra });
-  }, [controller, debounced, tab, includeNonProject, fileSet, extra]);
+    controller.run({ query: searchQuery, tab, includeNonProject, fileSet: tab === "all" ? null : fileSet, extra });
+  }, [controller, searchQuery, tab, includeNonProject, fileSet, extra]);
 
   useEffect(() => {
     inputRef.current?.select();
   }, [session]);
 
-  const parsed = useMemo(() => parseLocationQuery(debounced), [debounced]);
+  const parsed = useMemo(() => parseLocationQuery(searchQuery), [searchQuery]);
+  // The All tab interleaves its sources by relevance once there is a query.
+  const mix = tab === "all" ? parsed.text : undefined;
   const rows = useMemo(
-    () => (snap ? buildRows(snap.sections, { headers: !parsed.text.trim() }) : []),
-    [snap, parsed.text],
+    () => listing ?? (snap ? buildRows(snap.sections, { headers: !parsed.text.trim(), mix }) : []),
+    [listing, snap, parsed.text, mix],
   );
   const active = stableIndex(rows, sel.key, sel.index, sel.moved);
   const activeRow = active >= 0 ? rows[active] : undefined;
   // Rows still answer an older query (debounce / in-flight search): Enter must wait.
   const settled =
-    !!snap && query === debounced && snap.query === debounced && snap.tab === tab && topResultSettled(snap.sections);
+    !!snap &&
+    query === debounced &&
+    snap.query === debounced &&
+    snap.tab === tab &&
+    topResultSettled(snap.sections, mix);
   const pendingEnter = useRef<{ side: boolean } | null>(null);
 
   const select = (index: number) => setSel({ key: rows[index]?.key ?? null, index, moved: true });
+  /** Typed or picked query; "/files foo" switches to Files with "foo". */
+  const setQuery = (value: string) => {
+    history.current.pos = -1;
+    const c = parseCommand(value);
+    useSearchEverywhere.setState(c?.kind === "run" ? { tab: c.tab, query: c.rest } : { query: value });
+  };
+  const browseHistory = (dir: 1 | -1) => {
+    const h = searchHistory(tab);
+    const cur = history.current;
+    const pos = Math.max(-1, Math.min(h.length - 1, cur.pos + dir));
+    if (pos === cur.pos) return;
+    if (cur.pos < 0) cur.draft = query;
+    cur.pos = pos;
+    useSearchEverywhere.setState({ query: pos < 0 ? cur.draft : h[pos]! });
+  };
+  const openHistory = (anchor: Element) => {
+    const h = searchHistory(tab).slice(0, 15);
+    const items: MenuItem[] = h.length
+      ? [
+          { kind: "header", label: "Recent Searches" },
+          ...h.map((q) => ({ label: q, verbatim: true, run: () => setQuery(q) })),
+        ]
+      : [{ label: "No recent searches", disabled: true, run: () => {} }];
+    setMenu({ anchor, items, placement: "bottom-start" });
+  };
   const setTab = (t: SeTab) => {
+    history.current.pos = -1;
     useSearchEverywhere.setState({ tab: t });
     inputRef.current?.focus();
   };
@@ -137,8 +196,14 @@ function SearchEverywhereDialog() {
 
   const activate = (row: SeRow | undefined, side = false) => {
     if (!row) return;
+    const isResult = row.kind !== "section" && row.kind !== "more" && row.kind !== "command";
+    if (isResult && !(row.kind === "action" && !row.enabled)) pushSearchHistory(tab, query);
     switch (row.kind) {
       case "section":
+        return;
+      case "command":
+        useSearchEverywhere.setState({ tab: row.tab, query: "" });
+        inputRef.current?.focus();
         return;
       case "more": {
         const step = tab === "all" ? MORE_STEP_ALL : MORE_STEP_TAB;
@@ -181,7 +246,7 @@ function SearchEverywhereDialog() {
 
   const openIntentions = () => {
     const row = activeRow;
-    if (!row || row.kind === "section" || row.kind === "more") return;
+    if (!row || row.kind === "section" || row.kind === "more" || row.kind === "command") return;
     const anchor = listRef.current?.querySelector('[aria-selected="true"]') ?? inputRef.current;
     if (!anchor) return;
     const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
@@ -208,7 +273,7 @@ function SearchEverywhereDialog() {
                 ]
               : []),
           ];
-    setMenu({ anchor, items });
+    setMenu({ anchor, items, placement: "right-start" });
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -224,8 +289,14 @@ function SearchEverywhereDialog() {
       if (e.altKey) openIntentions();
       else if (hasPrimaryModifier(e) && tab === "text")
         closeThen(() => void executeAction("find.inPath", { query: parsed.text }));
+      else if (listing) activate(activeRow);
       else if (!settled && !sel.moved) pendingEnter.current = { side: e.shiftKey };
       else activate(activeRow, e.shiftKey);
+      return;
+    }
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      browseHistory(e.key === "ArrowUp" ? 1 : -1);
       return;
     }
     if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
@@ -235,11 +306,14 @@ function SearchEverywhereDialog() {
     select(next);
   };
 
-  const listHeight = Math.min(MAX_LIST, rows.length * ROW);
+  const maxList = preview ? MAX_LIST_PREVIEW : MAX_LIST;
+  // While a query is typed the list keeps a minimum height so the popup doesn't jump with every keystroke.
+  const minList = parsed.text.trim() && !listing ? MIN_LIST : 0;
+  const listHeight = Math.min(maxList, Math.max(minList, rows.length * ROW));
+  const previewTarget = previewOf(activeRow);
   const emptyQuery = !parsed.text.trim();
   const showEmpty = !rows.length && snap && !snap.loading && (!emptyQuery || tab !== "all");
-  const canSplit =
-    !!activeRow && activeRow.kind !== "section" && activeRow.kind !== "more" && activeRow.kind !== "action";
+  const canSplit = activeRow?.kind === "file" || activeRow?.kind === "symbol" || activeRow?.kind === "text";
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     e.preventDefault();
@@ -250,7 +324,7 @@ function SearchEverywhereDialog() {
     <Dialog
       open
       onClose={close}
-      width={670}
+      width={760}
       position="top"
       transparentBackdrop
       aria-label={tx("Search Everywhere")}
@@ -286,7 +360,8 @@ function SearchEverywhereDialog() {
         ) : (
           // IDEA's scope chooser of the Classes / Files / Symbols / Text tabs.
           <Select<SeScope>
-            className={styles.include}
+            variant="ghost"
+            className={clsx(styles.include, styles.scope)}
             value={includeNonProject ? "allPlaces" : fileSet}
             options={SE_SCOPES}
             onChange={(v) => {
@@ -299,7 +374,16 @@ function SearchEverywhereDialog() {
           />
         )}
         <IconButton
-          icon="external-link"
+          icon="list"
+          size="small"
+          className={styles.headerButton}
+          title={tx("Preview")}
+          pressed={preview}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setSearchEverywherePreview(!preview)}
+        />
+        <IconButton
+          icon="open-in-tool-window"
           size="small"
           className={styles.headerButton}
           title={tx("Open in Find Tool Window")}
@@ -309,7 +393,17 @@ function SearchEverywhereDialog() {
       </div>
       <div className={styles.queryRow}>
         <div className={styles.field}>
-          <Icon name="search" size={16} className={styles.magnifier} />
+          <button
+            type="button"
+            className={styles.magnifier}
+            aria-label={tx("Search history")}
+            title={tx("Search history (⌥↑ / ⌥↓)")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => openHistory(e.currentTarget)}
+          >
+            <Icon name="search" size={16} />
+            <Icon name="chevron-down" size={10} />
+          </button>
           <input
             id="se-query"
             ref={inputRef}
@@ -325,13 +419,15 @@ function SearchEverywhereDialog() {
             aria-controls="se-results"
             aria-autocomplete="list"
             aria-label={tx("Search query")}
-            onChange={(e) => useSearchEverywhere.setState({ query: e.target.value })}
+            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
           />
           {snap?.loading && !emptyQuery && <Spinner size={14} className={styles.spinner} />}
-          <span className={styles.hint} aria-hidden>
-            <T>{hintFor(tab)}</T>
-          </span>
+          {hintFor(tab) && (
+            <span className={styles.hint} aria-hidden>
+              <T>{hintFor(tab)}</T>
+            </span>
+          )}
         </div>
       </div>
       {(rows.length > 0 || showEmpty) && (
@@ -358,7 +454,13 @@ function SearchEverywhereDialog() {
               className={styles.list}
               aria-label={tx("Results")}
               renderItem={(r, state) => (
-                <ResultRow row={r} active={state.active} toggleTick={toggleTick} onToggled={bumpToggles} />
+                <ResultRow
+                  row={r}
+                  active={state.active}
+                  repeat={sameFile(rows[state.index - 1], r)}
+                  toggleTick={toggleTick}
+                  onToggled={bumpToggles}
+                />
               )}
             />
           )}
@@ -372,6 +474,15 @@ function SearchEverywhereDialog() {
         </div>
       )}
       {!rows.length && !showEmpty && <div id="se-results" ref={listRef} hidden />}
+      {preview && rows.length > 0 && (
+        <div className={styles.preview}>
+          <CodePreview
+            path={previewTarget?.path ?? null}
+            line={previewTarget?.line ?? 0}
+            highlights={previewTarget?.highlights ?? []}
+          />
+        </div>
+      )}
       {rows.length > 0 && (
         <footer className={styles.footer}>
           <span className={styles.footerInfo}>{describe(activeRow)}</span>
@@ -386,7 +497,7 @@ function SearchEverywhereDialog() {
         open={!!menu}
         anchor={menu?.anchor ?? null}
         items={menu?.items ?? []}
-        placement="right-start"
+        placement={menu?.placement ?? "right-start"}
         onClose={() => {
           setMenu(null);
           inputRef.current?.focus();
@@ -401,6 +512,7 @@ function describe(row: SeRow | undefined): string {
   switch (row.kind) {
     case "section":
     case "more":
+    case "command":
       return "";
     case "action": {
       const a = getAction(row.id);
@@ -414,14 +526,31 @@ function describe(row: SeRow | undefined): string {
   }
 }
 
+function previewOf(row: SeRow | undefined): { path: string; line: number; highlights: PreviewHighlight[] } | null {
+  switch (row?.kind) {
+    case "file":
+      return { path: row.path, line: row.line ?? 0, highlights: [] };
+    case "symbol":
+      return {
+        path: row.path,
+        line: row.line,
+        highlights: [{ line: row.line, ranges: [[row.col, row.col + row.name.length]] }],
+      };
+    case "text":
+      return { path: row.path, line: row.line, highlights: [{ line: row.line, ranges: [[row.col, row.endCol]] }] };
+    default:
+      return null;
+  }
+}
+
 function hintFor(tab: SeTab): string {
   switch (tab) {
+    case "all":
+      return "Type / to see commands";
     case "text":
       return "⌘↵ to open in Find tool window";
-    case "files":
-      return "Type file name, path or file:42";
     default:
-      return "⇥ to switch scope";
+      return "";
   }
 }
 
@@ -430,14 +559,21 @@ function dirOf(path: string) {
   return i > 0 ? path.slice(0, i) : path;
 }
 
+/** A text hit in the same file as the row above (its file name is dimmed, like IDEA). */
+function sameFile(prev: SeRow | undefined, row: SeRow): boolean {
+  return row.kind === "text" && prev?.kind === "text" && prev.path === row.path;
+}
+
 function ResultRow({
   row,
   active,
+  repeat,
   toggleTick,
   onToggled,
 }: {
   row: SeRow;
   active: boolean;
+  repeat: boolean;
   toggleTick: number;
   onToggled: () => void;
 }) {
@@ -446,6 +582,18 @@ function ResultRow({
   switch (row.kind) {
     case "section":
       return null;
+    case "command":
+      return (
+        <>
+          <Icon name="search" size={16} className={styles.icon} />
+          <span className={styles.main}>
+            <span className={styles.name}>{row.name}</span>
+          </span>
+          <span className={styles.right}>
+            <T>{row.label}</T>
+          </span>
+        </>
+      );
     case "more":
       return (
         <span className={clsx(styles.name, styles.more)}>
@@ -507,22 +655,60 @@ function ResultRow({
       return (
         <>
           <span className={styles.icon}>
-            <Icon name={fileIconName(basename(row.rel))} size={16} />
+            <Icon name="text-match" size={16} />
           </span>
           <span className={styles.main}>
-            <HighlightedText
-              className={clsx(styles.name, styles.code)}
-              text={row.text}
-              indices={row.indices}
-              tone={tone}
-            />
+            <CodeText path={row.path} text={row.text} indices={row.indices} />
           </span>
           <span className={clsx(styles.right, active && styles.rightActive)}>
-            {basename(row.rel)} {row.line + 1}
+            <span className={clsx(repeat && !active && styles.repeat)}>{basename(row.rel)}</span> {row.line + 1}
           </span>
         </>
       );
   }
+}
+
+const tokenCache = new Map<string, CodeToken[]>();
+
+/** A text hit's line, syntax-coloured by the file's language (one line parsed on its own). */
+function CodeText({ path, text, indices }: { path: string; text: string; indices: readonly number[] }) {
+  const language = useMemo(() => languageForPath(path), [path]);
+  const key = `${language}\u0000${text}`;
+  const [loaded, setLoaded] = useState<{ key: string; tokens: CodeToken[] } | null>(null);
+  const tokens = tokenCache.get(key) ?? (loaded?.key === key ? loaded.tokens : null);
+  useEffect(() => {
+    if (tokens || !language) return;
+    let alive = true;
+    void highlightTokens(text, language).then((t) => {
+      tokenCache.set(key, t);
+      if (tokenCache.size > 500) tokenCache.delete(tokenCache.keys().next().value!);
+      if (alive) setLoaded({ key, tokens: t });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [key, language, text, tokens]);
+
+  const parts: Array<[number, number, string]> = [];
+  let pos = 0;
+  for (const t of tokens ?? []) {
+    if (t.from > pos) parts.push([pos, t.from, ""]);
+    parts.push([t.from, t.to, t.cls]);
+    pos = t.to;
+  }
+  if (pos < text.length) parts.push([pos, text.length, ""]);
+  return (
+    <span className={clsx(styles.name, styles.code)}>
+      {parts.map(([s, e, cls]) => (
+        <HighlightedText
+          key={s}
+          className={cls || undefined}
+          text={text.slice(s, e)}
+          indices={indices.filter((i) => i >= s && i < e).map((i) => i - s)}
+        />
+      ))}
+    </span>
+  );
 }
 
 function FileRow({

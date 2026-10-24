@@ -6,8 +6,10 @@ import {
   fileItem,
   matchActions,
   mergeSymbols,
+  parseCommand,
   sectionsFor,
   stableIndex,
+  symbolItem,
   textItems,
   topResultSettled,
   type SectionId,
@@ -132,10 +134,10 @@ describe("items and rows", () => {
     expect(f.line).toBe(41);
   });
 
-  it("textItems trims indentation and shifts ranges", () => {
-    const [t] = textItems("/p/a.kt", "a.kt", [{ line: 4, text: "    val order = 1", ranges: [[8, 13]], textOffset: 0 }]);
-    expect(t!.text).toBe("val order = 1");
-    expect(t!.indices).toEqual([4, 5, 6, 7, 8]);
+  it("textItems collapses indentation and shifts ranges", () => {
+    const [t] = textItems("/p/a.kt", "a.kt", [{ line: 4, text: "\t\t  val order = 1", ranges: [[8, 13]], textOffset: 0 }]);
+    expect(t!.text).toBe("  val order = 1");
+    expect(t!.indices).toEqual([6, 7, 8, 9, 10]);
     expect([t!.col, t!.endCol]).toEqual([8, 13]);
   });
 
@@ -148,6 +150,28 @@ describe("items and rows", () => {
     const rows = buildRows(sections, { headers: true });
     expect(rows.map((r) => r.kind)).toEqual(["section", "file", "more", "section", "action"]);
     expect(buildRows(sections, { headers: false }).map((r) => r.kind)).toEqual(["file", "more", "action"]);
+  });
+
+  it("buildRows interleaves the All tab by relevance, keeping each source's order", () => {
+    const file = (rel: string) => fileItem({ path: `/p/${rel}`, relPath: rel, indices: [] });
+    const sections = new Map<SectionId, SectionState>([
+      ["files", { items: [file("src/upload_gray.py"), file("src/upgrade.py")], hasMore: true, loading: false }],
+      ["symbols", { items: [symbolItem(sym("upgrade", "function", "/p/m.py", 3))], hasMore: false, loading: false }],
+      ["text", { items: textItems("/p/a.md", "a.md", [{ line: 0, text: "upgrade", ranges: [[0, 3]], textOffset: 0 }]), hasMore: false, loading: false }],
+    ]);
+    const rows = buildRows(sections, { headers: false, mix: "upg" });
+    expect(rows.map((r) => (r.kind === "more" ? `more:${r.section}` : (r as { section: SectionId }).section))).toEqual([
+      "symbols",
+      "files",
+      "files",
+      "text",
+      "more:files",
+    ]);
+    // The index ranked upload_gray first; mixing must not reorder within files.
+    expect(rows.filter((r) => r.kind === "file").map((r) => (r as { name: string }).name)).toEqual([
+      "upload_gray.py",
+      "upgrade.py",
+    ]);
   });
 
   it("stableIndex keeps the selected key while rows stream in", () => {
@@ -184,7 +208,41 @@ describe("topResultSettled", () => {
     expect(topResultSettled(new Map([["classes", sec(false)], ["files", sec(false, 1)], ["text", sec(true)]]))).toBe(true);
   });
 
+  it("with mixing waits for every source but a text search the top row already beats", () => {
+    const strong = { items: [fileItem({ path: "/p/upgrade.py", relPath: "upgrade.py", indices: [] })], hasMore: false, loading: false };
+    expect(topResultSettled(new Map([["files", strong], ["symbols", sec(true)]]), "upg")).toBe(false);
+    expect(topResultSettled(new Map([["files", strong], ["text", sec(true)]]), "upg")).toBe(true);
+    const weak = { ...strong, items: [fileItem({ path: "/p/xuxpxg.py", relPath: "xuxpxg.py", indices: [] })] };
+    expect(topResultSettled(new Map([["files", weak], ["text", sec(true)]]), "upg")).toBe(false);
+  });
+
   it("is settled when everything finished empty", () => {
     expect(topResultSettled(new Map([["files", sec(false)]]))).toBe(true);
+  });
+});
+
+describe("parseCommand", () => {
+  it("lists scope commands matching the typed prefix", () => {
+    const c = parseCommand("/");
+    expect(c?.kind === "list" && c.rows.map((r) => (r as { name: string }).name)).toEqual([
+      "/classes",
+      "/files",
+      "/symbols",
+      "/actions",
+      "/text",
+    ]);
+    const fi = parseCommand("/FI");
+    expect(fi?.kind === "list" && fi.rows.map((r) => r.key)).toEqual(["cmd:files"]);
+  });
+
+  it("runs a complete command followed by a space", () => {
+    expect(parseCommand("/files upg")).toEqual({ kind: "run", tab: "files", rest: "upg" });
+    expect(parseCommand("/text ")).toEqual({ kind: "run", tab: "text", rest: "" });
+  });
+
+  it("leaves paths and other queries alone", () => {
+    expect(parseCommand("/Users/me/a.py")).toBeNull();
+    expect(parseCommand("/fil x")).toBeNull();
+    expect(parseCommand("upg")).toBeNull();
   });
 });

@@ -38,6 +38,8 @@ export type MenuItem =
       kind?: "item";
       id?: string;
       label: string;
+      /** User text (e.g. a past query): shown as is, never looked up in the catalog. */
+      verbatim?: boolean;
       icon?: IconName | (string & {});
       shortcut?: string;
       disabled?: boolean;
@@ -86,7 +88,12 @@ export function resolveMenuItems(items: MenuItem[]): Resolved[] {
       });
       return;
     }
-    out.push({ ...item, label: tx(item.label), kind: "item", key: item.id ?? `${i}:${item.label}` });
+    out.push({
+      ...item,
+      label: item.verbatim ? item.label : tx(item.label),
+      kind: "item",
+      key: item.id ?? `${i}:${item.label}`,
+    });
   });
   while (out.length && out[out.length - 1]!.kind === "separator") out.pop();
   return out;

@@ -111,7 +111,7 @@ export interface TextItem {
   line: number;
   col: number;
   endCol: number;
-  /** Preview with leading whitespace removed. */
+  /** The line with its indentation collapsed to at most two spaces. */
   text: string;
   indices: number[];
 }
@@ -120,6 +120,7 @@ export type SeItem = FileItem | SymbolItem | ActionItem | TextItem;
 
 export type SeRow =
   | { kind: "section"; key: string; section: SectionId; title: string }
+  | { kind: "command"; key: string; name: string; tab: SeTab; label: string }
   | { kind: "more"; key: string; section: SectionId }
   | (SeItem & { section: SectionId });
 
@@ -297,11 +298,14 @@ export function actionItem(a: Action, enabled: boolean): ActionItem {
 export function textItems(path: string, rel: string, matches: readonly LineMatch[]): TextItem[] {
   const out: TextItem[] = [];
   for (const m of matches) {
-    const lead = m.text.length - m.text.trimStart().length;
-    const text = m.text.slice(lead).trimEnd();
+    const ws = m.text.length - m.text.trimStart().length;
+    // Like IDEA: a hint of indentation shows nesting without wasting the row.
+    const indent = " ".repeat(Math.min(ws, 2));
+    const lead = ws - indent.length;
+    const text = indent + m.text.slice(ws).trimEnd();
     const indices: number[] = [];
     for (const [s, e] of m.ranges)
-      for (let i = Math.max(s, lead); i < e; i++) if (i - lead < text.length) indices.push(i - lead);
+      for (let i = Math.max(s, ws); i < e; i++) if (i - lead < text.length) indices.push(i - lead);
     const first = m.ranges[0] ?? [0, 0];
     out.push({
       kind: "text",
@@ -321,8 +325,71 @@ export function textItems(path: string, rel: string, matches: readonly LineMatch
 // ---------------------------------------------------------------------------
 // Rows
 
-export function buildRows(sections: ReadonlyMap<SectionId, SectionState>, opts: { headers: boolean }): SeRow[] {
+/** Sections the All tab mixes into one relevance-ordered list. */
+const MIXED: readonly SectionId[] = ["classes", "files", "symbols", "actions", "text"];
+
+/**
+ * Weight of a text hit: a literal substring in a line ranks below name
+ * matches that start a word but above scattered name subsequences.
+ */
+export const TEXT_WEIGHT = 350;
+
+/** Comparable match degree of an item's name against the query (IDEA's `MatchingDegree`). */
+export function itemWeight(item: SeItem, query: string): number {
+  const name = (text: string) => matchText(text, query)?.score;
+  switch (item.kind) {
+    case "file":
+      return name(item.name) ?? (name(item.rel) ?? 0) - 200;
+    case "symbol":
+      return name(item.name) ?? (item.container ? name(`${item.container}.${item.name}`) : undefined) ?? 0;
+    case "action":
+      return item.score;
+    case "text":
+      return TEXT_WEIGHT;
+  }
+}
+
+interface Mixed {
+  item: SeItem;
+  section: SectionId;
+  weight: number;
+}
+
+/**
+ * The All tab's results interleaved by weight. Within a section the source's
+ * order wins (the index already ranks with recency etc.), so weights are
+ * clamped to be non-increasing; ties keep the section order.
+ */
+export function mixItems(sections: ReadonlyMap<SectionId, SectionState>, query: string): Mixed[] {
+  const out: Array<Mixed & { rank: number }> = [];
+  MIXED.forEach((id, rank) => {
+    let cap = Infinity;
+    for (const item of sections.get(id)?.items ?? []) {
+      cap = Math.min(cap, itemWeight(item, query));
+      out.push({ item, section: id, weight: cap, rank });
+    }
+  });
+  return out
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => b.m.weight - a.m.weight || a.m.rank - b.m.rank || a.i - b.i)
+    .map(({ m }) => m);
+}
+
+/**
+ * Flat rows the dialog renders. With `mix` (the All tab's query) results are
+ * interleaved by relevance and "more" rows follow them; otherwise sections
+ * keep their fixed order.
+ */
+export function buildRows(
+  sections: ReadonlyMap<SectionId, SectionState>,
+  opts: { headers: boolean; mix?: string },
+): SeRow[] {
   const rows: SeRow[] = [];
+  if (opts.mix?.trim()) {
+    for (const m of mixItems(sections, opts.mix.trim())) rows.push({ ...m.item, section: m.section });
+    for (const id of MIXED) if (sections.get(id)?.hasMore) rows.push({ kind: "more", key: `+${id}`, section: id });
+    return rows;
+  }
   for (const id of SECTION_ORDER) {
     const s = sections.get(id);
     if (!s || !s.items.length) continue;
@@ -335,12 +402,47 @@ export function buildRows(sections: ReadonlyMap<SectionId, SectionState>, opts: 
 
 export const isSectionRow = (r: SeRow) => r.kind === "section";
 
+// ---------------------------------------------------------------------------
+// "/" commands
+
+export const COMMANDS: ReadonlyArray<{ name: string; tab: SeTab; label: string }> = TABS.filter(
+  (t) => t.id !== "all",
+).map((t) => ({ name: `/${t.id}`, tab: t.id, label: t.label }));
+
+export type ParsedCommand = { kind: "list"; rows: SeRow[] } | { kind: "run"; tab: SeTab; rest: string };
+
+/**
+ * `/` or `/fi` lists the matching scope commands; `/files foo` switches to
+ * Files and searches `foo`. Anything else (e.g. an absolute path) is a query.
+ */
+export function parseCommand(query: string): ParsedCommand | null {
+  const m = /^\/(\S*)(?:\s+([\s\S]*))?$/.exec(query);
+  if (!m) return null;
+  const word = m[1]!.toLowerCase();
+  if (m[2] !== undefined) {
+    const cmd = COMMANDS.find((c) => c.name === `/${word}`);
+    return cmd ? { kind: "run", tab: cmd.tab, rest: m[2] } : null;
+  }
+  const rows: SeRow[] = COMMANDS.filter((c) => c.name.startsWith(`/${word}`)).map((c) => ({
+    kind: "command",
+    key: `cmd:${c.tab}`,
+    ...c,
+  }));
+  return rows.length ? { kind: "list", rows } : null;
+}
+
 /**
  * Whether the top result is final: every section above the first one with
  * items has finished. Enter typed before that waits (IDEA opens the first
  * result of the new query, never a stale row of the previous one).
+ * With `mix`, any section can still outrank the top row; only a slow text
+ * search is not waited for once the top row beats every text hit.
  */
-export function topResultSettled(sections: ReadonlyMap<SectionId, SectionState>): boolean {
+export function topResultSettled(sections: ReadonlyMap<SectionId, SectionState>, mix?: string): boolean {
+  if (mix?.trim()) {
+    const top = mixItems(sections, mix.trim())[0]?.weight ?? -Infinity;
+    return MIXED.every((id) => !sections.get(id)?.loading || (id === "text" && top > TEXT_WEIGHT));
+  }
   for (const id of SECTION_ORDER) {
     const s = sections.get(id);
     if (!s) continue;
