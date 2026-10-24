@@ -186,8 +186,9 @@ export function activateSettingsWindow(parent: string): () => void {
     const project = await commands.projectCurrent().catch(() => null);
     if (project) useProject.setState({ project, settings: project.settings });
     else await loadSettings().catch((e) => console.warn("cannot load settings", e));
+    // `listenLaunch` may have taken the launch first and applied it already.
     const launch = await takeLaunch();
-    openSettings(launch?.page, { newProjects: launch?.newProjects });
+    openSettings(launch?.page, { newProjects: launch?.newProjects ?? useSettingsDialog.getState().newProjects });
   })();
   return () => disposers.reverse().forEach((d) => d());
 }
