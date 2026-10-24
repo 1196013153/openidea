@@ -259,12 +259,17 @@ impl AppState {
                     if let Some(problem) = lombok.problem() {
                         tracing::warn!("{problem}");
                     }
+                    let server_jdk = ide_sdk::apply::jdtls_jdk(&root, &effective).unwrap_or_else(|e| {
+                        cfg.launch_error = Some(e);
+                        None
+                    });
                     ide_sdk::java::configure_jdtls(
                         cfg,
                         server_root,
                         &data_dir,
                         &jdks,
                         ide_sdk::apply::project_jdk(&root, &effective).as_ref(),
+                        server_jdk.as_ref(),
                         min_java,
                         &bundles,
                         lombok.jar(),

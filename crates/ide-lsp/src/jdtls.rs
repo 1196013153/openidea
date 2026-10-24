@@ -179,6 +179,9 @@ impl LspManager {
                     ide_core::event::ServerStatus::Missing => {
                         "jdtls is not installed (Settings › Languages & Frameworks › Language Servers)".to_owned()
                     }
+                    ide_core::event::ServerStatus::Misconfigured => {
+                        server.status_message().unwrap_or_else(|| "jdtls cannot start".to_owned())
+                    }
                     _ => format!("jdtls is not ready ({status:?})"),
                 }))
             }

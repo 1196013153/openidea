@@ -710,13 +710,15 @@ async fn launch_error_fails_without_starting_the_server() {
     h.mgr.set_config_hook(Box::new(|cfg, _| cfg.launch_error = Some("needs JDK 21".into())));
     assert!(!h.mgr.serves_path(&h.root.join("a.mk")), "batch inspection skips it");
     h.open("a.mk", "x");
-    h.wait_status("mock", ServerStatus::Crashed).await;
+    // Not a crash: nothing ran, the configuration has to change.
+    h.wait_status("mock", ServerStatus::Misconfigured).await;
     assert_eq!(h.launcher.state("mock").launches.load(Ordering::SeqCst), 0);
-    let crashed = h.events.lock().iter().find_map(|e| match e {
-        IdeEvent::LanguageServer { status: ServerStatus::Crashed, message, .. } => message.clone(),
+    let reason = h.events.lock().iter().find_map(|e| match e {
+        IdeEvent::LanguageServer { status: ServerStatus::Misconfigured, message, .. } => message.clone(),
         _ => None,
     });
-    assert_eq!(crashed.as_deref(), Some("needs JDK 21"));
+    assert_eq!(reason.as_deref(), Some("needs JDK 21"));
+    assert!(!h.statuses("mock").contains(&ServerStatus::Crashed));
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -21,7 +21,7 @@ describe("languages settings", () => {
       node: { packageManager: "pip" },
       rust: { checkCommand: "clippy", checkOnSave: false },
       typescript: { version: "" },
-      java: { jdtlsVmArgs: " -Xmx2g ", jdk: 21, maven: { home: " /opt/maven " } },
+      java: { jdtlsVmArgs: " -Xmx2g ", jdk: 21, jdtlsJdk: " /opt/jdk-25 ", maven: { home: " /opt/maven " } },
     });
     expect(v.python).toEqual({ interpreter: "/usr/bin/python3", activateVirtualenv: true });
     expect(v.node.packageManager).toBe("");
@@ -30,6 +30,7 @@ describe("languages settings", () => {
     expect(v.typescript.version).toBe("bundled");
     expect(v.java.jdtlsVmArgs).toBe("-Xmx2g");
     expect(v.java.jdk).toBe("");
+    expect(v.java.jdtlsJdk).toBe("/opt/jdk-25");
     expect(v.java.maven).toEqual({ home: "/opt/maven", userSettings: "", localRepository: "" });
     expect(validateSettings({}).languages).toEqual(DEFAULT_LANGUAGES);
   });

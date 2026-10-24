@@ -10,6 +10,8 @@ use std::sync::{Arc, OnceLock};
 pub enum LaunchError {
     /// The server binary is not installed / not on `PATH`.
     Missing,
+    /// The configuration can't be launched (`LanguageServerConfig::launch_error`).
+    Config(String),
     Failed(String),
 }
 

@@ -141,6 +141,8 @@
   "menu.editor.unsplit": "Unsplit",
   "menu.file": "File",
   "menu.fileProperties": "File Properties",
+  "menu.newProjectsSetup": "New Projects Setup",
+  "menu.file.newProjectsSettings": "Settings for New Projects…",
   "menu.file.toggleReadOnly": "Make File Read-only / Writable",
   "menu.file.closeProject": "Close Project",
   "menu.file.new": "New…",

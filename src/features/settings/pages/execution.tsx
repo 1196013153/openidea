@@ -92,6 +92,8 @@ function TooltipDelayRow() {
 export const EXECUTION_PAGES: PageSpec[] = [
   {
     id: "build.maven",
+    projectScope: true,
+    defaultScope: "project",
     title: "Maven",
     group: BUILD_GROUP,
     // IntelliJ IDEA: Build Tools › Maven, before Console / Debugger.

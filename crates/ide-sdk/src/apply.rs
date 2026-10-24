@@ -56,14 +56,30 @@ fn goroot(root: &Path, s: &Settings) -> Option<PathBuf> {
     setting_path(root, &s.languages.go.goroot)
 }
 
-/// The project JDK (`languages.java.jdk`): a JDK home, its `bin` or its `bin/java`.
+/// A JDK setting: a JDK home, its `bin` or its `bin/java`.
+fn jdk_setting(root: &Path, value: &str) -> Option<Result<crate::java::Jdk, PathBuf>> {
+    let p = setting_path(root, value)?;
+    Some(p.ancestors().take(3).find_map(crate::java::jdk_at).ok_or(p))
+}
+
+/// The project JDK (`languages.java.jdk`).
 pub fn project_jdk(root: &Path, s: &Settings) -> Option<crate::java::Jdk> {
-    let p = setting_path(root, &s.languages.java.jdk)?;
-    let jdk = p.ancestors().take(3).find_map(crate::java::jdk_at);
-    if jdk.is_none() {
-        tracing::warn!("project JDK {} is not a JDK home", p.display());
+    jdk_setting(root, &s.languages.java.jdk)?
+        .inspect_err(|p| tracing::warn!("project JDK {} is not a JDK home", p.display()))
+        .ok()
+}
+
+/// The JDK chosen to run jdtls (`languages.java.jdtlsJdk`): `Ok(None)` when not
+/// set, `Err` (the message) when it is not a JDK home.
+pub fn jdtls_jdk(root: &Path, s: &Settings) -> Result<Option<crate::java::Jdk>, String> {
+    match jdk_setting(root, &s.languages.java.jdtls_jdk) {
+        None => Ok(None),
+        Some(Ok(jdk)) => Ok(Some(jdk)),
+        Some(Err(p)) => Err(format!(
+            "The language server JDK {} is not a JDK home (Settings › Languages & Frameworks › Java).",
+            p.display()
+        )),
     }
-    jdk
 }
 
 /// `mvn` of the configured Maven home (`languages.java.maven.home`): the

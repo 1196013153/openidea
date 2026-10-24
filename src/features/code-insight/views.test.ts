@@ -44,6 +44,7 @@ describe("serversSummary", () => {
     expect(serversSummary([s("rust-analyzer", "ready")])).toEqual({ text: "rust-analyzer", tone: "ok" });
     expect(serversSummary([s("vtsls", "ready"), s("eslint", "starting")])).toEqual({ text: "vtsls +1", tone: "busy" });
     expect(serversSummary([s("gopls", "missing")])!.tone).toBe("error");
+    expect(serversSummary([s("jdtls", "misconfigured")])!.tone).toBe("error");
   });
 });
 

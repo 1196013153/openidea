@@ -208,6 +208,11 @@ pub fn spec(os: Os) -> Vec<Entry> {
         act("file.save", "Save All"),
         sub("fileProperties", "File Properties", vec![act("file.toggleReadOnly", "Make File Read-only / Writable")]),
         SEP,
+        sub(
+            "newProjectsSetup",
+            "New Projects Setup",
+            vec![act("file.newProjectsSettings", "Settings for New Projects…")],
+        ),
         act("file.invalidateCaches", "Invalidate Caches…"),
     ];
     if !mac {
@@ -972,6 +977,7 @@ mod tests {
                 "file.closeProject",
                 "file.save",
                 "file.settings",
+                "file.newProjectsSettings",
                 "window.new",
                 "window.next",
                 "window.previous",

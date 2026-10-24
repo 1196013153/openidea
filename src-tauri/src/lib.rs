@@ -79,7 +79,7 @@ pub fn run() {
             if let Ok(cwd) = std::env::current_dir()
                 && let Some(path) = windows::cli_path(&std::env::args().collect::<Vec<_>>(), &cwd)
             {
-                windows.set_launch("main", windows::Launch { project: Some(path.into()), settings_page: None });
+                windows.set_launch("main", windows::Launch { project: Some(path.into()), ..Default::default() });
             }
             let menu_state = menu::MenuState::default();
             menu::install(app.handle(), &menu_state, &state.recent.list());
@@ -135,7 +135,11 @@ fn on_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
         Some(w) => {
             // Settings is modal for its project window: only app-level items get through, to the parent.
             let label = match windows::settings_parent(w.label()) {
-                Some(parent) if matches!(route.action.as_str(), "app.quit" | "file.settings") => parent,
+                Some(parent)
+                    if matches!(route.action.as_str(), "app.quit" | "file.settings" | "file.newProjectsSettings") =>
+                {
+                    parent
+                }
                 Some(_) => return,
                 None => w.label(),
             };

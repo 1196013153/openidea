@@ -4,6 +4,7 @@ import type { Settings } from "@/platform/ipc";
 
 const settingsSet = vi.fn();
 const settingsGet = vi.fn();
+const settingsGetGlobal = vi.fn();
 
 vi.mock("@/platform/ipc", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/platform/ipc")>();
@@ -14,6 +15,7 @@ vi.mock("@/platform/ipc", async (importOriginal) => {
       ...real.commands,
       settingsSet: (...a: unknown[]) => settingsSet(...a),
       settingsGet: () => settingsGet(),
+      settingsGetGlobal: () => settingsGetGlobal(),
     },
   };
 });
@@ -38,6 +40,7 @@ beforeEach(() => {
     return { status: "ok", data: current };
   });
   settingsGet.mockReset().mockImplementation(async () => current);
+  settingsGetGlobal.mockReset().mockImplementation(async () => current);
   useProject.setState({ settings: current, project: null });
   dispose = activate();
 });
@@ -169,6 +172,48 @@ describe("Settings dialog", () => {
     });
     expect(useKeymap.getState().preset).toBe("intellij-macos");
     expect(useKeymap.getState().overrides).toEqual({ "t.dup": ["Ctrl+Alt+Shift+Meta+F9"] });
+  });
+
+  describe("toolchain settings with a project open", () => {
+    let global: Settings;
+    beforeEach(() => {
+      // Global layer: -Xmx1g; the project overrides it with -Xmx4g.
+      global = setAt(structuredClone(DEFAULT_SETTINGS) as Settings, "languages.java.jdtlsVmArgs", "-Xmx1g");
+      current = setAt(global, "languages.java.jdtlsVmArgs", "-Xmx4g");
+      settingsGetGlobal.mockImplementation(async () => global);
+      useProject.setState({
+        settings: current,
+        project: { root: "/p", name: "p", settings: current } as never,
+      });
+    });
+
+    it("edit the project first; Global shows and writes the global layer", async () => {
+      const dialog = await openDialog("languages.java");
+      expect(within(dialog).getByRole("radio", { name: "This project" })).toHaveAttribute("aria-checked", "true");
+      expect(within(dialog).getByLabelText("JVM options")).toHaveValue("-Xmx4g");
+
+      fireEvent.click(within(dialog).getByRole("radio", { name: "Global" }));
+      expect(within(dialog).getByLabelText("JVM options")).toHaveValue("-Xmx1g");
+      expect(within(dialog).getByText(/used by new projects/)).toBeInTheDocument();
+
+      fireEvent.change(within(dialog).getByLabelText("JVM options"), { target: { value: "-Xmx2g" } });
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+      });
+      expect(settingsSet.mock.calls).toEqual([["global", "languages.java.jdtlsVmArgs", '"-Xmx2g"']]);
+    });
+
+    it("Settings for New Projects edits the global layer on every page", async () => {
+      render(<SettingsDialog />);
+      await act(async () => {
+        await executeAction("file.newProjectsSettings");
+      });
+      const dialog = screen.getByRole("dialog", { name: "Settings for New Projects" });
+      expect(within(dialog).queryByRole("radiogroup", { name: "Settings scope" })).toBeNull();
+      expect(within(dialog).getByLabelText("JVM options")).toHaveValue("-Xmx1g");
+      expect(within(dialog).getByLabelText("Language server JDK")).toBeInTheDocument();
+      expect(within(dialog).getByText(/used by new projects/)).toBeInTheDocument();
+    });
   });
 
   it("survives invalid settings values", async () => {

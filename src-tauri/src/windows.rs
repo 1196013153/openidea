@@ -39,6 +39,8 @@ pub struct Launch {
     pub project: Option<ide_core::IpcPath>,
     /// Settings windows: the page to show.
     pub settings_page: Option<String>,
+    /// Settings windows: edit the global layer only ("Settings for New Projects").
+    pub new_projects: bool,
 }
 
 #[derive(Default)]
@@ -271,7 +273,7 @@ pub fn create_window(app: &AppHandle, project: Option<PathBuf>) -> IdeResult<Web
         config.y = Some(pos.y + CASCADE);
         config.center = false;
     }
-    app.state::<WindowsState>().set_launch(&label, Launch { project: project.map(Into::into), settings_page: None });
+    app.state::<WindowsState>().set_launch(&label, Launch { project: project.map(Into::into), ..Default::default() });
     let window = build_project_window(app, config)?;
     focus(&window);
     Ok(window)
@@ -338,7 +340,7 @@ pub fn open_path(app: &AppHandle, path: &Path) {
     match free {
         Some(w) => {
             app.state::<WindowsState>()
-                .set_launch(w.label(), Launch { project: Some(root.into()), settings_page: None });
+                .set_launch(w.label(), Launch { project: Some(root.into()), ..Default::default() });
             let _ = app.emit_to(w.label(), LAUNCH_EVENT, ());
             focus(&w);
         }
@@ -375,6 +377,7 @@ pub fn open_settings_window(
     app: &AppHandle,
     parent: &WebviewWindow,
     page: Option<String>,
+    new_projects: bool,
     background: Option<String>,
 ) -> IdeResult<()> {
     // Asked from a settings window itself: navigate it.
@@ -382,8 +385,8 @@ pub fn open_settings_window(
     let label = settings_label(&parent_label);
     let windows = app.state::<WindowsState>();
     if let Some(existing) = app.get_webview_window(&label) {
-        if page.is_some() {
-            windows.set_launch(&label, Launch { project: None, settings_page: page });
+        if page.is_some() || new_projects {
+            windows.set_launch(&label, Launch { project: None, settings_page: page, new_projects });
             let _ = app.emit_to(label.as_str(), LAUNCH_EVENT, ());
         }
         focus(&existing);
@@ -406,7 +409,7 @@ pub fn open_settings_window(
     if let Some(color) = background.and_then(|c| serde_json::from_value(serde_json::Value::String(c)).ok()) {
         config.background_color = Some(color);
     }
-    windows.set_launch(&label, Launch { project: None, settings_page: page });
+    windows.set_launch(&label, Launch { project: None, settings_page: page, new_projects });
     let window = WebviewWindowBuilder::from_config(app, &config)
         .and_then(|b| b.parent(&parent))
         .and_then(|b| b.build())
@@ -485,7 +488,7 @@ mod tests {
     #[test]
     fn launches_are_taken_once() {
         let st = WindowsState::default();
-        st.set_launch("project-1", Launch { project: Some("/p".into()), settings_page: None });
+        st.set_launch("project-1", Launch { project: Some("/p".into()), ..Default::default() });
         assert_eq!(st.take_launch("project-1").and_then(|l| l.project), Some("/p".into()));
         assert_eq!(st.take_launch("project-1"), None);
     }

@@ -12,7 +12,8 @@ import { useProject } from "@/platform/project";
 import { Section, Toggle } from "../components/Form";
 import { effectivePython, listPackages, pip, useSdks, type PythonPackage } from "./api";
 import { AddInterpreterDialog } from "./AddInterpreterDialog";
-import { SdkField, tildify, useProjectSetting } from "./components";
+import { useSetting } from "../components/context";
+import { SdkField, tildify } from "./components";
 import styles from "./Sdk.module.css";
 
 type Op = "install" | "upgrade" | "uninstall";
@@ -61,8 +62,8 @@ function usePackages(python: string | null) {
 }
 
 export function PythonInterpreterPage() {
-  const [interpreter, setInterpreter] = useProjectSetting<string>("languages.python.interpreter");
-  const [activate, setActivate] = useProjectSetting<boolean>("languages.python.activateVirtualenv");
+  const [interpreter, setInterpreter] = useSetting<string>("languages.python.interpreter");
+  const [activate, setActivate] = useSetting<boolean>("languages.python.activateVirtualenv");
   const root = useProject((s) => s.project?.root ?? null);
   const [auto, setAuto] = useState<string | null>(null);
   const detected = useSdks((s) => s.byKind.python);

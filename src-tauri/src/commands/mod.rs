@@ -48,6 +48,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         app::close_project,
         app::languages,
         app::settings_get,
+        app::settings_get_global,
         app::settings_set,
         app::project_roots,
         app::cancel_request,

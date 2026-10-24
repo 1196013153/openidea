@@ -89,6 +89,6 @@ export function ServerStatus() {
 function toneOf(status: string): "ok" | "busy" | "error" | "idle" {
   if (status === "ready") return "ok";
   if (status === "starting" || status === "busy") return "busy";
-  if (status === "crashed" || status === "missing") return "error";
+  if (status === "crashed" || status === "missing" || status === "misconfigured") return "error";
   return "idle";
 }

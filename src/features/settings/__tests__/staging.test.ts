@@ -40,6 +40,27 @@ describe("settings staging", () => {
     expect(useProject.getState().settings?.editor?.showWhitespace).toBe(false);
   });
 
+  it("compares the Global scope with the global layer, not the project's values", () => {
+    const projectValue = setAt(useSettingsDialog.getState().base, "editor.tabSize", 8);
+    useSettingsDialog.setState({ base: projectValue });
+    const s = () => useSettingsDialog.getState();
+    expect(stagedValue(s(), "global", "editor.tabSize")).toBe(4);
+    expect(stagedValue(s(), "project", "editor.tabSize")).toBe(8);
+    // 8 is new for the global layer even though the project already has it.
+    stage("editor.general", "global", "editor.tabSize", 8);
+    expect(pendingChanges(s())).toEqual([{ scope: "global", key: "editor.tabSize", value: 8, page: "editor.general" }]);
+    stage("editor.general", "project", "editor.tabSize", 8);
+    expect(pendingChanges(s())).toHaveLength(1);
+  });
+
+  it("opens Settings for New Projects on request", () => {
+    expect(useSettingsDialog.getState().newProjects).toBe(false);
+    openSettings("languages.java", { newProjects: true });
+    expect(useSettingsDialog.getState()).toMatchObject({ newProjects: true, pageId: "languages.java" });
+    openSettings();
+    expect(useSettingsDialog.getState().newProjects).toBe(false);
+  });
+
   it("drops edits that return to the effective value", () => {
     stage("editor.general", "global", "editor.tabSize", 2);
     stage("editor.general", "global", "editor.tabSize", 4);
