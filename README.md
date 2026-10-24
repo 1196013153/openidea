@@ -9,21 +9,15 @@
   The IDE you know, rebuilt in Rust.
 </p>
 
+<p align="center">
+  <a href="https://github.com/l0ng-ai/openidea/releases/latest"><b>Download</b></a>
+  &nbsp;·&nbsp;
+  <a href="#benchmark">Benchmark</a>
+  &nbsp;·&nbsp;
+  <a href="#build">Build</a>
+</p>
+
 https://github.com/user-attachments/assets/234dd54c-1255-4b3a-b35c-533d78d737c0
-
-OpenIDEA brings the IntelliJ IDEA way of working — its keymap, its tool windows,
-its search-everything habits — to a native app with a Rust core.
-
-Editor, code insight, debugger, Git, terminal, database and HTTP clients,
-for 60+ languages.
-
-## Download
-
-Installers for macOS (Apple Silicon and Intel), Windows and Linux (`.deb`, `.rpm`,
-AppImage) are on the [latest release](https://github.com/l0ng-ai/openidea/releases/latest).
-The app updates itself from GitHub releases.
-
-## Screenshots
 
 <p align="center">
   <img src="docs/media/editor.jpg" alt="Editor with rust-analyzer inlay hints" width="100%">
@@ -32,6 +26,12 @@ The app updates itself from GitHub releases.
   <img src="docs/media/search-everywhere.jpg" alt="Search Everywhere" width="49%">
   <img src="docs/media/debug.jpg" alt="Debugger stopped at a breakpoint" width="49%">
 </p>
+
+OpenIDEA brings the IntelliJ IDEA way of working — its keymap, its tool windows,
+its search-everything habits — to a native app with a Rust core.
+
+Editor, code insight, debugger, Git, terminal, database and HTTP clients,
+for 60+ languages. Builds for macOS, Windows and Linux.
 
 ## Benchmark
 
