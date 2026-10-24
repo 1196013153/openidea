@@ -107,6 +107,11 @@ impl ProjectRoots {
         }
     }
 
+    /// Effective resource folders (project-relative): served at `/` for web file references.
+    pub fn resource_dirs(&self) -> Vec<&str> {
+        self.roots.iter().filter(|r| r.kind == RootKind::Resources).map(|r| r.path.as_str()).collect()
+    }
+
     /// Effective excluded folders as anchored globs (`/target`), for the index, watcher and search.
     pub fn excluded_globs(&self) -> Vec<String> {
         self.roots

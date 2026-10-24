@@ -191,6 +191,12 @@ export const commands = {
 	reference: WebReference,
 	targets: Location[],
 } | null, IdeError>(__TAURI_INVOKE("web_goto", { doc, pos })),
+	/**  The existing file or directory a path written in `from` names (`href`, `url()`, a string literal). */
+	fsResolveReference: (from: IpcPath, value: string) => typedError<string | null, IdeError>(__TAURI_INVOKE("fs_resolve_reference", { from, value })),
+	/**  Files and folders that continue `prefix`, a path being typed in `from`. */
+	pathCompletions: (from: IpcPath, prefix: string) => typedError<PathCompletion[], IdeError>(__TAURI_INVOKE("path_completions", { from, prefix })),
+	/**  Paths in an HTML document or stylesheet that name no existing file. */
+	webUnresolvedReferences: (doc: DocId) => typedError<FileReference[], IdeError>(__TAURI_INVOKE("web_unresolved_references", { doc })),
 	/**
 	 *  Find in Files. Results stream through `on_event`; ends with `Done`.
 	 *  Cancel with `cancel_request(request)`.
@@ -1918,6 +1924,12 @@ export type FileProbe = {
 	tooLarge: boolean,
 };
 
+/**  A path written in a document: an HTML URL attribute, a CSS `url()` / `@import`. */
+export type FileReference = {
+	range: Range,
+	value: string,
+};
+
 /**  Reference updates for a file / folder move (`workspace/willRenameFiles`). */
 export type FileRenameEdits = {
 	/**  Edits of every server that took part, in terms of the paths before the move. */
@@ -2862,6 +2874,12 @@ export type PatchSource =
 { from: "changes"; paths: IpcPath[]; reverse: boolean } | 
 /**  Changes made by these commits (oldest first). */
 { from: "commits"; commits: string[]; reverse: boolean };
+
+/**  An entry offered when completing a path. */
+export type PathCompletion = {
+	name: string,
+	dir: boolean,
+};
 
 /**  Capabilities a plugin must declare to use the gated host functions. */
 export type Permission = 

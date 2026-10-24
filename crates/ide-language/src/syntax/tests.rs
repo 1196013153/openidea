@@ -1154,3 +1154,19 @@ fn web_anchors_find_ids_and_names() {
         syntax().web_anchors(&lang("html"), html, "top").into_iter().map(|r| (r.start.line, r.start.col)).collect();
     assert_eq!(found, vec![(0, 8), (1, 9)]);
 }
+
+#[test]
+fn web_file_references_in_attributes_and_stylesheets() {
+    let refs = |id: &str, src: &str| -> Vec<String> {
+        syntax().web_file_references(&lang(id), src).into_iter().map(|r| r.value).collect()
+    };
+    let html = concat!(
+        "<link href=\"css/a.css\"><img srcset=\"a.png 1x, b.png 2x\" src=img/c.png alt=\"x\">\n",
+        "<a href=\"#top\" class=\"k\">t</a><div style=\"background: url(d.svg)\"></div>\n",
+        "<style>@import \"e.css\"; .x { background: url('f.png') }</style>",
+    );
+    assert_eq!(refs("html", html), ["css/a.css", "a.png", "b.png", "img/c.png", "#top", "d.svg", "e.css", "f.png"]);
+    assert_eq!(refs("css", "@import url(g.css);\n.y { mask: url(\"h.svg#i\") }"), ["g.css", "h.svg#i"]);
+    let first = &syntax().web_file_references(&lang("html"), html)[0];
+    assert_eq!((first.range.start.col, first.range.end.col), (12, 21));
+}

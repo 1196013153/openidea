@@ -31,6 +31,7 @@ import { isEmptyMarkup, renderCode, renderMarkup } from "./markdown";
 import { iconNode } from "./iconMarkup";
 import { triggerSignatureHelp } from "./signature";
 import { serverBackoff } from "./availability";
+import { pathCompletionSource } from "./fileReferences";
 import { editorPrefs } from "@/platform/editorSettings";
 
 interface RequestContext {
@@ -359,7 +360,7 @@ const completionFooter = ViewPlugin.fromClass(
 export function completionExtension() {
   return [
     autocompletion({
-      override: [gated(lspCompletionSource), gated(contributedSource)],
+      override: [gated(lspCompletionSource), gated(contributedSource), gated(pathCompletionSource)],
       icons: false,
       addToOptions: [
         { render: kindBadge, position: 20 },

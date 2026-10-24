@@ -25,6 +25,7 @@ import { registerActionsOnSave, registerFormatOnSave, registerLspActions } from 
 import { lspTheme } from "./theme";
 import { inspectionWidgetExtension } from "./inspectionWidget";
 import { LspPopups } from "./Popups";
+import { unresolvedReferences } from "./fileReferences";
 import { prefetchMarkdown } from "./markdown";
 import { registerNavigationActions } from "@/editor/navigation";
 
@@ -44,6 +45,7 @@ export function lspExtensions(ctx: EditorDocContext): Extension[] {
     semanticExtension(),
     usagesLensExtension(),
     autoImportExtension(),
+    unresolvedReferences(),
   ];
 }
 

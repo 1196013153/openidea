@@ -11,8 +11,7 @@ import type { EditorView } from "@codemirror/view";
 import { whenSynced, type EditorDocContext } from "@/editor/api";
 import { call, commands, isTauri, type DocumentLink } from "@/platform/ipc";
 import { openExternalUrl } from "@/platform/openUrl";
-import { useProject } from "@/platform/project";
-import { currentRoots } from "@/platform/projectRoots";
+import { executeAction } from "@/platform/actions";
 import { editorService } from "@/workbench/contributions";
 import { lspRequest } from "./lsp";
 import { rangeToOffsets } from "./positions";
@@ -22,6 +21,8 @@ export type Reference =
   | { kind: "url"; from: number; to: number; url: string }
   /** A quoted path that still has to be resolved against the file system. */
   | { kind: "path"; from: number; to: number; value: string }
+  /** A folder: revealed in the project view. */
+  | { kind: "folder"; from: number; to: number; path: string }
   /** A link whose file does not exist (reported, never opened). */
   | { kind: "missing"; from: number; to: number; value: string };
 
@@ -99,48 +100,6 @@ export function textReference(text: Text, offset: number): Reference | null {
   return null;
 }
 
-function dirname(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i > 0 ? path.slice(0, i) : "/";
-}
-
-/** `a/./b/../c` → `a/c`. */
-export function normalizePath(path: string): string {
-  const out: string[] = [];
-  for (const seg of path.split("/")) {
-    if (seg === "." || (seg === "" && out.length)) continue;
-    if (seg === ".." && out.length > 1) out.pop();
-    else out.push(seg);
-  }
-  return out.join("/") || "/";
-}
-
-/**
- * Where a path-like string may point, most likely first. `/x` resolves against
- * the project root and its resource roots (`resourceRoots`, absolute), like IDEA.
- */
-export function pathCandidates(value: string, from: string, root: string | null, resourceRoots: readonly string[] = []): string[] {
-  const bare = decodeURIComponentSafe(value.replace(/[?#].*$/, ""));
-  const list: string[] = [];
-  if (bare.startsWith("/")) {
-    if (root) list.push(`${root}${bare}`);
-    list.push(...resourceRoots.map((d) => `${d}${bare}`));
-    list.push(bare);
-  } else if (!bare.startsWith("~")) {
-    list.push(`${dirname(from)}/${bare}`);
-    if (root && !bare.startsWith("..")) list.push(`${root}/${bare}`);
-  }
-  return [...new Set(list.map(normalizePath))];
-}
-
-function decodeURIComponentSafe(s: string): string {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
-
 async function isFile(path: string): Promise<boolean> {
   if (!isTauri()) return false;
   try {
@@ -151,18 +110,16 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-/** Resolves a `path` reference to an existing file; null when none exists. */
+/** Resolves a `path` reference (in the backend, like IDEA's file references); null when nothing exists there. */
 export async function resolvePath(ref: Reference, from: string): Promise<Reference | null> {
   if (ref.kind !== "path") return ref;
-  const root = useProject.getState().project?.root ?? null;
-  const resources = root
-    ? currentRoots()
-        .filter((r) => r.kind === "resources")
-        .map((r) => (r.path ? `${root}/${r.path}` : root))
-    : [];
-  for (const path of pathCandidates(ref.value, from, root, resources))
-    if (await isFile(path)) return { kind: "file", from: ref.from, to: ref.to, path, fragment: ref.value.split("#")[1] ?? null };
-  return null;
+  if (!isTauri()) return null;
+  const path = await call(commands.fsResolveReference(from, ref.value)).catch(() => null);
+  if (!path) return null;
+  const fragment = ref.value.split("#")[1] ?? null;
+  return (await isFile(path))
+    ? { kind: "file", from: ref.from, to: ref.to, path, fragment }
+    : { kind: "folder", from: ref.from, to: ref.to, path };
 }
 
 // --- following ----------------------------------------------------------------
@@ -200,6 +157,10 @@ const slug = (s: string) =>
 
 export async function followReference(ref: Reference): Promise<void> {
   if (ref.kind === "missing") throw new Error(`Cannot find file '${ref.value}'`);
+  if (ref.kind === "folder") {
+    await executeAction("navigate.selectIn", { path: ref.path });
+    return;
+  }
   if (ref.kind === "url") {
     await openExternalUrl(ref.url);
     return;
