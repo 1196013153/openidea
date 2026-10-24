@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use ide_core::{ChangeSet, DocId, IdeError, IdeResult, OutlineItem, Range};
-use ide_language::FoldRange;
+use ide_language::{FoldRange, SyntaxHighlights};
 use ide_text::LineEnding;
 use ide_workspace::{DocumentInfo, HistoryEntry};
 use std::path::PathBuf;
@@ -132,6 +132,22 @@ pub async fn doc_folding(window: Window, state: State<'_, AppState>, doc: DocId)
             return Ok(Vec::new());
         }
         Ok(project.syntax.folding(doc, &snap.language, snap.version, &snap.text))
+    })
+    .await
+}
+
+/// Tree-sitter highlighting for languages the UI has no CodeMirror mode for;
+/// empty when the grammar has no highlights query or the document is large.
+#[tauri::command]
+#[specta::specta]
+pub async fn doc_highlights(window: Window, state: State<'_, AppState>, doc: DocId) -> IdeResult<SyntaxHighlights> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        let snap = project.documents.text_snapshot(doc)?;
+        if snap.large {
+            return Ok(SyntaxHighlights::default());
+        }
+        Ok(project.syntax.highlights(doc, &snap.language, snap.version, &snap.text))
     })
     .await
 }

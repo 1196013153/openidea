@@ -40,7 +40,7 @@ impl<'a> LineIndex<'a> {
     }
 
     /// UTF-16 offset of a char-boundary byte offset.
-    fn utf16_at(&self, byte: usize) -> usize {
+    pub(crate) fn utf16_at(&self, byte: usize) -> usize {
         if self.checkpoints.is_empty() {
             return byte;
         }

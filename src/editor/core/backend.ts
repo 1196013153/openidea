@@ -18,6 +18,7 @@ import {
   type LineEnding,
   type OutlineItem,
   type Range,
+  type SyntaxHighlights,
   type TextChange,
 } from "@/platform/ipc";
 
@@ -43,6 +44,8 @@ export interface DocBackend {
   setEncoding(doc: DocId, encoding: string, reload: boolean): Promise<string>;
   outline(doc: DocId): Promise<OutlineItem[]>;
   folding(doc: DocId): Promise<FoldRange[]>;
+  /** Tree-sitter highlighting, for languages without a CodeMirror mode. */
+  highlights(doc: DocId): Promise<SyntaxHighlights>;
   selectionRanges(doc: DocId, offset: number): Promise<Range[]>;
   languages(): Promise<LanguageInfo[]>;
   onPatched(handler: (e: DocPatchedEvent) => void): () => void;
@@ -62,6 +65,7 @@ export const ipcBackend: DocBackend = {
   setEncoding: (doc, encoding, reload) => call(commands.docSetEncoding(doc, encoding, reload)),
   outline: (doc) => call(commands.docOutline(doc)),
   folding: (doc) => call(commands.docFolding(doc)),
+  highlights: (doc) => call(commands.docHighlights(doc)),
   selectionRanges: (doc, offset) => call(commands.docSelectionRanges(doc, offset)),
   languages: () => commands.languages(),
   onPatched: (h) => onIdeEvent("docPatched", (e) => h(e)),
@@ -342,6 +346,9 @@ export function createMemoryBackend(files: Record<string, string> = {}): MemoryB
         else items.push(item);
       }
       return items;
+    },
+    async highlights() {
+      return { kinds: [], data: [] };
     },
     async folding(doc) {
       const d = get(doc);

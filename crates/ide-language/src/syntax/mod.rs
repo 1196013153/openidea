@@ -1,8 +1,9 @@
-//! Tree-sitter driven structure: outline, folding, symbol tags, selection ranges.
+//! Tree-sitter driven structure: outline, folding, symbol tags, selection ranges, highlighting.
 
 mod cache;
 mod folding;
 mod grammars;
+mod highlight;
 pub(crate) mod lines;
 mod outline;
 mod selection;
@@ -10,6 +11,7 @@ mod selection;
 use crate::{FoldRange, LanguageConfig, LanguageRegistry, SymbolTag};
 pub use cache::{MAX_CACHED_TREES, SyntaxCache, SyntaxCacheStats};
 use grammars::{SPECS, Spec};
+pub use highlight::{SyntaxHighlightKind, SyntaxHighlights};
 use ide_core::{LanguageId, OutlineItem, Range};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -31,6 +33,7 @@ pub(crate) struct Grammar {
     pub(crate) spec: &'static Spec,
     pub(crate) language: Language,
     outline: OnceLock<Option<outline::OutlineQuery>>,
+    highlights: OnceLock<Option<highlight::HighlightQuery>>,
     kinds: OnceLock<folding::KindTable>,
 }
 
@@ -47,6 +50,17 @@ impl Grammar {
                     tracing::error!("outline query for {} is invalid: {e}", self.spec.name);
                     None
                 }
+            })
+            .as_ref()
+    }
+
+    fn highlight_query(&self) -> Option<&highlight::HighlightQuery> {
+        self.highlights
+            .get_or_init(|| {
+                let source = self.spec.highlights?;
+                highlight::HighlightQuery::new(&self.language, source)
+                    .inspect_err(|e| tracing::error!("highlights query for {} is invalid: {e}", self.spec.name))
+                    .ok()
             })
             .as_ref()
     }
@@ -72,6 +86,7 @@ impl Syntax {
                 spec,
                 language: Language::new(spec.language),
                 outline: OnceLock::new(),
+                highlights: OnceLock::new(),
                 kinds: OnceLock::new(),
             })
             .collect();
@@ -148,6 +163,13 @@ impl Syntax {
             Some(outline::tags(g, query, tree, text))
         })
         .unwrap_or_default()
+    }
+
+    /// Highlighting from the grammar's own query; `None` without one.
+    pub fn highlights(&self, lang: &LanguageId, text: &str) -> Option<SyntaxHighlights> {
+        self.analyze(lang, text, |g, tree, text| {
+            Some(SyntaxHighlights::new(highlight::highlights(g.highlight_query()?, tree, text)))
+        })
     }
 
     /// Syntax-aware selection ranges for IDEA "Extend Selection" (⌥↑), innermost first.

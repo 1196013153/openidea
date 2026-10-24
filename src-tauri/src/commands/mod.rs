@@ -74,6 +74,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         doc::doc_set_line_ending,
         doc::doc_outline,
         doc::doc_folding,
+        doc::doc_highlights,
         doc::doc_selection_ranges,
         syntax::syntax_support,
         syntax::syntax_node_at,

@@ -7,7 +7,7 @@ import { EditorView } from "@codemirror/view";
 import type { LanguageDescription, LanguageSupport } from "@codemirror/language";
 import { create } from "zustand";
 import type { EditorConfigProps } from "@/bindings";
-import type { DocId, DocumentInfo, EditorSettings, FileSettings, LineEnding, OutlineItem, Settings } from "@/platform/ipc";
+import type { DocId, DocumentInfo, EditorSettings, FileSettings, LineEnding, OutlineItem, Settings, SyntaxHighlights } from "@/platform/ipc";
 import {
   _emitEditorEvent,
   _saveParticipants,
@@ -22,6 +22,7 @@ import type { DocBackend, LanguageInfo } from "../backend";
 import { findLanguageDescription, languageInfo, loadLanguageInfos, loadSupport, loadedSupport, commentTokens } from "../cm/languages";
 import { foldEffect } from "@codemirror/language";
 import { backendFolds, setBackendFolds } from "../cm/folding";
+import { setSyntaxHighlights } from "../cm/syntaxHighlight";
 import {
   caretFor,
   compartments,
@@ -265,6 +266,7 @@ export class DocModel {
 
   addSlot(slot: EditorSlot) {
     this.slots.add(slot);
+    if (this.highlights?.counter === this.changeCounter) slot.reconfigure([setSyntaxHighlights.of(this.highlights.value)]);
   }
 
   removeSlot(slot: EditorSlot) {
@@ -332,6 +334,8 @@ export class DocModel {
   indentOverride: { tabSize: number; insertSpaces: boolean } | null = null;
   /** Indentation detected in the file's text at open time. */
   detectedIndent: { insertSpaces: boolean; size?: number } | null = null;
+  /** Last tree-sitter highlighting, for slots opened before the next refresh. */
+  private highlights: { counter: number; value: SyntaxHighlights } | null = null;
   /** Fold-by-default has been applied (first folding ranges of the document). */
   private initialFolds = false;
   /** Signature of settings that require contributions to be rebuilt. */
@@ -423,7 +427,12 @@ export class DocModel {
     await this.sync.whenIdle();
     const counter = this.changeCounter;
     const backend = this.manager.backend;
-    const [folds, outline] = await Promise.allSettled([backend.folding(this.doc), backend.outline(this.doc)]);
+    const [folds, outline, highlights] = await Promise.allSettled([
+      backend.folding(this.doc),
+      backend.outline(this.doc),
+      // Without a CodeMirror mode, colours come from the grammar's tree-sitter query.
+      this.desc ? null : backend.highlights(this.doc),
+    ]);
     if (this.closed) return;
     if (counter !== this.changeCounter) {
       this.scheduleRefresh();
@@ -435,6 +444,10 @@ export class DocModel {
         this.initialFolds = true;
         this.foldByDefault();
       }
+    }
+    if (highlights.status === "fulfilled" && highlights.value) {
+      this.highlights = { counter, value: highlights.value };
+      for (const s of this.slots) s.reconfigure([setSyntaxHighlights.of(highlights.value)]);
     }
     if (outline.status === "fulfilled") {
       useOutline.setState({ [this.path]: outline.value });

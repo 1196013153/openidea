@@ -93,6 +93,11 @@ export const commands = {
 	docOutline: (doc: DocId) => typedError<OutlineItem[], IdeError>(__TAURI_INVOKE("doc_outline", { doc })),
 	docFolding: (doc: DocId) => typedError<FoldRange[], IdeError>(__TAURI_INVOKE("doc_folding", { doc })),
 	/**
+	 *  Tree-sitter highlighting for languages the UI has no CodeMirror mode for;
+	 *  empty when the grammar has no highlights query or the document is large.
+	 */
+	docHighlights: (doc: DocId) => typedError<SyntaxHighlights, IdeError>(__TAURI_INVOKE("doc_highlights", { doc })),
+	/**
 	 *  Extend Selection (⌥↑): syntax ranges around `offset`, innermost first.
 	 *  Large documents fall back to word / line / document ranges.
 	 */
@@ -3681,6 +3686,17 @@ export type SyntaxErrors = {
 	errors: SyntaxError[],
 	/**  More errors exist than were returned (see `MAX_SYNTAX_ERRORS`). */
 	truncated: boolean,
+};
+
+/**  Highlight classes sent to the UI, which maps each onto a Lezer tag. */
+export type SyntaxHighlightKind = "keyword" | "string" | "stringSpecial" | "escape" | "regexp" | "atom" | "number" | "constant" | "comment" | "docComment" | "function" | "functionCall" | "builtin" | "type" | "namespace" | "variable" | "selfVariable" | "property" | "attribute" | "macro" | "label" | "tag" | "operator" | "punctuation";
+
+/**  Highlighted ranges of a whole document, packed like LSP semantic tokens. */
+export type SyntaxHighlights = {
+	/**  Legend: `data` kind `i` is `kinds[i]`. */
+	kinds: SyntaxHighlightKind[],
+	/**  `[from, to, kind]` triples: sorted, non-overlapping UTF-16 offsets. */
+	data: number[],
 };
 
 /**  One tree-sitter node. */

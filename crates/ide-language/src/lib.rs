@@ -12,7 +12,10 @@ use std::collections::BTreeMap;
 mod registry;
 mod syntax;
 pub use registry::LanguageRegistry;
-pub use syntax::{MAX_CACHED_TREES, MAX_PARSE_BYTES, ParsedTree, Syntax, SyntaxCache, SyntaxCacheStats, TreeError};
+pub use syntax::{
+    MAX_CACHED_TREES, MAX_PARSE_BYTES, ParsedTree, Syntax, SyntaxCache, SyntaxCacheStats, SyntaxHighlightKind,
+    SyntaxHighlights, TreeError,
+};
 
 /// Parsed form of `languages/<id>.toml`. Backend-only; the UI gets [`LanguageInfo`].
 #[derive(Clone, Debug, Serialize, Deserialize)]

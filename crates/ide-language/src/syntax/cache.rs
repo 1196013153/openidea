@@ -5,7 +5,10 @@
 //! Structure / folding / Extend Selection on a large file cost an incremental
 //! parse instead of a full one.
 
-use super::{Grammar, MAX_PARSE_BYTES, ParsedTree, Syntax, TreeError, folding, outline, parse_cancellable, selection};
+use super::{
+    Grammar, MAX_PARSE_BYTES, ParsedTree, Syntax, SyntaxHighlights, TreeError, folding, highlight, outline,
+    parse_cancellable, selection,
+};
 use crate::FoldRange;
 use ide_core::{DocId, LanguageId, OutlineItem, Range};
 use ide_text::ByteEdit;
@@ -59,6 +62,7 @@ struct Memo {
     key: Option<(u32, LanguageId)>,
     outline: Option<Arc<Vec<OutlineItem>>>,
     folding: Option<Arc<Vec<FoldRange>>>,
+    highlights: Option<Arc<Vec<u32>>>,
 }
 
 impl Memo {
@@ -209,6 +213,21 @@ impl SyntaxCache {
                 })
             },
         )
+    }
+
+    /// Highlighting from the grammar's own query; empty without one.
+    pub fn highlights(&self, doc: DocId, lang: &LanguageId, version: u32, text: &str) -> SyntaxHighlights {
+        SyntaxHighlights::new(self.memoized(
+            doc,
+            lang,
+            version,
+            |m| &mut m.highlights,
+            || {
+                self.with_tree(doc, lang, version, text, |g, tree, text| {
+                    Some(highlight::highlights(g.highlight_query()?, tree, text))
+                })
+            },
+        ))
     }
 
     /// `compute()` once per document version; `None` (no grammar / query) is not memoized.

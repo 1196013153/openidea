@@ -25,6 +25,7 @@ import { openideaTheme } from "./theme";
 import { caretRowHighlight } from "./caretRow";
 import { changeLane, overviewLane } from "./lanes";
 import { foldingExtension } from "./folding";
+import { syntaxHighlightField } from "./syntaxHighlight";
 import { indentGuides } from "./indentGuides";
 import { stickyMaxLines, stickyScroll } from "./stickyScroll";
 import { findExtension } from "./find";
@@ -267,6 +268,7 @@ export function baseExtensions(o: SetupOptions): Extension {
     clipboardHistoryExtension,
     indentOnInput(),
     syntaxHighlighting(openideaHighlightStyle),
+    syntaxHighlightField,
     closeBrackets(),
     caretRowHighlight,
     fontZoom,
