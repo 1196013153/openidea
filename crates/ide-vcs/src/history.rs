@@ -53,7 +53,8 @@ impl TextFilter {
 pub(crate) fn log(r: &Repo, q: &LogQuery) -> IdeResult<Vec<Commit>> {
     let repo = r.gix()?;
     let range = q.range.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    let tips = if range.is_some() { Vec::new() } else { tips(&repo, q.branch.as_deref())? };
+    let revs: Vec<&str> = q.branch.iter().chain(&q.branches).map(|b| b.trim()).filter(|b| !b.is_empty()).collect();
+    let tips = if range.is_some() { Vec::new() } else { tips(&repo, &revs)? };
     if tips.is_empty() && range.is_none() {
         return Ok(Vec::new());
     }
@@ -65,7 +66,8 @@ pub(crate) fn log(r: &Repo, q: &LogQuery) -> IdeResult<Vec<Commit>> {
         }
         None => None,
     };
-    let author = q.author.as_deref().map(str::to_lowercase).filter(|s| !s.is_empty());
+    let authors: Vec<String> =
+        q.author.iter().chain(&q.authors).map(|a| a.trim().to_lowercase()).filter(|a| !a.is_empty()).collect();
     let text = q.text.as_deref().map(|t| TextFilter::new(t, q.text_regex, q.text_match_case)).transpose()?.flatten();
     let limit = if q.limit == 0 { usize::MAX } else { q.limit as usize };
     let mut to_skip = q.skip as usize;
@@ -105,11 +107,11 @@ pub(crate) fn log(r: &Repo, q: &LogQuery) -> IdeResult<Vec<Commit>> {
         let sig = commit.author().map_err(gx)?;
         let name = to_string(sig.name.trim().as_bstr());
         let email = to_string(sig.email.trim().as_bstr());
-        if let Some(needle) = author.as_deref()
-            && !name.to_lowercase().contains(needle)
-            && !email.to_lowercase().contains(needle)
-        {
-            continue;
+        if !authors.is_empty() {
+            let (name, email) = (name.to_lowercase(), email.to_lowercase());
+            if !authors.iter().any(|a| name.contains(a.as_str()) || email.contains(a.as_str())) {
+                continue;
+            }
         }
         let message = to_string(commit.message_raw_sloppy());
         if let Some(filter) = text.as_ref()
@@ -163,14 +165,19 @@ fn range_ids(r: &Repo, range: &str, path: Option<&str>) -> IdeResult<Vec<ObjectI
         .collect()
 }
 
-/// Starting points of the walk: the given revision, or HEAD + all branches.
-fn tips(repo: &gix::Repository, branch: Option<&str>) -> IdeResult<Vec<ObjectId>> {
-    if let Some(rev) = branch.filter(|b| !b.trim().is_empty()) {
-        let id = resolve(repo, rev)?;
-        let commit = repo.find_object(id).map_err(gx)?.peel_to_commit().map_err(gx)?;
-        return Ok(vec![commit.id]);
-    }
+/// Starting points of the walk: the given revisions, or HEAD + all branches.
+fn tips(repo: &gix::Repository, revs: &[&str]) -> IdeResult<Vec<ObjectId>> {
     let mut tips = Vec::new();
+    if !revs.is_empty() {
+        for rev in revs {
+            let id = resolve(repo, rev)?;
+            let commit = repo.find_object(id).map_err(gx)?.peel_to_commit().map_err(gx)?;
+            if !tips.contains(&commit.id) {
+                tips.push(commit.id);
+            }
+        }
+        return Ok(tips);
+    }
     if let Ok(id) = repo.head_id() {
         tips.push(id.detach());
     }

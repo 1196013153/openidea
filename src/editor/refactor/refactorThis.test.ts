@@ -11,7 +11,11 @@ let query: (request: number) => Promise<Result> = async () => ok({ actions: [], 
 let prepare: Result = ok(null);
 const lspCodeActionQuery = vi.fn(async (request: number, _doc: number, _range: unknown, _only: string[]) => query(request));
 const lspPrepareRename = vi.fn(async () => prepare);
-const lspApplyCodeAction = vi.fn(async () => ok(null));
+let onApply: (() => void) | null = null;
+const lspApplyCodeAction = vi.fn(async () => {
+  onApply?.();
+  return ok(null);
+});
 const lspCodeActions = vi.fn(async () => ok([]));
 const cancelRequest = vi.fn(async () => undefined);
 const languages = vi.fn(async () => [{ id: "rust", name: "Rust", lineComment: "//", blockComment: ["/*", "*/"] }]);
@@ -25,16 +29,22 @@ vi.mock("@/platform/ipc", async (orig) => {
   };
 });
 let expression = false;
+let candidates: unknown[] = [];
 vi.mock("@/editor/structure", () => ({
   structure: {
     support: vi.fn(async () => ({ tree: true, locals: false })),
-    expressionAt: vi.fn(async () => ({ expression: expression ? { kind: "call_expression" } : null })),
+    expressionAt: vi.fn(async () => ({ expression: expression ? { kind: "call_expression" } : null, exact: expression, candidates })),
+    identifiers: vi.fn(async () => []),
   },
 }));
 const showHint = vi.fn();
 vi.mock("@/editor/lsp/hint", () => ({ showHint }));
 const introduceFallback = vi.fn(async () => true);
-vi.mock("./introduce", () => ({ introduceFallback }));
+vi.mock("./introduce", () => ({
+  introduceFallback,
+  expressionCandidates: (_doc: unknown, at: { candidates?: unknown[] }) => at.candidates ?? [],
+  expressionPreview: (text: string) => text,
+}));
 const safeDelete = vi.fn();
 vi.mock("./safeDelete", () => ({ safeDelete }));
 
@@ -42,6 +52,8 @@ const { classifyAction, kindAdvertised, cannotPerform } = await import("./catalo
 const { refactorThis, runRefactoring } = await import("./refactorThis");
 const { useLspPopup, closePopup } = await import("@/editor/lsp/popupStore");
 const { lspDoc } = await import("@/editor/lsp/lsp");
+const { inplaceRenameExtension, inplaceSession } = await import("@/editor/lsp/inplaceRename");
+const { temporaryHighlights } = await import("@/editor/lsp/tempHighlight");
 
 // jsdom has no layout; popups anchor at the caret.
 Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
@@ -66,7 +78,10 @@ function editor(text = "fn main() { let total = price * 2; }") {
     state: EditorState.create({
       doc: text,
       selection: { anchor: text.indexOf("price") + 1 },
-      extensions: [lspDoc.of({ doc: 1, path: "/p/a.rs", language: "rust", uiMode: null, readOnly: false })],
+      extensions: [
+        lspDoc.of({ doc: 1, path: "/p/a.rs", language: "rust", uiMode: null, readOnly: false }),
+        inplaceRenameExtension(),
+      ],
     }),
   });
   return view;
@@ -80,6 +95,8 @@ beforeEach(() => {
   query = answer([]);
   prepare = ok(null);
   expression = false;
+  candidates = [];
+  onApply = null;
 });
 afterEach(() => {
   view?.destroy();
@@ -139,6 +156,8 @@ describe("Refactor This", () => {
     ]);
     await refactorThis(editor(), vi.fn());
     expect(labels()).toEqual(["Rename…", "Safe Delete…", "Introduce Variable…", "Inline…", "Convert to raw string"]);
+    // IDEA's numbered list: 1-9 run a row directly.
+    expect((useLspPopup.getState().popup as { numbered?: boolean }).numbered).toBe(true);
     expect(lspCodeActionQuery).toHaveBeenCalledOnce();
     expect(lspCodeActionQuery.mock.calls[0]![3]).toEqual(["refactor"]);
   });
@@ -247,5 +266,66 @@ describe("Refactor menu actions", () => {
   it("never fall back to unrelated code actions", async () => {
     await runRefactoring(editor(), "extractField");
     expect(lspCodeActions).not.toHaveBeenCalled();
+  });
+
+  it("with only a caret, choose the expression first (highlighted while choosing) and ask the server for it", async () => {
+    const text = "fn main() { let total = price * 2; }";
+    const node = (t: string) => {
+      const from = text.indexOf(t);
+      return { kind: "e", range: { start: { line: 0, col: from }, end: { line: 0, col: from + t.length } }, error: false, missing: false };
+    };
+    candidates = [node("price"), node("price * 2")];
+    const v = editor(text);
+    await runRefactoring(v, "extractVariable");
+    const popup = useLspPopup.getState().popup;
+    expect(popup?.kind === "list" && popup.title).toBe("Expressions");
+    expect(labels()).toEqual(["price", "price * 2"]);
+    expect(lspCodeActionQuery).not.toHaveBeenCalled();
+    if (popup?.kind !== "list") return;
+    popup.items[1]!.onActive!();
+    expect(temporaryHighlights(v)).toEqual([{ from: text.indexOf("price"), to: text.indexOf("2") + 1 }]);
+
+    query = answer([action("Extract into variable", "refactor.extract")]);
+    closePopup();
+    expect(temporaryHighlights(v)).toEqual([]);
+    popup.items[1]!.run();
+    await vi.waitFor(() => expect(lspCodeActionQuery).toHaveBeenCalledOnce());
+    expect(v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to)).toBe("price * 2");
+    expect(lspCodeActionQuery.mock.calls[0]![2]).toEqual((candidates[1] as { range: unknown }).range);
+  });
+
+  it("offer IDEA's occurrences choice when the server has both variants", async () => {
+    const text = "fn f() { g(price); h(price); }";
+    const v = editor(text);
+    v.dispatch({ selection: { anchor: text.indexOf("price"), head: text.indexOf("price") + 5 } });
+    query = answer([
+      action("Extract to local variable", "refactor.extract.variable"),
+      action("Extract to local variable (replace all occurrences)", "refactor.extract.variable"),
+    ]);
+    await runRefactoring(v, "extractVariable");
+    expect(labels()).toEqual(["Replace this occurrence only", "Replace all 2 occurrences"]);
+    const popup = useLspPopup.getState().popup;
+    if (popup?.kind !== "list") return;
+    popup.items[1]!.onActive!();
+    expect(temporaryHighlights(v)).toHaveLength(2);
+  });
+
+  it("rename the introduced name in place after the server's edit", async () => {
+    const text = "fn main() { let total = price * 2; }";
+    const v = editor(text);
+    v.dispatch({ selection: { anchor: text.indexOf("price"), head: text.indexOf("2") + 1 } });
+    query = answer([action("Extract into variable", "refactor.extract")]);
+    onApply = () =>
+      v.dispatch({
+        changes: [
+          { from: text.indexOf("let total"), insert: "let var_name = price * 2;\n    " },
+          { from: text.indexOf("price"), to: text.indexOf("2") + 1, insert: "var_name" },
+        ],
+      });
+    await runRefactoring(v, "extractVariable");
+    await vi.waitFor(() => expect(inplaceSession(v.state)).not.toBeNull());
+    const session = inplaceSession(v.state)!;
+    expect(session.oldName).toBe("var_name");
+    expect(session.others).toHaveLength(1);
   });
 });

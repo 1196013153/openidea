@@ -39,7 +39,7 @@ impl Default for EditorGeneralSettings {
             caret_scroll: "minimize".into(),
             soft_wrap_files: "*.md; *.txt; *.rst; *.adoc".into(),
             soft_wrap_indent: true,
-            scroll_past_end: true,
+            scroll_past_end: false,
             strip_trailing_scope: "modified".into(),
             keep_trailing_on_caret_line: true,
             remove_trailing_blank_lines: false,
@@ -227,7 +227,7 @@ impl Default for SmartKeysSettings {
             pair_quotes: true,
             surround_selection: true,
             tab_out_of_pair: true,
-            reformat_on_paste: "indentBlock".into(),
+            reformat_on_paste: "indentEachLine".into(),
             smart_indent: true,
             backspace_unindent: "autoindent".into(),
         }

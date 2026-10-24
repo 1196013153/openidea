@@ -44,6 +44,9 @@ import { multiCaretMouse } from "./multiCaret";
 import { columnModeExtension } from "./columnMode";
 import { tabKeymap } from "./smartKeys";
 import { editorBaseKeymap } from "./baseKeymap";
+import { occurrenceSearch } from "./editing";
+import { gutterLineDrag } from "./gutterDrag";
+import { overwriteField } from "./overwrite";
 import { clipboardHistoryExtension } from "../clipboardHistory";
 import type { LanguageInfo } from "../backend";
 
@@ -290,6 +293,9 @@ export function baseExtensions(o: SetupOptions): Extension {
     EditorState.allowMultipleSelections.of(true),
     multiCaretMouse,
     columnModeExtension,
+    occurrenceSearch,
+    overwriteField,
+    gutterLineDrag,
     clipboardHistoryExtension,
     indentOnInput(),
     syntaxHighlighting(openideaHighlightStyle),

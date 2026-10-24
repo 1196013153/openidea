@@ -88,3 +88,13 @@
   opacity: 0.5;
   text-decoration: line-through;
 }
+.split {
+  flex: 1;
+  min-height: 0;
+}
+.splitPanel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}

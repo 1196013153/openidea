@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OutlineItem } from "@/platform/ipc";
-import { allKeys, bestRow, flattenOutline, keyOutline, sortOutline, symbolPathAt } from "../structure/outline";
+import { allKeys, filterOutline, keyOutline, parentKeys, sortOutline, symbolPathAt, visibleCount } from "../structure/outline";
 
 const item = (name: string, kind: OutlineItem["kind"], from: number, to: number, children: OutlineItem[] = []): OutlineItem => ({
   name,
@@ -39,13 +39,23 @@ describe("outline helpers", () => {
     expect(sortOutline(nodes, false)).toBe(nodes);
   });
 
-  it("filters keeping ancestors of matches", () => {
-    const rows = flattenOutline(nodes, "creat");
-    expect(rows.map((r) => [r.node.item.name, r.depth, r.matched])).toEqual([
-      ["OrderController", 0, false],
-      ["create", 1, true],
-    ]);
-    expect(bestRow(rows)).toBe(1);
-    expect(flattenOutline(nodes, "")).toHaveLength(5);
+  it("narrows to matches and their ancestors", () => {
+    const f = filterOutline(nodes, "creat", true);
+    expect(f.nodes.map((n) => [n.item.name, n.children.map((c) => c.item.name)])).toEqual([["OrderController", ["create"]]]);
+    expect(f.best).toBe(nodes[0]!.children[1]!.key);
+    expect(f.matches.has(nodes[0]!.key)).toBe(false);
+    expect(filterOutline(nodes, "", true).nodes).toBe(nodes);
+  });
+
+  it("only highlights matches when not narrowing down", () => {
+    const f = filterOutline(nodes, "list", false);
+    expect(f.nodes).toBe(nodes);
+    expect(f.order).toEqual([nodes[0]!.children[0]!.key, nodes[0]!.children[2]!.key]);
+  });
+
+  it("counts visible rows and maps parents", () => {
+    expect(visibleCount(nodes, new Set())).toBe(5);
+    expect(visibleCount(nodes, new Set([nodes[0]!.key]))).toBe(2);
+    expect(parentKeys(nodes).get(nodes[0]!.children[1]!.key)).toBe(nodes[0]!.key);
   });
 });

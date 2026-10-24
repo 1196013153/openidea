@@ -615,11 +615,11 @@ fn stash_push_list_apply_pop() {
     let repo = fx.repo();
 
     fx.write("s.txt", "change 1\n");
-    repo.stash_push(Some("first stash"), false).unwrap();
+    repo.stash_push(Some("first stash"), false, false).unwrap();
     assert_eq!(fx.read("s.txt"), "base\n");
     fx.write("s.txt", "change 2\n");
     fx.write("u.txt", "untracked\n");
-    repo.stash_push(None, true).unwrap();
+    repo.stash_push(None, true, false).unwrap();
     assert!(!fx.path("u.txt").exists());
 
     let stashes = repo.stashes().unwrap();
@@ -629,17 +629,83 @@ fn stash_push_list_apply_pop() {
     assert!(stashes[1].message.contains("first stash"), "{stashes:?}");
     assert!(stashes[0].time_ms > 0.0);
 
-    repo.stash_apply(1, false).unwrap();
+    repo.stash_apply(1, false, false).unwrap();
     assert_eq!(fx.read("s.txt"), "change 1\n");
     assert_eq!(repo.stashes().unwrap().len(), 2);
     repo.discard(&[fx.path("s.txt")]).unwrap();
-    repo.stash_apply(0, true).unwrap();
+    repo.stash_apply(0, true, false).unwrap();
     assert_eq!(fx.read("s.txt"), "change 2\n");
     assert!(fx.path("u.txt").exists());
     assert_eq!(repo.stashes().unwrap().len(), 1);
     repo.stash_drop(0).unwrap();
     assert!(repo.stashes().unwrap().is_empty());
     assert!(repo.stash_drop(0).is_err());
+}
+
+#[test]
+fn stash_keep_index_reinstate_index_and_branch() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "a\n");
+    fx.write("b.txt", "b\n");
+    fx.commit_all("base");
+    let repo = fx.repo();
+    let staged = |fx: &Fixture| fx.git(&["diff", "--cached", "--name-only"]).trim().to_string();
+
+    fx.write("a.txt", "a staged\n");
+    fx.git(&["add", "a.txt"]);
+    fx.write("b.txt", "b unstaged\n");
+    repo.stash_push(Some("keep"), false, true).unwrap();
+    // Keep index: the staged change stays, the unstaged one is stashed.
+    assert_eq!(fx.read("a.txt"), "a staged\n");
+    assert_eq!(fx.read("b.txt"), "b\n");
+    assert_eq!(staged(&fx), "a.txt");
+
+    fx.git(&["reset", "-q", "--hard"]);
+    repo.stash_apply(0, false, true).unwrap();
+    // Reinstate index: what was staged is staged again.
+    assert_eq!(staged(&fx), "a.txt");
+    assert_eq!(fx.read("b.txt"), "b unstaged\n");
+    fx.git(&["reset", "-q", "--hard"]);
+    repo.stash_apply(0, false, false).unwrap();
+    assert_eq!(staged(&fx), "");
+
+    fx.git(&["reset", "-q", "--hard"]);
+    assert!(repo.stash_branch(0, "-bad").is_err());
+    repo.stash_branch(0, "from-stash").unwrap();
+    assert_eq!(fx.git(&["rev-parse", "--abbrev-ref", "HEAD"]).trim(), "from-stash");
+    assert_eq!(fx.read("b.txt"), "b unstaged\n");
+    assert!(repo.stashes().unwrap().is_empty());
+}
+
+#[test]
+fn log_filters_several_branches_and_authors() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "1\n");
+    let c1 = fx.commit_all("one");
+    fx.git(&["checkout", "-q", "-b", "left"]);
+    fx.write("l.txt", "l\n");
+    let left = fx.commit_all("left");
+    fx.git(&["checkout", "-q", "-b", "right", &c1]);
+    fx.write("r.txt", "r\n");
+    fx.git(&["add", "-A"]);
+    fx.git(&["-c", "user.name=Someone Else", "-c", "user.email=else@corp.test", "commit", "-q", "-m", "right"]);
+    let right = fx.git(&["rev-parse", "HEAD"]).trim().to_string();
+    fx.git(&["checkout", "-q", "-b", "third", &c1]);
+    fx.write("t.txt", "t\n");
+    let third = fx.commit_all("third");
+    let repo = fx.repo();
+    let ids = |q: LogQuery| repo.log(&q).unwrap().into_iter().map(|c| c.id).collect::<Vec<_>>();
+
+    let two = ids(LogQuery { branch: Some("left".into()), branches: vec!["right".into()], ..Default::default() });
+    assert!(two.contains(&left) && two.contains(&right) && two.contains(&c1));
+    assert!(!two.contains(&third));
+    let only = ids(LogQuery { branches: vec!["third".into()], ..Default::default() });
+    assert_eq!(only, vec![third.clone(), c1.clone()]);
+
+    let everyone = ids(LogQuery { authors: vec!["else@corp".into(), "nobody".into()], ..Default::default() });
+    assert_eq!(everyone, vec![right.clone()]);
+    let both = ids(LogQuery { author: Some("ELSE".into()), authors: vec!["test@".into()], ..Default::default() });
+    assert!(both.contains(&right) && both.len() > 1);
 }
 
 #[test]
@@ -1066,7 +1132,7 @@ fn errors_carry_git_messages() {
     assert!(!err.message.is_empty());
     let err = repo.stage(&[PathBuf::from("../outside")]).unwrap_err();
     assert_eq!(err.kind, ErrorKind::InvalidInput);
-    assert!(repo.stash_apply(5, false).is_err());
+    assert!(repo.stash_apply(5, false, false).is_err());
 }
 
 #[test]

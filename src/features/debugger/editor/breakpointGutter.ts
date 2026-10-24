@@ -219,6 +219,20 @@ export function breakpointGutter(ctx: EditorDocContext): Extension {
         }
         if (!canPlaceBreakpoint(ctx.language) && !bp) return;
         e.preventDefault();
+        // Acts on release over the same line: a drag across the gutter selects lines instead.
+        const up = (u: MouseEvent) => {
+          window.removeEventListener("mouseup", up, true);
+          if (u.button === 0 && lineAtEvent(this.view, u) === line) this.onClick(e, line, special, bp);
+        };
+        window.addEventListener("mouseup", up, true);
+      };
+
+      onClick = (
+        e: MouseEvent,
+        line: number,
+        special: ReturnType<typeof specialAt>[number] | undefined,
+        bp: ReturnType<typeof breakpointsOf>[number] | undefined,
+      ) => {
         if (special || bp) {
           if (e.shiftKey || e.altKey) return;
           if (special) removeSpecial(special.id);

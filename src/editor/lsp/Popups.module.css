@@ -28,6 +28,60 @@
   font-family: var(--font-mono);
   color: var(--accent);
 }
+.withPreview {
+  flex-direction: row;
+  width: auto;
+  max-width: min(1160px, 94vw);
+}
+.listMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: none;
+}
+.mnemonic {
+  width: 10px;
+  flex: none;
+  font-family: var(--font-keys);
+  font-size: var(--fs-small);
+  color: var(--fg-subtle);
+  text-align: right;
+}
+.previewPanel {
+  width: 420px;
+  flex: none;
+  min-height: 60px;
+  max-height: 340px;
+  overflow: auto;
+  border-left: 1px solid var(--border-popup);
+  background: var(--bg-popup-inline, var(--bg-elev));
+}
+.previewText {
+  padding: 8px 10px;
+  font-size: var(--fs-small);
+  color: var(--fg-subtle);
+}
+.diff {
+  margin: 0;
+  padding: 6px 0;
+  font-family: var(--openidea-editor-font, var(--font-mono));
+  font-size: var(--fs-small);
+  color: var(--fg-editor);
+}
+.diffLine {
+  padding: 0 10px;
+  white-space: pre;
+  min-height: 1.4em;
+}
+.diff-added {
+  background: color-mix(in srgb, var(--vcs-added) 20%, transparent);
+}
+.diff-removed {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+.diff-gap {
+  color: var(--fg-faint);
+}
 .listBody {
   display: flex;
   flex-direction: column;
@@ -163,6 +217,34 @@
 .docScope {
   display: contents;
 }
+.docFrame {
+  outline: none;
+}
+.docWindowFrame {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  outline: none;
+}
+.docWindowFrame .docBody {
+  flex: 1;
+}
+.docWindowEmpty {
+  padding: 16px;
+  font-size: var(--fs-ui);
+  color: var(--fg-faint);
+}
+.docToolbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-top: 1px solid var(--border-popup);
+  background: var(--bg-popup);
+}
 .docBody {
   padding: 10px 14px;
 }
@@ -193,6 +275,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--fg-subtle);
+}
+.defFrame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+.defCount {
+  flex: none;
+  font-size: var(--fs-small);
   color: var(--fg-subtle);
 }
 .defBody {
@@ -282,4 +375,25 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.reformatGroup {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.reformatLegend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: var(--fs-small);
+  color: var(--fg-subtle);
+}
+.reformatOption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-ui);
 }

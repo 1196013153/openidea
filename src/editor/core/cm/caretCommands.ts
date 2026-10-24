@@ -1,8 +1,8 @@
-/** IDEA caret commands that CodeMirror has no equivalent for: Split Line, Scroll to Center, code block navigation. */
+/** IDEA caret commands that CodeMirror has no equivalent for: Split Line, Scroll to Center, code block and brace navigation. */
 import { EditorSelection, type EditorState, type Transaction } from "@codemirror/state";
 import { EditorView, type Command } from "@codemirror/view";
 import { insertNewlineAndIndent } from "@codemirror/commands";
-import { syntaxTree } from "@codemirror/language";
+import { matchBrackets, syntaxTree } from "@codemirror/language";
 
 /** Split Line: break the line at each caret, indented, leaving the caret before the break. */
 export const splitLine: Command = (view) => {
@@ -90,3 +90,41 @@ function moveToBlock(find: (state: EditorState, pos: number) => number | null): 
 
 export const cursorCodeBlockStart = moveToBlock(codeBlockStart);
 export const cursorCodeBlockEnd = moveToBlock(codeBlockEnd);
+
+/**
+ * Where Go to Matching Brace (⌃M) goes from `pos`: from a brace next to the
+ * caret to its match; elsewhere to the unclosed opening brace before the caret.
+ */
+export function matchBraceTarget(state: EditorState, pos: number): number | null {
+  const found =
+    matchBrackets(state, pos, -1) ||
+    matchBrackets(state, pos, 1) ||
+    (pos > 0 && matchBrackets(state, pos - 1, 1)) ||
+    (pos < state.doc.length && matchBrackets(state, pos + 1, -1));
+  if (found && found.end) return found.start.from === pos ? found.end.to : found.end.from;
+  const tree = syntaxTree(state);
+  let depth = 0;
+  for (let p = pos - 1; p >= 0; p--) {
+    const ch = state.sliceDoc(p, p + 1);
+    const open = "([{".includes(ch);
+    if (!open && !")]}".includes(ch)) continue;
+    if (tree.length && NOT_CODE.test(tree.resolveInner(p, 1).name)) continue;
+    if (!open) depth++;
+    else if (depth-- === 0) return p;
+  }
+  return null;
+}
+
+export const cursorMatchBrace: Command = (view) => {
+  const { state } = view;
+  let moved = false;
+  const ranges = state.selection.ranges.map((r) => {
+    const target = matchBraceTarget(state, r.head);
+    if (target == null) return r;
+    moved = true;
+    return EditorSelection.cursor(target);
+  });
+  if (!moved) return false;
+  view.dispatch({ selection: EditorSelection.create(ranges, state.selection.mainIndex), scrollIntoView: true, userEvent: "select.navigate" });
+  return true;
+};

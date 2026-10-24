@@ -24,20 +24,81 @@ export interface ListPopupItem {
   disabled?: string | null;
   shortcut?: string;
   run: () => void | Promise<void>;
+  /** Called when the row becomes the selected one (e.g. highlight what it would act on). */
+  onActive?: () => void;
+}
+
+/** Side panel content for the selected row of a list popup (intention preview). */
+export type ListPreview =
+  | { kind: "diff"; lines: DiffLine[]; /** Other files the change touches. */ note?: string }
+  | { kind: "text"; text: string };
+
+export interface DiffLine {
+  kind: "context" | "added" | "removed" | "gap";
+  text: string;
+}
+
+export interface DocEntry {
+  markup: Markup;
+  language: string | null;
+  /** Declaration of the documented element (Edit Source), resolved on demand. */
+  source?: () => Promise<Location | null>;
+}
+
+export interface DefinitionTarget {
+  location: Location;
+  /** Name shown in the switcher (symbol or file name). */
+  name: string;
+  firstLine: number;
+  text: string;
+  language: string | null;
+}
+
+export interface ReformatOptions {
+  selectionOnly: boolean;
+  optimizeImports: boolean;
 }
 
 export type LspPopup =
-  | { kind: "doc"; anchor: PopupPoint; markup: Markup; language: string | null; themeClasses: string }
+  | {
+      kind: "doc";
+      anchor: PopupPoint;
+      /** Navigation history (links followed inside the popup); `index` is shown. */
+      entries: DocEntry[];
+      index: number;
+      themeClasses: string;
+    }
   | {
       kind: "definition";
       anchor: PopupPoint;
-      location: Location;
-      firstLine: number;
-      text: string;
-      language: string | null;
+      /** Every target (⌥Space on an overloaded / multiply defined symbol); `index` is shown. */
+      targets: DefinitionTarget[];
+      index: number;
       themeClasses: string;
     }
-  | { kind: "list"; anchor: PopupPoint; title: string; items: ListPopupItem[] }
+  | {
+      kind: "list";
+      anchor: PopupPoint;
+      title: string;
+      items: ListPopupItem[];
+      /** Rows 1-9 get a number; typing it runs the row (IDEA's numbered popups). */
+      numbered?: boolean;
+      /** Header pin button (e.g. "Open in Find Tool Window"). */
+      pin?: { label: string; run: () => void };
+      /** Side panel for the selected row, fetched lazily; `signal` aborts when the selection moves. */
+      preview?: (item: ListPopupItem, signal: AbortSignal) => Promise<ListPreview | null>;
+      /** Runs when the popup goes away (closed, replaced or a row ran). */
+      onClose?: () => void;
+    }
+  | {
+      kind: "reformat";
+      title: string;
+      hasSelection: boolean;
+      /** Whether the server offers Optimize Imports for the file. */
+      canOptimizeImports: boolean;
+      initial: ReformatOptions;
+      onRun: (options: ReformatOptions) => void;
+    }
   | {
       kind: "rename";
       anchor: PopupPoint;
@@ -85,12 +146,27 @@ export function focusPopup() {
   useLspPopup.setState((s) => ({ focusSeq: s.focusSeq + 1 }));
 }
 
+function disposed(popup: LspPopup | null) {
+  if (popup?.kind === "list") popup.onClose?.();
+}
+
 export function openPopup(popup: LspPopup) {
+  const previous = useLspPopup.getState().popup;
   useLspPopup.setState((s) => ({ popup, seq: s.seq + 1 }));
+  if (previous !== popup) disposed(previous);
 }
 
 export function closePopup() {
+  const previous = useLspPopup.getState().popup;
   useLspPopup.setState({ popup: null });
+  disposed(previous);
+}
+
+/** Replaces the open popup's state without remounting it (doc history, definition switching). */
+export function updatePopup<K extends LspPopup["kind"]>(kind: K, patch: Partial<Extract<LspPopup, { kind: K }>>): void {
+  const current = useLspPopup.getState().popup;
+  if (current?.kind !== kind) return;
+  useLspPopup.setState({ popup: { ...current, ...patch } as LspPopup });
 }
 
 /** Screen point just below `pos` (falls back to the editor's top-left). */

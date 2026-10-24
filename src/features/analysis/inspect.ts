@@ -99,6 +99,8 @@ interface InspectState {
   error: string | null;
   /** Scope of the last run (Rerun). */
   last: ScopeChoice | null;
+  /** Problems excluded from the results (⌫), by `problemId`. */
+  excluded: ReadonlySet<string>;
 }
 
 const initialInspection = (): InspectState => ({
@@ -110,7 +112,21 @@ const initialInspection = (): InspectState => ({
   scopeLabel: null,
   error: null,
   last: null,
+  excluded: new Set(),
 });
+
+/** Stable identity of a problem across regroupings. */
+export const problemId = (p: InspectionProblem) =>
+  `${p.path}\u0000${p.d.range.start.line}:${p.d.range.start.col}\u0000${kindOf(p.d)}\u0000${p.d.message}`;
+
+/** Excludes `problems`, or includes them again when all are excluded already. */
+export function toggleExcludedProblems(problems: readonly InspectionProblem[]) {
+  const ids = problems.map(problemId);
+  const excluded = new Set(useInspection.getState().excluded);
+  if (ids.every((id) => excluded.has(id))) ids.forEach((id) => excluded.delete(id));
+  else ids.forEach((id) => excluded.add(id));
+  useInspection.setState({ excluded });
+}
 
 export const useInspection = create<InspectState>(initialInspection);
 
@@ -146,6 +162,7 @@ export async function runInspection(choice: ScopeChoice): Promise<void> {
     error: null,
     scopeLabel: describeScope(choice, scope),
     last: choice,
+    excluded: new Set(),
   });
   toolWindowService().show("inspection");
   if (!isTauri()) {

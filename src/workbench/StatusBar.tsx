@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { BarButton, IconButton, Popup, ProgressBar, showContextMenu, T } from "@/ui";
-import { useContributions, type StatusItemContribution } from "./contributions";
+import { useContributions, useStatusInfo, type StatusItemContribution } from "./contributions";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { isStatusItemVisible, statusBarMenu, useStatusWidgetOverrides } from "./statusBarWidgets";
 import { useTasks } from "./tasks";
@@ -52,6 +52,17 @@ export function StatusBar() {
       <div className={styles.spacer} />
       {right.filter(visible).map(render)}
     </footer>
+  );
+}
+
+/** Built-in: the transient status message (`showStatusInfo`). */
+export function StatusInfo() {
+  const text = useStatusInfo((s) => s.text);
+  if (!text) return null;
+  return (
+    <span className={styles.info} role="status" title={text}>
+      {text}
+    </span>
   );
 }
 

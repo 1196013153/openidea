@@ -2,6 +2,13 @@
 import { create } from "zustand";
 import type { AttachableProcess, DebugSessionId, RunConfig, StepInTarget } from "@/platform/ipc";
 
+/** A Smart Step Into target placed on the paused line (UTF-16 offsets within the line). */
+export interface InlineStepTarget {
+  id: number;
+  from: number;
+  to: number;
+}
+
 interface OverlayState {
   popover: { path: string; id: string; x: number; y: number; focusLog: boolean } | null;
   evaluate: { expression: string } | null;
@@ -9,8 +16,16 @@ interface OverlayState {
   chooser: { configs: RunConfig[] } | null;
   /** Attach to Process popup; `processes` is null while loading. */
   attach: { processes: AttachableProcess[] | null; error: string | null } | null;
-  /** Smart Step Into chooser. */
-  smartStep: { session: DebugSessionId; thread: number; targets: StepInTarget[] } | null;
+  /**
+   * Smart Step Into: picked in the editor when `inline` is set (targets sorted
+   * by position, `index` the selected one), else in the chooser dialog.
+   */
+  smartStep: {
+    session: DebugSessionId;
+    thread: number;
+    targets: StepInTarget[];
+    inline?: { path: string; line: number; ranges: InlineStepTarget[]; index: number };
+  } | null;
 }
 
 export const useOverlays = create<OverlayState>(() => ({

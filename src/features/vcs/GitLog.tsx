@@ -38,6 +38,9 @@ import {
   goToChild,
   goToParent,
   loadMore,
+  ME,
+  dateRangeLabel,
+  inDateRange,
   refsSignature,
   reloadLog,
   selectCommit,
@@ -52,7 +55,7 @@ import { currentRepo, loadBranches, useVcs } from "./store";
 import { checkoutBranch, loadFavoriteBranches, newBranch, useFavoriteBranches } from "./branchOps";
 import { branchMenu } from "./branchMenu";
 import { branchFolderKeys, branchGroupKeys, buildBranchTree, filterBranchTree, type BranchTreeNode } from "./branches";
-import { promptText } from "./dialogs";
+import { chooseDateRange, chooseMany, promptText } from "./dialogs";
 import { buildFileTree, dirKeys, type FileTreeNode } from "./fileTree";
 import styles from "./GitLog.module.css";
 
@@ -167,7 +170,7 @@ function BranchesPanel() {
   const branchesLoaded = useVcs((s) => s.branchesLoaded);
   const current = useVcs((s) => s.branch?.head ?? null);
   const favorites = useFavoriteBranches((s) => s.names);
-  const filterBranch = useGitLog((s) => s.filters.branch);
+  const filterBranches = useGitLog((s) => s.filters.branches);
   const [query, setQuery] = useState("");
   useEffect(() => loadFavoriteBranches(), [root]);
   const allRoots = useMemo(() => buildBranchTree(branches, favorites), [branches, favorites]);
@@ -175,8 +178,8 @@ function BranchesPanel() {
   // While searching every match is shown expanded.
   const searchExpanded = useMemo(() => (query.trim() ? new Set(branchGroupKeys(roots)) : undefined), [roots, query]);
   const selected = useMemo(
-    () => new Set([filterBranch === "HEAD" ? "head" : filterBranch ? `b:${filterBranch}` : ""]),
-    [filterBranch],
+    () => new Set(filterBranches.map((b) => (b === "HEAD" ? "head" : `b:${b}`))),
+    [filterBranches],
   );
   return (
     <div className={styles.branches}>
@@ -219,9 +222,10 @@ function BranchesPanel() {
         }
         getDetail={branchDetail}
         selected={selected}
-        multiSelect={false}
-        onSelectionChange={(_sel, lead) => {
-          if (lead?.ref) setLogFilters({ branch: lead.ref === "HEAD" ? "HEAD" : lead.ref });
+        onSelectionChange={(sel) => {
+          // Several selected branches filter the log by all of them.
+          const refs = [...sel].flatMap((k) => (k === "head" ? ["HEAD"] : k.startsWith("b:") ? [k.slice(2)] : []));
+          if (refs.length) setLogFilters({ branches: refs });
         }}
         onActivate={(n) => n.branch && !n.branch.current && void checkoutBranch(n.branch.name)}
         onContextMenu={(n, _s, e) => {
@@ -311,48 +315,80 @@ function FilterBar() {
     return () => clearTimeout(t);
   }, [text, filters.text]);
 
+  const only = (list: readonly string[], v: string) => list.length === 1 && list[0] === v;
+  const branchNames = () => branches.filter((b) => !b.name.endsWith("/HEAD")).map((b) => b.name);
+
   const openBranch = (e: ReactMouseEvent<HTMLElement>) =>
     menuBelow(e, [
       {
         label: "HEAD (Current Branch)",
-        checked: filters.branch === "HEAD",
-        run: () => setLogFilters({ branch: "HEAD" }),
+        checked: only(filters.branches, "HEAD"),
+        run: () => setLogFilters({ branches: ["HEAD"] }),
       },
       { kind: "separator" },
-      ...branches
-        .filter((b) => !b.name.endsWith("/HEAD"))
-        .map((b) => ({
-          label: b.name,
-          icon: "branch",
-          checked: filters.branch === b.name,
-          run: () => setLogFilters({ branch: b.name }),
-        })),
+      ...branchNames().map((name) => ({
+        label: name,
+        icon: "branch",
+        checked: filters.branches.includes(name),
+        run: () => setLogFilters({ branches: [name] }),
+      })),
+      { kind: "separator" },
+      {
+        label: "Select…",
+        run: async () => {
+          const r = await chooseMany({
+            title: "Filter by Branch",
+            options: ["HEAD", ...branchNames()],
+            initial: filters.branches,
+            customLabel: "Other revisions (comma-separated):",
+          });
+          if (r) setLogFilters({ branches: r });
+        },
+      },
     ]);
 
   const openUser = (e: ReactMouseEvent<HTMLElement>) => {
     const authors = [...new Set(commits.map((c) => c.author))].sort((a, b) => a.localeCompare(b)).slice(0, 30);
     menuBelow(e, [
-      ...authors.map((a) => ({ label: a, checked: filters.author === a, run: () => setLogFilters({ author: a }) })),
+      { label: ME, checked: filters.authors.includes(ME), run: () => setLogFilters({ authors: [ME] }) },
       ...(authors.length ? [{ kind: "separator" as const }] : []),
+      ...authors.map((a) => ({
+        label: a,
+        checked: filters.authors.includes(a),
+        run: () => setLogFilters({ authors: [a] }),
+      })),
+      { kind: "separator" },
       {
         label: "Select…",
         run: async () => {
-          const r = await promptText({ title: "Filter by User", label: "User name or email", initial: filters.author });
-          if (r) setLogFilters({ author: r.value.trim() });
+          const r = await chooseMany({
+            title: "Filter by User",
+            options: [ME, ...authors],
+            initial: filters.authors,
+            customLabel: "Other names or emails (comma-separated):",
+          });
+          if (r) setLogFilters({ authors: r });
         },
       },
     ]);
   };
 
   const openDate = (e: ReactMouseEvent<HTMLElement>) =>
-    menuBelow(
-      e,
-      DATE_OPTIONS.map((o) => ({
+    menuBelow(e, [
+      ...DATE_OPTIONS.map((o) => ({
         label: o.label,
-        checked: filters.since?.label === o.label,
-        run: () => setLogFilters({ since: { ms: Date.now() - o.days * DAY, label: o.label } }),
+        checked: filters.date?.label === o.label,
+        run: () => setLogFilters({ date: { after: Date.now() - o.days * DAY, before: null, label: o.label } }),
       })),
-    );
+      { kind: "separator" },
+      {
+        label: "Select…",
+        run: async () => {
+          const r = await chooseDateRange();
+          if (r) setLogFilters({ date: { ...r, label: dateRangeLabel(r.after, r.before) } });
+        },
+      },
+    ]);
 
   const openPaths = (e: ReactMouseEvent<HTMLElement>) =>
     menuBelow(e, [
@@ -395,21 +431,21 @@ function FilterBar() {
       />
       <FilterButton
         label="Branch"
-        value={filters.branch}
+        value={filters.branches.join(", ") || null}
         onOpen={openBranch}
-        onClear={() => setLogFilters({ branch: null })}
+        onClear={() => setLogFilters({ branches: [] })}
       />
       <FilterButton
         label="User"
-        value={filters.author || null}
+        value={filters.authors.join(", ") || null}
         onOpen={openUser}
-        onClear={() => setLogFilters({ author: "" })}
+        onClear={() => setLogFilters({ authors: [] })}
       />
       <FilterButton
         label="Date"
-        value={filters.since?.label ?? null}
+        value={filters.date?.label ?? null}
         onOpen={openDate}
-        onClear={() => setLogFilters({ since: null })}
+        onClear={() => setLogFilters({ date: null })}
       />
       <FilterButton
         label="Paths"
@@ -485,11 +521,14 @@ export function commitMenu(c: Commit, selection: Commit[] = [c]): MenuItem[] {
 function CommitList() {
   const all = useGitLog((s) => s.commits);
   const allRows = useGitLog((s) => s.rows);
-  const since = useGitLog((s) => s.filters.since);
+  const date = useGitLog((s) => s.filters.date);
   // The date filter is applied here; the graph is hidden while it is active (rows are no longer contiguous).
-  const commits = useMemo(() => (since == null ? all : all.filter((c) => (c.timeMs ?? 0) >= since.ms)), [all, since]);
-  const rows = since == null ? allRows : [];
-  const exhausted = since != null && all.length > 0 && (all[all.length - 1]!.timeMs ?? 0) < since.ms;
+  const commits = useMemo(
+    () => (date == null ? all : all.filter((c) => inDateRange(c.timeMs ?? 0, date))),
+    [all, date],
+  );
+  const rows = date == null ? allRows : [];
+  const exhausted = date?.after != null && all.length > 0 && (all[all.length - 1]!.timeMs ?? 0) < date.after;
   const loading = useGitLog((s) => s.loading);
   const done = useGitLog((s) => s.done);
   const error = useGitLog((s) => s.error);

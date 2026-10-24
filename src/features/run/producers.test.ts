@@ -5,6 +5,7 @@ import {
   nodeTypeStripping,
   OPTIMISTIC,
   produceContext,
+  produceContextChoices,
   produceDirectory,
   produceFile,
   shebang,
@@ -275,6 +276,24 @@ describe("project producers", () => {
     expect(at(2)).toMatchObject({ name: "math > adds", scope: "element" });
     expect(at(4)).toMatchObject({ name: "math", scope: "element" });
     expect(at(7)).toMatchObject({ name: "m.test.ts", scope: "file" });
+  });
+
+  it("several equally close test configurations: one choice each, the default first", () => {
+    const withUnit = [
+      ...configs,
+      cfg({ id: "npm:test:unit", name: "npm run test:unit", kind: "npm", command: "npm", args: ["run", "test:unit"], isTest: true }),
+    ];
+    const src = "describe('math', () => {\n  it('adds', () => {\n  });\n});\n";
+    const input = { path: `${ROOT}/src/m.test.ts`, root: ROOT, configs: withUnit, content: src, line: 1 };
+    const choices = produceContextChoices(input, ALL);
+    expect(choices.map((c) => [c.name, c.detail, c.scope])).toEqual([
+      ["math > adds", "npm:test", "element"],
+      ["math > adds", "npm run test:unit", "element"],
+    ]);
+    expect(choices[1]!.config!.args.slice(0, 2)).toEqual(["run", "test:unit"]);
+    // The file context offers the same choice; a single matching configuration needs none.
+    expect(produceContextChoices({ ...input, line: undefined }, ALL).map((c) => c.detail)).toEqual(["npm:test", "npm run test:unit"]);
+    expect(produceContextChoices({ ...input, configs }, ALL)).toHaveLength(1);
   });
 
   it("python: test function > test class > file; __main__ runs the file", () => {

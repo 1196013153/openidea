@@ -3,7 +3,8 @@
  *
  * Binding syntax: modifiers `Meta Ctrl Alt Shift` joined with `+` to a key, e.g.
  * `Meta+Shift+O`, `Alt+F7`, `F8`. Space separates chord strokes
- * (`Meta+K Meta+C`). The special binding `Shift Shift` is IDEA's double-Shift.
+ * (`Meta+K Meta+C`). A modifier pressed twice is `Shift Shift` (IDEA's double
+ * Shift, `Ctrl Ctrl`…); pressed twice and held, then a key, `Alt Alt+Up`.
  * Keys are matched by physical position (`KeyboardEvent.code`), so ⌥-letter
  * combos work on macOS where `event.key` would be a symbol.
  */
@@ -66,11 +67,24 @@ export const useKeymap = create<KeymapState>(() => ({ preset: defaultPreset(), o
 
 const STROKE_RE = /^(?:(?:Ctrl|Alt|Shift|Meta)\+)*[^\s+]+$|^(?:(?:Ctrl|Alt|Shift|Meta)\+)*\+$/i;
 
-/** Syntactic check: one or two strokes of `Mod+…+Key`, or `Shift Shift`. */
+const MODIFIERS = ["Ctrl", "Alt", "Shift", "Meta"] as const;
+export type Modifier = (typeof MODIFIERS)[number];
+const DOUBLE_RE = /^(Ctrl|Alt|Shift|Meta) (Ctrl|Alt|Shift|Meta)(?:\+([^\s+]+|\+))?$/i;
+const modifierNamed = (name: string) => MODIFIERS.find((m) => m.toLowerCase() === name.toLowerCase())!;
+
+/** A double-modifier gesture: `Shift Shift` (key null) or `Alt Alt+Up`. */
+export function parseDoubleModifier(binding: string): { modifier: Modifier; key: string | null } | null {
+  const m = DOUBLE_RE.exec(binding.trim());
+  if (!m || m[1]!.toLowerCase() !== m[2]!.toLowerCase()) return null;
+  const key = m[3] ?? null;
+  return { modifier: modifierNamed(m[1]!), key: key && key.length === 1 ? key.toUpperCase() : key };
+}
+
+/** Syntactic check: one or two strokes of `Mod+…+Key`, or a double-modifier gesture. */
 export function isValidBinding(binding: unknown): binding is string {
   if (typeof binding !== "string") return false;
   const b = binding.trim();
-  if (b === "Shift Shift") return true;
+  if (parseDoubleModifier(b)) return true;
   const strokes = b.split(/\s+/);
   return strokes.length >= 1 && strokes.length <= 2 && strokes.every((s) => STROKE_RE.test(s));
 }
@@ -131,15 +145,16 @@ export function effectiveBindings(): Array<[string, string]> {
   return Object.entries(merged).flatMap(([id, keys]) => keys.map((k) => [normalizeBinding(k), id] as [string, string]));
 }
 
-const MOD_ORDER = ["Ctrl", "Alt", "Shift", "Meta"] as const;
+const MOD_ORDER = MODIFIERS;
 
 /** Canonical form: modifiers in fixed order, so `Shift+Meta+o` == `Meta+Shift+O`. */
 export function normalizeBinding(binding: string): string {
+  const double = parseDoubleModifier(binding);
+  if (double) return `${double.modifier} ${double.modifier}${double.key ? `+${double.key}` : ""}`;
   return binding
     .trim()
     .split(/\s+/)
     .map((stroke) => {
-      if (stroke === "Shift" || stroke === "Shift Shift") return stroke;
       const parts = stroke.split("+");
       const key = parts.pop()!;
       const mods = MOD_ORDER.filter((m) => parts.some((p) => p.toLowerCase() === m.toLowerCase()));
@@ -220,12 +235,13 @@ const SYMBOLS: Record<string, string> = {
 };
 
 /**
- * Human display. macOS: `Meta+Shift+O` → `⇧⌘O`, `Shift Shift` → `⇧⇧`.
- * Windows/Linux: `Ctrl+Shift+N`, chords as `Ctrl+K, Ctrl+I`, `Shift, Shift`.
+ * Human display. macOS: `Meta+Shift+O` → `⇧⌘O`, `Shift Shift` → `⇧⇧`, `Alt Alt+Up` → `⌥⌥↑`.
+ * Windows/Linux: `Ctrl+Shift+N`, chords as `Ctrl+K, Ctrl+I`, `Shift, Shift`, `Ctrl, Ctrl+Up`.
  */
 export function formatBinding(binding: string, mac = isMacHost()): string {
-  if (!mac) return binding === "Shift Shift" ? "Shift, Shift" : normalizeBinding(binding).split(" ").join(", ");
-  if (binding === "Shift Shift") return "⇧⇧";
+  if (!mac) return normalizeBinding(binding).split(" ").join(", ");
+  const double = parseDoubleModifier(binding);
+  if (double) return SYMBOLS[double.modifier]!.repeat(2) + (double.key ? (SYMBOLS[double.key] ?? double.key) : "");
   return normalizeBinding(binding)
     .split(" ")
     .map((stroke) => {
@@ -249,8 +265,17 @@ export function shortcutLabel(actionId: string): string | undefined {
 const CHORD_TIMEOUT = 2000;
 /** IDEA's double-modifier timing: each press/release step. */
 const DOUBLE_TAP_STEP_MS = 300;
-/** A Shift tap this soon after typing another key is part of typing, not a gesture. */
+/** A modifier tap this soon after typing another key is part of typing, not a gesture. */
 const DOUBLE_TAP_TYPING_GUARD_MS = 100;
+
+const KEY_MODIFIER: Record<string, Modifier> = { Shift: "Shift", Control: "Ctrl", Alt: "Alt", Meta: "Meta" };
+
+function modifierHeld(e: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">, m: Modifier): boolean {
+  return m === "Ctrl" ? e.ctrlKey : m === "Alt" ? e.altKey : m === "Shift" ? e.shiftKey : e.metaKey;
+}
+
+const otherModifiers = (e: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">, m: Modifier) =>
+  MODIFIERS.some((x) => x !== m && modifierHeld(e, x));
 
 function isPlainTextField(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -293,44 +318,67 @@ function runIfEnabled(id: string): boolean {
 /**
  * Installs the global keydown dispatcher (capture phase, so IDE shortcuts win
  * over CodeMirror defaults). Returns an uninstall function. `now` is the clock
- * for the double-Shift gesture.
+ * for the double-modifier gestures.
  */
 export function installKeyboardDispatcher(target: Window = window, now: () => number = () => performance.now()): () => void {
   let pending: string[] = [];
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
-  // Double Shift: 0 idle, 1 pressed, 2 released, 3 pressed again; fires on the second release.
-  let shiftStep = 0;
-  let shiftAt = 0;
+  /**
+   * Double modifier: step 1 pressed, 2 released, 3 pressed again. A bare
+   * gesture (`Shift Shift`) fires on the second release; while the second
+   * press is held, keys fire their `Alt Alt+Up` gestures.
+   */
+  let tap: { modifier: Modifier; step: 1 | 2 | 3; at: number; typed: boolean; keyUsed: boolean } | null = null;
   let otherKeyAt = -Infinity;
 
   const reset = () => {
     pending = [];
     clearTimeout(pendingTimer);
   };
-  const resetShift = () => {
-    shiftStep = 0;
+  const resetTap = () => {
+    tap = null;
   };
 
-  const onShiftDown = (e: KeyboardEvent) => {
+  const onModifierDown = (e: KeyboardEvent, modifier: Modifier) => {
     const t = now();
-    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || t - otherKeyAt < DOUBLE_TAP_TYPING_GUARD_MS) return resetShift();
-    if (shiftStep !== 0 && t - shiftAt > DOUBLE_TAP_STEP_MS) resetShift();
-    if (shiftStep === 0 || shiftStep === 2) {
-      shiftStep++;
-      shiftAt = t;
-    } else {
-      resetShift();
+    if (e.repeat && tap?.step === 3 && tap.modifier === modifier) return;
+    if (e.repeat || otherModifiers(e, modifier)) return resetTap();
+    const typed = t - otherKeyAt < DOUBLE_TAP_TYPING_GUARD_MS;
+    if (tap && (tap.modifier !== modifier || t - tap.at > DOUBLE_TAP_STEP_MS)) resetTap();
+    if (!tap) tap = { modifier, step: 1, at: t, typed, keyUsed: false };
+    else if (tap.step === 2) tap = { ...tap, step: 3, at: t, typed: tap.typed || typed };
+    else resetTap();
+  };
+
+  /** A key pressed while the second press of a modifier is held: its `Alt Alt+Up` gesture. */
+  const runHeldGesture = (e: KeyboardEvent): boolean => {
+    if (tap?.step !== 3 || !modifierHeld(e, tap.modifier) || otherModifiers(e, tap.modifier)) return false;
+    const key = strokeOf(e)?.split("+").pop();
+    if (!key) return false;
+    const binding = normalizeBinding(`${tap.modifier} ${tap.modifier}+${key}`);
+    const ids = effectiveBindings().filter(([b]) => b === binding).map(([, id]) => id);
+    for (const id of ids.reverse()) {
+      const action = getAction(id);
+      if (!action || !isActionKeyEnabled(action)) continue;
+      e.preventDefault();
+      e.stopPropagation();
+      tap.keyUsed = true;
+      void executeAction(id);
+      return true;
     }
+    return false;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (suspended > 0) {
       reset();
-      resetShift();
+      resetTap();
       return;
     }
-    if (e.key === "Shift") return onShiftDown(e);
-    resetShift();
+    const modifier = KEY_MODIFIER[e.key];
+    if (modifier) return onModifierDown(e, modifier);
+    if (runHeldGesture(e)) return reset();
+    resetTap();
     otherKeyAt = e.key === "Escape" || e.key === "Tab" ? -Infinity : now();
     if (e.isComposing) return;
     const stroke = strokeOf(e);
@@ -374,27 +422,27 @@ export function installKeyboardDispatcher(target: Window = window, now: () => nu
   };
 
   const onKeyUp = (e: KeyboardEvent) => {
-    if (suspended > 0 || e.key !== "Shift" || shiftStep === 0) return;
+    const modifier = KEY_MODIFIER[e.key];
+    if (suspended > 0 || !modifier || !tap || tap.modifier !== modifier) return;
     const t = now();
-    if (e.metaKey || e.ctrlKey || e.altKey || t - shiftAt > DOUBLE_TAP_STEP_MS) return resetShift();
-    if (shiftStep === 1) {
-      shiftStep = 2;
-      shiftAt = t;
+    if (otherModifiers(e, modifier) || t - tap.at > DOUBLE_TAP_STEP_MS) return resetTap();
+    if (tap.step === 1) {
+      tap = { ...tap, step: 2, at: t };
       return;
     }
-    const fire = shiftStep === 3;
-    resetShift();
+    const fire = tap.step === 3 && !tap.keyUsed && !tap.typed;
+    resetTap();
     if (!fire) return;
-    const ids = effectiveBindings().filter(([b]) => b === "Shift Shift").map(([, id]) => id);
+    const ids = effectiveBindings().filter(([b]) => b === `${modifier} ${modifier}`).map(([, id]) => id);
     for (const id of ids.reverse()) if (runIfEnabled(id)) return;
   };
 
   // Shift+click (extend a selection) is not half of a double Shift.
-  const onMouseDown = () => resetShift();
+  const onMouseDown = () => resetTap();
 
   const onBlur = () => {
     reset();
-    resetShift();
+    resetTap();
   };
 
   target.addEventListener("keydown", onKeyDown, true);

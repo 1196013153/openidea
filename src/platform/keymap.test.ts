@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatBinding, installKeyboardDispatcher, isAltGrTyping, normalizeBinding, strokeOf, useKeymap } from "./keymap";
+import {
+  formatBinding,
+  installKeyboardDispatcher,
+  isAltGrTyping,
+  isValidBinding,
+  normalizeBinding,
+  parseDoubleModifier,
+  strokeOf,
+  useKeymap,
+} from "./keymap";
 import { executeAction, registerAction } from "./actions";
 import { usePlatform } from "./platformInfo";
 
@@ -164,6 +173,68 @@ describe("keymap", () => {
       shift("keyup", 3100);
       tap(3400);
       expect(run).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("double modifier with a key", () => {
+    let uninstall = () => {};
+    afterEach(() => uninstall());
+
+    it("parses, validates and formats the gesture", () => {
+      expect(parseDoubleModifier("alt alt+up")).toEqual({ modifier: "Alt", key: "up" });
+      expect(parseDoubleModifier("Ctrl Ctrl")).toEqual({ modifier: "Ctrl", key: null });
+      expect(parseDoubleModifier("Alt Ctrl+Up")).toBeNull();
+      expect(isValidBinding("Alt Alt+Up")).toBe(true);
+      expect(normalizeBinding("alt ALT+Down")).toBe("Alt Alt+Down");
+      expect(formatBinding("Alt Alt+Up", true)).toBe("⌥⌥↑");
+      expect(formatBinding("Ctrl Ctrl+Up", false)).toBe("Ctrl, Ctrl+Up");
+    });
+
+    function setup() {
+      const above = vi.fn();
+      const anything = vi.fn();
+      registerAction({ id: "t.cloneAbove", title: "clone above", run: above });
+      registerAction({ id: "t.ctrlCtrl", title: "ctrl ctrl", run: anything });
+      useKeymap.setState({ overrides: { "t.cloneAbove": ["Alt Alt+Up"], "t.ctrlCtrl": ["Ctrl Ctrl"] } });
+      let t = 1000;
+      uninstall = installKeyboardDispatcher(window, () => t);
+      const mod = (type: "keydown" | "keyup", key: "Alt" | "Control", ms: number) => {
+        t = ms;
+        const held = type === "keydown";
+        window.dispatchEvent(new KeyboardEvent(type, { key, code: `${key}Left`, altKey: key === "Alt" && held, ctrlKey: key === "Control" && held }));
+      };
+      const up = (ms: number) => {
+        t = ms;
+        const e = new KeyboardEvent("keydown", { key: "ArrowUp", code: "ArrowUp", altKey: true, cancelable: true });
+        window.dispatchEvent(e);
+        return e;
+      };
+      return { above, anything, mod, up };
+    }
+
+    it("runs while the second press is held, once per key press", async () => {
+      const { above, mod, up } = setup();
+      mod("keydown", "Alt", 1000);
+      mod("keyup", "Alt", 1100);
+      mod("keydown", "Alt", 1200);
+      expect(up(1500).defaultPrevented).toBe(true);
+      up(1700);
+      mod("keyup", "Alt", 1800);
+      await Promise.resolve();
+      expect(above).toHaveBeenCalledTimes(2);
+      // A single press is plain Alt+Up again.
+      mod("keydown", "Alt", 3000);
+      expect(up(3100).defaultPrevented).toBe(false);
+    });
+
+    it("fires a bare double tap of another modifier on its second release", async () => {
+      const { anything, mod } = setup();
+      mod("keydown", "Control", 1000);
+      mod("keyup", "Control", 1050);
+      mod("keydown", "Control", 1150);
+      mod("keyup", "Control", 1200);
+      await Promise.resolve();
+      expect(anything).toHaveBeenCalledOnce();
     });
   });
 

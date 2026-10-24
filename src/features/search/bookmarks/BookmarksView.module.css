@@ -35,3 +35,18 @@
   white-space: pre;
   color: var(--fg-subtle);
 }
+.mnemonic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin: 0 1px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: var(--fg-strong);
+  font-size: var(--fs-tiny);
+  font-weight: 600;
+}

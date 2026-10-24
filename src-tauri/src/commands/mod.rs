@@ -123,6 +123,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         lsp::lsp_workspace_symbols,
         lsp::lsp_code_actions,
         lsp::lsp_code_action_query,
+        lsp::lsp_resolve_code_action,
         lsp::lsp_apply_code_action,
         lsp::lsp_prepare_rename,
         lsp::lsp_rename,

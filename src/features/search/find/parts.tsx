@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
+import { EditorState, StateEffect, StateField, type Range, type Text } from "@codemirror/state";
+import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+import { codePreviewExtensions } from "@/editor/api";
 import type { SearchQuery } from "@/platform/ipc";
 import { previewReplacement } from "./session";
 import { loadPreviewText } from "./preview";
@@ -59,7 +62,41 @@ export interface PreviewHighlight {
   ranges: ReadonlyArray<readonly [number, number]>;
 }
 
-/** Read-only code view around `line` with line numbers and highlighted matches. */
+const setPreviewMarks = StateEffect.define<DecorationSet>();
+const previewMarks = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update: (value, tr) => {
+    for (const e of tr.effects) if (e.is(setPreviewMarks)) return e.value;
+    return value.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+const matchMark = Decoration.mark({ class: "cm-openidea-findMatch" });
+const currentMatchMark = Decoration.mark({ class: "cm-openidea-findMatch cm-openidea-findMatch-current" });
+const currentLineMark = Decoration.line({ class: "cm-activeLine" });
+const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)];
+
+/** Match and current-line decorations for `highlights` (0-based lines, UTF-16 columns). */
+export function previewDecorations(doc: Text, line: number, highlights: readonly PreviewHighlight[]): DecorationSet {
+  const out: Array<Range<Decoration>> = [];
+  if (line >= 0 && line < doc.lines) out.push(currentLineMark.range(doc.line(line + 1).from));
+  for (const h of highlights) {
+    if (h.line < 0 || h.line >= doc.lines) continue;
+    const l = doc.line(h.line + 1);
+    for (const [a, b] of h.ranges) {
+      const from = l.from + Math.min(a, l.length);
+      const to = l.from + Math.min(b, l.length);
+      if (to > from) out.push((h.line === line ? currentMatchMark : matchMark).range(from, to));
+    }
+  }
+  return Decoration.set(out, true);
+}
+
+/**
+ * Read-only, syntax-highlighted view of `path` (live editor buffer or disk)
+ * scrolled to `line`, with the matches of `highlights` marked; the editor's
+ * look via `codePreviewExtensions`. Text stays selectable and copyable.
+ */
 export function CodePreview({
   path,
   line,
@@ -71,20 +108,37 @@ export function CodePreview({
   highlights: readonly PreviewHighlight[];
   version?: number;
 }) {
-  const [text, setText] = useState<{ path: string; lines: string[] } | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const [loaded, setLoaded] = useState<{ path: string; version: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const current = text && text.path === path ? text : null;
+  const latest = useRef({ line, highlights });
+  useLayoutEffect(() => {
+    latest.current = { line, highlights };
+  });
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const view = new EditorView({ parent: host, state: EditorState.create({ extensions: [previewMarks, readOnly] }) });
+    viewRef.current = view;
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!path) return;
     let alive = true;
     // Debounced so arrowing through results doesn't load every file.
     const t = setTimeout(() => {
-      loadPreviewText(path).then(
-        (t) => {
-          if (!alive) return;
-          setText({ path, lines: t.split(/\r\n|\r|\n/) });
+      Promise.all([loadPreviewText(path), codePreviewExtensions(path)]).then(
+        ([text, extensions]) => {
+          const view = viewRef.current;
+          if (!alive || !view) return;
+          view.setState(EditorState.create({ doc: text, extensions: [extensions, previewMarks, readOnly] }));
+          setLoaded({ path, version });
           setError(null);
         },
         (e) => alive && setError(String((e as Error)?.message ?? e)),
@@ -96,42 +150,28 @@ export function CodePreview({
     };
   }, [path, version]);
 
-  const start = Math.max(0, line - WINDOW);
-  useLayoutEffect(() => {
-    const el = scrollRef.current?.querySelector<HTMLElement>(`[data-line="${line}"]`);
-    if (el && scrollRef.current) {
-      const box = scrollRef.current;
-      box.scrollTop = el.offsetTop - box.clientHeight / 2 + el.offsetHeight / 2;
-    }
-  }, [current, line]);
+  const current = !!path && loaded?.path === path;
+  // A new file or line scrolls to the line; new highlights alone only repaint.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !current) return;
+    const { line, highlights } = latest.current;
+    const doc = view.state.doc;
+    const effects: StateEffect<unknown>[] = [setPreviewMarks.of(previewDecorations(doc, line, highlights))];
+    if (line >= 0 && line < doc.lines) effects.push(EditorView.scrollIntoView(doc.line(line + 1).from, { y: "center" }));
+    view.dispatch({ effects });
+  }, [current, loaded, line]);
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !current) return;
+    view.dispatch({ effects: setPreviewMarks.of(previewDecorations(view.state.doc, latest.current.line, highlights)) });
+  }, [current, highlights]);
 
-  if (!path)
-    return (
-      <div className={clsx(styles.preview, styles.previewEmpty)}>
-        <T>Select a result to preview</T>
-      </div>
-    );
-  if (error && !current) return <div className={clsx(styles.preview, styles.previewEmpty)}>{error}</div>;
-  if (!current) return <div className={styles.preview} />;
-
-  const byLine = new Map(highlights.map((h) => [h.line, h.ranges]));
-  const end = Math.min(current.lines.length, line + WINDOW);
-  const rows: ReactNode[] = [];
-  for (let n = start; n < end; n++) {
-    const content = current.lines[n] ?? "";
-    const ranges = byLine.get(n);
-    rows.push(
-      <div key={n} data-line={n} className={clsx(styles.codeLine, n === line && styles.currentLine)}>
-        <span className={styles.gutter}>{n + 1}</span>
-        <span className={styles.code}>
-          {ranges ? <MatchText text={content} ranges={ranges} active={n === line} /> : content || " "}
-        </span>
-      </div>,
-    );
-  }
+  const placeholder = !path ? <T>Select a result to preview</T> : error && !current ? error : null;
   return (
-    <div ref={scrollRef} className={styles.preview} role="region" aria-label="Preview">
-      <pre className={styles.pre}>{rows}</pre>
+    <div className={styles.preview} role="region" aria-label="Preview">
+      <div ref={hostRef} className={clsx(styles.previewEditor, (!current || placeholder) && styles.previewHidden)} />
+      {placeholder && <div className={styles.previewEmpty}>{placeholder}</div>}
     </div>
   );
 }

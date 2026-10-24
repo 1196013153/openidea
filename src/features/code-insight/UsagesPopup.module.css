@@ -77,3 +77,47 @@
   font-style: italic;
   color: var(--fg-subtle);
 }
+
+.focus {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+.filter {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--fg-strong);
+  background: var(--accent-soft);
+  border-radius: var(--radius-small);
+  padding: 0 4px;
+}
+.noMatch {
+  color: var(--danger);
+}
+.empty {
+  padding: 4px 10px;
+  color: var(--fg-faint);
+  font-size: var(--fs-small);
+}
+.preview {
+  flex: none;
+  height: 200px;
+  border-top: 1px solid var(--border-popup);
+  overflow: hidden;
+}
+.previewEditor {
+  height: 100%;
+}
+.previewEditor :global(.cm-editor) {
+  height: 100%;
+}
+.previewHidden {
+  visibility: hidden;
+}
+.previewLine {
+  background: var(--bg-current-line);
+}
+.previewMatch {
+  background: var(--bg-text-search-result);
+}

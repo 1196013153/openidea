@@ -10,8 +10,10 @@ export interface TestLocation {
   /** 1-based, as printed. */
   line?: number;
   col?: number;
-  /** `name`: a bare file name to look up in the project (JVM / Go frames). */
+  /** `name`: a file name to look up in the project (JVM / Go frames). */
   resolve: "path" | "name";
+  /** JVM frames: the class's binary name; `path` is then the file under its package directory. */
+  className?: string;
 }
 
 export type TestEvent =

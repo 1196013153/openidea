@@ -47,41 +47,58 @@ export function allKeys(nodes: readonly OutlineNode[], out: string[] = []): stri
   return out;
 }
 
-export interface FlatOutlineRow {
-  node: OutlineNode;
-  depth: number;
-  indices: number[];
-  /** Matches the filter itself (vs. shown as an ancestor of a match). */
-  matched: boolean;
-  score: number;
+export interface OutlineFilter {
+  /** The tree to show: with `narrow`, only matches and their ancestors. */
+  nodes: OutlineNode[];
+  /** Match indices into each matching node's name. */
+  matches: Map<string, number[]>;
+  /** Matching keys in tree order (↑/↓ cycle them when not narrowing). */
+  order: string[];
+  /** The best-scoring match (preselected while filtering). */
+  best: string | null;
 }
 
-/** Depth-first rows for the File Structure popup; with a filter, keeps matches and their ancestors. */
-export function flattenOutline(nodes: readonly OutlineNode[], query: string): FlatOutlineRow[] {
-  const out: FlatOutlineRow[] = [];
+/** The File Structure popup's speed search: matches keep their ancestors; without `narrow` nothing is hidden. */
+export function filterOutline(nodes: readonly OutlineNode[], query: string, narrow: boolean): OutlineFilter {
   const q = query.trim();
-  const walk = (list: readonly OutlineNode[], depth: number): boolean => {
-    let any = false;
+  const matches = new Map<string, number[]>();
+  const order: string[] = [];
+  let best: string | null = null;
+  let bestScore = -Infinity;
+  const walk = (list: readonly OutlineNode[]): OutlineNode[] => {
+    const out: OutlineNode[] = [];
     for (const node of list) {
-      const hit = q ? matchText(node.item.name, q) : { score: 0, indices: [] };
-      const at = out.length;
-      out.push({ node, depth, indices: hit?.indices ?? [], matched: !!hit, score: hit?.score ?? -Infinity });
-      const child = walk(node.children, depth + 1);
-      if (!hit && !child) out.splice(at, 1);
-      else any = true;
+      const hit = q ? matchText(node.item.name, q) : null;
+      if (hit) {
+        matches.set(node.key, hit.indices);
+        order.push(node.key);
+        if (hit.score > bestScore) {
+          best = node.key;
+          bestScore = hit.score;
+        }
+      }
+      const children = walk(node.children);
+      if (!q || !narrow || hit || children.length)
+        out.push(narrow ? { ...node, children } : node);
     }
-    return any;
+    return out;
   };
-  walk(nodes, 0);
+  const filtered = walk(nodes);
+  return { nodes: q && narrow ? filtered : (nodes as OutlineNode[]), matches, order, best };
+}
+
+/** Parent key of every node (`null` for top-level ones). */
+export function parentKeys(nodes: readonly OutlineNode[], parent: string | null = null, out = new Map<string, string | null>()) {
+  for (const n of nodes) {
+    out.set(n.key, parent);
+    parentKeys(n.children, n.key, out);
+  }
   return out;
 }
 
-/** Best-scoring matched row (the popup preselects it while filtering). */
-export function bestRow(rows: readonly FlatOutlineRow[]): number {
-  let best = -1;
-  for (let i = 0; i < rows.length; i++) {
-    if (!rows[i]!.matched) continue;
-    if (best < 0 || rows[i]!.score > rows[best]!.score) best = i;
-  }
-  return best;
+/** Rows a tree of `nodes` shows with the `collapsed` keys collapsed. */
+export function visibleCount(nodes: readonly OutlineNode[], collapsed: ReadonlySet<string>): number {
+  let n = 0;
+  for (const node of nodes) n += 1 + (collapsed.has(node.key) ? 0 : visibleCount(node.children, collapsed));
+  return n;
 }

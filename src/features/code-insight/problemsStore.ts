@@ -47,6 +47,30 @@ export function fileDiagnostics(map: ProblemsMap, path: string): Diagnostic[] {
     );
 }
 
+export interface ProblemOrder {
+  /** Errors before warnings before infos (IDEA's default). */
+  bySeverity: boolean;
+  /** By message text, then position; otherwise by position, then text. */
+  byName: boolean;
+}
+
+export const DEFAULT_PROBLEM_ORDER: ProblemOrder = { bySeverity: true, byName: false };
+
+const natural = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+/** A file's problems in the Problems view order (Sort by Severity / Name). */
+export function sortProblems(items: readonly Diagnostic[], order: ProblemOrder): Diagnostic[] {
+  const position = (a: Diagnostic, b: Diagnostic) =>
+    a.range.start.line - b.range.start.line || a.range.start.col - b.range.start.col;
+  return [...items].sort(
+    (a, b) =>
+      (order.bySeverity ? SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] : 0) ||
+      (order.byName
+        ? natural.compare(a.message, b.message) || position(a, b)
+        : position(a, b) || natural.compare(a.message, b.message)),
+  );
+}
+
 export function countSeverities(diags: Iterable<Diagnostic>): SeverityCounts {
   const c: SeverityCounts = { error: 0, warning: 0, info: 0, hint: 0 };
   for (const d of diags) c[d.severity]++;

@@ -733,19 +733,34 @@ pub fn signature_help(conv_enc: Encoding, h: lsp::SignatureHelp) -> Option<Signa
 // ---------------------------------------------------------------- decorations
 
 pub fn inlay_hint(conv: &Conv, path: &Path, h: lsp::InlayHint) -> InlayHint {
-    let label = match h.label {
-        lsp::InlayHintLabel::String(s) => s,
-        lsp::InlayHintLabel::LabelParts(parts) => parts.into_iter().map(|p| p.value).collect(),
+    let tooltip_text = |t: lsp::InlayHintTooltip| match t {
+        lsp::InlayHintTooltip::String(s) => s,
+        lsp::InlayHintTooltip::MarkupContent(m) => m.value,
+    };
+    let (label, parts) = match h.label {
+        lsp::InlayHintLabel::String(s) => (s, Vec::new()),
+        lsp::InlayHintLabel::LabelParts(parts) => {
+            let label = parts.iter().map(|p| p.value.as_str()).collect();
+            let parts = parts
+                .into_iter()
+                .map(|p| InlayLabelPart {
+                    value: p.value,
+                    tooltip: p.tooltip.map(|t| match t {
+                        lsp::InlayHintLabelPartTooltip::String(s) => s,
+                        lsp::InlayHintLabelPartTooltip::MarkupContent(m) => m.value,
+                    }),
+                    location: p.location.as_ref().and_then(|l| conv.location(l)),
+                })
+                .collect();
+            (label, parts)
+        }
     };
     let kind = match h.kind {
         Some(lsp::InlayHintKind::TYPE) => InlayKind::Type,
         Some(lsp::InlayHintKind::PARAMETER) => InlayKind::Parameter,
         _ => InlayKind::Other,
     };
-    let tooltip = h.tooltip.map(|t| match t {
-        lsp::InlayHintTooltip::String(s) => s,
-        lsp::InlayHintTooltip::MarkupContent(m) => m.value,
-    });
+    let tooltip = h.tooltip.map(tooltip_text);
     InlayHint {
         position: conv.pos(path, h.position),
         label,
@@ -753,6 +768,7 @@ pub fn inlay_hint(conv: &Conv, path: &Path, h: lsp::InlayHint) -> InlayHint {
         padding_left: h.padding_left.unwrap_or(false),
         padding_right: h.padding_right.unwrap_or(false),
         tooltip,
+        parts,
     }
 }
 
@@ -1132,6 +1148,32 @@ mod tests {
         assert_eq!(h.label, ": Vec<u8>");
         assert_eq!(h.kind, InlayKind::Type);
         assert!(h.padding_left && !h.padding_right);
+        assert_eq!(h.parts.len(), 2);
+        assert!(h.parts.iter().all(|p| p.location.is_none()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inlay_label_parts_keep_locations() {
+        let conv = Conv::utf16();
+        let h: lsp::InlayHint = serde_json::from_value(json!({
+            "position": {"line": 0, "character": 3},
+            "label": [
+                {"value": ": "},
+                {"value": "Foo", "tooltip": "struct Foo",
+                 "location": {"uri": "file:///p/foo.rs", "range": {"start": {"line": 4, "character": 7}, "end": {"line": 4, "character": 10}}}}
+            ]
+        }))
+        .unwrap();
+        let h = inlay_hint(&conv, Path::new("/a"), h);
+        assert_eq!(h.label, ": Foo");
+        let part = &h.parts[1];
+        assert_eq!(part.value, "Foo");
+        assert_eq!(part.tooltip.as_deref(), Some("struct Foo"));
+        let loc = part.location.as_ref().unwrap();
+        assert_eq!(loc.path, PathBuf::from("/p/foo.rs"));
+        assert_eq!(loc.range.start, p(4, 7));
+        assert_eq!(h.kind, InlayKind::Other);
     }
 
     #[cfg(unix)]

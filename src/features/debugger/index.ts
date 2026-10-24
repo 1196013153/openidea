@@ -15,6 +15,7 @@ import { loadExceptionBreakpoints } from "./breakpoints/exceptions";
 import { loadSpecialBreakpoints } from "./breakpoints/special";
 import { breakpointGutter } from "./editor/breakpointGutter";
 import { executionPoint } from "./editor/execution";
+import { installSmartStepPicking, smartStepTargets } from "./editor/smartStep";
 import { onHotCodeReplace } from "./hotswap";
 import { handleDebugEvent, isLive, loadWatches, publishContext, resetSessions, stopSession, useDebug } from "./state";
 import { DebuggerOverlays } from "./ui/Overlays";
@@ -50,8 +51,9 @@ export function activate(): () => void {
     registerEditorContribution({
       id: "debugger",
       order: 60,
-      extensions: (ctx) => [breakpointGutter(ctx), executionPoint(ctx), valueTooltip()],
+      extensions: (ctx) => [breakpointGutter(ctx), executionPoint(ctx), valueTooltip(), smartStepTargets(ctx)],
     }),
+    installSmartStepPicking(),
     onIdeEvent("debug", (e) => {
       if (e.event.kind === "hotCodeReplace") onHotCodeReplace(e.session, e.event);
       else handleDebugEvent(e.session, e.event);

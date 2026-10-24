@@ -10,10 +10,28 @@ export interface FileTarget {
   line?: number;
   col?: number;
   /**
-   * `path`: resolve against the run directory; `name`: a bare file name from a
-   * JVM stack frame (`(OrderController.kt:22)`) — look it up in the project.
+   * `path`: resolve against the run directory; `name`: a file name from a JVM
+   * stack frame — look it up in the project (`path` then is the file under its
+   * package directory, `com/acme/OrderController.kt`, when the frame names the class).
    */
   resolve: "path" | "name";
+  /** JVM frames: the class's binary name (`com.acme.OrderController$Inner`). */
+  className?: string;
+}
+
+/**
+ * The target of a JVM stack frame `at com.acme.Foo.bar(Foo.kt:22)`: the file
+ * under its package directory, so frames resolve by fully qualified class name
+ * (as in IDEA), not by a bare file name that several packages may share.
+ */
+export function jvmFrameTarget(className: string | undefined, file: string, line: number | undefined): FileTarget {
+  const pkg = className?.includes(".") ? className.slice(0, className.lastIndexOf(".")).replace(/\./g, "/") : "";
+  return {
+    path: pkg ? `${pkg}/${file}` : file,
+    line,
+    resolve: "name",
+    ...(className ? { className } : {}),
+  };
 }
 
 export type OutputLink =
@@ -49,10 +67,11 @@ const PATTERNS: Pattern[] = [
   },
   // JVM: at com.acme.OrderController.list(OrderController.kt:22)
   {
-    re: /\(([\w$.-]+\.(?:java|kt|kts|scala|groovy|clj)):(\d+)\)/dg,
+    re: /(?:([\w$]+(?:\.[\w$]+)*)\.[\w$<>-]+)?\(([\w$.-]+\.(?:java|kt|kts|scala|groovy|clj)):(\d+)\)/dg,
     build: (m) => {
-      const [start, end] = groupRange(m, 0);
-      return { kind: "file", start: start + 1, end: end - 1, target: { path: m[1]!, line: num(m[2]), resolve: "name" } };
+      const [start] = groupRange(m, 2);
+      const [, end] = groupRange(m, 3);
+      return { kind: "file", start, end, target: jvmFrameTarget(m[1], m[2]!, num(m[3])) };
     },
   },
   // JS / Node: at foo (src/a.ts:3:7) · at file:///abs/a.mjs:3:7 · at /abs/a.js:3:7

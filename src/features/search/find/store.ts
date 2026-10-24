@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ProjectFileSet, SearchQuery, SearchScope } from "@/platform/ipc";
+import type { ProjectFileSet, SearchContext, SearchQuery, SearchScope } from "@/platform/ipc";
 import { loadJson, saveJson } from "../common/open";
 
 export type ScopeTab = "project" | "directory" | "scope";
@@ -31,13 +31,19 @@ export interface FindOptions {
   scopeTab: ScopeTab;
   directory: string;
   namedScope: NamedScope;
+  /** IDEA's search context filter (funnel menu): anywhere, only / except comments and string literals. */
+  context: SearchContext;
 }
 
 interface FindPopupState extends FindOptions {
   open: boolean;
   replace: boolean;
   session: number;
+  /** Title-bar pin: the popup stays open when a result is opened or the user clicks outside. */
+  pinned: boolean;
 }
+
+const PINNED_KEY = "openidea.search.findPinned.v1";
 
 export const useFindPopup = create<FindPopupState>(() => ({
   open: false,
@@ -54,7 +60,41 @@ export const useFindPopup = create<FindPopupState>(() => ({
   scopeTab: "project",
   directory: "",
   namedScope: "projectFiles",
+  context: "any",
+  pinned: loadJson<unknown>(PINNED_KEY, false) === true,
 }));
+
+export function setFindPopupPinned(pinned: boolean) {
+  useFindPopup.setState({ pinned });
+  saveJson(PINNED_KEY, pinned);
+}
+
+export const SEARCH_CONTEXTS: ReadonlyArray<{ value: SearchContext; label: string }> = [
+  { value: "any", label: "Anywhere" },
+  { value: "inComments", label: "In Comments" },
+  { value: "inStringLiterals", label: "In String Literals" },
+  { value: "exceptComments", label: "Except Comments" },
+  { value: "exceptStringLiterals", label: "Except String Literals" },
+  { value: "exceptCommentsAndStringLiterals", label: "Except Comments and String Literals" },
+];
+
+/**
+ * Keys the popup handles that are also global shortcuts (⌘G / ⇧⌘G, F4 / ⌘↓, ⌥↓):
+ * hidden actions bound later in the keymap win while the popup is open and
+ * forward here.
+ */
+export type FindPopupCommand = "nextResult" | "previousResult" | "openResult" | "recentSearches";
+let commandHandler: ((c: FindPopupCommand) => void) | null = null;
+
+export function setFindPopupCommandHandler(handler: ((c: FindPopupCommand) => void) | null) {
+  commandHandler = handler;
+}
+
+export function runFindPopupCommand(c: FindPopupCommand): boolean {
+  if (!useFindPopup.getState().open || !commandHandler) return false;
+  commandHandler(c);
+  return true;
+}
 
 export interface FindArg {
   directory?: string;
@@ -105,8 +145,22 @@ export function rememberMask(mask: string) {
   saveJson(MASKS_KEY, [m, ...recent.filter((x) => x !== m)].slice(0, 10));
 }
 
+const HISTORY_KEYS = { find: "openidea.search.findHistory.v1", replace: "openidea.search.replaceHistory.v1" };
+const MAX_HISTORY = 20;
+
+/** Recent search (or replace) strings of the Find in Files popup, newest first (⌥↓). */
+export function findHistory(kind: "find" | "replace"): string[] {
+  const v = loadJson<unknown>(HISTORY_KEYS[kind], []);
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+export function rememberFindString(kind: "find" | "replace", text: string) {
+  if (!text.trim()) return;
+  saveJson(HISTORY_KEYS[kind], [text, ...findHistory(kind).filter((x) => x !== text)].slice(0, MAX_HISTORY));
+}
+
 export function buildQuery(o: FindOptions, scope: SearchScope, maxMatches: number): SearchQuery {
-  return {
+  const q: SearchQuery = {
     pattern: o.pattern,
     isRegex: o.isRegex,
     caseSensitive: o.caseSensitive,
@@ -116,6 +170,8 @@ export function buildQuery(o: FindOptions, scope: SearchScope, maxMatches: numbe
     scope,
     maxMatches,
   };
+  if (o.context !== "any") q.context = o.context;
+  return q;
 }
 
 export function describeQuery(q: SearchQuery, root: string | null): string {
@@ -127,5 +183,6 @@ export function describeQuery(q: SearchQuery, root: string | null): string {
         : q.scope.kind === "fileSet"
           ? FILE_SET_LABELS[q.scope.set]
           : `${q.scope.paths.length} files`;
-  return `'${q.pattern}' in ${where}${q.include.length ? ` (${q.include.join(", ")})` : ""}`;
+  const context = q.context && q.context !== "any" ? SEARCH_CONTEXTS.find((c) => c.value === q.context)?.label : null;
+  return `'${q.pattern}' in ${where}${q.include.length ? ` (${q.include.join(", ")})` : ""}${context ? `, ${context.toLowerCase()}` : ""}`;
 }

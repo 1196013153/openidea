@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { useActions } from "@/platform/actions";
-import { shortcutLabel } from "@/platform/keymap";
+import { call, commands, isTauri } from "@/platform/ipc";
+import { PRESET_TITLES, shortcutLabel, useKeymap } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
 import { BarButton, Icon, IconButton, Menu, type MenuItem, T } from "@/ui";
 import { useContributions, useWorkbenchSlots, type TitleItemContribution } from "./contributions";
@@ -10,6 +11,7 @@ import { MainMenu } from "./MainMenu";
 import { WindowControls } from "./WindowControls";
 import { usePlatform } from "@/platform/platformInfo";
 import { projectInitials } from "./projectColor";
+import { currentThemeId, setTheme, THEME_CHOICES, useThemeOverride } from "./theme";
 import styles from "./TitleBar.module.css";
 
 export function orderTitleItems(items: Iterable<TitleItemContribution>) {
@@ -104,6 +106,91 @@ function VcsFallback() {
   );
 }
 
+async function selectKeymap(id: string) {
+  if (!isTauri()) return;
+  try {
+    useProject.setState({ settings: await call(commands.settingsSet("global", "keymap", JSON.stringify(id))) });
+  } catch (e) {
+    console.warn("cannot switch keymap", e);
+  }
+}
+
+/** IDEA's main toolbar gear: Settings, Plugins, quick Theme / Keymap switches, Check for Updates. */
+export function gearMenuItems(themeId: string, keymapId: string, customKeymaps: string[]): MenuItem[] {
+  return [
+    { kind: "action", action: "file.settings" },
+    { kind: "action", action: "plugins.settings" },
+    { kind: "separator" },
+    {
+      id: "gear.theme",
+      label: "Theme",
+      submenu: [
+        ...THEME_CHOICES.map<MenuItem>((c) => ({
+          id: `theme.${c.id}`,
+          label: c.label,
+          checked: c.id === themeId,
+          run: () => void setTheme(c.id),
+        })),
+        { kind: "separator" },
+        { kind: "action", action: "settings.appearance" },
+      ],
+    },
+    {
+      id: "gear.keymap",
+      label: "Keymap",
+      submenu: [
+        ...[...Object.keys(PRESET_TITLES), ...customKeymaps].map<MenuItem>((id) => ({
+          id: `keymap.${id}`,
+          label: PRESET_TITLES[id] ?? id,
+          verbatim: !PRESET_TITLES[id],
+          checked: id === keymapId,
+          run: () => void selectKeymap(id),
+        })),
+        { kind: "separator" },
+        { kind: "action", action: "settings.keymap", label: "Configure Keymap…" },
+      ],
+    },
+    { kind: "separator" },
+    { kind: "action", action: "app.checkForUpdates" },
+  ];
+}
+
+function GearButton() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const settings = useProject((s) => s.settings);
+  useThemeOverride((s) => s.theme);
+  useActions((s) => s.actions);
+  const preset = useKeymap((s) => s.preset);
+  const customs = settings?.customKeymaps;
+  const items = gearMenuItems(
+    currentThemeId(),
+    typeof settings?.keymap === "string" ? settings.keymap : preset,
+    customs && typeof customs === "object" ? Object.keys(customs) : [],
+  );
+  return (
+    <>
+      <IconButton
+        ref={ref}
+        icon="settings"
+        title="IDE and Project Settings"
+        iconSize={18}
+        className={styles.tool}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      />
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={ref}
+        items={items}
+        aria-label="IDE and Project Settings"
+      />
+    </>
+  );
+}
+
 /**
  * 40px main toolbar. macOS: native traffic lights overlay its left edge.
  * Windows: the window is frameless, so the bar carries IDEA's main menu (☰) and
@@ -166,7 +253,7 @@ export function TitleBar({
               iconSize={18}
               className={styles.tool}
             />
-            <IconButton icon="settings" action="file.settings" title="Settings" iconSize={18} className={styles.tool} />
+            <GearButton />
           </div>
         </>
       )}

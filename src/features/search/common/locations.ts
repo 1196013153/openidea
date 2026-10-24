@@ -34,6 +34,17 @@ export function mergeLocations(...lists: ReadonlyArray<readonly RecentLocation[]
   return out;
 }
 
+/** A place removed from Recent Locations (Delete); visits after `time` show it again. */
+export interface DismissedLocation {
+  path: string;
+  line: number;
+  time: number;
+}
+
+export function isDismissed(l: RecentLocation, dismissed: readonly DismissedLocation[]): boolean {
+  return dismissed.some((d) => d.path === l.path && Math.abs(d.line - l.line) <= MERGE_DISTANCE && l.time <= d.time);
+}
+
 /** Drops entries pointing at removed files, shifts paths of renamed ones. */
 export function renameLocations(list: readonly RecentLocation[], from: string, to: string | null): RecentLocation[] {
   const out: RecentLocation[] = [];

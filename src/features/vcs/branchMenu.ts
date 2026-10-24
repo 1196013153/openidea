@@ -6,6 +6,7 @@ import { isFavoriteBranch } from "./branches";
 import {
   checkoutAndRebase,
   checkoutBranch,
+  checkoutDetached,
   deleteBranch,
   deleteRemoteBranch,
   loadFavoriteBranches,
@@ -53,9 +54,7 @@ export function branchMenu(b: Branch, current: string | null, done: () => void =
   const items: MenuItem[] = [
     { label: "Checkout", run: run(() => checkoutBranch(b.name)) },
     { label: `New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch(b.name)) },
-    ...(current
-      ? [{ label: `Checkout and Rebase onto '${cur}'`, run: run(() => checkoutAndRebase(b.name)) }]
-      : []),
+    ...(current ? [{ label: `Checkout and Rebase onto '${cur}'`, run: run(() => checkoutAndRebase(b.name)) }] : []),
     { kind: "separator" },
     { label: `Compare with '${cur}'`, icon: "diff", run: run(() => showCompareBranches(b.name)) },
     { label: "Show Diff with Working Tree", run: run(() => showDiffWithWorkingTree(b.name)) },
@@ -82,4 +81,20 @@ export function branchMenu(b: Branch, current: string | null, done: () => void =
     },
   );
   return items;
+}
+
+/** Tag entries of the Branches popup. */
+export function tagMenu(tag: string, done: () => void = () => {}): MenuItem[] {
+  const run = (fn: () => unknown) => () => {
+    done();
+    void fn();
+  };
+  return [
+    { label: "Checkout", run: run(() => checkoutDetached(tag, tag)) },
+    { label: `New Branch from '${tag}'…`, icon: "branch", run: run(() => newBranch(tag)) },
+    { kind: "separator" },
+    { label: "Compare with Current", icon: "diff", run: run(() => showCompareBranches(tag)) },
+    { label: "Show Diff with Working Tree", run: run(() => showDiffWithWorkingTree(tag)) },
+    { label: "Show History", icon: "history", run: run(() => executeAction("vcs.showLog", { branch: tag })) },
+  ];
 }

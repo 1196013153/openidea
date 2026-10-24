@@ -1,11 +1,11 @@
 /**
  * Hover tooltip (500ms): diagnostics under the pointer + quick documentation,
- * plus the explicit actions code.quickDocumentation (F1, sticky popup) and
- * code.quickDefinition (⌥Space, definition source popup).
+ * plus the explicit actions code.quickDocumentation (F1, sticky popup with
+ * history, `docs.ts`) and code.quickDefinition (⌥Space, definition source popup).
  */
 import { EditorSelection } from "@codemirror/state";
 import { hoverTooltip, type EditorView } from "@codemirror/view";
-import { commands, isTauri, nextRequestId, type Hover, type RequestId } from "@/platform/ipc";
+import { commands, isTauri, nextRequestId, type Hover, type Location, type Pos, type Range, type RequestId } from "@/platform/ipc";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { diagnosticsAt, type PlacedDiagnostic } from "./diagnostics";
@@ -13,9 +13,12 @@ import { isEmptyMarkup, languageForPath, renderMarkup } from "./markdown";
 import { docOf, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, rangeToOffsets } from "./positions";
 import { showHint } from "./hint";
-import { caretAnchor, focusPopup, openPopup, useLspPopup } from "./popupStore";
+import { caretAnchor, focusPopup, openPopup, useLspPopup, type DefinitionTarget, type DocEntry } from "./popupStore";
 import { selectedLookupDoc, showLookupDocs } from "./completion";
-import { readFileLines } from "./files";
+import { identifierAt, readFileLines, withDocument } from "./files";
+import { docWindowVisible, moveDocPopupToWindow, showInDocWindow } from "./docs";
+import { structure } from "@/editor/structure";
+import { basename } from "@/platform/project";
 import { iconNode } from "./iconMarkup";
 import { editorPrefs } from "@/platform/editorSettings";
 import { CONTRIBUTED_HOVER, contributedAt, type ContributedHover } from "@/editor/api";
@@ -118,13 +121,39 @@ export function hoverExtension() {
   );
 }
 
+/** The documentation popup has the keyboard (F1 pressed twice, or clicked into). */
+function docPopupFocused(): boolean {
+  return !!(document.activeElement as HTMLElement | null)?.closest?.("[data-lsp-doc]");
+}
+
+/** Lazily resolved declaration of the element at `pos` (Edit Source). */
+function definitionOf(doc: number, pos: Pos): () => Promise<Location | null> {
+  let found: Promise<Location | null> | null = null;
+  return () =>
+    (found ??= lspRequest(() => commands.lspGoto(doc, pos, "definition")).then(
+      (locs) => locs[0] ?? null,
+      () => null,
+    ));
+}
+
+function showDoc(view: EditorView, entry: DocEntry, at: number) {
+  if (docWindowVisible()) {
+    showInDocWindow(entry, view.themeClasses);
+    return;
+  }
+  openPopup({ kind: "doc", anchor: caretAnchor(view, at), entries: [entry], index: 0, themeClasses: view.themeClasses });
+}
+
 /**
- * F1: documentation for the symbol at the caret in a sticky popup; in an open
- * lookup, for its selected item. Again on an open popup: focuses it.
+ * F1: documentation for the symbol at the caret in a popup (or the
+ * Documentation tool window while it is open); in an open lookup, for its
+ * selected item. Again on an open popup: focuses it; once more: moves it to
+ * the tool window.
  */
 export async function quickDocumentation(view: EditorView) {
   if (useLspPopup.getState().popup?.kind === "doc") {
-    focusPopup();
+    if (docPopupFocused()) moveDocPopupToWindow();
+    else focusPopup();
     return;
   }
   const pos = view.state.selection.main.head;
@@ -133,14 +162,7 @@ export async function quickDocumentation(view: EditorView) {
   if (lookup === "showing") {
     const doc = await selectedLookupDoc(view).catch(() => null);
     if (!doc) showHint(view, "No documentation found");
-    else
-      openPopup({
-        kind: "doc",
-        anchor: caretAnchor(view, pos),
-        markup: doc.markup,
-        language: doc.language,
-        themeClasses: view.themeClasses,
-      });
+    else showDoc(view, { markup: doc.markup, language: doc.language }, pos);
     return;
   }
   try {
@@ -149,13 +171,16 @@ export async function quickDocumentation(view: EditorView) {
       showHint(view, "No documentation found");
       return;
     }
-    openPopup({
-      kind: "doc",
-      anchor: caretAnchor(view, hover.range ? rangeToOffsets(view.state.doc, hover.range).from : pos),
-      markup: hover.contents,
-      language: docOf(view)?.uiMode ?? null,
-      themeClasses: view.themeClasses,
-    });
+    const ctx = docOf(view);
+    showDoc(
+      view,
+      {
+        markup: hover.contents,
+        language: ctx?.uiMode ?? null,
+        source: ctx ? definitionOf(ctx.doc, offsetToPos(view.state.doc, pos)) : undefined,
+      },
+      hover.range ? rangeToOffsets(view.state.doc, hover.range).from : pos,
+    );
   } catch (e) {
     reportLspError(view, e, true);
   }
@@ -163,36 +188,72 @@ export async function quickDocumentation(view: EditorView) {
 
 const DEFINITION_CONTEXT_BEFORE = 1;
 const DEFINITION_MAX_LINES = 30;
+/** A declaration taller than this is cut (IDEA scrolls; we keep the popup light). */
+const DECLARATION_MAX_LINES = 400;
+const MAX_TARGETS = 20;
 
-/** ⌥Space: the definition's source in a popup, without leaving the editor. */
+/** Line span to show for a definition: its whole declaration when the syntax tree knows it. */
+export function definitionSpan(
+  loc: Location,
+  lineCount: number,
+  declaration: Range | null,
+): { first: number; last: number } {
+  const start = loc.range.start.line;
+  if (declaration && declaration.start.line <= start && start <= declaration.end.line) {
+    const first = Math.max(0, declaration.start.line);
+    return { first, last: Math.min(lineCount - 1, declaration.end.line, first + DECLARATION_MAX_LINES - 1) };
+  }
+  const first = Math.max(0, start - DEFINITION_CONTEXT_BEFORE);
+  const spanEnd = Math.max(loc.range.end.line, start + 12);
+  return { first, last: Math.min(lineCount - 1, Math.min(spanEnd, first + DEFINITION_MAX_LINES - 1)) };
+}
+
+async function declarationRange(loc: Location): Promise<Range | null> {
+  try {
+    return await withDocument(loc.path, async (doc) => (await structure.structuralRanges(doc, loc.range.start)).declaration?.range ?? null);
+  } catch {
+    return null;
+  }
+}
+
+async function definitionTarget(loc: Location, fallbackLanguage: string | null): Promise<DefinitionTarget | null> {
+  const [lines, declaration] = await Promise.all([readFileLines(loc.path), declarationRange(loc)]);
+  if (!lines) return null;
+  const { first, last } = definitionSpan(loc, lines.length, declaration);
+  const name = identifierAt(lines[loc.range.start.line] ?? "", loc.range.start.col) ?? basename(loc.path);
+  return {
+    location: loc,
+    name,
+    firstLine: first,
+    text: lines.slice(first, last + 1).join("\n"),
+    language: languageForPath(loc.path) ?? fallbackLanguage,
+  };
+}
+
+/** ⌥Space: the definition's source in a popup, without leaving the editor; ← / → switch between several. */
 export async function quickDefinition(view: EditorView) {
   const doc = docOf(view);
   if (!doc) return;
   const pos = view.state.selection.main.head;
   try {
-    const locations = await lspRequest(() => commands.lspGoto(doc.doc, offsetToPos(view.state.doc, pos), "definition"));
-    const loc = locations[0];
-    if (!loc) {
+    const found = await lspRequest(() => commands.lspGoto(doc.doc, offsetToPos(view.state.doc, pos), "definition"));
+    const seen = new Set<string>();
+    const locations = found.filter((l) => {
+      const key = `${l.path}:${l.range.start.line}:${l.range.start.col}`;
+      return !seen.has(key) && !!seen.add(key);
+    });
+    if (!locations.length) {
       showHint(view, "No definition found");
       return;
     }
-    const lines = await readFileLines(loc.path);
-    if (!lines) {
+    const targets = (await Promise.all(locations.slice(0, MAX_TARGETS).map((l) => definitionTarget(l, doc.uiMode)))).filter(
+      (t): t is DefinitionTarget => !!t,
+    );
+    if (!targets.length) {
       showHint(view, "Cannot read the definition's file");
       return;
     }
-    const first = Math.max(0, loc.range.start.line - DEFINITION_CONTEXT_BEFORE);
-    const spanEnd = Math.max(loc.range.end.line, loc.range.start.line + 12);
-    const last = Math.min(lines.length - 1, Math.min(spanEnd, first + DEFINITION_MAX_LINES - 1));
-    openPopup({
-      kind: "definition",
-      anchor: caretAnchor(view, pos),
-      location: loc,
-      firstLine: first,
-      text: lines.slice(first, last + 1).join("\n"),
-      language: languageForPath(loc.path) ?? doc.uiMode,
-      themeClasses: view.themeClasses,
-    });
+    openPopup({ kind: "definition", anchor: caretAnchor(view, pos), targets, index: 0, themeClasses: view.themeClasses });
   } catch (e) {
     reportLspError(view, e, true);
   }

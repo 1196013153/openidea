@@ -103,15 +103,25 @@ function syncWindowBackground() {
 }
 
 export function currentTheme(): "dark" | "light" {
-  const override = useThemeOverride.getState().theme;
-  const id = override
-    ? resolveThemeId({ theme: override }, prefersLight())
-    : resolveThemeId(useProject.getState().settings?.appearance as AppearanceLike | undefined, prefersLight());
-  return id === "light" ? "light" : "dark";
+  return currentThemeId() === "light" ? "light" : "dark";
 }
 
-export async function toggleTheme() {
-  const next: ThemeSetting = currentTheme() === "dark" ? "light" : "dark";
+/** Themes offered by quick switch menus, in IDEA's order. */
+export const THEME_CHOICES: ReadonlyArray<{ id: "light" | "dark" | "dark-hc"; label: string }> = [
+  { id: "light", label: "Islands Light" },
+  { id: "dark", label: "Islands Dark" },
+  { id: "dark-hc", label: "High Contrast" },
+];
+
+/** The concrete theme in effect (`dark-hc` kept distinct). */
+export function currentThemeId(): "dark" | "light" | "dark-hc" {
+  const override = useThemeOverride.getState().theme;
+  return override
+    ? resolveThemeId({ theme: override }, prefersLight())
+    : resolveThemeId(useProject.getState().settings?.appearance as AppearanceLike | undefined, prefersLight());
+}
+
+export async function setTheme(next: ThemeSetting) {
   useThemeOverride.setState({ theme: next });
   if (!isTauri()) return;
   try {
@@ -123,4 +133,8 @@ export async function toggleTheme() {
   } catch {
     /* keep the session override */
   }
+}
+
+export async function toggleTheme() {
+  await setTheme(currentTheme() === "dark" ? "light" : "dark");
 }

@@ -7,6 +7,7 @@ import { splitSignature } from "./signature";
 import { dedupeLocations, usagesStatusText } from "./navigation";
 import { declarationSummary } from "./markdown";
 import { linkedSpans } from "./rename";
+import { definitionSpan } from "./hover";
 
 describe("semanticRanges", () => {
   const doc = Text.of(["let mut count = Foo::new();", "const MAX: u32 = 1;"]);
@@ -118,5 +119,19 @@ describe("linkedSpans", () => {
       { from: 10, to: 13 },
       { from: 20, to: 23 },
     ]);
+  });
+});
+
+describe("definitionSpan", () => {
+  const loc = { path: "/a.ts", range: { start: { line: 40, col: 9 }, end: { line: 40, col: 12 } } };
+  const range = (a: number, b: number) => ({ start: { line: a, col: 0 }, end: { line: b, col: 1 } });
+
+  it("shows the whole enclosing declaration when the syntax tree knows it", () => {
+    expect(definitionSpan(loc, 500, range(38, 120))).toEqual({ first: 38, last: 120 });
+  });
+
+  it("falls back to a window around the name otherwise", () => {
+    expect(definitionSpan(loc, 500, null)).toEqual({ first: 39, last: 52 });
+    expect(definitionSpan(loc, 500, range(0, 10))).toEqual({ first: 39, last: 52 });
   });
 });

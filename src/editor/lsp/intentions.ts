@@ -12,7 +12,8 @@ import { shortcutLabel } from "@/platform/keymap";
 import { debounce, docOf, isUnavailable, lspRequest, reportLspError } from "./lsp";
 import { offsetsToRange } from "./positions";
 import { showHint } from "./hint";
-import { caretAnchor, openPopup, type ListPopupItem } from "./popupStore";
+import { caretAnchor, openPopup, type ListPopupItem, type ListPreview } from "./popupStore";
+import { editPreviewLines } from "./workspaceEdit";
 import { serverBackoff } from "./availability";
 import { iconNode } from "./iconMarkup";
 import { editorPrefs } from "@/platform/editorSettings";
@@ -121,15 +122,51 @@ export async function applyKindSilently(view: EditorView, kind: string): Promise
   return true;
 }
 
-function actionItems(view: EditorView, actions: CodeAction[]): ListPopupItem[] {
+function actionItems(view: EditorView, actions: CodeAction[], resolved?: Map<CodeAction, Promise<CodeAction>>): ListPopupItem[] {
   return sortCodeActions(actions).map((a, i) => ({
     id: `${i}`,
     label: a.title,
     icon: isQuickFix(a) ? "bulb-fix" : "bulb",
     emphasis: a.isPreferred,
     disabled: a.disabledReason,
-    run: () => applyCodeAction(view, a),
+    // The edit the preview already resolved is applied as is.
+    run: async () => applyCodeAction(view, (await resolved?.get(a)?.catch(() => a)) ?? a),
   }));
+}
+
+/** The action with its edit (resolved once per popup; servers may compute edits lazily). */
+function resolveOnce(doc: number, action: CodeAction, cache: Map<CodeAction, Promise<CodeAction>>): Promise<CodeAction> {
+  let p = cache.get(action);
+  if (!p) {
+    p = action.edit || action.command ? Promise.resolve(action) : lspRequest(() => commands.lspResolveCodeAction(doc, action));
+    cache.set(action, p);
+    p.catch(() => cache.delete(action));
+  }
+  return p;
+}
+
+/** Intention preview (IDEA's side panel): the diff the action would make to this file. */
+export async function intentionPreview(
+  view: EditorView,
+  action: CodeAction,
+  cache: Map<CodeAction, Promise<CodeAction>>,
+  signal: AbortSignal,
+): Promise<ListPreview | null> {
+  const ctx = docOf(view);
+  if (!ctx) return null;
+  const doc = view.state.doc;
+  const full = await resolveOnce(ctx.doc, action, cache);
+  if (signal.aborted || view.state.doc !== doc) return null;
+  const files = full.edit?.files ?? [];
+  const here = files.find((f) => f.kind === "edit" && f.path === ctx.path);
+  const others = new Set(files.map((f) => (f.kind === "rename" ? f.from : f.path)).filter((p) => p !== ctx.path)).size;
+  const note = others ? `Also changes ${others} other ${others === 1 ? "file" : "files"}` : undefined;
+  if (here?.kind === "edit") {
+    const lines = editPreviewLines(doc, here.edits);
+    if (lines.length) return { kind: "diff", lines, note };
+  }
+  if (note) return { kind: "text", text: note };
+  return { kind: "text", text: full.command && !full.edit ? "Preview isn't available for this action" : "No changes in this file" };
 }
 
 /** ⌥↵ */
@@ -141,11 +178,18 @@ export async function showIntentions(view: EditorView) {
       showHint(view, "No intentions available");
       return;
     }
+    const sorted = sortCodeActions(actions);
+    const resolved = new Map<CodeAction, Promise<CodeAction>>();
+    const items = actionItems(view, sorted, resolved);
     openPopup({
       kind: "list",
       anchor: caretAnchor(view, view.state.selection.main.head),
       title: "Intentions",
-      items: actionItems(view, actions),
+      items,
+      preview: (item, signal) => {
+        const action = sorted[items.indexOf(item)];
+        return action ? intentionPreview(view, action, resolved, signal) : Promise.resolve(null);
+      },
     });
   } catch (e) {
     reportLspError(view, e, true);

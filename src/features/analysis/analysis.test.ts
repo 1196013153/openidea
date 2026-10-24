@@ -68,6 +68,23 @@ describe("Inspect Code grouping", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(nodes[0]!.kind).toBe("severity");
   });
+
+  it("groups by inspection by default, worst severity first, merging severities", () => {
+    const withWarning = [...files, { path: "/p/d.ts", relPath: "d.ts", diagnostics: [diag(5, "warning", "ts", "2304")] }];
+    const nodes = buildInspectionNodes(groupInspection(withWarning), false);
+    expect(nodes.map((n) => (n.kind === "inspection" ? [n.name, n.severity, n.count] : n.kind))).toEqual([
+      ["ts(2304)", "error", 4],
+      ["ts(7006)", "error", 1],
+      ["eslint(no-unused-vars)", "warning", 1],
+      ["Language server", "info", 1],
+    ]);
+    const ts2304 = nodes[0]!;
+    expect(ts2304.kind !== "problem" && ts2304.children.map((f) => (f.kind === "file" ? f.path : ""))).toEqual([
+      "/p/b.ts",
+      "/p/c.ts",
+      "/p/d.ts",
+    ]);
+  });
 });
 
 describe("Structural replace", () => {

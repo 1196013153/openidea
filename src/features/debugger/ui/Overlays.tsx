@@ -956,7 +956,9 @@ function AttachPopup() {
 // --- Smart Step Into -------------------------------------------------------------
 
 function SmartStepChooser() {
-  const state = useOverlays((s) => s.smartStep);
+  const all = useOverlays((s) => s.smartStep);
+  // Picked in the editor instead.
+  const state = all?.inline ? null : all;
   const close = () => useOverlays.setState({ smartStep: null });
   const pick = (targetId: number) => {
     if (!state) return;

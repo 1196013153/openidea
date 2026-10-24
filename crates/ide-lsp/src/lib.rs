@@ -1478,8 +1478,9 @@ impl LspManager {
         let t = &targets[0];
         let items: Option<Vec<lsp::CallHierarchyItem>> =
             self.call(t, "textDocument/prepareCallHierarchy", snap.pos_params(t, pos), None, DEFAULT_TIMEOUT).await?;
+        let items = items.filter(|i| !i.is_empty()).ok_or_else(no_hierarchy_target)?;
         let mut out = Vec::new();
-        for item in items.unwrap_or_default() {
+        for item in items {
             let params = json!({ "item": item });
             match direction {
                 HierarchyDirection::Incoming => {
@@ -1520,12 +1521,13 @@ impl LspManager {
         // and lsp-types mistypes `tags` (jdtls sends an array).
         let items: Option<Vec<serde_json::Value>> =
             self.call(t, "textDocument/prepareTypeHierarchy", snap.pos_params(t, pos), None, DEFAULT_TIMEOUT).await?;
+        let items = items.filter(|i| !i.is_empty()).ok_or_else(no_hierarchy_target)?;
         let method = match direction {
             HierarchyDirection::Incoming => "typeHierarchy/supertypes",
             HierarchyDirection::Outgoing => "typeHierarchy/subtypes",
         };
         let mut out = Vec::new();
-        for item in items.unwrap_or_default() {
+        for item in items {
             let related: Option<Vec<serde_json::Value>> =
                 self.call(t, method, json!({ "item": item }), None, LONG_TIMEOUT).await?;
             let conv = self.conv(t.enc());
@@ -1779,6 +1781,12 @@ fn sample_files(dir: &Path, limit: usize) -> Vec<PathBuf> {
 /// unused imports while the file has errors).
 fn source_actions_only(only: &[String]) -> bool {
     !only.is_empty() && only.iter().all(|k| k == "source" || k.starts_with("source."))
+}
+
+/// Preparing a call / type hierarchy found no symbol at the position: the UI
+/// then retries at the enclosing declaration.
+fn no_hierarchy_target() -> IdeError {
+    IdeError::not_found("No symbol to show the hierarchy of at the caret")
 }
 
 #[cfg(test)]

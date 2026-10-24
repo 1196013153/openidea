@@ -2,7 +2,8 @@
  * Safe Delete (⌘⌦): resolves the declaration at the caret (LSP definition +
  * document symbols; the tree-sitter structure service for local declarations
  * only), searches its usages (LSP references, the declaration's own body
- * excluded), then deletes it — with attached doc comments / annotations and
+ * excluded) once the user confirmed ("Delete 'x'?", optionally searching
+ * comments and strings too), then deletes it — with attached doc comments / annotations and
  * the trailing blank line — as one undo step, or, when it is still used,
  * asks like IDEA: "Usages Detected" → View Usages / Delete Anyway / Cancel.
  *
@@ -20,7 +21,8 @@ import { structure } from "@/editor/structure";
 import { docOf, isUnavailable, lspRequest } from "@/editor/lsp/lsp";
 import { comparePos, offsetToPos, rangeContains, rangeToOffsets } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
-import { ask } from "@/workbench/messages";
+import { ask, confirmChecked } from "@/workbench/messages";
+import { openPopup, type PreviewOccurrence } from "@/editor/lsp/popupStore";
 import { cannotPerform } from "./catalog";
 import { cancelled, languageName } from "./query";
 
@@ -333,6 +335,77 @@ function applyDeletion(view: EditorView, docBefore: Text, target: SafeDeleteTarg
 }
 
 let running: EditorView | null = null;
+/** "Search in comments and strings", remembered like IDEA does (on by default). */
+let searchInComments = true;
+
+/**
+ * Mentions of the name in this file's comments and strings: whole-word text
+ * matches that are not identifier tokens, outside the declaration itself.
+ */
+export function textOccurrences(
+  text: string,
+  name: string,
+  identifiers: readonly { from: number; to: number }[],
+  exclude: { from: number; to: number },
+): { from: number; to: number }[] {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_$])${escaped}(?![\\p{L}\\p{N}_$])`, "gu");
+  const ids = new Set(identifiers.map((o) => o.from));
+  const out: { from: number; to: number }[] = [];
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const from = m.index;
+    if (ids.has(from) || (from >= exclude.from && from < exclude.to)) continue;
+    out.push({ from, to: from + name.length });
+  }
+  return out;
+}
+
+async function commentAndStringOccurrences(
+  ctx: EditorDocContext,
+  doc: Text,
+  target: SafeDeleteTarget,
+): Promise<{ from: number; to: number }[]> {
+  let identifiers;
+  try {
+    identifiers = await structure.identifiers(ctx.doc, target.name);
+  } catch (e) {
+    if (isCancelled(e)) throw e;
+    // Without a syntax tree comments can't be told from code.
+    return [];
+  }
+  const ids = identifiers.map((o) => rangeToOffsets(doc, o.range));
+  return textOccurrences(doc.toString(), target.name, ids, rangeToOffsets(doc, target.range));
+}
+
+/** No code usages, but mentions in comments / strings: show them before deleting (IDEA's preview). */
+function previewTextOccurrences(
+  ctx: EditorDocContext,
+  doc: Text,
+  target: SafeDeleteTarget,
+  hits: readonly { from: number; to: number }[],
+  apply: () => void,
+) {
+  const occurrences: PreviewOccurrence[] = hits.map((h) => {
+    const line = doc.lineAt(h.from);
+    return { line: line.number - 1, text: line.text, from: h.from - line.from, to: Math.min(h.to, line.to) - line.from };
+  });
+  openPopup({
+    kind: "preview",
+    title: `Safe Delete ${target.kind.toLowerCase()} '${target.name}'`,
+    summary: {
+      files: 1,
+      occurrences: occurrences.length,
+      hasFileOperations: false,
+      entries: [{ path: ctx.path, edits: occurrences.length }],
+    },
+    warnings: [
+      `'${target.name}' is mentioned in comments or strings. The declaration will be deleted; these mentions stay.`,
+    ],
+    occurrences,
+    confirmLabel: "Delete",
+    onConfirm: apply,
+  });
+}
 
 export async function safeDelete(view: EditorView): Promise<void> {
   const ctx = docOf(view);
@@ -353,22 +426,44 @@ export async function safeDelete(view: EditorView): Promise<void> {
       return;
     }
     const { target } = resolved;
-    const [usages, comments] = await Promise.all([findUsages(ctx, target), commentSyntax(ctx.language)]);
-    if (view.state.doc !== docBefore || !view.state.selection.eq(selBefore)) return;
+    const comments = await commentSyntax(ctx.language);
     // Validate before asking: a declaration that can't be removed by lines is refused up front.
     const { from, to } = rangeToOffsets(docBefore, target.range);
     if (!deletionRange(docBefore, from, to, comments)) {
       showHint(view, cannotPerform(`'${target.name}' shares its line with other code`));
       return;
     }
-    if (!usages.length) {
-      applyDeletion(view, docBefore, target, comments);
+    // IDEA always confirms first; usages are searched after OK.
+    const confirmed = await confirmChecked({
+      title: "Safe Delete",
+      message: `Delete ${target.kind.toLowerCase()} '${target.name}'?`,
+      ok: "OK",
+      checkbox: "Search in comments and strings",
+      checked: searchInComments,
+    });
+    if (!confirmed) {
+      view.focus();
       return;
     }
-    const answer = await askUsagesDetected(`${target.kind} '${target.name}'`, usages);
-    if (answer === "view") viewUsages(target.name, usages);
-    else if (answer === "delete") applyDeletion(view, docBefore, target, comments);
-    else view.focus();
+    searchInComments = confirmed.checked;
+    if (view.state.doc !== docBefore || !view.state.selection.eq(selBefore)) return;
+    const [usages, textHits] = await Promise.all([
+      findUsages(ctx, target),
+      confirmed.checked ? commentAndStringOccurrences(ctx, docBefore, target) : Promise.resolve([]),
+    ]);
+    if (view.state.doc !== docBefore) return;
+    if (usages.length) {
+      const answer = await askUsagesDetected(`${target.kind} '${target.name}'`, usages);
+      if (answer === "view") viewUsages(target.name, usages);
+      else if (answer === "delete") applyDeletion(view, docBefore, target, comments);
+      else view.focus();
+      return;
+    }
+    if (textHits.length) {
+      previewTextOccurrences(ctx, docBefore, target, textHits, () => applyDeletion(view, docBefore, target, comments));
+      return;
+    }
+    applyDeletion(view, docBefore, target, comments);
   } catch (e) {
     if (isCancelled(e)) return;
     showHint(view, isUnavailable(e) ? cannotPerform("No language server is available") : cannotPerform(errorText(e)));

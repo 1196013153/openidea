@@ -445,3 +445,21 @@ export function registerLanguageMode(desc: LanguageDescription): () => void {
 export function _languageMode(name: string): LanguageDescription | undefined {
   return languageModes.get(name);
 }
+
+// --- read-only code previews ------------------------------------------------------
+
+let codePreviewProvider: ((path: string) => Promise<Extension>) | null = null;
+
+/**
+ * Extensions for a read-only CodeMirror view showing `path` like an editor tab
+ * (editor font and colours, line numbers, syntax highlighting): previews
+ * outside editor tabs such as Find in Files. Empty before editor/core starts.
+ */
+export function codePreviewExtensions(path: string): Promise<Extension> {
+  return codePreviewProvider ? codePreviewProvider(path) : Promise.resolve([]);
+}
+
+/** @internal editor/core only. */
+export function _provideCodePreview(provider: ((path: string) => Promise<Extension>) | null) {
+  codePreviewProvider = provider;
+}

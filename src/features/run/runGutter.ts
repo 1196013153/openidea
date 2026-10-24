@@ -10,13 +10,14 @@ import type { EditorDocContext } from "@/editor/api";
 import { useProject } from "@/platform/project";
 import { isVirtualUri } from "@/platform/virtualDocs";
 import { shortcutLabel } from "@/platform/keymap";
-import { iconMarkup, showContextMenu } from "@/ui";
+import { iconMarkup, showContextMenu, type MenuItem } from "@/ui";
 import { notifications, runExecutors } from "@/workbench/contributions";
-import { executeContext, launchProduced, produceResolved } from "./contextRun";
+import { choiceItems, executeContext, launchProduced, modifyContext, produceResolved } from "./contextRun";
 import { goModulePath, loadGoModules } from "./goModules";
-import { fileTargets, OPTIMISTIC, produceContext, type ContextInput } from "./producers";
+import { fileTargets, OPTIMISTIC, produceContextChoices, type ContextInput } from "./producers";
 import { loadConfigs, useRun } from "./store";
 import { targetLanguage, type RunTarget } from "./targets";
+import { onTestStatesChanged, testState, testStatesVersion, type TestState } from "./testing/states";
 
 /** Languages with gutter run targets (C / C++ `main` included). */
 const hasGutterTargets = (path: string) => !!targetLanguage(path) || /\.(c|cpp|cc|cxx)$/.test(path);
@@ -89,43 +90,56 @@ export function label(t: RunTarget): string {
   return t.name;
 }
 
-function showTargetMenu(view: EditorView, target: RunTarget, path: string, at: { x: number; y: number }) {
-  const content = view.state.doc.toString();
-  const p = produceContext(targetInput(path, content.slice(0, 400_000), target.line), OPTIMISTIC);
+export function targetMenuItems(target: RunTarget, path: string, content: string): MenuItem[] {
+  const input = targetInput(path, content.slice(0, 400_000), target.line);
+  const choices = produceContextChoices(input, OPTIMISTIC);
+  const p = choices[0] ?? null;
   const name = p?.name ?? label(target);
+  const context = { path, line: target.line, content: content.slice(0, 400_000) };
+  // Several test configurations match: one entry per configuration, as IDEA's gutter does.
+  const pick = (debug: boolean): Partial<MenuItem> =>
+    choices.length > 1
+      ? { submenu: choiceItems(choices, debug).filter((i) => i.kind !== "header") }
+      : { run: () => void launch(target, path, debug, content) };
   // Like IDEA, Debug only where a debugger can run it.
   const debuggable = !p || !!(p.debug || p.config?.debugAdapter || p.missing);
-  showContextMenu(at, [
-    {
-      label: `Run '${name}'`,
-      icon: "run",
-      shortcut: shortcutLabel("run.runContext"),
-      run: () => void launch(target, path, false, content),
-    },
+  return [
+    { label: `Run '${name}'`, icon: "run", shortcut: shortcutLabel("run.runContext"), ...pick(false) } as MenuItem,
     ...(debuggable
-      ? [
-          {
-            label: `Debug '${name}'`,
-            icon: "debug",
-            shortcut: shortcutLabel("run.debugContext"),
-            run: () => void launch(target, path, true, content),
-          },
-        ]
+      ? [{ label: `Debug '${name}'`, icon: "debug", shortcut: shortcutLabel("run.debugContext"), ...pick(true) } as MenuItem]
       : []),
     ...runExecutors()
       .filter((e) => !!p?.config && e.supports(p.config))
-      .map((e) => ({
-        label: e.label(name),
-        icon: e.icon,
-        run: () => void executeContext(e.id, { path, line: target.line, content: content.slice(0, 400_000) }),
-      })),
-  ]);
+      .map((e) => ({ label: e.label(name), icon: e.icon, run: () => void executeContext(e.id, context) })),
+    { kind: "separator" },
+    { label: "Modify Run Configuration…", icon: "edit", run: () => void modifyContext(context) },
+  ];
+}
+
+function showTargetMenu(view: EditorView, target: RunTarget, path: string, at: { x: number; y: number }) {
+  showContextMenu(at, targetMenuItems(target, path, view.state.doc.toString()));
+}
+
+/** Results of frameworks that root their test tree at the file (jest/vitest, pytest) also match by file. */
+const fileRootedResults = (path: string) => /\.(py|[cm]?[jt]sx?)$/.test(path);
+
+/** Last test result of a gutter target (IDEA: green / red run icons after a test run). */
+export function gutterTestState(target: RunTarget, path: string): TestState | null {
+  if (target.kind === "main") return null;
+  return testState({ path: target.path, file: fileRootedResults(path) ? path : undefined });
+}
+
+export function markerIcon(kind: RunTarget["kind"], state: TestState | null): string {
+  if (state === "failed") return "gutter-run-failed";
+  if (state === "passed") return "gutter-run-passed";
+  return kind === "suite" ? "gutter-run-all" : "gutter-run";
 }
 
 class RunMarker extends GutterMarker {
   constructor(
     readonly target: PlacedTarget,
     readonly path: string,
+    readonly state: TestState | null = null,
   ) {
     super();
   }
@@ -134,7 +148,8 @@ class RunMarker extends GutterMarker {
       other instanceof RunMarker &&
       other.target.kind === this.target.kind &&
       other.target.name === this.target.name &&
-      other.path === this.path
+      other.path === this.path &&
+      other.state === this.state
     );
   }
   override toDOM(): Node {
@@ -143,17 +158,28 @@ class RunMarker extends GutterMarker {
     el.title = `${targetTitle(this.target)} '${label(this.target)}'`;
     el.setAttribute("role", "button");
     el.setAttribute("aria-label", el.title);
-    el.innerHTML = iconMarkup(this.target.kind === "suite" ? "gutter-run-all" : "gutter-run", 14) ?? "";
+    el.innerHTML = iconMarkup(markerIcon(this.target.kind, this.state), 14) ?? "";
     return el;
   }
 }
 
+/** The gutter asks for markers on every update: rebuild only when targets or test results changed. */
+const markerCache = new WeakMap<readonly PlacedTarget[], { version: number; set: RangeSet<GutterMarker> }>();
+
 function markers(state: EditorState, path: string): RangeSet<GutterMarker> {
-  return RangeSet.of(
-    state.field(targetsField).map((t) => new RunMarker(t, path).range(t.pos)),
+  const targets = state.field(targetsField);
+  const version = testStatesVersion();
+  const cached = markerCache.get(targets);
+  if (cached?.version === version) return cached.set;
+  const set = RangeSet.of(
+    targets.map((t) => new RunMarker(t, path, gutterTestState(t, path)).range(t.pos)),
     true,
   );
+  markerCache.set(targets, { version, set });
+  return set;
 }
+
+const testStatesChanged = StateEffect.define<null>();
 
 const DEBOUNCE = 350;
 
@@ -167,8 +193,13 @@ export function runGutter(ctx: EditorDocContext): Extension {
   const detector = ViewPlugin.fromClass(
     class {
       timer: ReturnType<typeof setTimeout> | undefined;
+      readonly unsubscribe: () => void;
       constructor(readonly view: EditorView) {
         this.schedule(0);
+        // Redraw the markers with the new results (the gutter recomputes them on any update).
+        this.unsubscribe = onTestStatesChanged(() => {
+          if (view.state.field(targetsField).length) view.dispatch({ effects: testStatesChanged.of(null) });
+        });
       }
       update(u: ViewUpdate) {
         if (u.docChanged) this.schedule(DEBOUNCE);
@@ -187,6 +218,7 @@ export function runGutter(ctx: EditorDocContext): Extension {
       }
       destroy() {
         clearTimeout(this.timer);
+        this.unsubscribe();
       }
     },
   );

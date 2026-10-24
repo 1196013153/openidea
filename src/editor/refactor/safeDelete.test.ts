@@ -47,10 +47,12 @@ vi.mock("@/platform/ipc", async (orig) => {
 
 let locals: Locals = { status: "noIdentifier" };
 let statement: SyntaxNode | null = null;
+let identifiers: { range: Range; qualified: boolean }[] = [];
 vi.mock("@/editor/structure", () => ({
   structure: {
     locals: vi.fn(async () => locals),
     structuralRanges: vi.fn(async (): Promise<Partial<StructuralRanges>> => ({ statement })),
+    identifiers: vi.fn(async () => identifiers),
   },
 }));
 const showHint = vi.fn();
@@ -59,11 +61,13 @@ const executeAction = vi.fn();
 vi.mock("@/platform/actions", () => ({ executeAction }));
 let answer = "cancel";
 const ask = vi.fn(async (_request: MessageRequest) => ({ button: answer, checked: false }));
-vi.mock("@/workbench/messages", () => ({ ask }));
+let confirmAnswer: { checked: boolean } | null = { checked: false };
+const confirmChecked = vi.fn(async (_opts: { title: string; message: string; checkbox?: string; checked?: boolean }) => confirmAnswer);
+vi.mock("@/workbench/messages", () => ({ ask, confirmChecked }));
 
-const { deletionRange, localDeclaration, outlineItemAt, safeDelete, fileUsages, usagesMessage } =
+const { deletionRange, localDeclaration, outlineItemAt, safeDelete, fileUsages, usagesMessage, textOccurrences } =
   await import("./safeDelete");
-const { closePopup } = await import("@/editor/lsp/popupStore");
+const { closePopup, useLspPopup } = await import("@/editor/lsp/popupStore");
 const { lspDoc } = await import("@/editor/lsp/lsp");
 
 // --- helpers ----------------------------------------------------------------
@@ -112,6 +116,8 @@ beforeEach(() => {
   references = ok([]);
   locals = { status: "noIdentifier" };
   statement = null;
+  identifiers = [];
+  confirmAnswer = { checked: false };
 });
 
 afterEach(() => {
@@ -192,6 +198,16 @@ describe("localDeclaration", () => {
   });
 });
 
+describe("textOccurrences", () => {
+  it("finds whole-word mentions that are not identifier tokens, outside the declaration", () => {
+    const text = 'foo(); // foo and food\nlet s = "foo";\nfn foo() {}';
+    const ids = [0, text.lastIndexOf("foo")].map((from) => ({ from, to: from + 3 }));
+    const decl = text.indexOf("fn foo");
+    const hits = textOccurrences(text, "foo", ids, { from: decl, to: text.length });
+    expect(hits.map((h) => text.slice(h.from - 3, h.to))).toEqual(["// foo", '= "foo']);
+  });
+});
+
 describe("usagesMessage", () => {
   it("says how many usages and where", () => {
     const loc = (path: string): Location => ({ path, range: rangeOf("x", 0, 1) });
@@ -243,6 +259,37 @@ describe("safeDelete in the editor", () => {
     expect((await run("view")).state.doc.toString()).toBe(text);
     expect(executeAction).toHaveBeenCalledWith("find.showUsageResults", { symbol: "used", locations: [usage] });
     expect((await run("delete")).state.doc.toString()).toBe("fn unused() {\n    unused();\n}\n\nfn main() {}\n");
+  });
+
+  it("confirms first ('Delete function …?') and searches nothing when cancelled", async () => {
+    const v = editor(text, "unused() {");
+    outline = ok([item(text, "unused", "fn unused() {\n    unused();\n}")]);
+    confirmAnswer = null;
+    await safeDelete(v);
+    expect(confirmChecked).toHaveBeenCalledTimes(1);
+    const opts = confirmChecked.mock.calls[0]![0];
+    expect(opts.title).toBe("Safe Delete");
+    expect(opts.message).toBe("Delete function 'unused'?");
+    expect(opts.checkbox).toBe("Search in comments and strings");
+    expect(lspReferences).not.toHaveBeenCalled();
+    expect(v.state.doc.toString()).toBe(text);
+  });
+
+  it("with 'Search in comments and strings' previews mentions before deleting", async () => {
+    const src = "// calls unused\nfn unused() {}\n\nfn main() {}\n";
+    const v = editor(src, "unused() {");
+    outline = ok([item(src, "unused", "fn unused() {}")]);
+    const decl = src.indexOf("unused() {");
+    identifiers = [{ range: rangeOf(src, decl, decl + 6), qualified: false }];
+    confirmAnswer = { checked: true };
+    await safeDelete(v);
+    const popup = useLspPopup.getState().popup;
+    expect(popup?.kind).toBe("preview");
+    if (popup?.kind !== "preview") return;
+    expect(popup.occurrences).toEqual([{ line: 0, text: "// calls unused", from: 9, to: 15 }]);
+    expect(v.state.doc.toString()).toBe(src);
+    popup.onConfirm();
+    expect(v.state.doc.toString()).not.toContain("fn unused");
   });
 
   it("refuses a declaration in another file instead of doing something else", async () => {

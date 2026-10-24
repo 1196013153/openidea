@@ -22,7 +22,7 @@ import {
 } from "./Notifications";
 import { loadPlatformInfo } from "@/platform/platformInfo";
 import { registerShellActions } from "./shellActions";
-import { TaskStatus } from "./StatusBar";
+import { StatusInfo, TaskStatus } from "./StatusBar";
 import { installTaskEvents } from "./tasks";
 import { installToolWindowActions } from "./toolwindows/actions";
 import {
@@ -61,6 +61,7 @@ export function activateWorkbench(): () => void {
     installNotifyEvents(),
     installBrowserGuards(),
     registerStatusItem({ id: "workbench.tasks", align: "right", priority: 0, component: TaskStatus }),
+    registerStatusItem({ id: "workbench.info", align: "left", priority: 5, component: StatusInfo }),
     registerToolWindow({
       id: NOTIFICATIONS_TOOL_WINDOW,
       title: "Notifications",

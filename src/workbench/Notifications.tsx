@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTxTemplate } from "@/platform/i18n";
 import { EmptyState, IconButton, Toast, T } from "@/ui";
 import {
-  BALLOON_TIMEOUT,
+  balloonTimeout,
   clearNotifications,
   dismissBalloon,
   markAllNotificationsRead,
@@ -39,10 +39,10 @@ function Balloon({ n }: { n: IdeNotification }) {
   const active = useWindowActive();
   const remaining = useRef<number | null>(null);
   const txt = useTxTemplate();
+  const ms = balloonTimeout(n);
   // IDEA's smart fade-out: the clock runs only while the window is active and the balloon not hovered.
   useEffect(() => {
-    const ms = BALLOON_TIMEOUT[n.level];
-    if (n.sticky || ms === null || hover || !active) return;
+    if (ms === null || hover || !active) return;
     const left = remaining.current ?? ms;
     const start = Date.now();
     const t = setTimeout(() => dismissBalloon(n.id), left);
@@ -50,7 +50,7 @@ function Balloon({ n }: { n: IdeNotification }) {
       clearTimeout(t);
       remaining.current = Math.max(1, left - (Date.now() - start));
     };
-  }, [n.id, n.level, n.sticky, hover, active]);
+  }, [n.id, ms, hover, active]);
   return (
     <Toast
       className={styles.balloon}

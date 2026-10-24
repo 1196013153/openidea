@@ -299,11 +299,12 @@ pub async fn vcs_stash_push(
     repo: Option<PathBuf>,
     message: Option<String>,
     include_untracked: bool,
+    keep_index: bool,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
     blocking(move || {
         project.with_repo_recorded(repo.as_deref(), Some("Git stash"), |r| {
-            r.stash_push(message.as_deref(), include_untracked)
+            r.stash_push(message.as_deref(), include_untracked, keep_index)
         })
     })
     .await
@@ -317,10 +318,17 @@ pub async fn vcs_stash_apply(
     repo: Option<PathBuf>,
     index: u32,
     pop: bool,
+    reinstate_index: bool,
+    branch: Option<String>,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(repo.as_deref(), Some("Git unstash"), |r| r.stash_apply(index, pop)))
-        .await
+    blocking(move || {
+        project.with_repo_recorded(repo.as_deref(), Some("Git unstash"), |r| match branch.as_deref() {
+            Some(name) => r.stash_branch(index, name),
+            None => r.stash_apply(index, pop, reinstate_index),
+        })
+    })
+    .await
 }
 
 #[tauri::command]

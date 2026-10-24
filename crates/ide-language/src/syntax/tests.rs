@@ -1170,3 +1170,20 @@ fn web_file_references_in_attributes_and_stylesheets() {
     let first = &syntax().web_file_references(&lang("html"), html)[0];
     assert_eq!((first.range.start.col, first.range.end.col), (12, 21));
 }
+
+#[test]
+fn literals_are_outermost_comments_and_strings() {
+    let src = "// note \"q\"\nfn main() { let s = \"a // b\"; /* c */ let c = 'x'; }\n";
+    let found: Vec<(&str, LiteralKind)> =
+        syntax().literals(&lang("rust"), src).unwrap().iter().map(|l| (&src[l.start..l.end], l.kind)).collect();
+    assert_eq!(
+        found,
+        vec![
+            ("// note \"q\"", LiteralKind::Comment),
+            ("\"a // b\"", LiteralKind::String),
+            ("/* c */", LiteralKind::Comment),
+            ("'x'", LiteralKind::String),
+        ]
+    );
+    assert!(syntax().literals(&lang("plaintext"), "// x").is_none());
+}

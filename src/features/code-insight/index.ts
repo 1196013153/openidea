@@ -8,10 +8,10 @@ import { useProject } from "@/platform/project";
 import { registerOverlay, registerStatusItem, registerToolWindow } from "@/workbench/contributions";
 import { clearProblems, installProblemsEvents, useProblems } from "./problemsStore";
 import { installProblemDecorations } from "./decorations";
-import { ProblemsHeaderActions, ProblemsTabs, ProblemsView } from "./ProblemsView";
-import { UsagesTabs, UsagesView } from "./UsagesView";
+import { ProblemsHeaderActions, ProblemsTabs, ProblemsView, useProblemsHeaderMenu } from "./ProblemsView";
+import { UsagesTabs, UsagesView, useUsagesHeaderMenu } from "./UsagesView";
 import { UsagesPopup } from "./UsagesPopup";
-import { findUsages, resetUsages, showUsageResults, showUsagesPopup } from "./usages";
+import { findUsages, rerunActiveUsages, resetUsages, showUsageResults, showUsagesPopup } from "./usages";
 import { HierarchyTabs, HierarchyView } from "./HierarchyView";
 import { resetHierarchy, showHierarchy } from "./hierarchy";
 import { installServerEvents } from "./servers";
@@ -53,6 +53,7 @@ export function activate(): () => void {
       component: ProblemsView,
       headerContent: ProblemsTabs,
       headerActions: ProblemsHeaderActions,
+      headerMenu: useProblemsHeaderMenu,
       useBadge: useErrorBadge,
     }),
     registerToolWindow({
@@ -64,6 +65,7 @@ export function activate(): () => void {
       order: 35,
       component: UsagesView,
       headerContent: UsagesTabs,
+      headerMenu: useUsagesHeaderMenu,
     }),
     registerToolWindow({
       id: "hierarchy",
@@ -91,6 +93,15 @@ export function activate(): () => void {
         category: "Find",
         when: EDITOR_WHEN,
         run: () => showUsagesPopup(),
+      },
+      {
+        // ⌘R in the Find Usages tool window, as in IDEA.
+        id: "usages.rerun",
+        title: "Rerun Find Usages",
+        category: "Find",
+        icon: "rerun",
+        when: "projectOpen && activeToolWindow == 'usages'",
+        run: rerunActiveUsages,
       },
       {
         id: "find.showUsageResults",

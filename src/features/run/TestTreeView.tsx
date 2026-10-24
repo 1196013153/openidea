@@ -1,9 +1,50 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import clsx from "clsx";
-import { Icon, IconButton, Spinner, Tree } from "@/ui";
+import { executeAction } from "@/platform/actions";
+import { Icon, IconButton, showContextMenu, Spinner, Tree, type MenuItem } from "@/ui";
 import { openTarget } from "./navigate";
 import { nodeStatus, type TestNode, type TestResults, type TestStatus } from "./testing";
+import { parseComparison } from "./testing/comparison";
 import styles from "./Run.module.css";
+
+/** Test tree filters, kept across runs and restarts (IDEA hides passed tests by default). */
+const FILTERS_KEY = "openidea.run.testFilters";
+
+interface TestFilters {
+  showPassed: boolean;
+  showIgnored: boolean;
+}
+
+export function loadTestFilters(): TestFilters {
+  try {
+    const raw = globalThis.localStorage?.getItem(FILTERS_KEY);
+    const v = raw ? (JSON.parse(raw) as Partial<TestFilters>) : {};
+    return { showPassed: v.showPassed === true, showIgnored: v.showIgnored !== false };
+  } catch {
+    return { showPassed: false, showIgnored: true };
+  }
+}
+
+function saveTestFilters(f: TestFilters) {
+  try {
+    globalThis.localStorage?.setItem(FILTERS_KEY, JSON.stringify(f));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** "Show Diff" for an assertion failure: Expected on the left, Actual on the right. */
+export function showTestDiff(node: TestNode): boolean {
+  const c = parseComparison(node.output);
+  if (!c) return false;
+  void executeAction("diff.compareTexts", {
+    path: `${node.path.join("/")}.txt`,
+    title: `Comparison Failure: ${node.name}`,
+    left: { text: c.expected, label: c.labels?.expected ?? "Expected" },
+    right: { text: c.actual, label: c.labels?.actual ?? "Actual" },
+  });
+  return true;
+}
 
 export function formatDuration(ms: number | undefined): string {
   if (ms === undefined) return "";
@@ -62,12 +103,50 @@ export interface TestTreeViewProps {
   selected: string | null;
   onSelect: (id: string | null) => void;
   running: boolean;
+  /** Run / Debug the selected tests (context menu); absent when the configuration can't be narrowed. */
+  onRunTests?: (ids: string[], debug: boolean) => void;
 }
 
-export function TestTreeView({ results, version, cwd, selected, onSelect, running }: TestTreeViewProps) {
-  const [showPassed, setShowPassed] = useState(true);
-  const [showIgnored, setShowIgnored] = useState(true);
+export function TestTreeView({ results, version, cwd, selected, onSelect, running, onRunTests }: TestTreeViewProps) {
+  const [filters, setFilters] = useState(loadTestFilters);
+  const { showPassed, showIgnored } = filters;
+  const toggle = (key: keyof TestFilters) =>
+    setFilters((f) => {
+      const next = { ...f, [key]: !f[key] };
+      saveTestFilters(next);
+      return next;
+    });
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const selectedKeys = useMemo(
+    () => (selected === null ? new Set<string>() : selection.has(selected) ? selection : new Set([selected])),
+    [selected, selection],
+  );
+
+  const jumpToSource = (n: TestNode) => {
+    const target = n.location ?? firstLocated(n)?.location;
+    if (target) void openTarget(target, cwd, true);
+  };
+
+  const contextMenu = (node: TestNode | null, sel: Set<string>, e: MouseEvent) => {
+    if (!node) return;
+    const ids = sel.has(node.id) ? [...sel] : [node.id];
+    const name = ids.length === 1 ? (results.get(ids[0]!)?.name ?? node.name) : `${ids.length} tests`;
+    const located = node.location ?? firstLocated(node)?.location;
+    const items: MenuItem[] = [];
+    if (onRunTests) {
+      items.push(
+        { label: `Run '${name}'`, verbatim: true, icon: "run", run: () => onRunTests(ids, false) },
+        { label: `Debug '${name}'`, verbatim: true, icon: "debug", run: () => onRunTests(ids, true) },
+        { kind: "separator" },
+      );
+    }
+    if (ids.length === 1 && nodeStatus(node) === "failed" && parseComparison(node.output))
+      items.push({ label: "Show Diff", icon: "diff", run: () => void showTestDiff(node) });
+    items.push({ label: "Jump to Source", icon: "external-link", shortcut: "F4", disabled: !located, run: () => jumpToSource(node) });
+    e.preventDefault();
+    showContextMenu(e, items);
+  };
 
   const counts = useMemo(() => results.counts(), [results, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const roots = useMemo(() => {
@@ -112,7 +191,7 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
           iconSize={13}
           title="Show Passed"
           pressed={showPassed}
-          onClick={() => setShowPassed((v) => !v)}
+          onClick={() => toggle("showPassed")}
         />
         <IconButton
           icon="minus"
@@ -120,7 +199,7 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
           iconSize={13}
           title="Show Ignored"
           pressed={showIgnored}
-          onClick={() => setShowIgnored((v) => !v)}
+          onClick={() => toggle("showIgnored")}
         />
       </div>
       <Tree<TestNode>
@@ -133,16 +212,15 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
         isExpandable={(n) => n.children.length > 0}
         expanded={effectiveExpanded}
         onExpandedChange={(next) => setExpanded(next)}
-        selected={selected ? new Set([selected]) : new Set()}
-        onSelectionChange={(_sel, lead) => {
+        selected={selectedKeys}
+        // A click only selects (shows the test's output); double-click / Enter / F4 jump to the source, as in IDEA.
+        onSelectionChange={(sel, lead) => {
+          setSelection(sel);
           onSelect(lead?.id ?? null);
-          if (lead && lead.location && nodeStatus(lead) === "failed") void openTarget(lead.location, cwd, false);
         }}
         activateExpandable
-        onActivate={(n) => {
-          const target = n.location ?? firstLocated(n)?.location;
-          if (target) void openTarget(target, cwd, true);
-        }}
+        onActivate={jumpToSource}
+        onContextMenu={contextMenu}
         renderNode={(n) => {
           const s = nodeStatus(n);
           const d = totalDuration(n);
@@ -154,7 +232,11 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
             </span>
           );
         }}
-        empty={<div className={styles.testEmpty}>{running ? "Waiting for test results…" : "No test results"}</div>}
+        empty={
+          <div className={styles.testEmpty}>
+            {running ? "Waiting for test results…" : results.isEmpty ? "No test results" : "Passed tests are hidden"}
+          </div>
+        }
       />
     </div>
   );

@@ -48,6 +48,8 @@ export function setSearchEverywherePreview(preview: boolean) {
 /**
  * Opens the dialog, or while it is open switches to `tab` (the query is kept);
  * re-invoking the shown tab toggles "include non-project items", like IDEA.
+ * Without `query` (an editor selection) the field starts with the tab's last
+ * search, so each tab remembers its own text.
  */
 export function showSearchEverywhere(tab: SeTab, opts: { query?: string } = {}) {
   const s = useSearchEverywhere.getState();
@@ -59,7 +61,7 @@ export function showSearchEverywhere(tab: SeTab, opts: { query?: string } = {}) 
   useSearchEverywhere.setState({
     open: true,
     tab,
-    query: opts.query ?? s.query,
+    query: opts.query ?? searchHistory(tab)[0] ?? "",
     includeNonProject: false,
     autoEverywhere: true,
     notFound: null,
@@ -95,7 +97,10 @@ export function onSearchEverywhereQuery(query: string) {
   useSearchEverywhere.setState({ includeNonProject: false, notFound: null });
 }
 
+/** Closing remembers the text for the shown tab (also when nothing was opened). */
 export function hideSearchEverywhere() {
+  const s = useSearchEverywhere.getState();
+  if (s.open) pushSearchHistory(s.tab, s.query);
   useSearchEverywhere.setState({ open: false });
 }
 
@@ -126,7 +131,7 @@ function loadHistory(): HistoryEntry[] {
     : [];
 }
 
-/** Queries that led somewhere in `tab`, newest first. */
+/** Queries typed in `tab` (opened or left there), newest first. */
 export function searchHistory(tab: SeTab): string[] {
   return loadHistory()
     .filter((e) => e.tab === tab)

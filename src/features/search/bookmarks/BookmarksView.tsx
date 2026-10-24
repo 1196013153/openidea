@@ -3,7 +3,7 @@ import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
 import { EmptyState, Icon, IconButton, Tree, fileIconName, showContextMenu } from "@/ui";
 import { basename, openLocation, relPath } from "../common/open";
-import { removeBookmarks, updateBookmarks, useBookmarks, type Bookmark } from "./store";
+import { bookmarkLabel, removeBookmarks, updateBookmarks, useBookmarkPopups, useBookmarks, type Bookmark } from "./store";
 import styles from "./BookmarksView.module.css";
 
 type Node =
@@ -76,9 +76,19 @@ export function BookmarksView() {
     else if (n.kind === "file") void openLocation(n.path);
   };
 
+  const rename = (b: Bookmark) => useBookmarkPopups.setState({ editing: { path: b.path, line: b.line } });
+
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "Delete" && e.key !== "Backspace") return;
     const nodes = [...selection.current].map((k) => byKey.get(k)).filter((n): n is Node => !!n);
+    if (e.key === "F2" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      const mark = nodes.length === 1 && nodes[0]!.kind === "mark" ? nodes[0]!.bookmark : null;
+      if (!mark) return;
+      e.preventDefault();
+      e.stopPropagation();
+      rename(mark);
+      return;
+    }
+    if (e.key !== "Delete" && e.key !== "Backspace") return;
     if (!nodes.length) return;
     e.preventDefault();
     e.stopPropagation();
@@ -92,7 +102,7 @@ export function BookmarksView() {
         aria-label="Bookmarks"
         roots={roots}
         getKey={(n) => n.key}
-        getLabel={(n) => (n.kind === "mark" ? n.bookmark.text : n.name)}
+        getLabel={(n) => (n.kind === "mark" ? bookmarkLabel(n.bookmark) : n.name)}
         getChildren={(n) => (n.kind === "mark" ? undefined : n.children)}
         isExpandable={(n) => n.kind !== "mark"}
         expanded={expanded}
@@ -107,6 +117,9 @@ export function BookmarksView() {
           e.preventDefault();
           showContextMenu(e, [
             ...(node && node.kind !== "list" ? [{ label: "Jump to Source", run: () => open(node) }] : []),
+            ...(node?.kind === "mark" && targets.length === 1
+              ? [{ label: "Rename…", shortcut: "F2", run: () => rename(node.bookmark) }]
+              : []),
             { kind: "separator" as const },
             { label: targets.length > 1 ? `Delete ${targets.length} Bookmarks` : "Delete Bookmark", danger: true, run: () => removeNodes(targets) },
           ]);
@@ -128,11 +141,28 @@ export function BookmarksView() {
             </span>
           ) : (
             <span className={styles.node}>
-              <Icon name="bookmark" size={16} className={styles.icon} />
-              <span className={styles.label}>
-                {basename(n.bookmark.path)}:{n.bookmark.line + 1}
-              </span>
-              <span className={styles.code}>{n.bookmark.text.trim() || "(empty line)"}</span>
+              {n.bookmark.mnemonic ? (
+                <span className={styles.mnemonic} aria-label={`Mnemonic ${n.bookmark.mnemonic}`}>
+                  {n.bookmark.mnemonic}
+                </span>
+              ) : (
+                <Icon name="bookmark" size={16} className={styles.icon} />
+              )}
+              {n.bookmark.description ? (
+                <>
+                  <span className={styles.label}>{n.bookmark.description}</span>
+                  <span className={styles.meta}>
+                    {basename(n.bookmark.path)}:{n.bookmark.line + 1}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className={styles.label}>
+                    {basename(n.bookmark.path)}:{n.bookmark.line + 1}
+                  </span>
+                  <span className={styles.code}>{n.bookmark.text.trim() || "(empty line)"}</span>
+                </>
+              )}
             </span>
           )
         }

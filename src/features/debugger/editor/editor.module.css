@@ -172,3 +172,15 @@
 .valueType {
   color: var(--fg-subtle);
 }
+
+/* Smart Step Into: calls on the paused line framed, the selected one filled. */
+.stepTarget {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  cursor: pointer;
+}
+
+.stepTargetSelected {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}

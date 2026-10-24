@@ -25,6 +25,7 @@ import {
   requestClosePane,
   requestCloseTab,
   selectTab,
+  tabFullTitle,
   tabTitle,
   useTerminals,
   type PaneLayout,
@@ -34,6 +35,14 @@ import { TerminalFindBar } from "./FindBar";
 import styles from "./Terminal.module.css";
 
 const TAB_PREFIX = "openidea-terminal";
+
+/** Full title when the label is trimmed, then the working directory. */
+function tabTooltip(tab: TerminalTab, sessions: Parameters<typeof tabTitle>[1]): string | undefined {
+  const full = tabFullTitle(tab, sessions);
+  const cwd = sessions?.[tab.activePane]?.cwd;
+  if (full === tabTitle(tab, sessions)) return cwd;
+  return cwd ? `${full}\n${cwd}` : full;
+}
 
 function TerminalPane({ sessionKey, autofocus }: { sessionKey: string; autofocus: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -130,7 +139,7 @@ function LayoutNode({ node, tab, active }: { node: PaneLayout; tab: TerminalTab;
 }
 
 function RenamePopup({ tab, anchor, onClose }: { tab: TerminalTab; anchor: Element; onClose: () => void }) {
-  const [value, setValue] = useState(tabTitle(tab));
+  const [value, setValue] = useState(() => tabTitle(tab, useTerminals.getState().sessions));
   return (
     <Popup open anchor={anchor} onClose={onClose} placement="bottom-start" aria-label="Rename tab" trapFocus>
       <form
@@ -233,11 +242,11 @@ export function TerminalTabs() {
     const dead = status.every((s) => s === "exited" || s === "error");
     return {
       id: t.id,
-      label: tabTitle(t),
+      label: tabTitle(t, sessions),
       closable: true,
       italic: dead,
       color: dead ? "var(--fg-subtle)" : undefined,
-      tooltip: sessions[t.activePane]?.cwd,
+      tooltip: tabTooltip(t, sessions),
     };
   });
 

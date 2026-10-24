@@ -14,7 +14,7 @@ import { isTestPath } from "@/platform/languageSettings";
 import { currentRoots } from "@/platform/projectRoots";
 import { applicationConfig, jvmModuleDir } from "./application";
 import { formatArgs } from "./configs";
-import { contextConfig, fileRole, projectPython, testConfigFor } from "./context";
+import { contextConfig, fileRole, projectPython, testBasesFor, testConfigFor } from "./context";
 import { detectRunTargets, targetConfig, targetLanguage, type RunTarget } from "./targets";
 
 export interface LocatedTool {
@@ -67,6 +67,8 @@ export interface Produced {
   missing?: Missing;
   /** Compiled single files: build `build`, then debug `config` (the binary). */
   debug?: { build: RunConfig; config: RunConfig };
+  /** Among several choices: the configuration it derives from (`npm run test:unit`). */
+  detail?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -755,6 +757,37 @@ export function produceContext(input: ContextInput, env: ToolEnv): Produced | nu
     }
   }
   return produceFile(input, env);
+}
+
+/**
+ * Every configuration that can run the context, when several test
+ * configurations match it equally well (`npm run test` and `npm run test:unit`):
+ * like IDEA, the user then chooses one. A single production otherwise.
+ */
+export function produceContextChoices(input: ContextInput, env: ToolEnv): Produced[] {
+  const produced = produceContext(input, env);
+  if (!produced?.config || produced.scope === "directory" || !inProject(input.path, input.root)) return produced ? [produced] : [];
+  const rel = relTo(input.path, input.root);
+  const bases = testBasesFor(rel, [...input.configs]);
+  if (bases.length < 2) return [produced];
+  let element: RunTarget | null = null;
+  if (produced.scope === "element") {
+    const targets = fileTargets(input, (input.content ?? "").slice(0, 400_000));
+    element = innermostTarget(input.content ?? "", targets, input.line ?? 0, /\.py$/.test(input.path));
+    if (!element || element.kind === "main") return [produced];
+  } else if (!produced.config.isTest) {
+    return [produced];
+  }
+  const out: Produced[] = [];
+  for (const base of bases) {
+    const found = element
+      ? targetConfig(element, rel, [...input.configs], input.content, base)
+      : testConfigFor(rel, [...input.configs], base);
+    const config = found && goTestNamed(found, input, element?.name);
+    if (!config || out.some((o) => o.config?.id === config.id)) continue;
+    out.push({ name: config.name, scope: produced.scope, config, detail: base.name });
+  }
+  return out.length > 1 ? out : [produced];
 }
 
 // ---------------------------------------------------------------------------

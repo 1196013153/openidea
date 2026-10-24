@@ -319,12 +319,14 @@ export function targetConfig(
   relPath: string,
   configs: RunConfig[],
   content?: string,
+  /** The test configuration to narrow (one of `testBasesFor`); the closest by default. */
+  base?: RunConfig,
 ): RunConfig | null {
   if (target.kind === "main") {
     if (target.className) return applicationConfig({ className: target.className, spring: target.spring }, relPath, configs);
     return contextConfig(relPath, configs, content);
   }
-  const file = testConfigFor(relPath, configs);
+  const file = testConfigFor(relPath, configs, base);
   if (!file) return null;
   if (target.className && (file.kind === "maven" || file.kind === "gradle"))
     return jvmTestConfig(file, target.className, target.kind === "test" ? target.path[target.path.length - 1] : undefined);

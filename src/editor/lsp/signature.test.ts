@@ -11,7 +11,9 @@ vi.mock("@/platform/ipc", async (orig) => {
   return { ...actual, isTauri: () => true, commands: { ...actual.commands, lspSignatureHelp } };
 });
 
-const { signatureExtension, acceptsParameter } = await import("./signature");
+const { signatureExtension, acceptsParameter, argumentSpans, argumentStop, parameterTabKeys, triggerSignatureHelp } = await import(
+  "./signature"
+);
 const { lspDoc } = await import("./lsp");
 
 // jsdom has no layout; CodeMirror measures text when the tooltip is positioned.
@@ -60,5 +62,55 @@ describe("acceptsParameter", () => {
     expect(acceptsParameter({ label: "println(Object x) : void", parameters: [[8, 16]] }, 0)).toBe(true);
     expect(acceptsParameter({ label: "println(Object x) : void", parameters: [[8, 16]] }, 1)).toBe(false);
     expect(acceptsParameter({ label: "format(String f, Object... a)", parameters: [[7, 15], [17, 28]] }, 4)).toBe(true);
+  });
+});
+
+describe("argument navigation", () => {
+  const at = (src: string) => ({ text: src.replace("|", ""), pos: src.indexOf("|") });
+  const stop = (src: string, dir: 1 | -1) => {
+    const { text, pos } = at(src);
+    const to = argumentStop(text, pos, dir);
+    return to === null ? null : `${text.slice(0, to)}|${text.slice(to)}`;
+  };
+
+  it("splits arguments at top-level commas, outside strings and nested brackets", () => {
+    const text = 'f(a, g(b, c), "x, y", [1, 2])';
+    expect(argumentSpans(text, 1).map((s) => text.slice(s.from, s.to))).toEqual(["a", "g(b, c)", '"x, y"', "[1, 2]"]);
+    expect(argumentSpans("f()", 1)).toEqual([]);
+  });
+
+  it("moves to the start of the next / previous argument, not past the ends", () => {
+    expect(stop("f(a|b, c)", 1)).toBe("f(ab, |c)");
+    expect(stop("f(ab, c|)", -1)).toBe("f(|ab, c)");
+    expect(stop("f(ab,| c)", 1)).toBeNull();
+    expect(stop("f(ab, c|)", 1)).toBeNull();
+    expect(stop("f(a, |)", -1)).toBe("f(|a, )");
+    expect(stop("f(a, g(|x, y), z)", 1)).toBe("f(a, g(x, |y), z)");
+    expect(stop('f("(", |b)', -1)).toBe('f(|"(", b)');
+  });
+
+  it("⇥ moves while parameter info is shown and is left alone otherwise", async () => {
+    const text = "f(a, b)";
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: text,
+        selection: { anchor: 3 },
+        extensions: [
+          lspDoc.of({ doc: 1, path: "/a.ts", language: "typescript", uiMode: null, readOnly: false }),
+          signatureExtension(),
+          parameterTabKeys,
+        ],
+      }),
+      parent: document.body,
+    });
+    views.push(view);
+    const tab = () =>
+      view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", keyCode: 9, bubbles: true, cancelable: true }));
+    expect(tab()).toBe(true); // not handled: no parameter info
+    expect(view.state.selection.main.head).toBe(3);
+    triggerSignatureHelp(view, true);
+    await vi.waitFor(() => expect(view.dom.querySelector(".cm-lsp-signature")).not.toBeNull());
+    expect(tab()).toBe(false);
+    expect(view.state.selection.main.head).toBe(5);
   });
 });

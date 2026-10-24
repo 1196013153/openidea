@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
-import { CompletionContext } from "@codemirror/autocomplete";
+import { CompletionContext, autocompletion, completionStatus, hasNextSnippetField } from "@codemirror/autocomplete";
 import {
+  EXCLUSIVE_COMPLETION_KEY,
   expandLiveTemplateAtCaret,
+  insertLiveTemplate,
   expandPostfixAtCaret,
   surroundWith,
   templateCompletionSource,
@@ -27,7 +29,7 @@ afterEach(() => {
   closeChooser();
 });
 
-async function editor(language: string, doc: string, cursor = doc.length) {
+async function editor(language: string, doc: string, cursor = doc.length, extra: Extension[] = []) {
   const support = await languages.find((l) => l.name === MODES[language])!.load();
   const state = EditorState.create({
     doc,
@@ -42,6 +44,7 @@ async function editor(language: string, doc: string, cursor = doc.length) {
         uiMode: MODES[language]!,
         readOnly: false,
       }),
+      ...extra,
     ],
   });
   ensureSyntaxTree(state, doc.length, 5000);
@@ -50,7 +53,8 @@ async function editor(language: string, doc: string, cursor = doc.length) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-const tab = (v: EditorView) => runScopeHandlers(v, new KeyboardEvent("keydown", { key: "Tab" }), "editor");
+const press = (v: EditorView, key: string) => runScopeHandlers(v, new KeyboardEvent("keydown", { key }), "editor");
+const tab = (v: EditorView) => press(v, "Tab");
 
 describe("Tab expansion", () => {
   it("expands a live template abbreviation", async () => {
@@ -109,6 +113,83 @@ describe("surround with", () => {
     );
     await tick();
     expect(v.state.doc.toString()).toBe("def f():\n    if :\n      a()\n      b()\n    \n");
+  });
+
+  it("lists the language's surrounders with numeric mnemonics; a mnemonic key picks", async () => {
+    const doc = "class A {\n  void f() {\n    a();\n  }\n}\n";
+    const v = await editor("java", doc, doc.indexOf("a();"));
+    surroundWith(v);
+    const req = useChooser.getState().request!;
+    expect(req.mnemonics).toBe(true);
+    expect(req.items.slice(0, 3).map((i) => [i.mnemonic, i.label])).toEqual([
+      ["1", "if"],
+      ["2", "if / else"],
+      ["3", "while"],
+    ]);
+    // Expression surrounders need a selection within the line.
+    expect(req.items.some((i) => i.label === "(expr)")).toBe(false);
+    req.onPick(req.items.find((i) => i.mnemonic === "9")!, "");
+    await tick();
+    expect(v.state.doc.toString()).toContain("synchronized (this) {");
+  });
+
+  it("offers expression surrounders for a selection inside a line", async () => {
+    const doc = "fn main() {\n    let x = a + b;\n}\n";
+    const v = await editor("rust", doc);
+    v.dispatch({ selection: EditorSelection.range(doc.indexOf("a + b"), doc.indexOf("a + b") + 5) });
+    surroundWith(v);
+    const labels = useChooser.getState().request!.items.map((i) => i.label);
+    expect(labels).toEqual(["(expr)", "!(expr)"]);
+  });
+});
+
+describe("template fields", () => {
+  const selected = (v: EditorView) => v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to);
+
+  it("Enter moves to the next field like Tab", async () => {
+    const v = await editor("typescript", "fori");
+    expect(tab(v)).toBe(true);
+    await tick();
+    expect(selected(v)).toBe("i");
+    expect(press(v, "Enter")).toBe(true);
+    expect(v.state.doc.toString()).toBe("for (let i = 0; i < .length; i++) {\n\t\n}".replace("\t", "  "));
+    expect(v.state.selection.main.head).toBe("for (let i = 0; i < ".length);
+  });
+
+  it("Esc first drops the field's selection, then leaves the template", async () => {
+    const v = await editor("typescript", "fori");
+    tab(v);
+    await tick();
+    expect(press(v, "Escape")).toBe(true);
+    expect(v.state.selection.main.empty).toBe(true);
+    expect(hasNextSnippetField(v.state)).toBe(true);
+    expect(press(v, "Escape")).toBe(true);
+    expect(hasNextSnippetField(v.state)).toBe(false);
+    // Outside a template Enter and Esc are left to the editor.
+    expect(press(v, "Escape")).toBe(false);
+  });
+});
+
+describe("⌘J Insert Live Template", () => {
+  it("opens a lookup restricted to live templates and ends with it", async () => {
+    const v = await editor("typescript", "function f() {\n  ", undefined, [autocompletion()]);
+    const exclusive = () =>
+      v.state
+        .languageDataAt<(s: EditorState) => unknown>(EXCLUSIVE_COMPLETION_KEY, v.state.selection.main.head)
+        .map((f) => f(v.state))
+        .find(Boolean);
+    expect(exclusive()).toBeUndefined();
+    insertLiveTemplate(v);
+    expect(completionStatus(v.state)).not.toBeNull();
+    expect(exclusive()).toBeTypeOf("function");
+    // No word before the caret: every applicable template, from the caret.
+    const r = await templateCompletionSource(new CompletionContext(v.state, v.state.doc.length, true));
+    expect(r?.from).toBe(v.state.doc.length);
+    expect(r?.options.map((o) => o.label)).toEqual(expect.arrayContaining(["log", "fori"]));
+    v.dispatch({ selection: EditorSelection.cursor(0) });
+    await tick();
+    expect(completionStatus(v.state)).toBeNull();
+    expect(exclusive()).toBeUndefined();
   });
 });
 

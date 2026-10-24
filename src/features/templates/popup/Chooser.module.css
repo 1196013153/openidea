@@ -66,3 +66,17 @@
   color: var(--fg-faint);
   font-size: var(--fs-small);
 }
+.section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 10px;
+  font-size: var(--fs-small);
+  color: var(--fg-subtle);
+}
+.section::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border-popup);
+}

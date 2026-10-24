@@ -11,6 +11,7 @@
  */
 import { Annotation, EditorSelection, EditorState, Prec, StateEffect, StateField, Transaction, type ChangeSet, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, keymap, showTooltip, type Tooltip, type ViewUpdate } from "@codemirror/view";
+import { completionStatus } from "@codemirror/autocomplete";
 import { isExternalChange } from "@/editor/api";
 
 export interface Span {
@@ -30,6 +31,8 @@ export interface InplaceSession {
   commit: (newName: string) => void;
   /** ⇧F6 again: the rename dialog, prefilled with the typed name. */
   dialog: (typed: string) => void;
+  /** Name suggestions listed under the name; ↑ / ↓ put the previous / next one in (Introduce Variable). */
+  suggestions?: readonly string[];
 }
 
 const startSession = StateEffect.define<InplaceSession>();
@@ -63,11 +66,30 @@ const sessionField = StateField.define<InplaceSession | null>({
         ? {
             pos: s.primary.from,
             above: false,
-            create: () => {
+            create: (view) => {
               const dom = document.createElement("div");
               dom.className = "cm-lsp-hint cm-lsp-inplace-hint";
               dom.setAttribute("role", "status");
-              dom.textContent = s.hint;
+              if (s.suggestions?.length) {
+                const current = view.state.sliceDoc(s.primary.from, s.primary.to);
+                const list = document.createElement("ul");
+                list.className = "cm-lsp-inplace-suggestions";
+                list.setAttribute("aria-label", "Suggested names");
+                for (const name of s.suggestions) {
+                  const li = document.createElement("li");
+                  li.textContent = name;
+                  if (name === current) li.className = "cm-lsp-inplace-suggestion-active";
+                  li.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    putSuggestion(view, name);
+                  });
+                  list.appendChild(li);
+                }
+                dom.appendChild(list);
+              }
+              const hint = document.createElement("div");
+              hint.textContent = s.hint;
+              dom.appendChild(hint);
               return { dom };
             },
           }
@@ -115,6 +137,31 @@ export function startInplaceRename(view: EditorView, session: Omit<InplaceSessio
     selection: EditorSelection.range(session.primary.from, session.primary.to),
     scrollIntoView: true,
   });
+}
+
+/** Replaces the name being edited (and so its occurrences) with `name`, selected. */
+export function putSuggestion(view: EditorView, name: string): boolean {
+  const s = inplaceSession(view.state);
+  if (!s) return false;
+  const { from, to } = s.primary;
+  view.dispatch({
+    changes: { from, to, insert: name },
+    selection: EditorSelection.range(from, from + name.length),
+    annotations: Transaction.addToHistory.of(false),
+  });
+  return true;
+}
+
+/** ↑ / ↓ over the suggestions; false without any (the key then moves the caret, ending the session). */
+export function cycleSuggestion(view: EditorView, delta: 1 | -1): boolean {
+  const s = inplaceSession(view.state);
+  const list = s?.suggestions;
+  // An open lookup keeps the arrows.
+  if (!s || !list?.length || completionStatus(view.state) === "active") return false;
+  const current = view.state.sliceDoc(s.primary.from, s.primary.to);
+  const i = list.indexOf(current);
+  const next = list[i < 0 ? (delta > 0 ? 0 : list.length - 1) : (i + delta + list.length) % list.length]!;
+  return putSuggestion(view, next);
 }
 
 /**
@@ -167,6 +214,8 @@ const keys = Prec.highest(
     { key: "Escape", run: (v) => endInplaceRename(v, "cancel") !== null },
     // Undo while renaming restores the old name instead of undoing earlier edits.
     { key: "Mod-z", run: (v) => endInplaceRename(v, "cancel") !== null },
+    { key: "ArrowDown", run: (v) => cycleSuggestion(v, 1) },
+    { key: "ArrowUp", run: (v) => cycleSuggestion(v, -1) },
   ]),
 );
 

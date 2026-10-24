@@ -1,6 +1,11 @@
-/** Pinned Find results ("Open in Find Window"), one tab per search. */
+/**
+ * Find tool window results ("Open in Find Window"), one tab per search. As in
+ * IDEA a new search replaces the selected tab unless that tab is pinned.
+ */
 import { create } from "zustand";
 import { call, commands, nextRequestId, type SearchQuery } from "@/platform/ipc";
+import type { MenuItem } from "@/ui";
+import { loadJson, saveJson } from "../common/open";
 import { maybeToolWindowService } from "../common/services";
 import { cancelRequest, streamSearch } from "../common/textSearch";
 import { FindSession, IDLE, type FindDeps, type FindState } from "./session";
@@ -12,6 +17,8 @@ export interface FindTab {
   replacement: string | null;
   /** Replace keeps the case of each occurrence. */
   preserveCase?: boolean;
+  /** Kept when a new search runs (Pin Tab). */
+  pinned?: boolean;
   state: FindState;
 }
 
@@ -50,7 +57,13 @@ export function openInFindWindow(
   const session = new FindSession(deps, (state) => patchTab(id, { state }));
   sessions.set(id, session);
   useFindWindow.setState((s) => {
-    let tabs = [...s.tabs, { id, title, query, replacement, preserveCase, state: IDLE }];
+    const tab: FindTab = { id, title, query, replacement, preserveCase, state: IDLE };
+    const reused = s.tabs.find((t) => t.id === s.active && !t.pinned);
+    if (reused) {
+      sessions.get(reused.id)?.dispose();
+      sessions.delete(reused.id);
+    }
+    let tabs = reused ? s.tabs.map((t) => (t === reused ? tab : t)) : [...s.tabs, tab];
     while (tabs.length > MAX_TABS) {
       const old = tabs[0]!;
       sessions.get(old.id)?.dispose();
@@ -62,6 +75,17 @@ export function openInFindWindow(
   void session.search(query);
   maybeToolWindowService()?.show("find", true);
   return id;
+}
+
+export function pinFindTab(id: number, pinned: boolean) {
+  patchTab(id, { pinned });
+}
+
+/** Rerun of the selected tab (⌘R in the Find tool window). */
+export function rerunActiveFindTab() {
+  const s = useFindWindow.getState();
+  const id = s.active ?? s.tabs.at(-1)?.id;
+  if (id != null) rerunFindTab(id);
 }
 
 export function rerunFindTab(id: number) {
@@ -88,4 +112,47 @@ export function disposeFindWindow() {
   sessions.forEach((s) => s.dispose());
   sessions.clear();
   useFindWindow.setState({ tabs: [], active: null });
+}
+
+// ---------------------------------------------------------------------------
+// View options (persisted), in the tool window's ⋮ menu.
+
+const OPTIONS_KEY = "openidea.find.view.v1";
+
+export interface FindViewOptions {
+  /** Code preview beside the results (IDEA: on). */
+  preview: boolean;
+  /** Group files by directory; off lists files flat (IDEA's default). */
+  groupByDirectory: boolean;
+}
+
+export const useFindViewOptions = create<FindViewOptions>(() => ({
+  preview: true,
+  groupByDirectory: false,
+  ...loadJson<Partial<FindViewOptions>>(OPTIONS_KEY, {}),
+}));
+
+useFindViewOptions.subscribe((s) =>
+  saveJson(OPTIONS_KEY, { preview: s.preview, groupByDirectory: s.groupByDirectory }),
+);
+
+/** The Find tool window's ⋮ menu entries. */
+export function useFindHeaderMenu(): MenuItem[] {
+  const options = useFindViewOptions();
+  return [
+    { kind: "header", label: "Group By" },
+    {
+      id: "groupByDirectory",
+      label: "Directory",
+      checked: options.groupByDirectory,
+      run: () => useFindViewOptions.setState({ groupByDirectory: !options.groupByDirectory }),
+    },
+    { kind: "separator" },
+    {
+      id: "preview",
+      label: "Preview Source",
+      checked: options.preview,
+      run: () => useFindViewOptions.setState({ preview: !options.preview }),
+    },
+  ];
 }

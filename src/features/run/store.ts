@@ -8,12 +8,15 @@ import { Channel } from "@tauri-apps/api/core";
 import { call, commands, isTauri, type OutputChunk, type RunConfig, type RunId, type TestCaseReport } from "@/platform/ipc";
 import { formatCompileErrors, isJvmApplication, parseJavaArgs, resolveJavaCommand } from "@/platform/javaLaunch";
 import { useProject } from "@/platform/project";
+import { executeAction } from "@/platform/actions";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { maybeEditorService, notifications, toolWindowService } from "@/workbench/contributions";
 import { ConsoleModel } from "./console";
+import { jvmFrameTarget } from "./links";
 import { confirmRerun } from "./dialogs";
 import { createTestParser, frameworkFor, TestResults, withTestReporting, type TestEvent, type TestOutputParser } from "./testing";
-import { failedTestPaths, rerunFailedConfig } from "./testing/rerun";
+import { recordTestStates } from "./testing/states";
+import { failedTestPaths, leafTestPaths, rerunFailedConfig, testsConfig } from "./testing/rerun";
 
 export type SessionStatus = "starting" | "running" | "finished" | "failed";
 
@@ -518,6 +521,7 @@ function finishSession(sessionId: string, code: number | null) {
         if (frameworkFor(session.config) === "jvm") rt.tests.apply(await jvmReportEvents(session));
         if (runtimes.get(sessionId) !== rt) return;
         rt.tests.finish(code);
+        recordTestStates(rt.tests);
       }
       patchSession(sessionId, { status: "finished", exitCode: code, endedAt: Date.now() });
       bump(sessionId);
@@ -553,10 +557,10 @@ export function testReportEvents(reports: readonly TestCaseReport[]): TestEvent[
     const text = [r.message, r.output].filter(Boolean).join("\n");
     for (const line of text.split("\n").slice(0, 200)) events.push({ type: "output", path, line });
     const outer = r.className.split("$")[0]!;
-    const frame = new RegExp(`at ${outer.replace(/[.$]/g, "\\$&")}(?:\\$[\\w$]+)?\\.[\\w$<>]+\\(([\\w$-]+\\.(?:java|kt|groovy|scala)):(\\d+)\\)`).exec(
+    const frame = new RegExp(`at (${outer.replace(/[.$]/g, "\\$&")}(?:\\$[\\w$]+)?)\\.[\\w$<>]+\\(([\\w$-]+\\.(?:java|kt|groovy|scala)):(\\d+)\\)`).exec(
       r.output ?? "",
     );
-    if (frame) events.push({ type: "location", path, location: { path: frame[1]!, line: Number(frame[2]), resolve: "name" } });
+    if (frame) events.push({ type: "location", path, location: jvmFrameTarget(frame[1], frame[2]!, Number(frame[3])) });
   }
   return events;
 }
@@ -632,6 +636,26 @@ export function rerunFailed(sessionId: string): boolean {
   const derived = rerunFailedConfig(base, failedTests(sessionId));
   if (!derived) return false;
   void startRun(derived, sessionId, base);
+  return true;
+}
+
+/**
+ * Run / Debug the tests selected in a session's test tree (IDEA: a temporary
+ * configuration for them). False when the framework can't filter tests.
+ */
+export async function runSelectedTests(sessionId: string, nodeIds: readonly string[], debug: boolean): Promise<boolean> {
+  const session = getSession(sessionId);
+  const tests = runtimes.get(sessionId)?.tests;
+  if (!session || !tests) return false;
+  const nodes = nodeIds.map((id) => tests.get(id)).filter((n) => !!n);
+  const paths = leafTestPaths(nodes);
+  const base = session.baseConfig ?? session.config;
+  const name = nodes.length === 1 ? nodes[0]!.name : `${paths.length} tests`;
+  const derived = testsConfig(base, paths, name);
+  if (!derived) return false;
+  const config = adoptTemporary({ ...derived, id: `context:tests:${base.id}:${paths.map((p) => p.join("/")).join("|")}` });
+  if (debug) await executeAction("run.debugConfig", config);
+  else await startRun(config);
   return true;
 }
 

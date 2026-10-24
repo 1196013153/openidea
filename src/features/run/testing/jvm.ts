@@ -1,9 +1,11 @@
 /** Gradle test logging (`Class > method() PASSED`) and Maven Surefire reports. */
+import { jvmFrameTarget } from "../links";
 import { parseDuration, type TestEvent, type TestOutputParser } from "./types";
 
 const GRADLE_RE = /^(\S[^>]*?(?:\s>\s[^>]+?)+)\s+(PASSED|FAILED|SKIPPED)(?:\s+\(([\d.]+\s*m?s)\))?$/;
 const GRADLE_SUMMARY_RE = /^(\d+) tests? completed(?:, (\d+) failed)?(?:, (\d+) skipped)?/;
-const FRAME_RE = /\(([\w$.-]+\.(?:java|kt|kts|scala|groovy)):(\d+)\)|\bat ([\w$.-]+\.(?:java|kt|kts|scala|groovy)):(\d+)/;
+const FRAME_RE =
+  /(?:([\w$]+(?:\.[\w$]+)*)\.[\w$<>-]+)?\(([\w$.-]+\.(?:java|kt|kts|scala|groovy)):(\d+)\)|\bat ([\w$.-]+\.(?:java|kt|kts|scala|groovy)):(\d+)/;
 // [ERROR] com.acme.OrderTest.shouldX -- Time elapsed: 0.01 s <<< FAILURE!   (Surefire 3)
 // shouldX(com.acme.OrderTest)  Time elapsed: 0.01 sec  <<< FAILURE!          (Surefire 2)
 const SUREFIRE3_RE = /^(?:\[\w+\]\s+)?([\w$.]+)\.([\w$]+)(?:\(\))?\s+--\s+Time elapsed: ([\d.]+ s(?:ec)?)\s+<<<\s+(FAILURE|ERROR)!/;
@@ -83,7 +85,9 @@ export function jvmParser(): TestOutputParser {
           events.push({
             type: "location",
             path: failure,
-            location: { path: (f[1] ?? f[3])!, line: Number(f[2] ?? f[4]), resolve: "name" },
+            location: f[2]
+              ? jvmFrameTarget(f[1], f[2], Number(f[3]))
+              : { path: f[4]!, line: Number(f[5]), resolve: "name" },
           });
         }
       }

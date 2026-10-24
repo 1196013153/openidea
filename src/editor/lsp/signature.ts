@@ -1,9 +1,11 @@
 /**
  * Parameter info (⌘P, and automatically after `(` / `,`): a tooltip above the
  * caret listing the signatures with the active parameter in bold. While open
- * it follows the caret and closes when the server reports no signature.
+ * it follows the caret and closes when the server reports no signature;
+ * ⇥ / ⇧⇥ move to the next / previous argument.
  */
-import { Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { EditorSelection, Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { completionStatus, hasNextSnippetField, hasPrevSnippetField } from "@codemirror/autocomplete";
 import { EditorView, ViewPlugin, keymap, showTooltip, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import { commands, type SignatureHelp } from "@/platform/ipc";
 import { docOf, lspRequest, reportLspError, debounce } from "./lsp";
@@ -11,6 +13,7 @@ import { offsetToPos } from "./positions";
 import { showHint } from "./hint";
 import { renderMarkup, isEmptyMarkup } from "./markdown";
 import { editorPrefs } from "@/platform/editorSettings";
+import { inplaceRenameActive } from "./inplaceRename";
 
 interface SigState {
   pos: number;
@@ -138,6 +141,112 @@ const signaturePlugin = ViewPlugin.fromClass(
       this.refresh.cancel();
     }
   },
+);
+
+// ---------------------------------------------------------------------------
+// ⇥ / ⇧⇥: next / previous argument while parameter info is shown
+
+const OPEN = "([{";
+const CLOSE = ")]}";
+
+/** Skips a string literal starting at `i` (its quote); returns the index after it. */
+function skipString(text: string, i: number): number {
+  const q = text[i]!;
+  let j = i + 1;
+  while (j < text.length && text[j] !== q) {
+    if (text[j] === "\\") j++;
+    else if (text[j] === "\n" && q !== "`") break;
+    j++;
+  }
+  return j + 1;
+}
+
+const isQuote = (c: string) => c === '"' || c === "'" || c === "`";
+
+/** The `(` of the innermost call around `pos`, scanning brackets outside strings and line comments. */
+export function enclosingParen(text: string, pos: number, window = 4000): number | null {
+  const start = Math.max(0, pos - window);
+  const stack: number[] = [];
+  for (let i = start; i < pos; i++) {
+    const c = text[i]!;
+    if (isQuote(c) && !(c === "'" && /\w/.test(text[i - 1] ?? ""))) {
+      i = skipString(text, i) - 1;
+    } else if (c === "/" && text[i + 1] === "/") {
+      while (i < pos && text[i] !== "\n") i++;
+    } else if (OPEN.includes(c)) stack.push(i);
+    else if (CLOSE.includes(c)) stack.pop();
+  }
+  for (let k = stack.length - 1; k >= 0; k--) if (text[stack[k]!] === "(") return stack[k]!;
+  return null;
+}
+
+/** Argument spans (trimmed; empty ones collapse to where they would start) of the call opened at `open`. */
+export function argumentSpans(text: string, open: number): { from: number; to: number }[] {
+  const out: { from: number; to: number }[] = [];
+  let depth = 0;
+  let argStart = open + 1;
+  const push = (end: number) => {
+    let from = argStart;
+    let to = end;
+    while (from < to && /\s/.test(text[from]!)) from++;
+    while (to > from && /\s/.test(text[to - 1]!)) to--;
+    out.push({ from, to });
+  };
+  for (let i = open + 1; i < text.length; i++) {
+    const c = text[i]!;
+    if (isQuote(c) && !(c === "'" && /\w/.test(text[i - 1] ?? ""))) i = skipString(text, i) - 1;
+    else if (OPEN.includes(c)) depth++;
+    else if (CLOSE.includes(c)) {
+      if (depth === 0) {
+        push(i);
+        return out.length === 1 && out[0]!.from === out[0]!.to ? [] : out;
+      }
+      depth--;
+    } else if (c === "," && depth === 0) {
+      push(i);
+      argStart = i + 1;
+    }
+  }
+  return out;
+}
+
+/** Caret target of ⇥ (`dir` 1) / ⇧⇥ (-1) in the call around `pos`; null at the ends (the key then does its usual thing). */
+export function argumentStop(text: string, pos: number, dir: 1 | -1): number | null {
+  const open = enclosingParen(text, pos);
+  if (open === null) return null;
+  const args = argumentSpans(text, open);
+  if (!args.length) return null;
+  // The argument the caret is in: past an argument's separating comma it is that argument.
+  let current = 0;
+  for (let i = 1; i < args.length; i++) if (pos > text.lastIndexOf(",", args[i]!.from)) current = i;
+  const target = args[current + dir];
+  return target ? target.from : null;
+}
+
+function moveToArgument(view: EditorView, dir: 1 | -1): boolean {
+  const state = view.state;
+  if (!state.field(signatureField, false) || state.readOnly) return false;
+  if (state.selection.ranges.length > 1 || completionStatus(state) === "active") return false;
+  // Snippet / template fields and the in-place rename own ⇥.
+  if (dir > 0 ? hasNextSnippetField(state) : hasPrevSnippetField(state)) return false;
+  if (inplaceRenameActive(state)) return false;
+  const head = state.selection.main.head;
+  const to = argumentStop(state.doc.toString(), head, dir);
+  if (to === null || to === head) return false;
+  view.dispatch({ selection: EditorSelection.cursor(to), scrollIntoView: true, userEvent: "select" });
+  return true;
+}
+
+/**
+ * Next / Previous Parameter keys. Registered after the template contributions
+ * (see `index.ts`) so live template / postfix expansion keeps ⇥ first; the
+ * lookup, snippet fields and the in-place rename are checked explicitly.
+ */
+export const parameterTabKeys: Extension = Prec.high(
+  keymap.of([
+    { key: "Tab", run: (v) => moveToArgument(v, 1) },
+    { key: "Shift-Tab", run: (v) => moveToArgument(v, -1) },
+  ]),
 );
 
 export function signatureExtension(): Extension {

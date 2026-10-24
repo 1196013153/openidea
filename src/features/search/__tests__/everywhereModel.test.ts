@@ -246,3 +246,29 @@ describe("parseCommand", () => {
     expect(parseCommand("upg")).toBeNull();
   });
 });
+
+describe("Search Everywhere initial text", () => {
+  it("each tab starts with its own last query; closing remembers the text", async () => {
+    const { hideSearchEverywhere, selectSearchEverywhereTab, showSearchEverywhere, useSearchEverywhere } = await import(
+      "../everywhere/store"
+    );
+    localStorage.clear();
+    showSearchEverywhere("files");
+    useSearchEverywhere.setState({ query: "Order" });
+    hideSearchEverywhere();
+    showSearchEverywhere("classes");
+    expect(useSearchEverywhere.getState().query).toBe("");
+    useSearchEverywhere.setState({ query: "Pizza" });
+    selectSearchEverywhereTab("symbols");
+    hideSearchEverywhere();
+    showSearchEverywhere("files");
+    expect(useSearchEverywhere.getState().query).toBe("Order");
+    hideSearchEverywhere();
+    showSearchEverywhere("symbols", { query: "sel" });
+    expect(useSearchEverywhere.getState().query).toBe("sel");
+    hideSearchEverywhere();
+    showSearchEverywhere("classes");
+    expect(useSearchEverywhere.getState().query).toBe("");
+    hideSearchEverywhere();
+  });
+});

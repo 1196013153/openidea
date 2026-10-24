@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeSummary, needsPreview, summarizeWorkspaceEdit } from "./workspaceEdit";
+import { Text } from "@codemirror/state";
+import { describeSummary, editPreviewLines, needsPreview, summarizeWorkspaceEdit } from "./workspaceEdit";
 
 const edit = (line: number) => ({ range: { start: { line, col: 0 }, end: { line, col: 3 } }, new_text: "new" });
 
@@ -45,5 +46,33 @@ describe("summarizeWorkspaceEdit", () => {
   it("handles empty edits", () => {
     const s = summarizeWorkspaceEdit({ files: [] });
     expect(s).toMatchObject({ files: 0, occurrences: 0 });
+  });
+});
+
+describe("editPreviewLines", () => {
+  const doc = Text.of(["function f() {", "  return price * 2;", "}", "", "const a = 1;", "const b = 2;", "const c = 3;"]);
+  const at = (line: number, col: number) => ({ line, col });
+
+  it("shows changed lines with one line of context, hunks separated", () => {
+    const lines = editPreviewLines(doc, [
+      { range: { start: at(1, 2), end: at(1, 2) }, new_text: "const x = price * 2;\n  " },
+      { range: { start: at(1, 9), end: at(1, 18) }, new_text: "x" },
+      { range: { start: at(6, 10), end: at(6, 11) }, new_text: "4" },
+    ]);
+    expect(lines).toEqual([
+      { kind: "context", text: "function f() {" },
+      { kind: "removed", text: "  return price * 2;" },
+      { kind: "added", text: "  const x = price * 2;" },
+      { kind: "added", text: "  return x;" },
+      { kind: "context", text: "}" },
+      { kind: "gap", text: "" },
+      { kind: "context", text: "const b = 2;" },
+      { kind: "removed", text: "const c = 3;" },
+      { kind: "added", text: "const c = 4;" },
+    ]);
+  });
+
+  it("is empty when nothing changes", () => {
+    expect(editPreviewLines(doc, [{ range: { start: at(0, 0), end: at(0, 8) }, new_text: "function" }])).toEqual([]);
   });
 });

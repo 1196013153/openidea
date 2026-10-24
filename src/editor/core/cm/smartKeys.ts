@@ -3,8 +3,8 @@
  * quotes.
  */
 import { EditorSelection, StateEffect, countColumn, StateField, type EditorState, type Extension, type Transaction } from "@codemirror/state";
-import { keymap, type Command } from "@codemirror/view";
-import { getIndentUnit, getIndentation, indentString, indentUnit } from "@codemirror/language";
+import { EditorView, keymap, type Command } from "@codemirror/view";
+import { getIndentUnit, getIndentation, indentString, indentUnit, syntaxTree } from "@codemirror/language";
 import { indentMore } from "@codemirror/commands";
 
 // --- Tab -------------------------------------------------------------------------------
@@ -142,3 +142,32 @@ export const tabOutOfScope: Command = (view) => {
 
 /** Settings › Smart Keys › "Jump outside closing bracket/quote with Tab" (Tab itself is `insertTab`). */
 export const tabOut: Extension = tabOutScopes;
+
+// --- closing quote ---------------------------------------------------------------------------
+
+/** `quote` at `pos` closes the string literal the caret is in (typed or not, the pair's end). */
+export function closesStringAt(state: EditorState, pos: number, quote: string): boolean {
+  if (state.sliceDoc(pos, pos + 1) !== quote) return false;
+  for (let n: ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]> | null = syntaxTree(state).resolveInner(pos, 1); n; n = n.parent) {
+    if (n.to > pos + 1) break;
+    if (n.to === pos + 1 && n.from < pos && /String|Char|Template|Rune/.test(n.type.name)) return true;
+  }
+  return false;
+}
+
+/** Typing a quote right before the closing quote of a string literal steps over it, as in IDEA. */
+export const skipClosingQuote = EditorView.inputHandler.of((view, _from, _to, text) => {
+  if (!/^["'`]$/.test(text) || view.state.readOnly) return false;
+  const { state } = view;
+  const sel = state.selection;
+  if (!sel.ranges.every((r) => r.empty && closesStringAt(state, r.head, text))) return false;
+  view.dispatch({
+    selection: EditorSelection.create(
+      sel.ranges.map((r) => EditorSelection.cursor(r.head + 1)),
+      sel.mainIndex,
+    ),
+    scrollIntoView: true,
+    userEvent: "input.type",
+  });
+  return true;
+});

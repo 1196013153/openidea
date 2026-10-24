@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { groupUsages, trimPreview, usageCount } from "./usages";
 import { serversSummary, type ServerEntry } from "./servers";
 import { buildProblemNodes } from "./ProblemsView";
-import { mergeDiagnostics } from "./problemsStore";
+import { mergeDiagnostics, sortProblems } from "./problemsStore";
+import { toggleExcludedUsages } from "./UsagesView";
 import { childId, directionLabel } from "./hierarchy";
 
 const loc = (path: string, line: number, col: number, endCol: number) => ({
@@ -81,5 +82,36 @@ describe("hierarchy", () => {
       fromRanges: [],
     };
     expect(childId("root", item)).toBe("root//a.rs:1:3:f");
+  });
+});
+
+describe("sortProblems", () => {
+  const d = (severity: "error" | "warning", line: number, message: string) => ({
+    range: { start: { line, col: 0 }, end: { line, col: 1 } },
+    severity,
+    message,
+    source: null,
+    code: null,
+  });
+  const items = [d("warning", 1, "b"), d("error", 5, "c"), d("warning", 0, "z"), d("error", 2, "a")];
+  const lines = (order: { bySeverity: boolean; byName: boolean }) => sortProblems(items, order).map((x) => x.range.start.line);
+
+  it("orders by severity, then position (IDEA's default)", () => {
+    expect(lines({ bySeverity: true, byName: false })).toEqual([2, 5, 0, 1]);
+  });
+  it("orders by position or by name when asked", () => {
+    expect(lines({ bySeverity: false, byName: false })).toEqual([0, 1, 2, 5]);
+    expect(lines({ bySeverity: false, byName: true })).toEqual([2, 1, 5, 0]);
+  });
+});
+
+describe("toggleExcludedUsages", () => {
+  const u = (line: number) => ({ path: "/a", line, col: 0, endCol: 1, text: "" });
+  it("excludes a group unless all of it is excluded already", () => {
+    const one = toggleExcludedUsages(new Set(), [u(1)]);
+    expect([...one]).toEqual(["/a:1:0"]);
+    const both = toggleExcludedUsages(one, [u(1), u(2)]);
+    expect([...both].sort()).toEqual(["/a:1:0", "/a:2:0"]);
+    expect(toggleExcludedUsages(both, [u(1), u(2)]).size).toBe(0);
   });
 });

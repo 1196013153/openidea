@@ -488,6 +488,7 @@ const SMART_KEYS = editorPage({
           options: [
             { value: "none", label: "None" },
             { value: "indentBlock", label: "Indent Block" },
+            { value: "indentEachLine", label: "Indent Each Line" },
           ],
         },
       ],

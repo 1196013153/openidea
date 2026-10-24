@@ -8,7 +8,7 @@
  * The workbench renders whatever is registered; the action
  * `toolwindow.<id>` toggles it (registered automatically).
  */
-import type { ComponentType, ReactNode, RefObject } from "react";
+import { useEffect, useRef, type ComponentType, type ReactNode, type RefObject } from "react";
 import type { RunConfig } from "@/bindings";
 import type { MenuItem } from "@/ui/Menu";
 import { create } from "zustand";
@@ -522,8 +522,16 @@ export function projectViewRoots(map: ReadonlyMap<string, ProjectViewRootContrib
 // `openIn` is the Open In › submenu those three menus share (Browser › from features/web).
 // `stopProcess` is the Stop chooser (as IDEA): one item per running process
 // a feature can stop (features/run: run sessions, features/debugger: debug sessions).
+// `selectIn` is the Select In chooser (⌥F1): targets for a file besides the project view.
 
-export type ContextMenuId = "editor" | "projectView" | "editorTab" | "editorGutter" | "openIn" | "stopProcess";
+export type ContextMenuId =
+  | "editor"
+  | "projectView"
+  | "editorTab"
+  | "editorGutter"
+  | "openIn"
+  | "stopProcess"
+  | "selectIn";
 
 export interface MenuGroupContext {
   /** Files / directories the menu is for (absolute paths; a virtual URI for virtual documents). */
@@ -635,4 +643,69 @@ export function registerRunExecutor(executor: RunExecutorContribution): () => vo
 /** Registered executors, in order. */
 export function runExecutors(map = useRunExecutors.getState().executors): RunExecutorContribution[] {
   return [...map.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
+}
+
+// ---------------------------------------------------------------------------
+// Occurrence navigators: result views (Find, Usages, Problems, TODO…) let
+// Next / Previous Occurrence step through their results from anywhere, the
+// editor included. The actions ask the focused, else the last active tool
+// window's navigator; the latest registration per tool window wins.
+
+/** 1-based position of the occurrence navigated to, among `total`. */
+export interface OccurrenceStep {
+  index: number;
+  total: number;
+}
+
+export interface OccurrenceNavigator {
+  /**
+   * Selects the next (1) / previous (-1) occurrence and opens it in the editor,
+   * focusing the editor only when `focusEditor` (the action ran outside the tool
+   * window). `null` when there is none in that direction.
+   */
+  go(dir: 1 | -1, focusEditor: boolean): OccurrenceStep | null;
+}
+
+const occurrenceNavigators = new Map<string, OccurrenceNavigator[]>();
+
+export function registerOccurrenceNavigator(toolWindow: string, nav: OccurrenceNavigator): () => void {
+  occurrenceNavigators.set(toolWindow, [...(occurrenceNavigators.get(toolWindow) ?? []), nav]);
+  return () => {
+    const rest = (occurrenceNavigators.get(toolWindow) ?? []).filter((n) => n !== nav);
+    if (rest.length) occurrenceNavigators.set(toolWindow, rest);
+    else occurrenceNavigators.delete(toolWindow);
+  };
+}
+
+export function occurrenceNavigator(toolWindow: string): OccurrenceNavigator | null {
+  return occurrenceNavigators.get(toolWindow)?.at(-1) ?? null;
+}
+
+/** Registers `nav` (the latest render's) for `toolWindow` while the calling view is mounted. */
+export function useOccurrenceNavigator(toolWindow: string, nav: OccurrenceNavigator["go"]) {
+  const latest = useRef(nav);
+  useEffect(() => {
+    latest.current = nav;
+  });
+  useEffect(
+    () => registerOccurrenceNavigator(toolWindow, { go: (dir, focus) => latest.current(dir, focus) }),
+    [toolWindow],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status bar info text (IDEA's status bar message, e.g. "3 of 12" after Next
+// Occurrence). Cleared by the next message or after a while.
+
+export const useStatusInfo = create<{ text: string | null; seq: number }>(() => ({ text: null, seq: 0 }));
+
+let statusInfoTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function showStatusInfo(text: string, ms = 8000) {
+  clearTimeout(statusInfoTimer);
+  const seq = useStatusInfo.getState().seq + 1;
+  useStatusInfo.setState({ text, seq });
+  statusInfoTimer = setTimeout(() => {
+    if (useStatusInfo.getState().seq === seq) useStatusInfo.setState({ text: null });
+  }, ms);
 }

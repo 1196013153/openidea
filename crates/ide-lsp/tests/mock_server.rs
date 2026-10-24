@@ -806,6 +806,11 @@ async fn navigation_rename_format_and_decorations() {
     assert_eq!(hints[0].label, "x:");
     assert_eq!(hints[0].kind, InlayKind::Parameter);
 
+    // Nothing to prepare at the position: NotFound, so the UI can retry at the enclosing declaration.
+    s.respond("textDocument/prepareCallHierarchy", json!(null));
+    let err = h.mgr.call_hierarchy(doc, Pos::new(0, 1), HierarchyDirection::Incoming).await.unwrap_err();
+    assert_eq!(err.kind, ide_core::error::ErrorKind::NotFound);
+
     let item = json!({ "name": "foo", "kind": 12, "uri": uri, "range": r(0,0,0,11), "selectionRange": r(0,3,0,6), "data": "id" });
     s.respond("textDocument/prepareCallHierarchy", json!([item]));
     s.respond("callHierarchy/incomingCalls", json!([{ "from": { "name": "main", "kind": 12, "uri": uri, "range": r(1,0,1,6), "selectionRange": r(1,0,1,3) }, "fromRanges": [r(1,0,1,3)] }]));

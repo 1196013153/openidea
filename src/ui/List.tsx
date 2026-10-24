@@ -23,6 +23,8 @@ export interface ListProps<T> {
   activeIndex?: number;
   defaultActiveIndex?: number;
   onActiveChange?: (index: number) => void;
+  /** Rows selected besides the active one (multi-selection); drawn like the active row. */
+  isSelected?: (item: T, index: number) => boolean;
   onActivate?: (item: T, index: number, e: KeyboardEvent | MouseEvent) => void;
   onContextMenu?: (item: T, index: number, e: MouseEvent) => void;
   rowHeight?: number;
@@ -102,6 +104,7 @@ export function List<T>({
   activeIndex,
   defaultActiveIndex,
   onActiveChange,
+  isSelected,
   onActivate,
   onContextMenu,
   rowHeight = 24,
@@ -187,15 +190,16 @@ export function List<T>({
             );
           }
           const isActive = v.index === active;
+          const selected = isActive || (isSelected?.(item, v.index) ?? false);
           return (
             <div
               key={v.key}
               id={`${baseId}-${v.index}`}
               role="option"
-              aria-selected={isActive}
+              aria-selected={selected}
               aria-posinset={optionIndex.idx[v.index]}
               aria-setsize={optionIndex.count}
-              className={clsx(styles.row, isActive && styles.active)}
+              className={clsx(styles.row, selected && styles.active)}
               style={style}
               onPointerMove={hoverSelects && !isActive ? () => setActive(v.index) : undefined}
               onMouseDown={(e) => {

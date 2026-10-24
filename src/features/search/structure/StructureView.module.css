@@ -100,3 +100,16 @@
 .popupList > * {
   flex: 1;
 }
+.popupOptions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 26px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-popup);
+  font-size: var(--fs-small);
+}
+.popupEmpty {
+  padding: 4px 12px;
+  color: var(--fg-faint);
+}

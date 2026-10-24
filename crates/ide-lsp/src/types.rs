@@ -195,6 +195,19 @@ pub struct InlayHint {
     pub padding_left: bool,
     pub padding_right: bool,
     pub tooltip: Option<String>,
+    /// The label's parts when the server split it (empty for a plain label);
+    /// their values concatenate to `label`.
+    pub parts: Vec<InlayLabelPart>,
+}
+
+/// One part of an inlay hint label, e.g. a type name that navigates to its declaration.
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayLabelPart {
+    pub value: String,
+    pub tooltip: Option<String>,
+    /// Declaration the part stands for (⌘-click navigates there).
+    pub location: Option<Location>,
 }
 
 /// Decoded semantic tokens (absolute positions) with the server legend applied.

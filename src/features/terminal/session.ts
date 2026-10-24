@@ -33,8 +33,10 @@ export type SessionStatus = "idle" | "starting" | "running" | "exited" | "error"
 export interface SessionSnapshot {
   status: SessionStatus;
   exitCode: number | null;
-  /** Shell name reported by the backend (`zsh`), or the OSC title. */
+  /** Shell name reported by the backend (`zsh`). */
   title: string;
+  /** Window title set by the running program (OSC 0/2), null when unset or blank. */
+  appTitle: string | null;
   /** Current directory (initial cwd, updated by OSC 7). */
   cwd: string;
 }
@@ -153,7 +155,7 @@ export class TerminalSession {
   constructor(opts: SessionOptions) {
     this.opts = opts;
     this.key = opts.key;
-    this.snapshot = { status: "idle", exitCode: null, title: "Local", cwd: opts.cwd };
+    this.snapshot = { status: "idle", exitCode: null, title: "Local", appTitle: null, cwd: opts.cwd };
     this.host = document.createElement("div");
     this.host.className = "openidea-terminal-host";
     this.host.dataset.terminalSession = opts.key;
@@ -192,10 +194,7 @@ export class TerminalSession {
       }),
       this.term.onData((data) => this.input(data)),
       this.term.onBinary((data) => this.input(data)),
-      this.term.onTitleChange((title) => {
-        const t = title.trim();
-        if (t) this.update({ title: t.length > 40 ? `${t.slice(0, 39)}…` : t });
-      }),
+      this.term.onTitleChange((title) => this.update({ appTitle: title.trim() || null })),
       // OSC 7: `file://host/path` — shells report their cwd so relative links resolve correctly.
       this.term.parser.registerOscHandler(7, (data) => {
         try {
@@ -335,7 +334,7 @@ export class TerminalSession {
   async start() {
     if (this.disposed || this.snapshot.status === "starting" || this.snapshot.status === "running") return;
     const generation = ++this.generation;
-    this.update({ status: "starting", exitCode: null });
+    this.update({ status: "starting", exitCode: null, appTitle: null });
     if (!isTauri()) {
       this.term.writeln("\x1b[2mTerminal is unavailable outside the desktop app.\x1b[0m");
       this.update({ status: "error" });

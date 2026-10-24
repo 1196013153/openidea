@@ -1,0 +1,31 @@
+/**
+ * Read-only code previews outside editor tabs (Find in Files, bookmarks): the
+ * editor's font, colours, line numbers and syntax highlighting, without
+ * editing, folding or contributions.
+ */
+import { EditorState, type Extension } from "@codemirror/state";
+import { EditorView, highlightSpecialChars, lineNumbers } from "@codemirror/view";
+import { syntaxHighlighting } from "@codemirror/language";
+import { editorsFor } from "@/editor/api";
+import type { EditorSettings } from "@/platform/ipc";
+import { openideaHighlightStyle } from "./highlight";
+import { openideaTheme } from "./theme";
+import { findLanguageDescription, loadSupport, loadedSupport, uiModeForPath } from "./languages";
+import { fontExtension } from "./setup";
+
+export async function previewExtensions(path: string, settings: EditorSettings | undefined): Promise<Extension> {
+  const open = editorsFor(path)[0]?.ctx;
+  const desc = findLanguageDescription(open ? open.uiMode : (uiModeForPath(path) ?? null), path);
+  const support = desc ? (loadedSupport(desc) ?? (await loadSupport(desc))) : null;
+  return [
+    fontExtension(settings),
+    openideaTheme,
+    lineNumbers(),
+    highlightSpecialChars(),
+    syntaxHighlighting(openideaHighlightStyle),
+    EditorState.readOnly.of(true),
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-label": `Preview of ${path}` }),
+    support ?? [],
+  ];
+}

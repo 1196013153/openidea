@@ -351,10 +351,27 @@ export function matchesCase(label: string, typed: string, mode: string): boolean
   return i >= typed.length;
 }
 
+/**
+ * A source another feature restricts the lookup to, via the
+ * `openideaExclusiveCompletion` language-data key (`(state) => source | null`;
+ * ⌘J's live templates).
+ */
+function exclusiveSource(ctx: CompletionContext): CompletionSource | null {
+  type Provider = (state: CompletionContext["state"]) => CompletionSource | null;
+  for (const f of ctx.state.languageDataAt<Provider>("openideaExclusiveCompletion", ctx.pos)) {
+    const source = f(ctx.state);
+    if (source) return source;
+  }
+  return null;
+}
+
 /** Show suggestions as you type: sources only answer explicit requests when it is off. */
 function gated(source: CompletionSource): CompletionSource {
-  return (ctx) =>
-    !ctx.explicit && (!editorPrefs().completion.autoPopup || inplaceRenameActive(ctx.state)) ? null : source(ctx);
+  return (ctx) => {
+    const only = exclusiveSource(ctx);
+    if (only) return source === contributedSource ? only(ctx) : null;
+    return !ctx.explicit && (!editorPrefs().completion.autoPopup || inplaceRenameActive(ctx.state)) ? null : source(ctx);
+  };
 }
 
 // ---------------------------------------------------------------------------

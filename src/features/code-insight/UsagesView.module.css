@@ -102,3 +102,19 @@
   font-style: italic;
   color: var(--fg-subtle);
 }
+.excluded .preview,
+.excluded .file,
+.excluded .line {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.panel > * {
+  flex: 1;
+  min-height: 0;
+}

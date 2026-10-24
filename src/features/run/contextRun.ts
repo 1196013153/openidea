@@ -9,7 +9,7 @@ import { executeAction, getAction } from "@/platform/actions";
 import { call, commands, isTauri, type RunConfig } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { isVirtualUri } from "@/platform/virtualDocs";
-import type { MenuItem } from "@/ui";
+import { showContextMenu, type MenuItem } from "@/ui";
 import {
   maybeEditorService,
   notifications,
@@ -21,6 +21,7 @@ import {
   neededTools,
   OPTIMISTIC,
   produceContext,
+  produceContextChoices,
   produceDirectory,
   produceFile,
   scriptLanguage,
@@ -160,10 +161,41 @@ export async function runContextAction(debug: boolean, arg?: unknown): Promise<b
   const target = await withArgContent(arg);
   const input = target ?? editorInput();
   if (!input) return false;
-  const p = await produceResolved(input, target?.dir ?? false);
+  const dir = target?.dir ?? false;
+  const choices = dir ? [] : produceContextChoices({ ...input, configs: useRun.getState().configs, goModule: goModulePath }, OPTIMISTIC);
+  if (choices.length > 1) {
+    // Several test configurations match equally well: like IDEA, let the user choose.
+    showContextMenu(chooserPoint(target === null), choiceItems(choices, debug));
+    return true;
+  }
+  const p = await produceResolved(input, dir);
   if (!p) return false;
   await launchProduced(p, debug);
   return true;
+}
+
+/** Menu entries for each of several productions: "Run '<name>'" with the configuration it derives from. */
+export function choiceItems(choices: readonly Produced[], debug: boolean): MenuItem[] {
+  return [
+    { kind: "header", label: debug ? "Choose configuration to debug" : "Choose configuration to run" },
+    ...choices.map(
+      (p): MenuItem => ({
+        label: `${debug ? "Debug" : "Run"} '${p.name}'`,
+        verbatim: true,
+        icon: debug ? "debug" : "run",
+        shortcut: p.detail,
+        run: () => void launchProduced(p, debug),
+      }),
+    ),
+  ];
+}
+
+/** Below the caret for the editor context, else the middle of the window. */
+function chooserPoint(fromEditor: boolean): { x: number; y: number } {
+  const editor = fromEditor ? activeEditor() : null;
+  const caret = editor?.view.coordsAtPos(editor.view.state.selection.main.head);
+  if (caret) return { x: caret.left, y: caret.bottom + 2 };
+  return { x: Math.round(window.innerWidth / 2 - 120), y: Math.round(window.innerHeight / 3) };
 }
 
 /** Runs the context with a run executor (Run with Coverage, Profile…). False when there is nothing to run. */

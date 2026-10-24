@@ -240,6 +240,8 @@ export const commands = {
 	lspCodeActions: (doc: DocId, range: Range, only: string[]) => typedError<CodeAction[], IdeError>(__TAURI_INVOKE("lsp_code_actions", { doc, range, only })),
 	/**  Cancellable code actions with the kinds the servers advertise (Refactor This, refactoring availability). */
 	lspCodeActionQuery: (request: RequestId, doc: DocId, range: Range, only: string[]) => typedError<CodeActionQuery, IdeError>(__TAURI_INVOKE("lsp_code_action_query", { request, doc, range, only })),
+	/**  Resolves a code action's edit without applying it (intention preview). */
+	lspResolveCodeAction: (doc: DocId, action: CodeAction) => typedError<CodeAction, IdeError>(__TAURI_INVOKE("lsp_resolve_code_action", { doc, action })),
 	/**  Resolves (if needed), applies the edit, then runs the command of a code action. */
 	lspApplyCodeAction: (doc: DocId, action: CodeAction) => typedError<null, IdeError>(__TAURI_INVOKE("lsp_apply_code_action", { doc, action })),
 	lspPrepareRename: (doc: DocId, pos: Pos) => typedError<{
@@ -309,8 +311,8 @@ export const commands = {
 	vcsRenameBranch: (repo: string | null, from: string, to: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_rename_branch", { repo, from, to })),
 	vcsMerge: (repo: string | null, branch: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_merge", { repo, branch })),
 	vcsRebase: (repo: string | null, onto: string) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_rebase", { repo, onto })),
-	vcsStashPush: (repo: string | null, message: string | null, includeUntracked: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_push", { repo, message, includeUntracked })),
-	vcsStashApply: (repo: string | null, index: number, pop: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_apply", { repo, index, pop })),
+	vcsStashPush: (repo: string | null, message: string | null, includeUntracked: boolean, keepIndex: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_push", { repo, message, includeUntracked, keepIndex })),
+	vcsStashApply: (repo: string | null, index: number, pop: boolean, reinstateIndex: boolean, branch: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_apply", { repo, index, pop, reinstateIndex, branch })),
 	vcsStashDrop: (repo: string | null, index: number) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_stash_drop", { repo, index })),
 	/**  Network operation; progress lines stream through `on_output`. Cancellable. */
 	vcsRemote: (repo: string | null, request: RequestId, op: RemoteOp, onOutput: Channel<string>) => typedError<null, IdeError>(__TAURI_INVOKE("vcs_remote", { repo, request, op, onOutput })),
@@ -2393,6 +2395,11 @@ export type InlayHint = {
 	paddingLeft: boolean,
 	paddingRight: boolean,
 	tooltip: string | null,
+	/**
+	 *  The label's parts when the server split it (empty for a plain label);
+	 *  their values concatenate to `label`.
+	 */
+	parts: InlayLabelPart[],
 };
 
 /**  Editor › Inlay Hints. */
@@ -2407,6 +2414,14 @@ export type InlayHintsSettings = {
 };
 
 export type InlayKind = "type" | "parameter" | "other";
+
+/**  One part of an inlay hint label, e.g. a type name that navigates to its declaration. */
+export type InlayLabelPart = {
+	value: string,
+	tooltip: string | null,
+	/**  Declaration the part stands for (⌘-click navigates there). */
+	location: Location | null,
+};
 
 export type InspectEvent = 
 /**  Files about to be inspected. */
@@ -2741,6 +2756,10 @@ export type LogQuery = {
 	textRegex?: boolean,
 	/**  `text` matches case-sensitively (Log filter `Cc`). */
 	textMatchCase?: boolean,
+	/**  More starting revisions next to `branch` (Log Branch filter with several branches). */
+	branches?: string[],
+	/**  More author needles next to `author`; a commit matches any of them (Log User filter). */
+	authors?: string[],
 };
 
 export type LspRefreshKind = "inlayHints" | "semanticTokens" | "codeLens";
@@ -3557,6 +3576,12 @@ export type SdkKind = "python" | "node" |
 /**  Maven homes. */
 "maven";
 
+/**
+ *  IDEA's search context: matches anywhere, only in, or outside comments and
+ *  string literals. Files whose language has no syntax tree contain neither.
+ */
+export type SearchContext = "any" | "inComments" | "inStringLiterals" | "exceptComments" | "exceptStringLiterals" | "exceptCommentsAndStringLiterals";
+
 export type SearchEvent = { type: "file"; file: FileMatches } | { type: "done"; summary: SearchSummary };
 
 export type SearchQuery = {
@@ -3573,6 +3598,8 @@ export type SearchQuery = {
 	scope: SearchScope,
 	/**  Stop after this many matches overall (0 = 10 000). */
 	maxMatches: number,
+	/**  Where in the code a match may lie (IDEA's search context filter). */
+	context?: SearchContext,
 };
 
 export type SearchScope = { kind: "project" } | { kind: "directory"; path: IpcPath } | { kind: "files"; paths: IpcPath[] } | 

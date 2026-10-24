@@ -3,7 +3,7 @@
  * Keys, Code Editing, Code Style). Everything here is rebuilt into the
  * `prefs` compartment when settings change.
  */
-import { EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension, type Transaction } from "@codemirror/state";
+import { EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension, type Transaction, type TransactionSpec } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -16,7 +16,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { highlightTree } from "@lezer/highlight";
-import { getIndentUnit, indentUnit, syntaxTree } from "@codemirror/language";
+import { getIndentUnit, getIndentation, indentRange, indentString, indentUnit, syntaxTree } from "@codemirror/language";
 import {
   cursorLineStart,
   deleteCharBackwardStrict,
@@ -25,9 +25,17 @@ import {
 } from "@codemirror/commands";
 import type { EditorExtras } from "@/platform/editorSettings";
 import { openideaHighlightStyle } from "./highlight";
-import { cursorHumpLeft, cursorHumpRight, deleteHumpBackward, deleteHumpForward, selectHumpLeft, selectHumpRight } from "./editing";
+import {
+  cursorHumpLeft,
+  cursorHumpRight,
+  deleteHumpBackward,
+  deleteHumpForward,
+  deleteWordBackward,
+  selectHumpLeft,
+  selectHumpRight,
+} from "./editing";
 import { enterInLineComment, lineCommentStyle, type LineCommentStyle } from "./comments";
-import { smartBackspace, smartBackspaceApplies, tabOut } from "./smartKeys";
+import { skipClosingQuote, smartBackspace, smartBackspaceApplies, tabOut } from "./smartKeys";
 
 // --- soft wraps ---------------------------------------------------------------
 
@@ -207,25 +215,60 @@ export function indentPastedText(text: string, targetCol: number, unit: string, 
     .join("\n");
 }
 
-const pasteFilter = EditorState.transactionFilter.of((tr: Transaction) => {
-  if (!tr.isUserEvent("input.paste") || !tr.docChanged) return tr;
-  const start = tr.startState;
-  const changes: Array<{ from: number; to: number; text: string }> = [];
-  tr.changes.iterChanges((from, to, _fb, _tb, inserted) => changes.push({ from, to, text: inserted.toString() }));
-  if (changes.length !== 1) return tr;
-  const { from, to, text } = changes[0]!;
-  const line = start.doc.lineAt(from);
-  const before = start.doc.sliceString(line.from, from);
-  const targetCol = leadingColumns(/^\s*$/.test(before) ? before : line.text, start.tabSize);
-  const out = indentPastedText(text, targetCol, start.facet(indentUnit)[0] === "\t" ? "\t" : " ", start.tabSize, getIndentUnit(start) || start.tabSize);
-  if (out === text) return tr;
-  return {
-    changes: { from, to, insert: out },
-    selection: EditorSelection.cursor(from + out.length),
-    userEvent: "input.paste",
-    scrollIntoView: true,
-  };
-});
+/**
+ * Reformat on paste. `indentBlock` shifts the pasted block to the paste
+ * column; `indentEachLine` (IDEA's default) then gives each pasted line the
+ * language's indentation, where the language can compute one. A paste
+ * after nothing but whitespace starts at the line's proper indentation.
+ */
+export function pasteReindentFilter(mode: "indentBlock" | "indentEachLine") {
+  return EditorState.transactionFilter.of((tr: Transaction) => {
+    if (!tr.isUserEvent("input.paste") || !tr.docChanged) return tr;
+    const start = tr.startState;
+    const changes: Array<{ from: number; to: number; text: string }> = [];
+    tr.changes.iterChanges((from, to, _fb, _tb, inserted) => changes.push({ from, to, text: inserted.toString() }));
+    if (changes.length !== 1) return tr;
+    let { from } = changes[0]!;
+    const { to, text } = changes[0]!;
+    if (!text.trim()) return tr;
+    const line = start.doc.lineAt(from);
+    const before = start.doc.sliceString(line.from, from);
+    const atIndent = /^\s*$/.test(before);
+    const tabSize = start.tabSize;
+    const unitCols = getIndentUnit(start) || tabSize;
+    const useTabs = start.facet(indentUnit)[0] === "\t";
+    let targetCol = leadingColumns(atIndent ? before : line.text, tabSize);
+    let prefix = "";
+    if (atIndent) {
+      const proper = getIndentation(start, line.from);
+      if (proper !== null && proper !== targetCol) {
+        targetCol = proper;
+        prefix = indentString(start, proper);
+        from = line.from;
+      }
+    }
+    const block = indentPastedText(text, targetCol, useTabs ? "\t" : " ", tabSize, unitCols);
+    const out = prefix + (prefix ? block.trimStart() : block);
+    const first: TransactionSpec = {
+      changes: { from, to, insert: out },
+      selection: EditorSelection.cursor(from + out.length),
+      userEvent: "input.paste",
+      scrollIntoView: true,
+    };
+    if (mode !== "indentEachLine") return out === text && from === changes[0]!.from ? tr : first;
+    // Lines whose start lies in the pasted text, plus the paste line when it was pasted at its indentation.
+    const pasted = start.update({ ...first, filter: false }).state;
+    const end = from + out.length;
+    const firstLine = pasted.doc.lineAt(from);
+    const lineStart = atIndent ? firstLine.from : firstLine.to + 1;
+    const lastLine = pasted.doc.lineAt(end);
+    const lineEnd = lastLine.from === end && end > from ? end - 1 : end;
+    if (lineStart > lineEnd) return first;
+    const reindent = indentRange(pasted, lineStart, lineEnd);
+    if (reindent.empty) return first;
+    return [first, { changes: reindent, selection: EditorSelection.cursor(reindent.mapPos(end, 1)), sequential: true }];
+  });
+}
 
 // --- rich-text copy -----------------------------------------------------------
 
@@ -397,12 +440,13 @@ export function prefsExtension(o: PrefsOptions): Extension {
   if (!g.dragAndDrop) out.push(noTextDrag);
   if (g.caretScroll === "center") out.push(centerCaret);
   if (g.richTextCopy) out.push(richCopy);
-  if (!o.readOnly && k.reformatOnPaste === "indentBlock") out.push(pasteFilter);
+  if (!o.readOnly && (k.reformatOnPaste === "indentBlock" || k.reformatOnPaste === "indentEachLine")) out.push(pasteReindentFilter(k.reformatOnPaste));
 
   // Pairing: closeBrackets() reads the brackets list from language data; ours comes first.
   const brackets = [...(k.pairBrackets ? ["(", "[", "{"] : []), ...(k.pairQuotes ? ["'", '"'] : [])];
   out.push(Prec.highest(EditorState.languageData.of(() => [{ closeBrackets: { brackets } }])));
   if (!k.surroundSelection) out.push(Prec.highest(noSurround));
+  if (k.pairQuotes) out.push(Prec.highest(skipClosingQuote));
   if (k.tabOutOfPair) out.push(tabOut);
   if (o.commentStyle) out.push(lineCommentStyle.of(o.commentStyle));
 
@@ -411,9 +455,10 @@ export function prefsExtension(o: PrefsOptions): Extension {
     keys.push(
       { key: "Alt-ArrowLeft", run: cursorHumpLeft, shift: selectHumpLeft, preventDefault: true },
       { key: "Alt-ArrowRight", run: cursorHumpRight, shift: selectHumpRight, preventDefault: true },
-      { key: "Alt-Backspace", run: deleteHumpBackward },
       { key: "Alt-Delete", run: deleteHumpForward },
     );
+  // Delete to Word Start: the whitespace before the caret and the word before it.
+  keys.push({ key: "Mod-Backspace", mac: "Alt-Backspace", run: k.camelHumps ? deleteHumpBackward : deleteWordBackward });
   if (!k.smartHome)
     keys.push(
       { key: "Home", run: cursorLineStart, shift: selectLineStart, preventDefault: true },

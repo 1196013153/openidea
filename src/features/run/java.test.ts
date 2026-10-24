@@ -274,7 +274,7 @@ describe("JUnit XML reports", () => {
     expect(events).toContainEqual({
       type: "location",
       path: ["a.B$Inner", "bad"],
-      location: { path: "B.java", line: 42, resolve: "name" },
+      location: { path: "a/B.java", line: 42, resolve: "name", className: "a.B$Inner" },
     });
   });
 });

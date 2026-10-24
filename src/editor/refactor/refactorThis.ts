@@ -30,6 +30,13 @@ import {
 } from "./catalog";
 import { introduceFallback, type IntroduceKind } from "./introduce";
 import { languageName, queryRefactorActions } from "./query";
+import {
+  EXPRESSION_REFACTORINGS,
+  applyIntroduceAction,
+  chooseExpressionFirst,
+  chooseOccurrences,
+  introducesName,
+} from "./serverIntroduce";
 import { safeDelete } from "./safeDelete";
 
 /** Outcome of the server query: its answer, or why there is none. */
@@ -66,9 +73,14 @@ export function groupActions(actions: readonly CodeAction[]): {
   return { mapped, other };
 }
 
-/** Applies the single action, or lets the user pick one. */
-function runActions(view: EditorView, title: string, actions: readonly CodeAction[]) {
-  if (actions.length === 1) return applyCodeAction(view, actions[0]!);
+/**
+ * Applies the single action, or lets the user pick one. Introduce / Extract
+ * actions offer IDEA's occurrences choice and rename the new name in place.
+ */
+function runActions(view: EditorView, title: string, actions: readonly CodeAction[], id: RefactoringId | null = null) {
+  if (id && EXPRESSION_REFACTORINGS.has(id) && chooseOccurrences(view, actions, id)) return;
+  const apply = (a: CodeAction) => (id && introducesName(id) ? applyIntroduceAction(view, a, id) : applyCodeAction(view, a));
+  if (actions.length === 1) return apply(actions[0]!);
   openPopup({
     kind: "list",
     anchor: caretAnchor(view, view.state.selection.main.head),
@@ -78,7 +90,7 @@ function runActions(view: EditorView, title: string, actions: readonly CodeActio
       label: a.title,
       icon: "bulb",
       emphasis: a.isPreferred,
-      run: () => applyCodeAction(view, a),
+      run: () => apply(a),
     })),
   });
 }
@@ -127,6 +139,10 @@ export async function runRefactoring(view: EditorView, id: RefactoringId): Promi
     showHint(view, cannotPerform("The file is read-only"));
     return;
   }
+  // IDEA picks the expression first (and the server then extracts exactly that one).
+  if (EXPRESSION_REFACTORINGS.has(id) && view.state.selection.main.empty) {
+    if (await chooseExpressionFirst(view, () => runRefactoring(view, id))) return;
+  }
   menuRun?.abort();
   const run = (menuRun = new AbortController());
   const state = view.state;
@@ -143,7 +159,7 @@ export async function runRefactoring(view: EditorView, id: RefactoringId): Promi
   const all = answer.status === "ok" ? answer.query.actions : [];
   const actions = groupActions(all).mapped.get(id) ?? [];
   if (actions.length) {
-    await runActions(view, r.label.replace(/…$/, ""), actions);
+    await runActions(view, r.label.replace(/…$/, ""), actions, id);
     return;
   }
   const introduce = INTRODUCE[id];
@@ -195,10 +211,15 @@ export function refactorThisItems(
   const { mapped, other } = groupActions(answer.status === "ok" ? answer.query.actions : []);
   const serverUsable = answer.status === "ok";
   const items: ListPopupItem[] = [];
+  const caretOnly = view.state.selection.main.empty;
   for (const r of REFACTORINGS) {
     const actions = mapped.get(r.id) ?? [];
+    const expression = EXPRESSION_REFACTORINGS.has(r.id);
     let go: (() => unknown) | null = null;
-    if (actions.length) go = () => runActions(view, r.label.replace(/…$/, ""), actions);
+    // With only a caret the expression is chosen first, then the server asked for it.
+    if (expression && caretOnly && serverUsable && (actions.length || facts.expression))
+      go = () => runRefactoring(view, r.id);
+    else if (actions.length) go = () => runActions(view, r.label.replace(/…$/, ""), actions, r.id);
     else if (r.id === "rename" && facts.symbol) go = () => run.rename(view);
     else if (r.id === "safeDelete" && facts.symbol && !docOf(view)?.readOnly) go = () => run.safeDelete(view);
     else if (INTRODUCE[r.id] && facts.expression && !serverUsable)
@@ -243,5 +264,5 @@ export async function refactorThis(view: EditorView, rename: (view: EditorView) 
     showHint(view, "No refactorings available at the caret");
     return;
   }
-  openPopup({ kind: "list", anchor: caretAnchor(view, state.selection.main.head), title: "Refactor This", items });
+  openPopup({ kind: "list", anchor: caretAnchor(view, state.selection.main.head), title: "Refactor This", items, numbered: true });
 }

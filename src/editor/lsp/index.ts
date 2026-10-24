@@ -7,14 +7,14 @@
  */
 import type { Extension } from "@codemirror/state";
 import { registerEditorContribution, type EditorDocContext } from "@/editor/api";
-import { registerOverlay, registerStatusItem } from "@/workbench/contributions";
+import { registerOverlay, registerStatusItem, registerToolWindow } from "@/workbench/contributions";
 import { lspDoc } from "./lsp";
 import { hintExtension } from "./hint";
 import { completionExtension } from "./completion";
 import { inplaceRenameExtension } from "./inplaceRename";
 import { diagnosticsExtension, installDiagnosticsEvents } from "./diagnostics";
 import { hoverExtension } from "./hover";
-import { signatureExtension } from "./signature";
+import { parameterTabKeys, signatureExtension } from "./signature";
 import { navigationExtension } from "./navigation";
 import { intentionsExtension } from "./intentions";
 import { inlayExtension } from "./inlay";
@@ -26,7 +26,8 @@ import { registerActionsOnSave, registerFormatOnSave, registerLspActions } from 
 import { lspTheme } from "./theme";
 import { inspectionWidgetExtension } from "./inspectionWidget";
 import { unresolvedReferences } from "./fileReferences";
-import { LspPopups, UsagesStatus } from "./Popups";
+import { DocumentationWindow, LspPopups, UsagesStatus } from "./Popups";
+import { DOCUMENTATION_WINDOW } from "./docs";
 import { prefetchMarkdown } from "./markdown";
 import { registerNavigationActions } from "@/editor/navigation";
 
@@ -56,8 +57,21 @@ export function activate(): () => void {
     installDiagnosticsEvents(),
     installAvailabilityEvents(),
     registerEditorContribution({ id: "lsp", order: 50, extensions: lspExtensions }),
+    // After the templates (order 90): live template / postfix expansion keeps ⇥ first.
+    registerEditorContribution({ id: "lsp.parameterTab", order: 95, extensions: () => parameterTabKeys }),
     registerOverlay({ id: "editor-lsp.popups", component: LspPopups }),
     registerStatusItem({ id: "editor-lsp.usagesStatus", align: "left", priority: 10, component: UsagesStatus }),
+    // IDEA's Documentation tool window: right side, listed once F1 moved documentation there.
+    registerToolWindow({
+      id: DOCUMENTATION_WINDOW,
+      title: "Documentation",
+      icon: "info",
+      anchor: "right",
+      secondary: true,
+      stripe: "onUse",
+      order: 90,
+      component: DocumentationWindow,
+    }),
     registerLspActions(),
     registerNavigationActions(),
     registerFormatOnSave(),

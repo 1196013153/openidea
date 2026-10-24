@@ -5,6 +5,7 @@ mod folding;
 mod grammars;
 mod highlight;
 pub(crate) mod lines;
+mod literals;
 mod outline;
 mod selection;
 mod web;
@@ -14,6 +15,7 @@ pub use cache::{MAX_CACHED_TREES, SyntaxCache, SyntaxCacheStats};
 use grammars::{SPECS, Spec};
 pub use highlight::{SyntaxHighlightKind, SyntaxHighlights};
 use ide_core::{LanguageId, OutlineItem, Pos, Range};
+pub use literals::{Literal, LiteralKind};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -225,6 +227,12 @@ impl Syntax {
         self.analyze(lang, text, |g, tree, text| {
             Some(SyntaxHighlights::new(highlight::highlights(g.highlight_query()?, tree, text)))
         })
+    }
+
+    /// Comments and string literals of `text` (byte ranges, document order);
+    /// `None` without a grammar for `lang` or for texts too large to parse.
+    pub fn literals(&self, lang: &LanguageId, text: &str) -> Option<Vec<Literal>> {
+        self.analyze(lang, text, |_, tree, _| Some(literals::literals(tree)))
     }
 
     /// Syntax-aware selection ranges for IDEA "Extend Selection" (⌥↑), innermost first.

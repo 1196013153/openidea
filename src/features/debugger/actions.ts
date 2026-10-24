@@ -33,6 +33,7 @@ import {
 } from "./state";
 import { focusedDebugView } from "./ui/focusedView";
 import { expressionAt } from "./editor/valueTooltip";
+import { startInlineSmartStep } from "./editor/smartStep";
 import {
   openBreakpointsDialog,
   openConfigChooser,
@@ -79,7 +80,10 @@ function selectedFrame(s: DebugSession) {
   return s.frames.find((f) => f.id === s.selectedFrame) ?? s.frames[0] ?? null;
 }
 
-/** Smart Step Into: the calls on the current line; one call (or none) steps straight in, like IDEA. */
+/**
+ * Smart Step Into: the calls on the current line, picked in the editor (the
+ * dialog when they cannot be placed); one call (or none) steps straight in, like IDEA.
+ */
 async function smartStepInto() {
   const t = pausedTarget();
   if (!t) return;
@@ -97,7 +101,7 @@ async function smartStepInto() {
     );
     return;
   }
-  openSmartStepChooser(t.s.id, t.thread, targets);
+  if (!startInlineSmartStep(t.s.id, t.thread, targets)) openSmartStepChooser(t.s.id, t.thread, targets);
 }
 
 /** Opens the Attach to Process popup and loads the process list. */

@@ -10,24 +10,28 @@ import { shortcutLabel } from "@/platform/keymap";
 import { onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { registerMenuGroup, registerOverlay, registerToolWindow } from "@/workbench/contributions";
+import { BookmarkPopupsOverlay } from "./bookmarks/BookmarkPopups";
 import { bookmarkGutter } from "./bookmarks/gutter";
 import {
+  bookmarkByMnemonic,
   hasBookmark,
   loadBookmarks,
   renameBookmarks,
   toggleBookmark,
+  toggleMnemonic,
   updateBookmarks,
+  useBookmarkPopups,
   useBookmarks,
   type Bookmark,
 } from "./bookmarks/store";
-import { maybeToolWindowService } from "./common/services";
 import { openLocation } from "./common/open";
+import { maybeToolWindowService } from "./common/services";
 import { installTracking, resetTracking } from "./common/tracking";
 import { SearchEverywhereOverlay } from "./everywhere/SearchEverywhere";
 import { hideSearchEverywhere, showSearchEverywhere } from "./everywhere/store";
 import { FindInFilesOverlay } from "./find/FindInFiles";
-import { hideFindPopup, parseFindArg, showFindPopup, useFindPopup } from "./find/store";
-import { disposeFindWindow } from "./find/windowStore";
+import { hideFindPopup, parseFindArg, runFindPopupCommand, showFindPopup, useFindPopup } from "./find/store";
+import { disposeFindWindow, rerunActiveFindTab, useFindHeaderMenu } from "./find/windowStore";
 import { RecentPopupsOverlay } from "./recent/RecentPopups";
 import { cycleSwitcher, hideRecentPopup, showRecentPopup } from "./recent/store";
 import { FileStructureOverlay, useFileStructurePopup } from "./structure/StructureView";
@@ -42,14 +46,45 @@ function editorSelectionText(): string | null {
   return text.includes("\n") ? null : text;
 }
 
-type PopupKind = "everywhere" | "recent" | "find" | "fileStructure";
+/** The active editor's caret line (and where to show a popup for it). */
+function caretLine(): { path: string; line: number; text: string; at?: { x: number; y: number } } | null {
+  const handle = activeEditor();
+  if (!handle) return null;
+  const head = handle.view.state.selection.main.head;
+  const line = handle.view.state.doc.lineAt(head);
+  const coords = handle.view.coordsAtPos(head);
+  return {
+    path: handle.ctx.path,
+    line: line.number - 1,
+    text: line.text,
+    at: coords ? { x: coords.left, y: coords.bottom + 2 } : undefined,
+  };
+}
+
+/** Bookmark description from the editor selection (F3 on a selection, as in IDEA). */
+function selectionDescription(): string | null {
+  const view = activeEditor()?.view;
+  if (!view) return null;
+  const { from, to } = view.state.selection.main;
+  const text = view.state.sliceDoc(from, Math.min(to, from + 1000)).replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+type PopupKind = "everywhere" | "recent" | "find" | "fileStructure" | "bookmarks";
 
 function closeAllPopups(except?: PopupKind) {
+  if (except !== "bookmarks") useBookmarkPopups.setState({ chooser: null, list: false });
   if (except !== "everywhere") hideSearchEverywhere();
   if (except !== "recent") hideRecentPopup();
   if (except !== "find") hideFindPopup();
   if (except !== "fileStructure" && useFileStructurePopup.getState().open)
     useFileStructurePopup.setState({ open: false });
+}
+
+function lineText(path: string, line: number): string {
+  const handle = activeEditor();
+  const doc = handle?.ctx.path === path ? handle.view.state.doc : null;
+  return doc && line < doc.lines ? doc.line(line + 1).text : "";
 }
 
 function jumpBookmark(dir: 1 | -1) {
@@ -81,6 +116,7 @@ export function activate(): void | (() => void) {
     registerOverlay({ id: "search.recent", component: RecentPopupsOverlay }),
     registerOverlay({ id: "search.findInFiles", component: FindInFilesOverlay }),
     registerOverlay({ id: "search.fileStructure", component: FileStructureOverlay }),
+    registerOverlay({ id: "search.bookmarks", component: BookmarkPopupsOverlay }),
 
     registerToolWindow({
       id: "structure",
@@ -114,12 +150,29 @@ export function activate(): void | (() => void) {
       component: lazyComponent(() => import("./find/FindToolWindow").then((m) => m.FindToolWindow)),
       headerContent: lazyComponent(() => import("./find/FindToolWindow").then((m) => m.FindTabs)),
       headerActions: lazyComponent(() => import("./find/FindToolWindow").then((m) => m.FindToolWindowActions)),
+      headerMenu: useFindHeaderMenu,
     }),
 
     registerEditorContribution({
       id: "search.bookmarks",
       order: 50,
-      extensions: (ctx) => bookmarkGutter(ctx.path),
+      extensions: (ctx) =>
+        bookmarkGutter(ctx.path, (line) => void executeAction("navigate.toggleBookmark", { path: ctx.path, line })),
+    }),
+    registerMenuGroup({
+      // Select In › Structure: the Structure tool window follows the active editor.
+      id: "search.structure.selectIn",
+      menus: ["selectIn"],
+      items: (_menu, { paths: [path] }) =>
+        path && activeEditor()?.ctx.path === path
+          ? [
+              {
+                label: "Structure",
+                icon: "toolwindow-structure",
+                run: () => maybeToolWindowService()?.show("structure", true),
+              },
+            ]
+          : [],
     }),
     registerMenuGroup({
       id: "search.bookmarks",
@@ -245,6 +298,15 @@ export function activate(): void | (() => void) {
         },
       },
       {
+        // Rerun the selected search; ⌘R in the Find tool window, as in IDEA.
+        id: "find.rerun",
+        title: "Rerun Search",
+        category: "Find",
+        icon: "refresh",
+        when: "projectOpen && activeToolWindow == 'find'",
+        run: rerunActiveFindTab,
+      },
+      {
         id: "find.replaceInPath",
         title: "Replace in Files…",
         category: "Find",
@@ -255,6 +317,22 @@ export function activate(): void | (() => void) {
           showFindPopup(true, { ...parseFindArg(arg), selection: editorSelectionText() });
         },
       },
+      // Keys of the Find in Files popup that are global shortcuts elsewhere (bound after them).
+      ...(
+        [
+          ["find.popup.nextResult", "Next Result", "nextResult"],
+          ["find.popup.previousResult", "Previous Result", "previousResult"],
+          ["find.popup.openResult", "Open Result", "openResult"],
+          ["find.popup.recentSearches", "Recent Searches", "recentSearches"],
+        ] as const
+      ).map(([id, title, command]) => ({
+        id,
+        title,
+        category: "Find",
+        hidden: true,
+        when: "findPopupOpen",
+        run: () => void runFindPopupCommand(command),
+      })),
       {
         id: "navigate.fileStructure",
         title: "File Structure",
@@ -262,8 +340,10 @@ export function activate(): void | (() => void) {
         icon: "structure",
         keywords: ["outline", "members"],
         run: () => {
+          // Pressed again IDEA toggles "Show inherited members"; outlines have none, so the popup stays.
+          if (useFileStructurePopup.getState().open) return;
           closeAllPopups("fileStructure");
-          useFileStructurePopup.setState((s) => ({ open: !s.open }));
+          useFileStructurePopup.setState({ open: true });
         },
       },
       {
@@ -276,22 +356,60 @@ export function activate(): void | (() => void) {
           const a = (arg ?? {}) as { path?: unknown; line?: unknown };
           if (typeof a.path === "string" && typeof a.line === "number") {
             const { path, line } = a as { path: string; line: number };
-            updateBookmarks((list) => toggleBookmark(list, path, line, ""));
+            updateBookmarks((list) => toggleBookmark(list, path, line, lineText(path, line)));
             return;
           }
-          const handle = activeEditor();
-          if (!handle) return;
-          const line = handle.view.state.doc.lineAt(handle.view.state.selection.main.head);
-          updateBookmarks((list) => toggleBookmark(list, handle.ctx.path, line.number - 1, line.text));
+          const at = caretLine();
+          if (!at) return;
+          const description = selectionDescription();
+          updateBookmarks((list) => toggleBookmark(list, at.path, at.line, at.text, Date.now(), description));
         },
       },
       {
+        id: "navigate.toggleBookmarkWithMnemonic",
+        title: "Toggle Bookmark with Mnemonic",
+        category: "Bookmarks",
+        when: "projectOpen && textEditorActive",
+        run: () => {
+          const at = caretLine();
+          if (!at) return;
+          closeAllPopups("bookmarks");
+          useBookmarkPopups.setState({ chooser: at });
+        },
+      },
+      ...[..."0123456789"].flatMap((d) => [
+        {
+          id: `navigate.toggleBookmark${d}`,
+          title: `Toggle Bookmark ${d}`,
+          category: "Bookmarks",
+          when: "projectOpen && textEditorActive",
+          run: () => {
+            const at = caretLine();
+            if (at) updateBookmarks((list) => toggleMnemonic(list, at.path, at.line, at.text, d));
+          },
+        },
+        {
+          id: `navigate.gotoBookmark${d}`,
+          title: `Go to Bookmark ${d}`,
+          category: "Bookmarks",
+          when: "projectOpen",
+          run: () => {
+            const b = bookmarkByMnemonic(useBookmarks.getState().items, d);
+            if (b) void openLocation(b.path, { line: b.line, col: 0 });
+          },
+        },
+      ]),
+      {
+        // ⌘F3 opens the Bookmarks popup, as IDEA; the tool window stays on its own shortcut.
         id: "navigate.showBookmarks",
         title: "Show Bookmarks",
         category: "Bookmarks",
         icon: "bookmark",
         when: "projectOpen",
-        run: () => maybeToolWindowService()?.show("bookmarks", true),
+        run: () => {
+          closeAllPopups("bookmarks");
+          useBookmarkPopups.setState({ list: true });
+        },
       },
       {
         id: "navigate.nextBookmark",

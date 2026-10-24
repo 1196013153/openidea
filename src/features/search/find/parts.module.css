@@ -20,7 +20,7 @@
   background: color-mix(in srgb, var(--success) 18%, transparent);
 }
 .preview {
-  /* offsetParent for the scroll-to-line math in CodePreview. */
+  /* offsetParent for the scroll-to-line math in ReplaceDiffPreview. */
   position: relative;
   flex: 1;
   min-height: 0;
@@ -31,7 +31,16 @@
   line-height: 19px;
   color: var(--fg);
 }
+.previewEditor {
+  position: absolute;
+  inset: 0;
+}
+.previewHidden {
+  visibility: hidden;
+}
 .previewEmpty {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;

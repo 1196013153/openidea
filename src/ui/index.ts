@@ -12,6 +12,7 @@ export * from "./Popup";
 export * from "./Menu";
 export * from "./Dialog";
 export * from "./Splitter";
+export * from "./SourcePreview";
 export * from "./Feedback";
 export * from "./HighlightedText";
 export { fuzzyMatch, indexRuns, wordMatch } from "./match";

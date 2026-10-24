@@ -86,13 +86,27 @@ const OPTIONS_KEY = "openidea.structure.options.v1";
 
 interface StructureOptions {
   alphabetical: boolean;
-  autoscroll: boolean;
+  /** Select the symbol at the caret (IDEA: off; replaces the old `autoscroll`, which defaulted on). */
+  autoscrollFromSource: boolean;
+  /** Selecting a symbol shows it in the editor (IDEA: on). */
+  autoscrollToSource: boolean;
+  /** File Structure popup: typing hides non-matching symbols (else only highlights them). */
+  narrowDown: boolean;
 }
 
 export const useStructureOptions = create<StructureOptions>(() => ({
   alphabetical: false,
-  autoscroll: true,
+  autoscrollFromSource: false,
+  autoscrollToSource: true,
+  narrowDown: true,
   ...loadJson<Partial<StructureOptions>>(OPTIONS_KEY, {}),
 }));
 
-useStructureOptions.subscribe((s) => saveJson(OPTIONS_KEY, { alphabetical: s.alphabetical, autoscroll: s.autoscroll }));
+useStructureOptions.subscribe((s) =>
+  saveJson(OPTIONS_KEY, {
+    alphabetical: s.alphabetical,
+    autoscrollFromSource: s.autoscrollFromSource,
+    autoscrollToSource: s.autoscrollToSource,
+    narrowDown: s.narrowDown,
+  }),
+);

@@ -13,7 +13,7 @@ import { gotoDiagnostic } from "./diagnostics";
 import { applyKindSilently, runKindAction, showIntentions } from "./intentions";
 import { workflowSettings, type ActionsOnSaveValid } from "@/platform/workflowSettings";
 import { startRename } from "./rename";
-import { formatDocument } from "./format";
+import { formatDocument, reformatDialog } from "./format";
 import { showHint } from "./hint";
 import { refactorThis, runRefactoring, safeDelete } from "@/editor/refactor";
 
@@ -114,6 +114,9 @@ export function registerLspActions(): () => void {
     editorAction("code.reformat", "Reformat Code", "Code", reformat, {
       keywords: ["format", "prettier"],
     }),
+    editorAction("code.reformatDialog", "Reformat File…", "Code", (v) =>
+      reformatDialog(v, (view) => applyKindSilently(view, "source.organizeImports")),
+    ),
     editorAction("code.optimizeImports", "Optimize Imports", "Code", optimizeImports, { keywords: ["organize imports"] }),
     // Project view / editor tab variants: `{ path }` of a file, opened first.
     { id: "code.reformatFile", title: "Reformat File", category: "Code", hidden: true, when: "projectOpen", run: inFile(reformat) },

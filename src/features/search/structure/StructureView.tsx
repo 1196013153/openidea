@@ -3,16 +3,15 @@ import { create } from "zustand";
 import clsx from "clsx";
 import { shortcutLabel } from "@/platform/keymap";
 import {
+  Checkbox,
   Dialog,
   EmptyState,
   HighlightedText,
   Icon,
   IconButton,
-  List,
   SymbolBadge,
   Tree,
   fileIconName,
-  listNavigate,
   type TreeHandle,
   T,
 } from "@/ui";
@@ -20,12 +19,12 @@ import { badgeKind, basename, openLocation } from "../common/open";
 import { useTracking } from "../common/tracking";
 import {
   allKeys,
-  bestRow,
-  flattenOutline,
+  filterOutline,
   keyOutline,
+  parentKeys,
   sortOutline,
   symbolPathAt,
-  type FlatOutlineRow,
+  visibleCount,
   type OutlineNode,
 } from "./outline";
 import { useLiveOutline, useOutline, useStructureOptions } from "./store";
@@ -64,7 +63,7 @@ export function StructureView() {
   const loading = useOutline((s) => s.loading);
   const error = useOutline((s) => s.error);
   const alphabetical = useStructureOptions((s) => s.alphabetical);
-  const autoscroll = useStructureOptions((s) => s.autoscroll);
+  const autoscroll = useStructureOptions((s) => s.autoscrollFromSource);
   const caret = useTracking((s) => s.caret);
   const collapsed = useCollapsed((s) => s.keys);
   const nodes = useOutlineNodes(alphabetical);
@@ -128,7 +127,8 @@ export function StructureView() {
         expanded={expanded}
         onExpandedChange={(next) => useCollapsed.setState({ keys: new Set(expandable.filter((k) => !next.has(k))) })}
         onSelectionChange={(_next, lead) => {
-          if (!revealing.current && lead && !isFile(lead)) navigate(path, lead, false);
+          if (revealing.current || !lead || isFile(lead)) return;
+          if (useStructureOptions.getState().autoscrollToSource) navigate(path, lead, false);
         }}
         multiSelect={false}
         activateExpandable
@@ -164,7 +164,8 @@ export function StructureView() {
 
 function StructureToolbar() {
   const alphabetical = useStructureOptions((s) => s.alphabetical);
-  const autoscroll = useStructureOptions((s) => s.autoscroll);
+  const autoscroll = useStructureOptions((s) => s.autoscrollFromSource);
+  const autoscrollToSource = useStructureOptions((s) => s.autoscrollToSource);
   const items = useOutline((s) => s.items);
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Structure actions">
@@ -178,12 +179,20 @@ function StructureToolbar() {
       />
       <span className={styles.sep} />
       <IconButton
-        icon="locate"
+        icon="autoscroll-to-source"
+        title="Autoscroll to Source"
+        size="small"
+        iconSize={16}
+        pressed={autoscrollToSource}
+        onClick={() => useStructureOptions.setState({ autoscrollToSource: !autoscrollToSource })}
+      />
+      <IconButton
+        icon="autoscroll-from-source"
         title="Autoscroll from Source"
         size="small"
         iconSize={16}
         pressed={autoscroll}
-        onClick={() => useStructureOptions.setState({ autoscroll: !autoscroll })}
+        onClick={() => useStructureOptions.setState({ autoscrollFromSource: !autoscroll })}
       />
       <span className={styles.grow} />
       <IconButton
@@ -222,43 +231,96 @@ function FileStructureDialog() {
   const items = useOutline((s) => s.items);
   const loading = useOutline((s) => s.loading);
   const alphabetical = useStructureOptions((s) => s.alphabetical);
+  const narrowDown = useStructureOptions((s) => s.narrowDown);
   const nodes = useOutlineNodes(alphabetical);
   const [query, setQuery] = useState("");
-  const [index, setIndex] = useState<number | null>(null);
+  // IDEA opens the popup fully expanded.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const caret = useMemo(() => useTracking.getState().caret, []);
-  const rows = useMemo(() => flattenOutline(nodes, query), [nodes, query]);
+  const tree = useRef<TreeHandle>(null);
 
-  const initial = useMemo(() => {
-    if (query) return Math.max(0, bestRow(rows));
-    if (!caret || caret.path !== path) return 0;
-    const key = symbolPathAt(nodes, { line: caret.line, col: caret.col }).pop();
-    return Math.max(
-      0,
-      rows.findIndex((r) => r.node.key === key),
-    );
-  }, [rows, nodes, query, caret, path]);
-  const active = rows.length ? Math.min(index ?? initial, rows.length - 1) : -1;
+  const filter = useMemo(() => filterOutline(nodes, query, narrowDown), [nodes, query, narrowDown]);
+  const parents = useMemo(() => parentKeys(filter.nodes), [filter.nodes]);
+  const byKey = useMemo(() => {
+    const m = new Map<string, OutlineNode>();
+    const walk = (list: readonly OutlineNode[]) => list.forEach((n) => (m.set(n.key, n), walk(n.children)));
+    walk(filter.nodes);
+    return m;
+  }, [filter.nodes]);
+  const expanded = useMemo(() => new Set(allKeys(filter.nodes).filter((k) => !collapsed.has(k))), [filter.nodes, collapsed]);
+
+  // Preselect the symbol at the caret, then the best match while filtering.
+  const caretKey = useMemo(
+    () => (caret && caret.path === path ? (symbolPathAt(nodes, { line: caret.line, col: caret.col }).pop() ?? null) : null),
+    [caret, path, nodes],
+  );
+  const preselect = query.trim() ? filter.best : caretKey;
+  useEffect(() => {
+    const key = preselect ?? filter.nodes[0]?.key;
+    if (key) tree.current?.reveal(key);
+  }, [preselect, filter.nodes]);
 
   const close = () => useFileStructurePopup.setState({ open: false });
-  const choose = (row: FlatOutlineRow | undefined) => {
-    if (!row || !path) return;
+  const choose = (node: OutlineNode | undefined) => {
+    if (!node || !path) return;
     close();
-    setTimeout(() => navigate(path, row.node, true), 0);
+    setTimeout(() => navigate(path, node, true), 0);
   };
+  const setExpanded = (key: string, open: boolean) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (open) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      choose(rows[active]);
-      return;
+    const lead = tree.current?.leadKey() ?? null;
+    const node = lead ? byKey.get(lead) : undefined;
+    switch (e.key) {
+      case "Enter":
+        choose(node);
+        break;
+      case "Escape":
+        // The first Esc clears the filter, the next one closes the popup.
+        if (!query) return;
+        e.stopPropagation();
+        setQuery("");
+        break;
+      case "ArrowDown":
+      case "ArrowUp": {
+        const dir = e.key === "ArrowDown" ? 1 : -1;
+        if (query.trim() && !narrowDown && filter.order.length) {
+          // Highlight mode: ↑/↓ jump between matches.
+          const at = lead ? filter.order.indexOf(lead) : -1;
+          const n = filter.order.length;
+          const next = filter.order[at < 0 ? (dir > 0 ? 0 : n - 1) : (at + dir + n) % n]!;
+          for (let p = parents.get(next); p; p = parents.get(p) ?? null) if (collapsed.has(p)) setExpanded(p, true);
+          setTimeout(() => tree.current?.reveal(next), 0);
+        } else tree.current?.moveSelection(dir);
+        break;
+      }
+      case "ArrowRight":
+        if (!node || !node.children.length) return;
+        if (!expanded.has(node.key)) setExpanded(node.key, true);
+        else tree.current?.reveal(node.children[0]!.key);
+        break;
+      case "ArrowLeft": {
+        if (!node) return;
+        if (node.children.length && expanded.has(node.key)) setExpanded(node.key, false);
+        else {
+          const parent = parents.get(node.key);
+          if (parent) tree.current?.reveal(parent);
+        }
+        break;
+      }
+      default:
+        return;
     }
-    if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
     e.preventDefault();
-    const next = listNavigate(e.key, { items: rows, active, wrap: true });
-    if (next !== null) setIndex(next);
   };
 
-  const height = Math.min(420, Math.max(1, rows.length) * POPUP_ROW + 8);
+  const height = Math.min(420, Math.max(1, visibleCount(filter.nodes, collapsed)) * POPUP_ROW + 8);
   return (
     <Dialog
       open
@@ -285,7 +347,7 @@ function FileStructureDialog() {
           autoComplete="off"
           onChange={(e) => {
             setQuery(e.target.value);
-            setIndex(null);
+            setCollapsed(new Set());
           }}
           onKeyDown={onKeyDown}
         />
@@ -297,29 +359,46 @@ function FileStructureDialog() {
           onClick={() => useStructureOptions.setState({ alphabetical: !alphabetical })}
         />
       </div>
+      <div className={styles.popupOptions}>
+        <Checkbox
+          label="Narrow down on typing"
+          checked={narrowDown}
+          onChange={(v) => useStructureOptions.setState({ narrowDown: v })}
+        />
+      </div>
       <div className={styles.popupList} style={{ height }}>
-        <List<FlatOutlineRow>
-          items={rows}
-          getKey={(r) => r.node.key}
-          activeIndex={active}
-          onActiveChange={setIndex}
-          onActivate={(r) => choose(r)}
-          focusable={false}
-          rowHeight={POPUP_ROW}
+        <Tree<OutlineNode>
+          handleRef={tree}
           aria-label="Symbols"
-          empty={<span>{!path ? "Open a file first" : loading && !items ? "Loading…" : "No symbols"}</span>}
-          renderItem={(r, s) => (
-            <span className={clsx(styles.node, !r.matched && styles.ancestor)} style={{ paddingLeft: r.depth * 14 }}>
-              <SymbolBadge kind={badgeKind(r.node.item.kind)} className={styles.badge} />
-              <HighlightedText
-                className={styles.name}
-                text={r.node.item.name}
-                indices={r.indices}
-                tone={s.active ? "accent" : "strong"}
-              />
-              {r.node.item.detail && <span className={styles.detail}>{r.node.item.detail}</span>}
-            </span>
-          )}
+          roots={filter.nodes}
+          getKey={(n) => n.key}
+          getLabel={(n) => n.item.name}
+          getChildren={(n) => (n.children.length ? n.children : undefined)}
+          isExpandable={(n) => n.children.length > 0}
+          expanded={expanded}
+          onExpandedChange={(_next, n, open) => setExpanded(n.key, open)}
+          multiSelect={false}
+          speedSearch={false}
+          activateExpandable
+          onActivate={(n) => choose(n)}
+          rowHeight={POPUP_ROW}
+          indent={16}
+          empty={<span className={styles.popupEmpty}>{!path ? "Open a file first" : loading && !items ? "Loading…" : "No symbols"}</span>}
+          renderNode={(n, s) => {
+            const matched = filter.matches.get(n.key);
+            return (
+              <span className={clsx(styles.node, query.trim() && !matched && styles.ancestor)}>
+                <SymbolBadge kind={badgeKind(n.item.kind)} className={styles.badge} />
+                <HighlightedText
+                  className={styles.name}
+                  text={n.item.name}
+                  indices={matched}
+                  tone={s.selected ? "accent" : "strong"}
+                />
+                {n.item.detail && <span className={styles.detail}>{n.item.detail}</span>}
+              </span>
+            );
+          }}
         />
       </div>
     </Dialog>

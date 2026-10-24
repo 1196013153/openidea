@@ -1,11 +1,25 @@
 /** "hierarchy" tool window: call hierarchy (⌃⌥H) and type hierarchy (⌃H). */
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { create } from "zustand";
 import { basename, relativePath, useProject } from "@/platform/project";
-import { EmptyState, IconButton, Spinner, SymbolBadge, Tabs, Tree, badgeKind, type TreeRowState, T } from "@/ui";
+import { maybeEditorService, useOccurrenceNavigator } from "@/workbench/contributions";
+import {
+  EmptyState,
+  IconButton,
+  Spinner,
+  SymbolBadge,
+  Tabs,
+  Tree,
+  badgeKind,
+  type TreeHandle,
+  type TreeRowState,
+  T,
+} from "@/ui";
 import { openLocation } from "./ipc";
 import {
   ROOT_ID,
   directionLabel,
+  hierarchyTarget,
   loadChildren,
   refreshHierarchy,
   setDirection,
@@ -15,6 +29,25 @@ import {
 import styles from "./HierarchyView.module.css";
 
 type Node = { kind: "root"; id: string } | { kind: "item"; id: string; node: HierarchyNode };
+
+const OPTIONS_KEY = "openidea.hierarchy.view.v1";
+
+/** Autoscroll to Source: selecting a node shows it in the editor (IDEA: off). Persisted. */
+export const useHierarchyOptions = create<{ autoscroll: boolean }>(() => {
+  try {
+    return { autoscroll: false, ...JSON.parse(globalThis.localStorage?.getItem(OPTIONS_KEY) ?? "{}") };
+  } catch {
+    return { autoscroll: false };
+  }
+});
+
+useHierarchyOptions.subscribe((s) => {
+  try {
+    globalThis.localStorage?.setItem(OPTIONS_KEY, JSON.stringify(s));
+  } catch {
+    /* storage unavailable */
+  }
+});
 
 /** Tool window header: `Callers of foo` content tab. */
 export function HierarchyTabs() {
@@ -38,6 +71,7 @@ export function HierarchyTabs() {
 function HierarchyToolbar() {
   const mode = useHierarchy((s) => s.mode);
   const direction = useHierarchy((s) => s.direction);
+  const autoscroll = useHierarchyOptions((s) => s.autoscroll);
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Hierarchy actions">
       <IconButton
@@ -58,6 +92,17 @@ function HierarchyToolbar() {
       />
       <span className={styles.sep} />
       <IconButton icon="refresh" size="small" iconSize={16} title="Refresh" onClick={refreshHierarchy} />
+      <span className={styles.sep} />
+      <IconButton icon="arrow-up" action="navigate.prevOccurrence" size="small" iconSize={16} />
+      <IconButton icon="arrow-down" action="navigate.nextOccurrence" size="small" iconSize={16} />
+      <IconButton
+        icon="autoscroll-to-source"
+        size="small"
+        iconSize={16}
+        title="Autoscroll to Source"
+        pressed={autoscroll}
+        onClick={() => useHierarchyOptions.setState({ autoscroll: !autoscroll })}
+      />
     </div>
   );
 }
@@ -78,6 +123,23 @@ export function HierarchyView() {
     },
     [children],
   );
+  const tree = useRef<TreeHandle>(null);
+  const targetOf = (n: Node) => {
+    if (n.kind === "item") return hierarchyTarget(mode, direction, n.node.item);
+    return root ? { path: root.path, line: root.line, col: root.col } : null;
+  };
+  const show = (n: Node, focus: boolean) => {
+    const t = targetOf(n);
+    if (t) void maybeEditorService()?.openFile(t.path, { selection: { line: t.line, col: t.col }, focus });
+  };
+
+  // Every node is an occurrence, as in IDEA's hierarchy views.
+  useOccurrenceNavigator("hierarchy", (dir, focus) => {
+    const step = tree.current?.selectOccurrence(dir);
+    if (!step) return null;
+    show(step.node as Node, focus);
+    return step;
+  });
 
   if (!root)
     return (
@@ -141,15 +203,17 @@ export function HierarchyView() {
           isExpandable={isExpandable}
           loadChildren={(n) => (n.kind === "item" ? loadChildren(n.node) : undefined)}
           defaultExpanded={[ROOT_ID]}
+          handleRef={tree}
+          isOccurrence={() => true}
+          onSelectionChange={(_sel, n) => {
+            if (n && useHierarchyOptions.getState().autoscroll) show(n, false);
+          }}
           renderNode={renderNode}
           activateExpandable
           multiSelect={false}
           onActivate={(n) => {
-            if (n.kind === "root") openLocation(root.path, root.line, root.col);
-            else {
-              const target = n.node.item.selectionRange.start;
-              openLocation(n.node.item.path, target.line, target.col);
-            }
+            const target = n.kind === "root" ? root : hierarchyTarget(mode, direction, n.node.item);
+            void openLocation(target.path, target.line, target.col);
           }}
         />
       </div>

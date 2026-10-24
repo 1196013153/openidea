@@ -14,6 +14,7 @@ import {
   failedTests,
   rerunFailed,
   rerunSession,
+  runSelectedTests,
   runtime,
   sendStdin,
   setPendingInput,
@@ -152,6 +153,7 @@ function SessionPanel({ session }: { session: RunSession }) {
                 running={running}
                 selected={selectedTest}
                 onSelect={setSelectedTest}
+                onRunTests={(ids, debug) => void runSelectedTests(session.id, ids, debug)}
               />
             </SplitPanel>
             <SplitHandle />

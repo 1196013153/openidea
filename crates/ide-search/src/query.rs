@@ -97,6 +97,7 @@ mod tests {
             exclude: vec![],
             scope: SearchScope::Project,
             max_matches: 0,
+            context: Default::default(),
         }
     }
 

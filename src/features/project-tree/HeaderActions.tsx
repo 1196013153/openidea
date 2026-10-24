@@ -19,9 +19,9 @@ export function ProjectHeaderActions() {
     <>
       <IconButton
         icon="locate"
-        action="navigate.selectIn"
+        action="navigate.selectInProjectView"
         title="Select Opened File"
-        shortcut={shortcutLabel("navigate.selectIn")}
+        shortcut={shortcutLabel("navigate.selectInProjectView")}
         size="small"
       />
       <IconButton icon="expand-all" action="project.expandAll" title="Expand All" size="small" />
