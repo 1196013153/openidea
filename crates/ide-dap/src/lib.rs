@@ -522,6 +522,17 @@ impl DebugManager {
     /// waits for `initialized`, sends breakpoints, then `configurationDone`.
     /// Events of the session (including cargo build output) go to `owner` only.
     pub async fn start(&self, config: LaunchConfig, owner: SessionOwner) -> IdeResult<DebugSessionId> {
+        self.start_with(config, owner, |_| None).await
+    }
+
+    /// [`start`](Self::start) with the adapter executable chosen by `custom_command`
+    /// (the configured command → a user-chosen executable, from settings).
+    pub async fn start_with(
+        &self,
+        config: LaunchConfig,
+        owner: SessionOwner,
+        custom_command: impl FnOnce(&str) -> Option<String>,
+    ) -> IdeResult<DebugSessionId> {
         let mut arguments = launch_arguments(&config)?;
         let cwd = config
             .cwd
@@ -531,6 +542,9 @@ impl DebugManager {
         let dbg = adapter::find_config(&self.languages, &config.adapter)
             .ok_or_else(|| IdeError::unavailable(format!("unknown debug adapter `{}`", config.adapter)))?;
         let mut spec = adapter::resolve(&dbg, cwd.clone());
+        if let Some(command) = custom_command(&spec.command) {
+            spec.command = command;
+        }
         // debugpy: run the adapter with the debuggee's interpreter (venvs carry their own debugpy).
         if config.adapter == "debugpy" {
             let python = match arguments.get("python") {

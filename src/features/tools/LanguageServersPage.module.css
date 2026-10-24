@@ -3,36 +3,58 @@
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  height: 100%;
+  min-height: 420px;
 }
 .intro {
-  margin: 0 0 4px;
+  margin: 0;
   max-width: 680px;
   color: var(--fg-secondary);
+}
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-small);
+  box-shadow: inset 0 0 0 1px var(--border);
+  overflow: hidden;
+}
+
+/* list */
+.side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 300px;
+  min-height: 0;
+  border-right: 1px solid var(--border);
 }
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  margin: 8px 8px 6px;
 }
 .search {
-  width: 240px;
-}
-.spacer {
   flex: 1;
+  min-width: 0;
 }
 .segmented {
-  display: inline-flex;
+  display: flex;
   height: var(--h-control-small);
+  margin: 0 8px 6px;
   border-radius: var(--radius-small);
   box-shadow: inset 0 0 0 1px var(--border-strong);
   overflow: hidden;
 }
 .segment {
-  padding: 0 10px;
+  flex: 1;
+  padding: 0 6px;
   border: 0;
   background: transparent;
   color: var(--fg-secondary);
   font: inherit;
+  white-space: nowrap;
 }
 .segment:hover {
   background: var(--bg-hover);
@@ -45,67 +67,70 @@
   background: var(--bg-selected);
   color: var(--fg-strong);
 }
-.error,
-.rowError {
-  color: var(--danger);
-}
-.error {
-  padding: 6px 0;
-}
-.tableWrap {
-  min-width: 0;
+.list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
   overflow: auto;
-  border-radius: var(--radius-small);
-  box-shadow: inset 0 0 0 1px var(--border);
 }
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: auto;
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--h-row);
+  padding: 0 12px;
+  color: var(--fg-muted);
+  font-size: var(--fs-small);
 }
-.table th {
-  height: var(--h-header);
-  padding: 0 8px;
-  text-align: left;
-  font-weight: normal;
-  color: var(--fg-secondary);
-  background: var(--bg-island);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  white-space: nowrap;
-}
-.table td {
-  padding: 4px 8px;
-  vertical-align: middle;
-}
-/* IDEA tables: no row rules, selection-like hover. */
-.row td {
-  border-top: 0;
-}
-.table th + th {
-  border-left: 1px solid var(--border);
-}
-.row:first-child td {
-  border-top: 0;
+.groupCount {
+  font-variant-numeric: tabular-nums;
 }
 .row:hover {
   background: var(--bg-hover);
 }
-.detailRow td {
-  padding-top: 0;
-  padding-bottom: 6px;
+.rowSelected,
+.rowSelected:hover {
+  background: var(--bg-selected);
 }
-.toolName {
+.rowMain {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: var(--h-row);
+  gap: 8px;
+  width: 100%;
+  height: var(--h-row);
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
 }
-.display {
+.rowMain:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.rowName {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
   color: var(--fg-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowLanguages {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--fs-small);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kindTag {
+  flex: none;
   padding: 0 5px;
   border-radius: var(--radius-small);
   background: var(--bg-control);
@@ -113,35 +138,108 @@
   font-size: var(--fs-tiny);
   line-height: 16px;
 }
-.sub {
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.listEmpty {
+  padding: 8px 12px;
   color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-small);
 }
-.languages {
-  max-width: 200px;
+
+/* details */
+.details {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 16px 16px;
+  overflow: auto;
+}
+.detailsEmpty {
+  flex: 1;
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.headerText {
+  min-width: 0;
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-strong);
+  font-size: var(--fs-input-large);
+  font-weight: 600;
+}
+.subtitle {
+  margin-top: 2px;
   color: var(--fg-secondary);
-}
-.version {
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-secondary);
-  white-space: nowrap;
-}
-/* Status, Version and actions take their content's width; Tool and Languages share the rest. */
-.fitHead,
-.actionsHead {
-  width: 1%;
 }
 .actions {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
   gap: 4px;
-  white-space: nowrap;
+}
+.fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 8px;
+  align-items: baseline;
+  margin-top: 4px;
+}
+.field {
+  display: contents;
+}
+.fieldLabel {
+  color: var(--fg-secondary);
+}
+.fieldValue {
+  min-width: 0;
+  color: var(--fg);
+}
+code.fieldValue {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+.breakAll {
+  overflow-wrap: anywhere;
+}
+.version {
+  font-variant-numeric: tabular-nums;
+}
+.pathRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pathInput {
+  flex: 1;
+  min-width: 0;
+}
+.fieldHint {
+  margin-top: 2px;
+  color: var(--fg-muted);
+  font-size: var(--fs-small);
+}
+.fieldError,
+.error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.fieldError {
+  margin-top: 2px;
+  font-size: var(--fs-small);
+}
+.notice {
+  padding: 6px 8px;
+  border-radius: var(--radius-small);
+  background: var(--bg-control);
+  color: var(--fg-secondary);
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
 }
 .job {
   display: flex;
@@ -166,14 +264,10 @@
   font-family: var(--font-mono);
   font-size: var(--fs-small);
 }
-.hint {
-  color: var(--fg-muted);
-  font-size: var(--fs-small);
-}
 .log {
-  margin: 4px 0 0;
+  margin: 0;
   padding: 6px 8px;
-  max-height: 200px;
+  max-height: 240px;
   overflow: auto;
   background: var(--bg-app);
   color: var(--fg-secondary);
@@ -183,16 +277,4 @@
   white-space: pre-wrap;
   -webkit-user-select: text;
   user-select: text;
-}
-.empty {
-  padding: 12px;
-  color: var(--fg-muted);
-}
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }

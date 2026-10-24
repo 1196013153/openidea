@@ -37,6 +37,23 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub actions_on_save: ActionsOnSaveSettings,
     pub external_tools: Vec<ExternalTool>,
+    /// Language servers / debug adapters at a user-chosen location, by the
+    /// command the language definition launches (`elixir-ls`, `codelldb`).
+    pub tools: BTreeMap<String, ToolSettings>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ToolSettings {
+    /// Executable to launch instead of the managed / `PATH` one; empty = auto-detect.
+    pub path: String,
+}
+
+impl Settings {
+    /// The configured executable for `command`, if any (`~/` not yet expanded).
+    pub fn tool_path(&self, command: &str) -> Option<&str> {
+        self.tools.get(command).map(|t| t.path.trim()).filter(|p| !p.is_empty())
+    }
 }
 
 impl Default for Settings {
@@ -59,6 +76,7 @@ impl Default for Settings {
             terminal: TerminalSettings::default(),
             actions_on_save: ActionsOnSaveSettings::default(),
             external_tools: Vec::new(),
+            tools: BTreeMap::new(),
         }
     }
 }

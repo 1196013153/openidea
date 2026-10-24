@@ -255,3 +255,18 @@ fn detect_on_this_machine() {
         }
     }
 }
+
+#[test]
+fn custom_tool_path_replaces_the_command() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut s = Settings::default();
+    s.tools.insert("elixir-ls".into(), ide_core::settings::ToolSettings { path: "tools/ls/language_server.sh".into() });
+    s.tools.insert("zls".into(), ide_core::settings::ToolSettings { path: "  ".into() });
+    let mut cfg = server("elixir-ls");
+    configure_server(&mut cfg, tmp.path(), tmp.path(), &s);
+    assert_eq!(Path::new(&cfg.command), tmp.path().join("tools/ls/language_server.sh"));
+    // A blank path keeps auto-detection.
+    let mut cfg = server("zls");
+    configure_server(&mut cfg, tmp.path(), tmp.path(), &s);
+    assert_eq!(cfg.command, "zls");
+}

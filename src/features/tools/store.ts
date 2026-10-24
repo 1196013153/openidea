@@ -179,8 +179,26 @@ export async function uninstallTool(name: string): Promise<boolean> {
   }
 }
 
+/** Launches `command` from `path` (empty: auto-detect again), then re-checks the tools. */
+export async function setCustomPath(command: string, path: string): Promise<boolean> {
+  try {
+    await toolsBackend().setCustomPath(command, path.trim());
+    await refreshTools();
+    return true;
+  } catch (e) {
+    notifications().notify({
+      group: "tools",
+      level: "error",
+      title: `Failed to set the path of ${command}`,
+      body: errorText(e),
+    });
+    return false;
+  }
+}
+
 export const STATUS_LABEL: Record<ToolInfo["status"], string> = {
   installed: "Installed",
   onPath: "On PATH",
+  custom: "Custom",
   missing: "Missing",
 };

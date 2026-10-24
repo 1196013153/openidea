@@ -148,8 +148,8 @@ pub fn settings_set(
                 .set_file_defaults(ide_workspace::FileDefaults::from_settings(&effective, Some(&project.root)));
         }
     }
-    // A new interpreter / toolchain restarts the language servers it affects.
-    if key == "languages" || key.starts_with("languages.") {
+    // A new interpreter / toolchain / server executable restarts the language servers it affects.
+    if ["languages", "tools"].iter().any(|k| key == *k || key.starts_with(&format!("{k}."))) {
         let affected = if project_scope { current.iter().cloned().collect() } else { state.projects() };
         for project in affected {
             let lsp = project.lsp.clone();

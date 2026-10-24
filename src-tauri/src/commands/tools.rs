@@ -4,11 +4,21 @@ use crate::state::AppState;
 use ide_core::{IdeError, IdeResult, RequestId};
 use ide_tools::{InstallEvent, ToolInfo, Tools};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, Window};
 
-fn tools(app: &AppHandle) -> IdeResult<Tools> {
+/// The installer, reporting the executables chosen in the window's settings.
+fn tools(app: &AppHandle, state: &AppState, window: &Window) -> IdeResult<Tools> {
     let data = app.path().app_data_dir().map_err(|e| IdeError::internal(e.to_string()))?;
-    Ok(Tools::new(&data))
+    let (settings, root) = match state.project(window.label()) {
+        Ok(project) => (project.settings.effective(), project.root.clone()),
+        Err(_) => (state.global_settings.effective(), Default::default()),
+    };
+    let custom = settings
+        .tools
+        .iter()
+        .filter_map(|(command, t)| Some((command.clone(), ide_sdk::apply::setting_path(&root, &t.path)?)))
+        .collect();
+    Ok(Tools::new(&data).with_custom_paths(custom))
 }
 
 fn join_err(e: impl std::fmt::Display) -> IdeError {
@@ -18,8 +28,8 @@ fn join_err(e: impl std::fmt::Display) -> IdeError {
 /// Status of every known language server / debug adapter and the languages using it.
 #[tauri::command]
 #[specta::specta]
-pub async fn tools_list(app: AppHandle, state: State<'_, AppState>) -> IdeResult<Vec<ToolInfo>> {
-    let tools = tools(&app)?;
+pub async fn tools_list(app: AppHandle, window: Window, state: State<'_, AppState>) -> IdeResult<Vec<ToolInfo>> {
+    let tools = tools(&app, &state, &window)?;
     let langs = state.languages.all();
     tauri::async_runtime::spawn_blocking(move || tools.list(&langs)).await.map_err(join_err)
 }
@@ -30,12 +40,13 @@ pub async fn tools_list(app: AppHandle, state: State<'_, AppState>) -> IdeResult
 #[specta::specta]
 pub async fn tools_install(
     app: AppHandle,
+    window: Window,
     state: State<'_, AppState>,
     name: String,
     request: RequestId,
     on_event: Channel<InstallEvent>,
 ) -> IdeResult<ToolInfo> {
-    let tools = tools(&app)?;
+    let tools = tools(&app, &state, &window)?;
     let langs = state.languages.all();
     let cancel = state.begin_request(request);
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -56,8 +67,13 @@ pub async fn tools_install(
 /// Removes a tool the IDE installed.
 #[tauri::command]
 #[specta::specta]
-pub async fn tools_uninstall(app: AppHandle, state: State<'_, AppState>, name: String) -> IdeResult<ToolInfo> {
-    let tools = tools(&app)?;
+pub async fn tools_uninstall(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, AppState>,
+    name: String,
+) -> IdeResult<ToolInfo> {
+    let tools = tools(&app, &state, &window)?;
     let langs = state.languages.all();
     let info =
         tauri::async_runtime::spawn_blocking(move || tools.uninstall(&name, &langs)).await.map_err(join_err)??;

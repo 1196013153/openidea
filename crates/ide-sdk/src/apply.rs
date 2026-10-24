@@ -16,7 +16,7 @@ fn non_empty(s: &str) -> Option<&str> {
 }
 
 /// Resolves `~/` and project-relative paths of a setting.
-fn setting_path(root: &Path, s: &str) -> Option<PathBuf> {
+pub fn setting_path(root: &Path, s: &str) -> Option<PathBuf> {
     let s = non_empty(s)?;
     let p = match s.strip_prefix("~/") {
         Some(rest) => crate::home_dir()?.join(rest),
@@ -153,6 +153,9 @@ pub(crate) fn merge_init_options(cfg: &mut LanguageServerConfig, layer: Value) {
 /// server settings (`python.pythonPath`, rust-analyzer `check.command`, `typescript.tsdk`).
 /// `root` is the project root, `server_root` the server's workspace root.
 pub fn configure_server(cfg: &mut LanguageServerConfig, root: &Path, server_root: &Path, s: &Settings) {
+    if let Some(custom) = s.tool_path(&cfg.command).and_then(|p| setting_path(root, p)) {
+        cfg.command = custom.to_string_lossy().into_owned();
+    }
     let mut path_dirs: Vec<PathBuf> = Vec::new();
     let name = cfg.name.clone();
     let name = name.as_str();

@@ -3421,6 +3421,11 @@ export type Settings_Deserialize = {
 	terminal?: TerminalSettings,
 	actionsOnSave?: ActionsOnSaveSettings,
 	externalTools?: ExternalTool[],
+	/**
+	 *  Language servers / debug adapters at a user-chosen location, by the
+	 *  command the language definition launches (`elixir-ls`, `codelldb`).
+	 */
+	tools?: { [key in string]: ToolSettings },
 };
 
 export type Settings_Serialize = {
@@ -3454,6 +3459,11 @@ export type Settings_Serialize = {
 	terminal: TerminalSettings,
 	actionsOnSave: ActionsOnSaveSettings,
 	externalTools: ExternalTool[],
+	/**
+	 *  Language servers / debug adapters at a user-chosen location, by the
+	 *  command the language definition launches (`elixir-ls`, `codelldb`).
+	 */
+	tools: { [key in string]: ToolSettings },
 };
 
 export type Severity = "error" | "warning" | "info" | "hint";
@@ -3860,17 +3870,26 @@ export type ToolInfo = {
 	/**  Manual install instructions from the language definition. */
 	installHint: string | null,
 	homepage: string | null,
+	/**  Why the executable chosen in settings cannot be used (status is then `Missing`). */
+	customError: string | null,
 };
 
 export type ToolKind = "languageServer" | "debugger" | 
 /**  Loaded into another tool's process, e.g. a jdtls agent. */
 "plugin";
 
+export type ToolSettings = {
+	/**  Executable to launch instead of the managed / `PATH` one; empty = auto-detect. */
+	path?: string,
+};
+
 export type ToolStatus = 
 /**  Installed by the IDE (managed tools dir or a toolchain component it manages). */
 "installed" | 
 /**  Found on the system `PATH`. */
-"onPath" | "missing";
+"onPath" | 
+/**  The executable chosen in settings. */
+"custom" | "missing";
 
 export type TypeScriptSettings = {
 	/**

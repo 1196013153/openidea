@@ -39,6 +39,8 @@ pub enum ToolStatus {
     Installed,
     /// Found on the system `PATH`.
     OnPath,
+    /// The executable chosen in settings.
+    Custom,
     Missing,
 }
 
@@ -66,6 +68,8 @@ pub struct ToolInfo {
     /// Manual install instructions from the language definition.
     pub install_hint: Option<String>,
     pub homepage: Option<String>,
+    /// Why the executable chosen in settings cannot be used (status is then `Missing`).
+    pub custom_error: Option<String>,
 }
 
 /// Streamed install progress.
@@ -212,8 +216,18 @@ fn usages(langs: &[LanguageConfig]) -> BTreeMap<String, Usage> {
         for s in &l.language_servers {
             add(&s.name, &s.command, ToolKind::LanguageServer, s.install_hint.as_ref(), &l.name);
         }
+    }
+    let servers: HashSet<&str> = langs.iter().flat_map(|l| &l.language_servers).map(|s| s.name.as_str()).collect();
+    for l in langs {
         if let Some(d) = &l.debugger {
-            add(&d.adapter, &d.command, ToolKind::Debugger, d.install_hint.as_ref(), &l.name);
+            // An adapter named like a server but launched differently (ElixirLS's
+            // `elixir-ls-debugger`) is a tool of its own, listed by its command.
+            let name = if servers.contains(d.adapter.as_str()) && !TOOLS.iter().any(|t| t.name == d.adapter) {
+                &d.command
+            } else {
+                &d.adapter
+            };
+            add(name, &d.command, ToolKind::Debugger, d.install_hint.as_ref(), &l.name);
         }
     }
     for (plugin, host) in registry::PLUGIN_HOSTS {
@@ -260,6 +274,8 @@ pub struct Tools {
     /// `PATH` handed to installer child processes.
     child_path: OsString,
     platform: Platform,
+    /// Executables chosen in settings, by command.
+    custom: BTreeMap<String, PathBuf>,
 }
 
 impl Tools {
@@ -273,7 +289,13 @@ impl Tools {
         let system: Vec<PathBuf> = std::env::split_paths(&search_path).filter(|d| !ours.contains(d)).collect();
         let system_path = std::env::join_paths(&system).unwrap_or_default();
         let child_path = std::env::join_paths(ours.iter().chain(system.iter())).unwrap_or_default();
-        Self { root, system_path, child_path, platform }
+        Self { root, system_path, child_path, platform, custom: BTreeMap::new() }
+    }
+
+    /// Reports the executables chosen in settings (command → path) as the tools' location.
+    pub fn with_custom_paths(mut self, custom: BTreeMap<String, PathBuf>) -> Self {
+        self.custom = custom;
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -394,7 +416,9 @@ impl Tools {
                 can_uninstall: false,
                 install_hint,
                 homepage: None,
-            });
+                custom_error: None,
+            })
+            .map(|info| self.apply_custom(info, None));
         };
         let (status, path, version) = self.detect(spec);
         let unavailable_reason = self.unavailable_reason(spec);
@@ -414,7 +438,34 @@ impl Tools {
             can_uninstall,
             install_hint,
             homepage: Some(spec.homepage.to_string()),
+            custom_error: None,
         })
+        .map(|info| self.apply_custom(info, Some(spec)))
+    }
+
+    /// Overrides the detected location with the executable chosen in settings.
+    fn apply_custom(&self, mut info: ToolInfo, spec: Option<&ToolSpec>) -> ToolInfo {
+        let Some(path) = self.custom.get(&info.command) else { return info };
+        if !path.is_file() {
+            info.status = ToolStatus::Missing;
+            info.custom_error = Some(format!("{} does not exist", path.display()));
+            info.path = None;
+            info.version = None;
+            return info;
+        }
+        info.version = spec.and_then(|spec| {
+            let (cmd, args) = spec.version?;
+            // The version command is the tool itself, whatever the chosen file is called.
+            let program =
+                if cmd == spec.commands[0] { path.clone() } else { path.parent().and_then(|d| self.exe_in(d, cmd))? };
+            let mut c = self.command(program);
+            c.args(args);
+            let (ok, out) = run_quiet(c, Duration::from_secs(4))?;
+            if ok { parse_version(&out) } else { None }
+        });
+        info.status = ToolStatus::Custom;
+        info.path = Some(path.clone().into());
+        info
     }
 
     fn detect(&self, spec: &ToolSpec) -> (ToolStatus, Option<PathBuf>, Option<String>) {

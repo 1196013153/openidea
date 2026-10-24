@@ -286,3 +286,34 @@ fn installed_bundle_is_detected_and_resolvable() {
     assert_eq!(managed_bundle(app_data, "java-debug"), Some(bin.join("com.microsoft.java.debug.plugin.jar")));
     assert_eq!(managed_bundle(app_data, "jdtls"), None, "not a bundle");
 }
+
+#[cfg(unix)]
+#[test]
+fn custom_paths_win_and_report_their_version() {
+    let env = Env::new();
+    env.script(&env.sys, "gopls", "echo 'golang.org/x/tools/gopls v0.16.1'");
+    let elsewhere = env.sys.parent().unwrap().join("opt/go/bin");
+    env.script(&elsewhere, "my-gopls", "echo 'golang.org/x/tools/gopls v0.17.0'");
+    let custom =
+        BTreeMap::from([("gopls".to_string(), elsewhere.join("my-gopls")), ("zls".to_string(), elsewhere.join("zls"))]);
+    let list = env.tools().with_custom_paths(custom).list(&langs());
+    let gopls = find(&list, "gopls");
+    assert_eq!(gopls.status, ToolStatus::Custom);
+    assert_eq!(gopls.path.as_deref(), Some(elsewhere.join("my-gopls").as_path()));
+    assert_eq!(gopls.version.as_deref(), Some("0.17.0"));
+    assert_eq!(gopls.custom_error, None);
+    // A path that does not exist is reported, not silently replaced by detection.
+    let zls = find(&list, "zls");
+    assert_eq!(zls.status, ToolStatus::Missing);
+    assert!(zls.custom_error.as_deref().unwrap().contains("does not exist"));
+}
+
+#[test]
+fn a_debugger_named_like_its_server_is_listed_by_its_command() {
+    let list = Env::new().tools().list(&langs());
+    let server = find(&list, "elixir-ls");
+    assert_eq!((server.kind, server.command.as_str()), (ToolKind::LanguageServer, "elixir-ls"));
+    let debugger = find(&list, "elixir-ls-debugger");
+    assert_eq!((debugger.kind, debugger.command.as_str()), (ToolKind::Debugger, "elixir-ls-debugger"));
+    assert_eq!(debugger.languages, vec!["Elixir".to_string()]);
+}

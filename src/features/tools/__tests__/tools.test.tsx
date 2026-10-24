@@ -126,27 +126,57 @@ describe("missing language server prompt", () => {
 });
 
 describe("LanguageServersPage", () => {
-  it("lists tools and installs from the table", async () => {
+  const listItem = (name: string) =>
+    screen.getByRole("list", { name: /language servers/i }).querySelector<HTMLElement>(`[data-tool="${name}"]`)!;
+
+  it("lists tools and installs from the details pane", async () => {
     const user = userEvent.setup();
     render(<LanguageServersPage />);
-    const table = await screen.findByRole("table", { name: /language servers/i });
-    const row = await within(table).findByText("gopls");
-    const tr = row.closest("tr")!;
-    expect(within(tr).getByText("Missing")).toBeInTheDocument();
-    await user.click(within(tr).getByRole("button", { name: "Install gopls" }));
-    await waitFor(() => expect(within(table).getByText("gopls").closest("tr")!).toHaveTextContent("Installed"));
-    expect(within(table).getByText("gopls").closest("tr")!).toHaveTextContent("1.0.0");
+    await screen.findByText("gopls");
+    await user.click(listItem("gopls"));
+    const details = screen.getByLabelText("gopls details");
+    expect(within(details).getByText("Missing")).toBeInTheDocument();
+    await user.click(within(details).getByRole("button", { name: "Install gopls" }));
+    await waitFor(() => expect(screen.getByLabelText("gopls details")).toHaveTextContent("Installed"));
+    expect(screen.getByLabelText("gopls details")).toHaveTextContent("1.0.0");
+    // Installed tools move to the Available group, still selected.
+    expect(listItem("gopls")).toHaveAttribute("aria-current", "true");
     // The install log can be shown afterwards.
-    await user.click(
-      within(within(table).getByText("gopls").closest("tr")!).getByRole("button", { name: "Show install log" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Show install log" }));
     expect(screen.getByLabelText("gopls install log")).toHaveTextContent("Installing gopls");
   });
 
   it("explains why a tool cannot be installed", async () => {
+    const user = userEvent.setup();
     render(<LanguageServersPage />);
-    expect(await screen.findByText("gem install solargraph")).toBeInTheDocument();
+    await screen.findByText("solargraph");
+    await user.click(listItem("solargraph"));
+    expect(screen.getByText("gem install solargraph")).toBeInTheDocument();
+    await user.click(listItem("zls"));
     expect(screen.getByText("curl is required to download tools")).toBeInTheDocument();
+  });
+
+  it("sets and clears a custom path", async () => {
+    const user = userEvent.setup();
+    render(<LanguageServersPage />);
+    await screen.findByText("gopls");
+    await user.click(listItem("gopls"));
+    const path = within(screen.getByLabelText("gopls details")).getByRole("textbox", { name: "Path" });
+    await user.type(path, "/opt/go/bin/gopls{Enter}");
+    await waitFor(() => expect(screen.getByLabelText("gopls details")).toHaveTextContent("Custom"));
+    expect(backend.customPaths).toEqual({ gopls: "/opt/go/bin/gopls" });
+    await user.click(screen.getByRole("button", { name: "Use auto-detected" }));
+    await waitFor(() => expect(backend.customPaths).toEqual({}));
+    expect(screen.getByLabelText("gopls details")).toHaveTextContent("Missing");
+  });
+
+  it("moves the selection with the arrow keys", async () => {
+    const user = userEvent.setup();
+    render(<LanguageServersPage />);
+    await screen.findByText("gopls");
+    await user.click(listItem("rust-analyzer"));
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByLabelText("typescript-language-server details")).toBeInTheDocument();
   });
 
   it("filters to missing tools", async () => {
@@ -158,7 +188,7 @@ describe("LanguageServersPage", () => {
     expect(screen.getByText("gopls")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: /filter language servers/i }), "zig");
     expect(screen.queryByText("gopls")).not.toBeInTheDocument();
-    expect(screen.getByText("ZLS (Zig)")).toBeInTheDocument();
+    expect(listItem("zls")).toHaveTextContent("ZLS (Zig)");
   });
 
   it("shows backend errors", async () => {

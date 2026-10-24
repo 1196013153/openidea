@@ -2313,5 +2313,16 @@
   "Group By": "分组依据",
   "The search hit its limit; only usages found so far are replaced.": "搜索已达上限，只替换目前找到的用法。",
   "Review": "审查",
-  "Commit and Push…": "提交并推送…"
+  "Commit and Push…": "提交并推送…",
+  "Language server": "语言服务器",
+  "Path": "路径",
+  "Missing": "缺失",
+  "Leave empty to use the IDE-installed copy, else the one on PATH.": "留空则使用 IDE 安装的副本，否则使用 PATH 上的版本。",
+  "Installs into the IDE's own tools folder via": "安装到 IDE 自己的工具目录，方式：",
+  "No tool selected": "未选择工具",
+  "Use auto-detected": "使用自动检测",
+  "Custom": "自定义",
+  "On PATH": "PATH 中",
+  "Reinstall": "重新安装",
+  "Auto-detect": "自动检测"
 }

@@ -14,7 +14,16 @@ pub async fn debug_start(
 ) -> IdeResult<DebugSessionId> {
     let label = window.label();
     let owner = SessionOwner::new(AppState::owner_window(label), state.window_sink(label));
-    state.debugger.start(config, owner).await
+    let settings = match state.project(label) {
+        Ok(project) => project.settings.effective(),
+        Err(_) => state.global_settings.effective(),
+    };
+    let root = config.cwd.clone().map(PathBuf::from).unwrap_or_default();
+    let custom = |command: &str| {
+        let path = ide_sdk::apply::setting_path(&root, settings.tool_path(command)?)?;
+        Some(path.to_string_lossy().into_owned())
+    };
+    state.debugger.start_with(config, owner, custom).await
 }
 
 #[tauri::command]
