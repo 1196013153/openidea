@@ -10,7 +10,7 @@ pub(crate) struct Spec {
     /// `queries/<name>/outline.scm`; see `queries/README.md` for the capture vocabulary.
     pub outline: &'static str,
     /// The grammar's `highlights.scm`, for languages without a CodeMirror mode.
-    pub highlights: Option<&'static str>,
+    pub highlights: Option<Highlights>,
     /// Node kinds folded when they span several lines (in addition to every
     /// bracket-delimited node, which is folded generically).
     pub fold_nodes: &'static [&'static str],
@@ -20,6 +20,21 @@ pub(crate) struct Spec {
     pub imports: &'static [&'static str],
     /// Function names that are constructors when declared inside a type.
     pub constructors: &'static [&'static str],
+}
+
+/// A highlights query and how its patterns rank against each other.
+pub(crate) struct Highlights {
+    pub query: &'static str,
+    /// For the same node, the first matching pattern wins (tree-sitter CLI /
+    /// GitHub queries) instead of the last one (nvim / Zed queries).
+    pub first_wins: bool,
+}
+
+/// Our own `queries/<name>/highlights.scm`, for grammars that ship none.
+macro_rules! highlights {
+    ($name:literal) => {
+        include_str!(concat!("../../queries/", $name, "/highlights.scm"))
+    };
 }
 
 macro_rules! outline {
@@ -240,7 +255,7 @@ pub(crate) static SPECS: &[Spec] = &[
         name: "zig",
         language: tree_sitter_zig::LANGUAGE,
         outline: outline!("zig"),
-        highlights: None,
+        highlights: Some(Highlights { query: tree_sitter_zig::HIGHLIGHTS_QUERY, first_wins: false }),
         fold_nodes: NONE,
         fold_bodies: NONE,
         imports: NONE,
@@ -250,7 +265,7 @@ pub(crate) static SPECS: &[Spec] = &[
         name: "elixir",
         language: tree_sitter_elixir::LANGUAGE,
         outline: outline!("elixir"),
-        highlights: Some(tree_sitter_elixir::HIGHLIGHTS_QUERY),
+        highlights: Some(Highlights { query: tree_sitter_elixir::HIGHLIGHTS_QUERY, first_wins: false }),
         fold_nodes: &["do_block", "anonymous_function", "string", "sigil"],
         fold_bodies: NONE,
         imports: NONE,
@@ -379,7 +394,7 @@ pub(crate) static SPECS: &[Spec] = &[
         name: "hcl",
         language: tree_sitter_hcl::LANGUAGE,
         outline: outline!("hcl"),
-        highlights: None,
+        highlights: Some(Highlights { query: highlights!("hcl"), first_wins: false }),
         fold_nodes: &["block", "heredoc_template"],
         fold_bodies: NONE,
         imports: NONE,
@@ -389,7 +404,7 @@ pub(crate) static SPECS: &[Spec] = &[
         name: "nix",
         language: tree_sitter_nix::LANGUAGE,
         outline: outline!("nix"),
-        highlights: None,
+        highlights: Some(Highlights { query: tree_sitter_nix::HIGHLIGHTS_QUERY, first_wins: true }),
         fold_nodes: &["let_expression", "indented_string_expression"],
         fold_bodies: NONE,
         imports: NONE,
@@ -409,7 +424,7 @@ pub(crate) static SPECS: &[Spec] = &[
         name: "graphql",
         language: tree_sitter_graphql::LANGUAGE,
         outline: outline!("graphql"),
-        highlights: None,
+        highlights: Some(Highlights { query: highlights!("graphql"), first_wins: false }),
         fold_nodes: NONE,
         fold_bodies: NONE,
         imports: NONE,
@@ -419,7 +434,7 @@ pub(crate) static SPECS: &[Spec] = &[
         name: "make",
         language: tree_sitter_make::LANGUAGE,
         outline: outline!("make"),
-        highlights: None,
+        highlights: Some(Highlights { query: tree_sitter_make::HIGHLIGHTS_QUERY, first_wins: false }),
         fold_nodes: &["rule", "conditional", "define_directive"],
         fold_bodies: NONE,
         imports: &["include_directive"],

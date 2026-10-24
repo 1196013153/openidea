@@ -57,8 +57,8 @@ impl Grammar {
     fn highlight_query(&self) -> Option<&highlight::HighlightQuery> {
         self.highlights
             .get_or_init(|| {
-                let source = self.spec.highlights?;
-                highlight::HighlightQuery::new(&self.language, source)
+                let h = self.spec.highlights.as_ref()?;
+                highlight::HighlightQuery::new(&self.language, h.query, h.first_wins)
                     .inspect_err(|e| tracing::error!("highlights query for {} is invalid: {e}", self.spec.name))
                     .ok()
             })
