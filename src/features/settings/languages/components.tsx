@@ -15,7 +15,7 @@ export function useProjectSetting<T>(key: string): [T, (v: T) => void] {
   return useSetting<T>(key, hasProject ? "project" : "global");
 }
 
-const HOME = /^\/(?:Users|home)\/[^/]+/;
+const HOME = /^(?:\/(?:Users|home)|[A-Za-z]:[\\/]Users)[\\/][^\\/]+/;
 
 /** `~/…` for paths in the home directory. */
 export function tildify(path: string): string {

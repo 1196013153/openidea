@@ -72,13 +72,20 @@
   flex: none;
   color: var(--fg-muted);
 }
+/* The label keeps its width (up to most of the row); a long detail (a path) is cut instead. */
 .optionLabel {
-  flex: 1;
+  flex: 1 0 auto;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.detail {
+  white-space: nowrap;
   color: var(--fg-muted);
 }
 .disabled {

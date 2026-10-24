@@ -63,5 +63,7 @@ describe("language pages", () => {
     expect(filterPackages(pkgs, "dj").map((p) => p.name)).toEqual(["Django"]);
     expect(filterPackages(pkgs, "")).toHaveLength(2);
     expect(tildify("/Users/me/p/.venv/bin/python")).toBe("~/p/.venv/bin/python");
+    expect(tildify("C:/Users/me/.m2/wrapper/dists/apache-maven-3.9.16")).toBe("~/.m2/wrapper/dists/apache-maven-3.9.16");
+    expect(tildify("C:/Program Files/Java/jdk-21")).toBe("C:/Program Files/Java/jdk-21");
   });
 });
