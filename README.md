@@ -19,14 +19,6 @@
 
 https://github.com/user-attachments/assets/234dd54c-1255-4b3a-b35c-533d78d737c0
 
-<p align="center">
-  <img src="docs/media/editor.jpg" alt="Editor with rust-analyzer inlay hints" width="100%">
-</p>
-<p align="center">
-  <img src="docs/media/search-everywhere.jpg" alt="Search Everywhere" width="49%">
-  <img src="docs/media/debug.jpg" alt="Debugger stopped at a breakpoint" width="49%">
-</p>
-
 OpenIDEA brings the IntelliJ IDEA way of working — its keymap, its tool windows,
 its search-everything habits — to a native app with a Rust core.
 
