@@ -63,9 +63,25 @@ export function loadSupport(desc: LanguageDescription): Promise<LanguageSupport 
   return p;
 }
 
-/** Highlighting the stock grammars lack (IntelliJ colours annotations; @lezer/java tags them as plain identifiers). */
+/**
+ * PyCharm CSS colours: selectors fall back to HTML tag name, property names to
+ * HTML attribute name, values and units to HTML attribute value.
+ */
+const CSS_TAGS: Parameters<typeof styleTags>[0] = {
+  "FeatureName PropertyName": t.attributeName,
+  "ValueName FontName Unit": t.attributeValue,
+  "ClassName IdName PseudoClassName ColorLiteral CallTag": t.tagName,
+};
+
+/** Highlighting the stock grammars lack or colour unlike IntelliJ. */
 const EXTRA_TAGS: Record<string, Parameters<typeof styleTags>[0]> = {
+  // @lezer/java tags annotations as plain identifiers.
   Java: { "MarkerAnnotation/Identifier Annotation/Identifier MarkerAnnotation Annotation": t.annotation },
+  CSS: CSS_TAGS,
+  SCSS: CSS_TAGS,
+  Sass: CSS_TAGS,
+  // YAML keys are keywords in IntelliJ.
+  YAML: { "Key/Literal Key/QuotedLiteral": t.keyword },
 };
 
 function patchSupport(desc: LanguageDescription, support: LanguageSupport): LanguageSupport {

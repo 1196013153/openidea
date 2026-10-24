@@ -18,6 +18,9 @@ function token(tag: Tag | Tag[], name: string, defaults: { italic?: string; bold
 }
 
 export const openideaHighlightStyle = HighlightStyle.define([
+  // Markdown tags whole links / quotes; listed first so marks, URL and title inside keep their own colours.
+  token(t.link, "link", { effect: "underline" }),
+  token(t.quote, "string"),
   token([t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword, t.definitionKeyword, t.modifier, t.null, t.bool, t.unit], "keyword"),
   token(t.self, "self"),
   token([t.string, t.special(t.string), t.character, t.attributeValue], "string"),
@@ -31,7 +34,9 @@ export const openideaHighlightStyle = HighlightStyle.define([
   token([t.function(t.definition(t.variableName)), t.definition(t.function(t.variableName)), t.function(t.definition(t.propertyName))], "function"),
   token([t.comment, t.lineComment, t.blockComment], "comment", { italic: "var(--syn-comment-style)" }),
   token(t.docComment, "doc-comment", { italic: "italic" }),
-  token([t.meta, t.annotation, t.macroName, t.documentMeta], "decorator"),
+  token([t.meta, t.annotation, t.macroName], "decorator"),
+  // `<!doctype>` is a sub-tag of `meta`; PyCharm leaves the XML prologue as plain text.
+  { tag: t.documentMeta, color: "var(--fg-editor)" },
   token([t.constant(t.variableName), t.atom, t.special(t.variableName)], "constant", { italic: "italic" }),
   token(t.labelName, "constant"),
   token([t.variableName, t.definition(t.variableName), t.local(t.variableName)], "variable"),
@@ -46,9 +51,10 @@ export const openideaHighlightStyle = HighlightStyle.define([
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strong, fontWeight: "600" },
   { tag: t.strikethrough, textDecoration: "line-through" },
-  token([t.link, t.url], "link", { effect: "underline" }),
+  // Markdown, as IntelliJ: link destination like a static method, rules like markers.
+  token(t.url, "function", { italic: "italic" }),
   token(t.monospace, "markup-code"),
-  token(t.quote, "comment"),
+  token(t.contentSeparator, "keyword"),
   { tag: t.inserted, color: "var(--vcs-added)" },
   { tag: t.deleted, color: "var(--danger)" },
   { tag: t.changed, color: "var(--vcs-modified)" },
