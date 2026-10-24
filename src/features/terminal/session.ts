@@ -286,9 +286,10 @@ export class TerminalSession {
     if (this.host.parentElement !== container) container.appendChild(this.host);
     if (!this.opened) {
       this.opened = true;
+      // xterm's DOM renderer: the WebGL one rasterizes glyphs per background, so
+      // selected text rendered at a visibly different weight than the rest.
       this.term.open(this.host);
       this.term.textarea?.addEventListener("focus", () => this.opts.onFocus(this.key));
-      void this.loadRenderer();
     }
     this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver(() => this.scheduleFit());
@@ -300,19 +301,6 @@ export class TerminalSession {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.host.parentElement === container) container.removeChild(this.host);
-  }
-
-  private async loadRenderer() {
-    // WebGL when available; xterm's DOM renderer is the built-in fallback.
-    try {
-      const { WebglAddon } = await import("@xterm/addon-webgl");
-      if (this.disposed) return;
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      this.term.loadAddon(webgl);
-    } catch {
-      /* no WebGL: keep the DOM renderer */
-    }
   }
 
   private scheduleFit() {
