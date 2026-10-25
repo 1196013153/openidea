@@ -47,6 +47,12 @@ describe("outline helpers", () => {
     expect(filterOutline(nodes, "", true).nodes).toBe(nodes);
   });
 
+  it("matches word and camel-hump starts, not scattered letters", () => {
+    const loose = keyOutline([item("items.reduce() callback", "function", 0, 1), item("subtotal", "method", 2, 3)]);
+    expect(filterOutline(loose, "sub", true).nodes.map((n) => n.item.name)).toEqual(["subtotal"]);
+    expect(filterOutline(nodes, "OC", true).nodes.map((n) => n.item.name)).toEqual(["OrderController"]);
+  });
+
   it("only highlights matches when not narrowing down", () => {
     const f = filterOutline(nodes, "list", false);
     expect(f.nodes).toBe(nodes);

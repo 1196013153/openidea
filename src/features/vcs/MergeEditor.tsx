@@ -1,7 +1,7 @@
 /** Three-pane merge conflict editor: Yours | Result | Theirs. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Facet, RangeSetBuilder, StateField, type EditorState, type Extension } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { history, historyKeymap } from "@codemirror/commands";
 import { keymap } from "@codemirror/view";
@@ -13,14 +13,7 @@ import { Button, IconButton, Spinner, T } from "@/ui";
 import { editorService, type EditorInput } from "@/workbench/contributions";
 import { languageFor, viewerBase } from "./cm";
 import { confirmDialog } from "./dialogs";
-import {
-  mergeTitles,
-  parseConflicts,
-  resolutionText,
-  resolveAll,
-  type ConflictBlock,
-  type Resolution,
-} from "./conflicts";
+import { initialResult, mergeTitles, resolutionText, type Resolution, type ResultConflict } from "./conflicts";
 import { baseName } from "./model";
 import { errorMessage, readWorkingText, runOp, writeFileText } from "./ops";
 import { refreshNow } from "./store";
@@ -29,12 +22,15 @@ import styles from "./MergeEditor.module.css";
 import type { MergeData } from "./mergeKind";
 export { MERGE_KIND, mergeInput, type MergeData } from "./mergeKind";
 
-/** The user's commit is the `>>>>>>>` section (a rebase): "Yours" takes it. */
-const reversedSides = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
+/** Drops the conflict at an index once a resolution replaced its text. */
+const resolvedConflict = StateEffect.define<number>();
 
-function resolveBlock(view: EditorView, block: ConflictBlock, how: Resolution) {
+function resolveConflict(view: EditorView, index: number, how: Resolution) {
+  const c = view.state.field(conflictField).conflicts[index];
+  if (!c) return;
   view.dispatch({
-    changes: { from: block.from, to: block.to, insert: resolutionText(block, how, view.state.facet(reversedSides)) },
+    changes: { from: c.from, to: c.to, insert: resolutionText(c, how) },
+    effects: resolvedConflict.of(index),
     userEvent: "input.resolve",
   });
 }
@@ -42,12 +38,12 @@ function resolveBlock(view: EditorView, block: ConflictBlock, how: Resolution) {
 class ActionsWidget extends WidgetType {
   constructor(
     readonly index: number,
-    readonly block: ConflictBlock,
+    readonly hasBase: boolean,
   ) {
     super();
   }
   eq(o: ActionsWidget) {
-    return o.index === this.index && o.block.from === this.block.from && o.block.to === this.block.to;
+    return o.index === this.index && o.hasBase === this.hasBase;
   }
   toDOM(view: EditorView) {
     const el = document.createElement("div");
@@ -60,8 +56,7 @@ class ActionsWidget extends WidgetType {
       b.onmousedown = (e) => e.preventDefault();
       b.onclick = (e) => {
         e.preventDefault();
-        const live = parseConflicts(view.state.doc.toString())[this.index];
-        if (live) resolveBlock(view, live, how);
+        resolveConflict(view, this.index, how);
       };
       el.appendChild(b);
     };
@@ -71,7 +66,7 @@ class ActionsWidget extends WidgetType {
     add("Accept Yours", "ours");
     add("Accept Theirs", "theirs");
     add("Accept Both", "both");
-    if (this.block.base !== null) add("Use Base", "base");
+    if (this.hasBase) add("Use Base", "base");
     return el;
   }
   ignoreEvent() {
@@ -79,41 +74,38 @@ class ActionsWidget extends WidgetType {
   }
 }
 
-const oursLine = Decoration.line({ class: "cm-conflict-ours" });
-const theirsLine = Decoration.line({ class: "cm-conflict-theirs" });
-const markerLine = Decoration.line({ class: "cm-conflict-marker" });
+const conflictLine = Decoration.line({ class: "cm-conflict-marker" });
 
-function decorate(state: EditorState): { blocks: ConflictBlock[]; deco: DecorationSet } {
-  const blocks = parseConflicts(state.doc.toString());
+function decorate(state: EditorState, conflicts: readonly ResultConflict[]): DecorationSet {
   const b = new RangeSetBuilder<Decoration>();
   const doc = state.doc;
-  const [yours, theirs] = state.facet(reversedSides) ? [theirsLine, oursLine] : [oursLine, theirsLine];
-  blocks.forEach((blk, i) => {
-    b.add(blk.from, blk.from, Decoration.widget({ widget: new ActionsWidget(i, blk), block: true, side: -1 }));
-    const endLine = doc.lineAt(Math.max(blk.from, blk.to - 1)).number;
-    for (let n = doc.lineAt(blk.from).number; n <= endLine; n++) {
-      const line = doc.line(n);
-      const deco =
-        line.from >= blk.oursFrom && line.from < blk.oursTo
-          ? yours
-          : line.from >= blk.theirsFrom && line.from < blk.theirsTo
-            ? theirs
-            : markerLine;
-      b.add(line.from, line.from, deco);
-    }
+  conflicts.forEach((c, i) => {
+    b.add(c.from, c.from, Decoration.widget({ widget: new ActionsWidget(i, c.base !== null), block: true, side: -1 }));
+    if (c.to <= c.from) return;
+    const endLine = doc.lineAt(c.to - 1).number;
+    for (let n = doc.lineAt(c.from).number; n <= endLine; n++) b.add(doc.line(n).from, doc.line(n).from, conflictLine);
   });
-  return { blocks, deco: b.finish() };
+  return b.finish();
 }
 
-const conflictField = StateField.define<{ blocks: ConflictBlock[]; deco: DecorationSet }>({
-  create: decorate,
-  update: (v, tr) => (tr.docChanged ? decorate(tr.state) : v),
+/**
+ * The result's unresolved conflicts, tracked as ranges holding the base text (no
+ * markers), as IDEA's merge dialog shows them. Typing at a conflict's edges stays in it.
+ */
+const conflictField = StateField.define<{ conflicts: ResultConflict[]; deco: DecorationSet }>({
+  create: () => ({ conflicts: [], deco: Decoration.none }),
+  update(v, tr) {
+    const done = new Set(tr.effects.filter((e) => e.is(resolvedConflict)).map((e) => e.value as number));
+    let conflicts = v.conflicts.filter((_, i) => !done.has(i));
+    if (tr.docChanged)
+      conflicts = conflicts.map((c) => ({ ...c, from: tr.changes.mapPos(c.from, -1), to: tr.changes.mapPos(c.to, 1) }));
+    if (!tr.docChanged && !done.size) return v;
+    return { conflicts, deco: decorate(tr.state, conflicts) };
+  },
   provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
 });
 
 const resultTheme = EditorView.baseTheme({
-  ".cm-conflict-ours": { backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)" },
-  ".cm-conflict-theirs": { backgroundColor: "color-mix(in srgb, var(--vcs-added) 12%, transparent)" },
   ".cm-conflict-marker": {
     backgroundColor: "color-mix(in srgb, var(--vcs-conflict) 14%, transparent)",
     color: "var(--fg-subtle)",
@@ -148,6 +140,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
     theirs: string;
     base: string | null;
     working: string;
+    merged: string | null;
     sides: MergeSides;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,7 +157,14 @@ export function MergeEditor({ input }: { input: EditorInput }) {
   const load = useCallback(async () => {
     try {
       const [v, working] = await Promise.all([call(commands.vcsConflictVersions(path)), readWorkingText(path)]);
-      setState({ ours: v.ours ?? "", theirs: v.theirs ?? "", base: v.base, working: working ?? "", sides: v.sides });
+      setState({
+        ours: v.ours ?? "",
+        theirs: v.theirs ?? "",
+        base: v.base,
+        working: working ?? "",
+        merged: v.merged,
+        sides: v.sides,
+      });
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
@@ -191,24 +191,27 @@ export function MergeEditor({ input }: { input: EditorInput }) {
     ];
     const ours = new EditorView({ doc: state.ours, parent: oursRef.current, extensions: side() });
     const theirs = new EditorView({ doc: state.theirs, parent: theirsRef.current, extensions: side() });
+    // Like IDEA, start from the three-way merge (non-conflicting changes applied, conflicts
+    // showing the base) rather than the marker-laden working copy.
+    const start =
+      state.merged !== null ? initialResult(state.merged) : initialResult(state.working, state.sides.reversed);
     const result = new EditorView({
-      doc: state.working,
+      doc: start.text,
       parent: resultRef.current,
       extensions: [
         viewerBase({ readOnly: false }),
         history(),
         keymap.of(historyKeymap),
         lang,
-        reversedSides.of(state.sides.reversed),
-        conflictField,
+        conflictField.init((s) => ({ conflicts: start.conflicts, deco: decorate(s, start.conflicts) })),
         resultTheme,
         EditorView.updateListener.of((u) => {
-          if (u.docChanged) setLeft(u.state.field(conflictField).blocks.length);
+          if (u.docChanged) setLeft(u.state.field(conflictField).conflicts.length);
         }),
       ],
     });
     resultView.current = result;
-    setLeft(result.state.field(conflictField).blocks.length);
+    setLeft(result.state.field(conflictField).conflicts.length);
     return () => {
       ours.destroy();
       theirs.destroy();
@@ -220,7 +223,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
   const goto = (dir: 1 | -1) => {
     const v = resultView.current;
     if (!v) return;
-    const blocks = v.state.field(conflictField).blocks;
+    const blocks = v.state.field(conflictField).conflicts;
     if (!blocks.length) return;
     const head = v.state.selection.main.head;
     const target =
@@ -237,9 +240,10 @@ export function MergeEditor({ input }: { input: EditorInput }) {
   const acceptAll = (how: Resolution) => {
     const v = resultView.current;
     if (!v) return;
-    const text = v.state.doc.toString();
+    const conflicts = v.state.field(conflictField).conflicts;
     v.dispatch({
-      changes: { from: 0, to: text.length, insert: resolveAll(text, how, v.state.facet(reversedSides)) },
+      changes: conflicts.map((c) => ({ from: c.from, to: c.to, insert: resolutionText(c, how) })),
+      effects: conflicts.map((_, i) => resolvedConflict.of(i)),
       userEvent: "input.resolve",
     });
   };
@@ -247,12 +251,12 @@ export function MergeEditor({ input }: { input: EditorInput }) {
   const apply = async () => {
     const v = resultView.current;
     if (!v) return;
-    const remaining = v.state.field(conflictField).blocks.length;
+    const remaining = v.state.field(conflictField).conflicts.length;
     if (
       remaining > 0 &&
       !(await confirmDialog({
         title: "Unresolved Conflicts",
-        message: `${remaining} conflict${remaining === 1 ? "" : "s"} still contain conflict markers. Save and mark the file as resolved anyway?`,
+        message: `${remaining} conflict${remaining === 1 ? " is" : "s are"} unresolved and keep the base text. Save and mark the file as resolved anyway?`,
         okLabel: "Mark Resolved",
       }))
     )
@@ -263,10 +267,11 @@ export function MergeEditor({ input }: { input: EditorInput }) {
       async () => {
         await writeFileText(path, text, { save: true });
         await call(commands.vcsStage([path]));
+        return true;
       },
       { success: `${baseName(path)}: conflicts resolved` },
     );
-    if (ok !== undefined) {
+    if (ok) {
       setResolved(true);
       await refreshNow();
       // Like IDEA, applying the result closes the merge editor.

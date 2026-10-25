@@ -68,7 +68,7 @@ export function filterOutline(nodes: readonly OutlineNode[], query: string, narr
   const walk = (list: readonly OutlineNode[]): OutlineNode[] => {
     const out: OutlineNode[] = [];
     for (const node of list) {
-      const hit = q ? matchText(node.item.name, q) : null;
+      const hit = q ? matchText(node.item.name, q, { wordAligned: true }) : null;
       if (hit) {
         matches.set(node.key, hit.indices);
         order.push(node.key);

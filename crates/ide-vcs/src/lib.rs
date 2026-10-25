@@ -365,6 +365,10 @@ pub struct MergeVersions {
     pub ours: Option<String>,
     pub theirs: Option<String>,
     pub sides: MergeSides,
+    /// Three-way merge of the versions above: non-conflicting changes merged, each
+    /// conflict left as a diff3 block (yours / base / theirs). `None` when a side is
+    /// missing (deleted on one side).
+    pub merged: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
@@ -799,7 +803,11 @@ impl Repo {
         let (base, ours, theirs) = self.conflict_versions(path)?;
         let sides = self.merge_sides()?;
         let (ours, theirs) = if sides.reversed { (theirs, ours) } else { (ours, theirs) };
-        Ok(MergeVersions { base, ours, theirs, sides })
+        let merged = match (&ours, &theirs) {
+            (Some(o), Some(t)) => Some(ops::merge_file(self, o, base.as_deref().unwrap_or(""), t)?),
+            _ => None,
+        };
+        Ok(MergeVersions { base, ours, theirs, sides, merged })
     }
     /// For conflict resolution: (base, ours, theirs) versions of a conflicted file.
     pub fn conflict_versions(&self, path: &Path) -> IdeResult<(Option<String>, Option<String>, Option<String>)> {

@@ -2907,6 +2907,12 @@ export type MergeVersions = {
 	ours: string | null,
 	theirs: string | null,
 	sides: MergeSides,
+	/**
+	 *  Three-way merge of the versions above: non-conflicting changes merged, each
+	 *  conflict left as a diff3 block (yours / base / theirs). `None` when a side is
+	 *  missing (deleted on one side).
+	 */
+	merged: string | null,
 };
 
 /**  Per-function totals (a recursive function's samples count once in `total`). */
