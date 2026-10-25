@@ -166,19 +166,27 @@ export function TerminalView() {
   const tabs = useTerminals((s) => s.tabs);
   const activeTab = useTerminals((s) => s.activeTab);
   const root = useProject((s) => s.project?.root);
-  const autoCreated = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  // Showing an empty terminal window opens a "Local" tab, like IDEA.
+  // Showing an empty terminal window opens a "Local" tab, like IDEA. The window stays
+  // mounted while hidden, so wait until it takes space again (not right after the last
+  // tab closed and hid it).
   useEffect(() => {
-    if (tabs.length === 0 && root && !autoCreated.current) {
-      autoCreated.current = true;
-      newTab(root);
-    }
-    if (tabs.length > 0) autoCreated.current = false;
-  }, [tabs.length, root]);
+    const el = rootRef.current;
+    if (!root || !el) return;
+    const ensureTab = () => {
+      if (el.clientHeight > 0 && useTerminals.getState().tabs.length === 0) newTab(root);
+    };
+    ensureTab();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(ensureTab);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [root]);
 
   return (
     <div
+      ref={rootRef}
       className={styles.root}
       onFocusCapture={(e) => publishFocus(!!(e.target as Element).closest?.("[data-terminal-session]"))}
       onBlurCapture={() => publishFocus(false)}
