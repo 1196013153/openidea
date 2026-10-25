@@ -274,7 +274,8 @@ describe("navigation wiring", () => {
     const popup = useLspPopup.getState().popup;
     expect(popup?.kind).toBe("list");
     if (popup?.kind !== "list") return;
-    expect(popup.title).toBe("Choose Declaration (2 found, based on syntax)");
+    expect(popup.title).toBe("Choose Declaration of run (2 found, based on syntax)");
+    expect(popup.pin?.label).toBe("Open in Find Tool Window");
     expect(popup.items.map((i) => [i.label, i.symbol, i.detail?.split(" · ")[0]])).toEqual([
       ["run", "method", "A"],
       ["run", "method", "B"],

@@ -14,6 +14,7 @@ import {
   rollbackCandidates,
   showRollbackDialog,
   stashChanges,
+  showUnstashDialog,
 } from "./changeOps";
 import { setAmend, useCommit } from "./commitStore";
 import { gotoConflict, resolveAtCaret, showConflictsDialog } from "./conflictsUi";
@@ -174,7 +175,14 @@ export function registerVcsActions(): () => void {
       keywords: ["clone", "checkout", "git"],
       run: (c) => showCloneDialog(typeof c.arg === "string" ? c.arg : ""),
     },
-    { id: "vcs.push", title: "Push…", category: "Git", icon: "git-push", when: VCS, run: ({ arg }) => void showPushDialog(arg && typeof arg === "object" ? (arg as PushTarget) : {}) },
+    {
+      id: "vcs.push",
+      title: "Push…",
+      category: "Git",
+      icon: "git-push",
+      when: VCS,
+      run: ({ arg }) => void showPushDialog(arg && typeof arg === "object" ? (arg as PushTarget) : {}),
+    },
     {
       id: "vcs.update",
       title: "Update Project…",
@@ -354,7 +362,7 @@ export function registerVcsActions(): () => void {
       run: ({ arg }) => {
         const a = (arg ?? {}) as { branch?: string; path?: string };
         useGitLog.setState({ tab: "log" });
-        setLogFilters({ ...emptyFilters(), branch: a.branch ?? null, path: a.path ?? null });
+        setLogFilters({ ...emptyFilters(), branches: a.branch ? [a.branch] : [], path: a.path ?? null });
         showGitWindow();
       },
     },
@@ -408,7 +416,7 @@ export function registerVcsActions(): () => void {
       title: "Unstash Changes…",
       category: "Git",
       when: VCS,
-      run: () => showCommitWindow("stashes"),
+      run: () => showUnstashDialog(),
     },
     {
       id: "vcs.resolveConflicts",

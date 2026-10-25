@@ -9,6 +9,7 @@ import {
   BALLOON_TIMEOUT,
   clearNotifications,
   installNotifyEvents,
+  STICKY_BALLOON_TIMEOUT,
   notify,
   useNotifications,
 } from "./notificationStore";
@@ -127,6 +128,18 @@ describe("notifications", () => {
     fireEvent.click(screen.getByText("Show log"));
     expect(screen.queryByText("Build failed")).toBeNull();
     expect(useNotifications.getState().items).toHaveLength(2);
+  });
+
+  it("sticky balloons fade into the tool window after 5 minutes, staying unread", () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    render(<Balloons />);
+    act(() => void notify({ level: "error", title: "Sync failed" }));
+    act(() => vi.advanceTimersByTime(STICKY_BALLOON_TIMEOUT - 1000));
+    expect(screen.getByText("Sync failed")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1100));
+    expect(screen.queryByText("Sync failed")).toBeNull();
+    expect(useNotifications.getState().items[0]).toMatchObject({ title: "Sync failed", read: false, balloon: false });
   });
 
   it("pauses the balloon timeout while the app window is inactive", () => {

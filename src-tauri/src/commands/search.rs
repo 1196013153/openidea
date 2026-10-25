@@ -40,6 +40,8 @@ pub async fn search_start(
     let cancel = state.begin_request(request);
     let documents = project.documents.clone();
     let root = project.root.clone();
+    let languages = state.languages.clone();
+    let syntax = state.syntax();
     let events = on_event.clone();
     let summary = tauri::async_runtime::spawn_blocking(move || {
         let filter = |rel: &str| match set {
@@ -47,9 +49,23 @@ pub async fn search_start(
             Some(ProjectFileSet::Test) => roots.is_test(rel),
             Some(ProjectFileSet::All) | None => true,
         };
-        ide_search::search_filtered(&root, &query, Some(&filter), &|p| documents.text_of(p), &cancel, &|file| {
-            let _ = events.send(SearchEvent::File { file });
-        })
+        // Comments and string literals for the search context filter.
+        let literals = |path: &Path, text: &str| {
+            let language = languages.detect(path, text.lines().next());
+            let found = syntax.literals(&language, text)?;
+            Some(found.into_iter().map(literal_range).collect())
+        };
+        ide_search::search_in_context(
+            &root,
+            &query,
+            Some(&filter),
+            Some(&literals),
+            &|p| documents.text_of(p),
+            &cancel,
+            &|file| {
+                let _ = events.send(SearchEvent::File { file });
+            },
+        )
     })
     .await
     .map_err(|e| ide_core::IdeError::internal(e.to_string()))?;
@@ -114,6 +130,14 @@ pub async fn replace_preview(
     })
     .await
     .map_err(|e| ide_core::IdeError::internal(e.to_string()))?
+}
+
+fn literal_range(l: ide_language::Literal) -> ide_search::LiteralRange {
+    let kind = match l.kind {
+        ide_language::LiteralKind::Comment => ide_search::LiteralKind::Comment,
+        ide_language::LiteralKind::String => ide_search::LiteralKind::String,
+    };
+    ide_search::LiteralRange { start: l.start, end: l.end, kind }
 }
 
 struct DocumentsHost<'a>(&'a Documents);

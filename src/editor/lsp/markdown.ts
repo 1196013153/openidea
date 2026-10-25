@@ -158,29 +158,57 @@ function highlightBlocks(root: HTMLElement, fallback: string | null) {
   });
 }
 
-function onLinkClick(e: MouseEvent) {
-  const a = (e.target as Element | null)?.closest?.("a");
-  if (!a) return;
-  e.preventDefault();
-  const href = a.getAttribute("href") ?? "";
+/** A documentation link to a source position (`file://…#L12,5`, `jdt://…#L42`); null for web links. */
+export function sourceLink(href: string): { path: string; line: number; col: number } | null {
   if (href.startsWith("file://")) {
-    const url = new URL(href);
+    let url: URL;
+    try {
+      url = new URL(href);
+    } catch {
+      return null;
+    }
     const m = /^#?L?(\d+)(?:[,:](\d+))?/.exec(url.hash.slice(1));
-    const selection = m ? { line: Math.max(0, Number(m[1]) - 1), col: m[2] ? Math.max(0, Number(m[2]) - 1) : 0 } : undefined;
-    void maybeEditorService()?.openFile(decodeURIComponent(url.pathname), { selection, focus: true });
-  } else if (isVirtualUri(href) && !/^https?:/i.test(href) && !/^mailto:/i.test(href)) {
+    return {
+      path: decodeURIComponent(url.pathname),
+      line: m ? Math.max(0, Number(m[1]) - 1) : 0,
+      col: m?.[2] ? Math.max(0, Number(m[2]) - 1) : 0,
+    };
+  }
+  if (isVirtualUri(href) && !/^https?:/i.test(href) && !/^mailto:/i.test(href)) {
     // Library class links (jdtls hover: `jdt://contents/…#L42`).
     const hash = href.indexOf("#");
     const m = hash >= 0 ? /^L?(\d+)/.exec(href.slice(hash + 1)) : null;
-    const selection = m ? { line: Math.max(0, Number(m[1]) - 1), col: 0 } : undefined;
-    void maybeEditorService()?.openFile(hash >= 0 ? href.slice(0, hash) : href, { selection, focus: true });
+    return { path: hash >= 0 ? href.slice(0, hash) : href, line: m ? Math.max(0, Number(m[1]) - 1) : 0, col: 0 };
+  }
+  return null;
+}
+
+/** Opens a documentation link: source links in the editor, web links in the browser. */
+export function openDocLink(href: string) {
+  const target = sourceLink(href);
+  if (target) {
+    void maybeEditorService()?.openFile(target.path, { selection: { line: target.line, col: target.col }, focus: true });
   } else if (/^https?:\/\//.test(href) && isTauri()) {
     void import("@tauri-apps/plugin-opener").then((m) => m.openUrl(href)).catch(() => {});
   }
 }
 
+/** Handles a link click itself (true) or leaves it to `openDocLink` (false). */
+export type DocLinkHandler = (href: string, e: MouseEvent) => boolean;
+
+function linkClickHandler(onLink?: DocLinkHandler) {
+  return (e: MouseEvent) => {
+    const a = (e.target as Element | null)?.closest?.("a");
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute("href") ?? "";
+    if (onLink?.(href, e)) return;
+    openDocLink(href);
+  };
+}
+
 /** Renders markup into a `.cm-lsp-markdown` element. */
-export function renderMarkup(m: Markup, fallbackLanguage: string | null = null): HTMLElement {
+export function renderMarkup(m: Markup, fallbackLanguage: string | null = null, onLink?: DocLinkHandler): HTMLElement {
   const dom = document.createElement("div");
   dom.className = "cm-lsp-markdown";
   dom.innerHTML = markupToHtml(m);
@@ -193,7 +221,7 @@ export function renderMarkup(m: Markup, fallbackLanguage: string | null = null):
       })
       .catch(() => {});
   }
-  dom.addEventListener("click", onLinkClick);
+  dom.addEventListener("click", linkClickHandler(onLink));
   return dom;
 }
 

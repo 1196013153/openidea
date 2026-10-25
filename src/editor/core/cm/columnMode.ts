@@ -2,9 +2,10 @@
  * Edit › Column Selection Mode (⇧⌘8): while on, a plain mouse drag and
  * ⇧+arrows make rectangular (block) selections, one range per line.
  */
-import { EditorSelection, Prec, StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
+import { EditorSelection, Prec, StateEffect, StateField, countColumn, findColumn, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap, rectangularSelection } from "@codemirror/view";
 
+/** A block between two visual columns (tabs expanded) of two lines. */
 interface Block {
   anchorLine: number;
   anchorCol: number;
@@ -43,16 +44,28 @@ export function toggleColumnMode(view: EditorView): boolean {
   return true;
 }
 
-/** One range per line from the anchor column to the head column (clamped to each line). */
+/** One range per line from the anchor column to the head column (visual columns, clamped to each line). */
 export function blockSelection(state: EditorState, b: Block): EditorSelection {
   const ranges = [];
   const step = b.headLine >= b.anchorLine ? 1 : -1;
+  const at = (text: string, col: number) => findColumn(text, col, state.tabSize);
   for (let n = b.anchorLine; ; n += step) {
     const line = state.doc.line(n);
-    ranges.push(EditorSelection.range(line.from + Math.min(b.anchorCol, line.length), line.from + Math.min(b.headCol, line.length)));
+    ranges.push(EditorSelection.range(line.from + at(line.text, b.anchorCol), line.from + at(line.text, b.headCol)));
     if (n === b.headLine) break;
   }
   return EditorSelection.create(ranges, ranges.length - 1);
+}
+
+/** The visual column one character left / right of `col` (a tab is one step; past the line end, one column). */
+export function stepColumn(text: string, col: number, d: number, tabSize: number): number {
+  if (!d) return col;
+  const width = countColumn(text, tabSize);
+  if (d > 0 ? col >= width : col > width) return Math.max(0, col + d);
+  const pos = findColumn(text, col, tabSize);
+  const at = countColumn(text, tabSize, pos);
+  if (d > 0) return at > col ? at : countColumn(text, tabSize, pos + 1);
+  return pos === 0 ? 0 : countColumn(text, tabSize, pos - 1);
 }
 
 /** ⇧+arrow in column mode: moves the block's head by a line / column. */
@@ -65,10 +78,11 @@ export function extendBlock(view: EditorView, dLine: number, dCol: number): bool
     const main = state.selection.main;
     const a = state.doc.lineAt(main.anchor);
     const h = state.doc.lineAt(main.head);
-    b = { anchorLine: a.number, anchorCol: main.anchor - a.from, headLine: h.number, headCol: main.head - h.from };
+    const col = (text: string, offset: number) => countColumn(text, state.tabSize, offset);
+    b = { anchorLine: a.number, anchorCol: col(a.text, main.anchor - a.from), headLine: h.number, headCol: col(h.text, main.head - h.from) };
   }
   const headLine = Math.max(1, Math.min(state.doc.lines, b.headLine + dLine));
-  const next = { ...b, headLine, headCol: Math.max(0, b.headCol + dCol) };
+  const next = { ...b, headLine, headCol: stepColumn(state.doc.line(b.headLine).text, b.headCol, dCol, state.tabSize) };
   view.dispatch({
     selection: blockSelection(state, next),
     effects: setBlock.of(next),

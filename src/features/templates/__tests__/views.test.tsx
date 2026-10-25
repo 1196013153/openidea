@@ -71,4 +71,40 @@ describe("dialogs", () => {
     fireEvent.keyDown(body, { key: "Enter" });
     expect(picked).toBe("b");
   });
+
+  it("chooser picks by mnemonic and skips section rows", () => {
+    let picked = "";
+    render(<ChooserHost />);
+    act(() =>
+      showChooser({
+        title: "Surround With",
+        anchor: { x: 0, y: 0 },
+        mnemonics: true,
+        items: [
+          { key: "if", label: "if", mnemonic: "1" },
+          { key: "s", label: "Live templates", section: true },
+          { key: "t", label: "T", detail: "tag", mnemonic: "T", mnemonicIndex: 0 },
+        ],
+        onPick: (i) => (picked = i.key),
+      }),
+    );
+    const body = screen.getByRole("dialog").querySelector("[tabindex='0']")!;
+    fireEvent.keyDown(body, { key: "ArrowDown" });
+    fireEvent.keyDown(body, { key: "Enter" });
+    expect(picked).toBe("t");
+    act(() =>
+      showChooser({
+        title: "Surround With",
+        anchor: { x: 0, y: 0 },
+        mnemonics: true,
+        items: [
+          { key: "if", label: "if", mnemonic: "1" },
+          { key: "t", label: "T", mnemonic: "T", mnemonicIndex: 0 },
+        ],
+        onPick: (i) => (picked = i.key),
+      }),
+    );
+    fireEvent.keyDown(screen.getByRole("dialog").querySelector("[tabindex='0']")!, { key: "t" });
+    expect(picked).toBe("t");
+  });
 });

@@ -7,17 +7,28 @@ import { computeGraph, emptyGraphState, type GraphRow, type GraphState } from ".
 import { clearConsole, errorMessage } from "./ops";
 import { currentRepo, repoOf, selectRepo, useVcs } from "./store";
 
+/** Date filter: commits made after / before the given times (epoch ms); applied client-side. */
+export interface LogDateFilter {
+  after: number | null;
+  before: number | null;
+  label: string;
+}
+
+/** User filter entry standing for the current Git user (`user.name` / `user.email`). */
+export const ME = "me";
+
 export interface LogFilters {
-  branch: string | null;
-  author: string;
+  /** Branches / revisions to show; empty = all. */
+  branches: string[];
+  /** Author names or emails (any matches); `ME` = the current user. */
+  authors: string[];
   text: string;
   /** `text` is a regular expression / matches case-sensitively. */
   regex: boolean;
   matchCase: boolean;
   /** Absolute path (file or directory). */
   path: string | null;
-  /** Only commits newer than `ms` (epoch); applied client-side. */
-  since: { ms: number; label: string } | null;
+  date: LogDateFilter | null;
 }
 
 interface LogState {
@@ -43,14 +54,56 @@ interface LogState {
 export const PAGE = 300;
 
 export const emptyFilters = (): LogFilters => ({
-  branch: null,
-  author: "",
+  branches: [],
+  authors: [],
   text: "",
   regex: false,
   matchCase: false,
   path: null,
-  since: null,
+  date: null,
 });
+
+/** Any filter other than the text field's toggles is set. */
+export function hasFilters(f: LogFilters): boolean {
+  return !!(f.branches.length || f.authors.length || f.text || f.path || f.date);
+}
+
+/** `ME` replaced by the current user's email (or name); duplicates and blanks dropped. */
+export function resolveAuthors(authors: readonly string[], me: string | null): string[] {
+  const out = authors.map((a) => (a === ME ? (me ?? "") : a).trim()).filter(Boolean);
+  return [...new Set(out)];
+}
+
+/** The commit's time falls inside the date filter. */
+export function inDateRange(timeMs: number, d: LogDateFilter | null): boolean {
+  if (!d) return true;
+  return (d.after == null || timeMs >= d.after) && (d.before == null || timeMs < d.before);
+}
+
+/** Label of a custom date range: `after 2024-01-01`, `until …`, or `a – b` (`before` is exclusive). */
+export function dateRangeLabel(after: number | null, before: number | null): string {
+  const day = (ms: number) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const lastDay = (ms: number) => day(new Date(ms).setDate(new Date(ms).getDate() - 1));
+  if (after != null && before != null) return `${day(after)} – ${lastDay(before)}`;
+  if (after != null) return `after ${day(after)}`;
+  if (before != null) return `until ${lastDay(before)}`;
+  return "";
+}
+
+let me: { repo: string | null; value: Promise<string | null> } | null = null;
+
+/** The current Git user for the "me" filter: `user.email`, else `user.name`. */
+function currentUser(): Promise<string | null> {
+  const repo = currentRepo();
+  if (me?.repo !== repo) {
+    const get = (key: string) => call(commands.vcsConfigGet(repo, key)).catch(() => null);
+    me = { repo, value: get("user.email").then(async (email) => email || (await get("user.name"))) };
+  }
+  return me.value;
+}
 
 const initialLog = (): Omit<LogState, "generation"> => ({
   filters: emptyFilters(),
@@ -158,11 +211,18 @@ export function loadMore(): Promise<void> {
   useGitLog.setState({ loading: true });
   const p = (async () => {
     try {
+      const authors = resolveAuthors(f.authors, f.authors.includes(ME) ? await currentUser() : null);
+      if (f.authors.length && !authors.length) {
+        if (useGitLog.getState().generation === gen) useGitLog.setState({ done: true });
+        return;
+      }
       const page = await call(
         commands.vcsLog(currentRepo(), {
-          branch: f.branch,
+          branch: null,
+          branches: f.branches,
+          authors,
           path: f.path,
-          author: f.author.trim() || null,
+          author: null,
           text: f.text.trim() || null,
           textRegex: f.regex,
           textMatchCase: f.matchCase,
@@ -247,7 +307,7 @@ const MAX_SEARCH_PAGES = 30;
 export async function revealCommit(id: string) {
   useGitLog.setState({ tab: "log" });
   const f = useGitLog.getState().filters;
-  const filtered = f.branch || f.author || f.text || f.path || f.since;
+  const filtered = hasFilters(f);
   const find = () => useGitLog.getState().commits.find((c) => c.id === id || c.id.startsWith(id));
   if (filtered) {
     useGitLog.setState({ filters: emptyFilters() });

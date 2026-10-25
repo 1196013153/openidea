@@ -27,6 +27,7 @@ fn query(pattern: &str) -> SearchQuery {
         exclude: vec![],
         scope: SearchScope::Project,
         max_matches: 0,
+        context: Default::default(),
     }
 }
 
@@ -547,4 +548,76 @@ fn file_set_scope_applies_the_path_filter() {
     // Without a filter the file set walks the whole project.
     let (all, _) = run(p.path(), &q);
     assert_eq!(paths(&all), vec!["README.md", "src/main/java/App.java", "src/test/java/AppTest.java"]);
+}
+
+/// Test classifier: `//` to end of line is a comment, `"…"` a string (only in `.rs` files).
+fn toy_literals(path: &Path, text: &str) -> Option<Vec<ide_search::LiteralRange>> {
+    use ide_search::{LiteralKind, LiteralRange};
+    if path.extension().is_none_or(|e| e != "rs") {
+        return None;
+    }
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(b"//") {
+            let end = memchr_newline(bytes, i);
+            out.push(LiteralRange { start: i, end, kind: LiteralKind::Comment });
+            i = end;
+        } else if bytes[i] == b'"' {
+            let end = bytes[i + 1..].iter().position(|&b| b == b'"').map_or(bytes.len(), |p| i + p + 2);
+            out.push(LiteralRange { start: i, end, kind: LiteralKind::String });
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    Some(out)
+}
+
+fn memchr_newline(bytes: &[u8], from: usize) -> usize {
+    bytes[from..].iter().position(|&b| b == b'\n').map_or(bytes.len(), |p| from + p)
+}
+
+/// `(rel_path, line, ranges)` of every matched line.
+type Row = (String, u32, Vec<(u32, u32)>);
+
+fn run_context(root: &Path, context: ide_search::SearchContext) -> Vec<Row> {
+    let out = Mutex::new(Vec::new());
+    let q = SearchQuery { context, ..query("foo") };
+    ide_search::search_in_context(root, &q, None, Some(&toy_literals), &|_| None, &CancellationToken::new(), &|f| {
+        out.lock().unwrap().push(f)
+    })
+    .unwrap();
+    let mut rows: Vec<_> = out
+        .into_inner()
+        .unwrap()
+        .into_iter()
+        .flat_map(|f| f.matches.into_iter().map(move |m| (f.rel_path.clone(), m.line, m.ranges)))
+        .collect();
+    rows.sort();
+    rows
+}
+
+#[test]
+fn search_context_filters_comments_and_strings() {
+    use ide_search::SearchContext as C;
+    let p = project(&[("a.rs", b"foo(\"foo\"); // foo\nfoo\n"), ("b.txt", b"foo // foo\n")]);
+    let rows = |c| run_context(p.path(), c);
+    let s = |r: &str, l: u32, ranges: &[(u32, u32)]| (r.to_owned(), l, ranges.to_vec());
+    assert_eq!(
+        rows(C::Any),
+        vec![s("a.rs", 0, &[(0, 3), (5, 8), (15, 18)]), s("a.rs", 1, &[(0, 3)]), s("b.txt", 0, &[(0, 3), (7, 10)])]
+    );
+    assert_eq!(rows(C::InComments), vec![s("a.rs", 0, &[(15, 18)])]);
+    assert_eq!(rows(C::InStringLiterals), vec![s("a.rs", 0, &[(5, 8)])]);
+    // Files without a syntax tree have no comments or strings.
+    assert_eq!(
+        rows(C::ExceptComments),
+        vec![s("a.rs", 0, &[(0, 3), (5, 8)]), s("a.rs", 1, &[(0, 3)]), s("b.txt", 0, &[(0, 3), (7, 10)])]
+    );
+    assert_eq!(
+        rows(C::ExceptCommentsAndStringLiterals),
+        vec![s("a.rs", 0, &[(0, 3)]), s("a.rs", 1, &[(0, 3)]), s("b.txt", 0, &[(0, 3), (7, 10)])]
+    );
 }

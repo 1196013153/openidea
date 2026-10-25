@@ -86,6 +86,13 @@ export async function readFileLines(path: string): Promise<string[] | null> {
   }
 }
 
+/** File text for a preview pane (open buffer, else disk). */
+export async function previewText(path: string): Promise<string> {
+  const lines = await readFileLines(path);
+  if (!lines) throw new Error("Cannot read the file");
+  return lines.join("\n");
+}
+
 export async function readManyFileLines(paths: readonly string[], concurrency = 4): Promise<Map<string, string[] | null>> {
   const out = new Map<string, string[] | null>();
   const queue = [...new Set(paths)];
@@ -111,6 +118,6 @@ export async function withDocument<T>(path: string, fn: (doc: number) => Promise
   }
 }
 
-export function openLocation(path: string, line: number, col: number) {
-  void maybeEditorService()?.openFile(path, { selection: { line, col }, focus: true });
+export function openLocation(path: string, line: number, col: number): Promise<void> {
+  return maybeEditorService()?.openFile(path, { selection: { line, col }, focus: true }) ?? Promise.resolve();
 }

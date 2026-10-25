@@ -15,31 +15,28 @@ export type BranchGroup = "recent" | "local" | "remote";
 export type BranchRow =
   | { type: "section"; key: string; label: string }
   | { type: "action"; key: string; action: PopupAction; matches: number[] | null }
-  | { type: "branch"; key: string; branch: Branch; group: BranchGroup; matches: number[] | null };
+  | {
+      type: "branch";
+      key: string;
+      branch: Branch;
+      group: BranchGroup;
+      matches: number[] | null;
+      favorite: boolean;
+    }
+  | { type: "tag"; key: string; tag: string; matches: number[] | null };
 
-const FAVORITES = ["main", "master", "develop", "trunk"];
-
-export function sortLocal(branches: readonly Branch[]): Branch[] {
-  return branches
-    .filter((b) => !b.remote)
-    .sort((a, b) => {
-      if (a.current !== b.current) return a.current ? -1 : 1;
-      const fa = FAVORITES.indexOf(a.name);
-      const fb = FAVORITES.indexOf(b.name);
-      if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
-      return a.name.localeCompare(b.name);
-    });
+/** Current branch first, then favorites, then the rest; by name within each. */
+function byRank(favorites: readonly string[] | null) {
+  const rank = (b: Branch) => (b.current ? 0 : isFavoriteBranch(b, favorites) ? 1 : 2);
+  return (a: Branch, b: Branch) => rank(a) - rank(b) || a.name.localeCompare(b.name);
 }
 
-export function sortRemote(branches: readonly Branch[]): Branch[] {
-  return branches
-    .filter((b) => b.remote && !b.name.endsWith("/HEAD"))
-    .sort((a, b) => {
-      const fa = FAVORITES.indexOf(shortRemoteName(a.name));
-      const fb = FAVORITES.indexOf(shortRemoteName(b.name));
-      if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
-      return a.name.localeCompare(b.name);
-    });
+export function sortLocal(branches: readonly Branch[], favorites: readonly string[] | null = null): Branch[] {
+  return branches.filter((b) => !b.remote).sort(byRank(favorites));
+}
+
+export function sortRemote(branches: readonly Branch[], favorites: readonly string[] | null = null): Branch[] {
+  return branches.filter((b) => b.remote && !b.name.endsWith("/HEAD")).sort(byRank(favorites));
 }
 
 /** `origin/feature/x` → `feature/x`. */
@@ -52,15 +49,17 @@ export const MAX_RECENT = 5;
 
 /**
  * Rows for the Branches popup. Without a query: actions, Recent (recently
- * checked-out local branches other than the current one), Local, Remote.
- * With a query: matching actions and branches; the Recent group is dropped
- * so each branch appears once.
+ * checked-out local branches other than the current one), Local, Remote, Tags.
+ * With a query: matching actions, branches and tags; the Recent group is dropped
+ * so each branch appears once. Favorites (★) come right after the current branch.
  */
 export function buildBranchRows(
   branches: readonly Branch[],
   recent: readonly string[],
   query: string,
   actions: readonly PopupAction[],
+  favorites: readonly string[] | null = null,
+  tags: readonly string[] = [],
 ): BranchRow[] {
   const rows: BranchRow[] = [];
   const q = query.trim();
@@ -75,13 +74,20 @@ export function buildBranchRows(
     rows.push({ type: "action", key: `action:${a.id}`, action: a, matches: m });
   }
 
-  const local = sortLocal(branches);
+  const local = sortLocal(branches, favorites);
   const pushGroup = (group: BranchGroup, label: string, list: readonly Branch[]) => {
     const items: BranchRow[] = [];
     for (const b of list) {
       const m = match(b.name);
       if (m === false) continue;
-      items.push({ type: "branch", key: `${group}:${b.name}`, branch: b, group, matches: m });
+      items.push({
+        type: "branch",
+        key: `${group}:${b.name}`,
+        branch: b,
+        group,
+        matches: m,
+        favorite: isFavoriteBranch(b, favorites),
+      });
     }
     if (!items.length) return;
     rows.push({ type: "section", key: `section:${group}`, label }, ...items);
@@ -96,7 +102,13 @@ export function buildBranchRows(
     pushGroup("recent", "Recent", rec);
   }
   pushGroup("local", "Local", local);
-  pushGroup("remote", "Remote", sortRemote(branches));
+  pushGroup("remote", "Remote", sortRemote(branches, favorites));
+  const tagRows: BranchRow[] = [];
+  for (const t of [...tags].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))) {
+    const m = match(t);
+    if (m !== false) tagRows.push({ type: "tag", key: `tag:${t}`, tag: t, matches: m });
+  }
+  if (tagRows.length) rows.push({ type: "section", key: "section:tags", label: "Tags" }, ...tagRows);
   return rows;
 }
 
@@ -176,7 +188,10 @@ export function buildBranchTree(branches: readonly Branch[], favorites: readonly
       label: "Local",
       kind: "group",
       ref: null,
-      children: level(local.map((b) => ({ b, rest: b.name })), "f:local"),
+      children: level(
+        local.map((b) => ({ b, rest: b.name })),
+        "f:local",
+      ),
     });
   if (byRemote.size)
     out.push({
@@ -189,7 +204,10 @@ export function buildBranchTree(branches: readonly Branch[], favorites: readonly
         label: r,
         kind: "remote",
         ref: null,
-        children: level(list.map((b) => ({ b, rest: b.name.slice(r.length + 1) })), `f:r:${r}`),
+        children: level(
+          list.map((b) => ({ b, rest: b.name.slice(r.length + 1) })),
+          `f:r:${r}`,
+        ),
       })),
     });
   return out;

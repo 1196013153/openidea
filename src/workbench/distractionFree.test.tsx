@@ -79,7 +79,7 @@ describe("distraction free mode", () => {
     setDistractionFree(true);
     showToolWindow("structure");
     expect(savedVisible()).toMatchObject({ left: "project", bottom: "terminal", right: null });
-    // An app restart (no session) loads the normal layout.
+    // Leaving the mode (now or after a restart) loads the normal layout.
     resetDistractionFree();
     resetToolWindowLayout();
     loadToolWindowLayout("/work/df");
@@ -95,10 +95,11 @@ describe("distraction free mode", () => {
     expect(isToolWindowVisible("project")).toBe(true);
   });
 
-  it("survives a reload of the window (sessionStorage) and re-applies to a newly loaded project", () => {
+  it("survives an app restart and re-applies to a newly loaded project", () => {
     setDistractionFree(true);
-    expect(sessionStorage.getItem("openidea.distractionFree")).toBe("1");
-    // Reload: fresh module and layout state, same session.
+    expect(localStorage.getItem("openidea.distractionFree")).toBe("1");
+    // Restart: fresh module, layout and session state; only localStorage remains.
+    sessionStorage.clear();
     useDistractionFree.setState({ active: false });
     resetToolWindowLayout();
     disposers.push(installDistractionFree());
@@ -107,7 +108,7 @@ describe("distraction free mode", () => {
     expect(isToolWindowVisible("project")).toBe(false);
     setDistractionFree(false);
     expect(isToolWindowVisible("project")).toBe(true);
-    expect(sessionStorage.getItem("openidea.distractionFree")).toBeNull();
+    expect(localStorage.getItem("openidea.distractionFree")).toBeNull();
   });
 
   it("is unbound in the IntelliJ keymap (⌃⌘D is macOS Look Up) and Escape does not exit", () => {

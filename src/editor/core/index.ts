@@ -9,9 +9,10 @@ import {
   registerOverlay,
   registerStatusItem,
 } from "@/workbench/contributions";
-import { _provideDocumentAttacher } from "@/editor/api";
+import { _provideCodePreview, _provideDocumentAttacher } from "@/editor/api";
 import { editorController } from "./controller";
 import { attachDocument } from "./model/attachment";
+import { previewExtensions } from "./cm/preview";
 import { registerEditorActions } from "./actions";
 import { installColorScheme } from "./colorSchemeRuntime";
 import { EditorAreaView } from "./view/EditorArea";
@@ -39,8 +40,10 @@ export function activate(): void | (() => void) {
     focus: () => ctrl.focus(),
     openPaths: () => ctrl.openPaths(),
     closePath: (path) => ctrl.closePath(path),
+    closeInput: (key) => ctrl.closeInput(key),
   });
   _provideDocumentAttacher((path) => attachDocument(ctrl.manager, path));
+  _provideCodePreview((path) => previewExtensions(path, ctrl.manager.settings()?.editor));
   const disposers = [
     installColorScheme(),
     provideEditorArea(EditorAreaView),
@@ -94,6 +97,7 @@ export function activate(): void | (() => void) {
   return () => {
     disposers.reverse().forEach((d) => d());
     _provideDocumentAttacher(null);
+    _provideCodePreview(null);
     ctrl.stop();
   };
 }

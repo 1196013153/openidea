@@ -94,8 +94,28 @@ export function nextTabName(existing: readonly string[], base = "Local"): string
   }
 }
 
-export function tabTitle(tab: TerminalTab): string {
-  return tab.customName ?? tab.name;
+/** Shortens `text` to `max` characters by eliding its middle. */
+export function trimMiddle(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = Math.ceil((max - 1) / 2);
+  return `${text.slice(0, head)}…${text.slice(text.length - (max - 1 - head))}`;
+}
+
+const APP_TITLE_MAX = 30;
+
+/**
+ * The tab's label, as in IDEA: a name the user gave it, else the title the
+ * program in its active pane set (OSC 0/2, middle-trimmed), else the default name.
+ */
+export function tabTitle(tab: TerminalTab, sessions?: Record<string, SessionSnapshot>): string {
+  if (tab.customName) return tab.customName;
+  const app = sessions?.[tab.activePane]?.appTitle;
+  return app ? trimMiddle(app, APP_TITLE_MAX) : tab.name;
+}
+
+/** Untrimmed title for the tab's tooltip. */
+export function tabFullTitle(tab: TerminalTab, sessions?: Record<string, SessionSnapshot>): string {
+  return tab.customName ?? sessions?.[tab.activePane]?.appTitle ?? tab.name;
 }
 
 /** Settings › Terminal › Start directory, resolved against the project root. */
@@ -157,7 +177,7 @@ export async function confirmEndSessions(keys: readonly string[], name: string):
 /** User-initiated Close Tab: confirms first when a command is running. Resolves true if closed. */
 export async function requestCloseTab(id: string): Promise<boolean> {
   const tab = useTerminals.getState().tabs.find((x) => x.id === id);
-  if (!tab || !(await confirmEndSessions(tab.panes, tabTitle(tab)))) return false;
+  if (!tab || !(await confirmEndSessions(tab.panes, tabTitle(tab, useTerminals.getState().sessions)))) return false;
   closeTab(id);
   return true;
 }
@@ -165,7 +185,7 @@ export async function requestCloseTab(id: string): Promise<boolean> {
 /** User-initiated Close Session (one pane): confirms first when a command is running. */
 export async function requestClosePane(key: string): Promise<boolean> {
   const tab = useTerminals.getState().tabs.find((x) => x.panes.includes(key));
-  if (!tab || !(await confirmEndSessions([key], tabTitle(tab)))) return false;
+  if (!tab || !(await confirmEndSessions([key], tabTitle(tab, useTerminals.getState().sessions)))) return false;
   closePane(key);
   return true;
 }

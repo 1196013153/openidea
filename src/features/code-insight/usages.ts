@@ -62,7 +62,7 @@ export function trimPreview(u: Usage): { text: string; from: number; to: number 
   return { text, from, to };
 }
 
-interface UsageSearch {
+export interface UsageSearch {
   /** Identifies one search run (UI state such as expansion resets per run). */
   id: number;
   symbol: string | null;
@@ -73,11 +73,64 @@ interface UsageSearch {
   note: string | null;
   /** Re-runs the same query (rerun button). */
   rerun: (() => void) | null;
+  /** Kept when a new search runs (Pin Tab). */
+  pinned?: boolean;
 }
 
 let searchSeq = 0;
 
-export const useUsages = create<{ search: UsageSearch | null }>(() => ({ search: null }));
+/** One tab per search; as in IDEA a new search replaces the selected tab unless it is pinned. */
+interface UsagesState {
+  tabs: UsageSearch[];
+  active: number | null;
+}
+
+export const useUsages = create<UsagesState>(() => ({ tabs: [], active: null }));
+
+/** The selected tab's search. */
+export const activeUsageSearch = (s: UsagesState): UsageSearch | null =>
+  s.tabs.find((t) => t.id === s.active) ?? s.tabs.at(-1) ?? null;
+
+const MAX_TABS = 8;
+
+/** Shows `search` in a new tab, or in place of the selected one unless that is pinned. */
+export function openUsageTab(search: UsageSearch) {
+  useUsages.setState((s) => {
+    const reused = s.tabs.find((t) => t.id === s.active && !t.pinned);
+    const tabs = reused ? s.tabs.map((t) => (t === reused ? search : t)) : [...s.tabs, search];
+    return { tabs: tabs.slice(-MAX_TABS), active: search.id };
+  });
+}
+
+/** Replaces tab `id` (a rerun or a finished search), keeping its pin and selection. */
+function replaceUsageTab(id: number, search: UsageSearch): boolean {
+  const s = useUsages.getState();
+  const old = s.tabs.find((t) => t.id === id);
+  if (!old) return false;
+  useUsages.setState({
+    tabs: s.tabs.map((t) => (t === old ? { ...search, pinned: old.pinned } : t)),
+    active: s.active === id ? search.id : s.active,
+  });
+  return true;
+}
+
+export function pinUsageTab(id: number, pinned: boolean) {
+  useUsages.setState((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, pinned } : t)) }));
+}
+
+export function closeUsageTab(id: number) {
+  useUsages.setState((s) => {
+    const i = s.tabs.findIndex((t) => t.id === id);
+    const tabs = s.tabs.filter((t) => t.id !== id);
+    const active = s.active === id ? (tabs[Math.min(i, tabs.length - 1)]?.id ?? null) : s.active;
+    return { tabs, active };
+  });
+}
+
+/** Rerun of the selected tab (⌘R in the Find Usages tool window). */
+export function rerunActiveUsages() {
+  activeUsageSearch(useUsages.getState())?.rerun?.();
+}
 
 interface UsagesPopupState {
   open: boolean;
@@ -128,7 +181,7 @@ export async function fetchUsages(c: CaretContext): Promise<FetchedUsages> {
 
 /** The window switched projects: results (and in-flight searches) of the previous one are dropped. */
 export function resetUsages() {
-  useUsages.setState({ search: null });
+  useUsages.setState({ tabs: [], active: null });
   useUsagesPopup.setState({ open: false, symbol: null, groups: [], note: null });
 }
 
@@ -138,23 +191,22 @@ export async function findUsages() {
     hint("Open a file to find usages");
     return;
   }
-  const run = async () => {
+  const run = async (prev: number | null) => {
     const id = ++searchSeq;
-    const current = () => useUsages.getState().search?.id === id;
-    const base = { id, symbol: c.word, rerun: () => void run() };
-    useUsages.setState({ search: { ...base, loading: true, groups: [], error: null, note: null } });
+    const base = { id, symbol: c.word, rerun: () => void run(id) };
+    const loading = { ...base, loading: true, groups: [], error: null, note: null };
+    if (prev === null || !replaceUsageTab(prev, loading)) openUsageTab(loading);
     toolWindowService().show("usages");
     try {
       const { groups, note } = await fetchUsages(c);
-      if (current()) useUsages.setState({ search: { ...base, loading: false, groups, error: null, note } });
+      replaceUsageTab(id, { ...base, loading: false, groups, error: null, note });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      if (!current()) return;
-      useUsages.setState({ search: { ...base, loading: false, groups: [], error: message, note: null } });
+      if (!replaceUsageTab(id, { ...base, loading: false, groups: [], error: message, note: null })) return;
       reportError(e);
     }
   };
-  await run();
+  await run(null);
 }
 
 /**
@@ -168,11 +220,10 @@ export async function showUsageResults(arg: unknown) {
   const symbol = typeof a.symbol === "string" ? a.symbol : null;
   const id = ++searchSeq;
   const base = { id, symbol, rerun: null };
-  useUsages.setState({ search: { ...base, loading: true, groups: [], error: null, note: null } });
+  openUsageTab({ ...base, loading: true, groups: [], error: null, note: null });
   toolWindowService().show("usages");
   const files = await readManyFileLines(locs.map((l) => l.path));
-  if (useUsages.getState().search?.id !== id) return;
-  useUsages.setState({ search: { ...base, loading: false, groups: groupUsages(locs, files), error: null, note: null } });
+  replaceUsageTab(id, { ...base, loading: false, groups: groupUsages(locs, files), error: null, note: null });
 }
 
 export async function showUsagesPopup() {
@@ -189,8 +240,10 @@ export async function showUsagesPopup() {
       return;
     }
     if (total === 1) {
+      // IDEA jumps to the only usage and says so in the target editor.
       const u = groups[0]!.usages[0]!;
-      openLocation(u.path, u.line, u.col);
+      await openLocation(u.path, u.line, u.col);
+      hint("Only one usage in Project Files");
       return;
     }
     useUsagesPopup.setState({ open: true, anchor: caretPoint(), symbol: c.word, groups, note });

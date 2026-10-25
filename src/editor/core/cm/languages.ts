@@ -35,6 +35,21 @@ export function _resetLanguages() {
   infosPromise = null;
 }
 
+/**
+ * `uiMode` of the backend language for a file name (longest extension first,
+ * like the backend's detection); `undefined` when the languages are not loaded
+ * or none matches.
+ */
+export function uiModeForPath(path: string): string | null | undefined {
+  if (!infos) return undefined;
+  let rest = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+  for (let dot = rest.indexOf("."); dot >= 0; dot = rest.indexOf(".")) {
+    rest = rest.slice(dot + 1);
+    for (const info of infos.values()) if (info.extensions.includes(rest)) return info.uiMode;
+  }
+  return undefined;
+}
+
 const supports = new Map<string, Promise<LanguageSupport | null>>();
 
 export function findLanguageDescription(uiMode: string | null, path: string): LanguageDescription | null {

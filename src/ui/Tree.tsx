@@ -1,9 +1,10 @@
 /**
  * Virtualized tree with lazy children, multi-selection, IDEA keyboard model
- * (↑↓←→, Enter, Home/End, PageUp/PageDown, Shift-extend) and speed search:
- * typing while the tree is focused highlights matches and jumps to them
- * (↑/↓ cycle matches, Esc clears); `speedSearchMode="filter"` hides rows
- * that neither match nor contain a match.
+ * (↑↓←→, Enter / F4 / ⌘↓, Home/End, PageUp/PageDown, Shift-extend) and speed
+ * search: typing while the tree is focused highlights matches and jumps to them
+ * (↑/↓ cycle matches, Home/End first / last match, Esc clears; ←/→, Enter and
+ * PageUp/PageDown close it and act as usual); `speedSearchMode="filter"` hides
+ * rows that neither match nor contain a match.
  */
 import {
   useCallback,
@@ -39,6 +40,14 @@ export interface TreeRowState {
   matches: number[] | null;
 }
 
+/** Where Next / Previous Occurrence landed: the selected node and its 1-based position among all occurrences. */
+export interface TreeOccurrence {
+  key: string;
+  node: unknown;
+  index: number;
+  total: number;
+}
+
 export interface TreeHandle {
   focus(): void;
   /** Selects `key` (must be visible, i.e. ancestors expanded) and scrolls to it. */
@@ -46,6 +55,13 @@ export interface TreeHandle {
   leadKey(): string | null;
   /** Selects the next (1) / previous (-1) row, for a filter field that keeps the focus (Settings search). */
   moveSelection(dir: 1 | -1): void;
+  /**
+   * Next / Previous Occurrence: selects the next (1) / previous (-1) node that
+   * `isOccurrence` accepts (default: leaves) after the lead, in tree order over
+   * the loaded nodes, expanding its collapsed ancestors. `null` when there is none.
+   * `skipSubtree`: forward, ignore the lead's descendants (after excluding a group).
+   */
+  selectOccurrence(dir: 1 | -1, options?: { skipSubtree?: boolean }): TreeOccurrence | null;
 }
 
 export interface TreeProps<T> {
@@ -77,6 +93,8 @@ export interface TreeProps<T> {
   /** Enter / double-click on a leaf (or on nodes `activateExpandable` accepts). */
   onActivate?: (node: T, e: KeyboardEvent | MouseEvent) => void;
   activateExpandable?: boolean | ((node: T) => boolean);
+  /** Nodes Next / Previous Occurrence stops at (`TreeHandle.selectOccurrence`); default: leaves. */
+  isOccurrence?: (node: T) => boolean;
   onContextMenu?: (node: T | null, selection: Set<string>, e: MouseEvent) => void;
 
   speedSearch?: boolean;
@@ -273,6 +291,32 @@ export function Tree<T>(props: TreeProps<T>) {
       selectIndex(i);
       virtualizer.scrollToIndex(i);
     },
+    selectOccurrence: (dir: 1 | -1, options?: { skipSubtree?: boolean }) => {
+      const found = findOccurrence(
+        roots,
+        lead,
+        dir,
+        { getKey, getChildren, isExpandable, isOccurrence: props.isOccurrence },
+        options?.skipSubtree,
+      );
+      if (!found) return null;
+      const missing = found.ancestors.filter((a) => !expanded.has(getKey(a)));
+      if (missing.length) {
+        const next = new Set(expanded);
+        for (const a of missing) {
+          next.add(getKey(a));
+          props.onExpandedChange?.(new Set(next), a, true);
+        }
+        if (!expandedControlled) setExpandedInner(next);
+      }
+      const key = getKey(found.node);
+      const sel = new Set([key]);
+      setAnchor(key);
+      if (!selectedControlled) setSelectedInner(sel);
+      setLead(key);
+      props.onSelectionChange?.(sel, found.node);
+      return { key, node: found.node, index: found.index, total: found.total };
+    },
   }));
 
   const findMatch = (from: number, dir: 1 | -1, inclusive: boolean, q = query, wrap = true): number => {
@@ -318,6 +362,15 @@ export function Tree<T>(props: TreeProps<T>) {
       return;
     }
     const range = e.shiftKey && multiSelect;
+    // Jump to Source (F4 / ⌘↓) activates like Enter.
+    if (e.key === "F4" || (e.key === "ArrowDown" && e.metaKey && !e.shiftKey && !e.altKey)) {
+      if (!row) return;
+      setQuery("");
+      activate(row, e);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     switch (e.key) {
       case "Escape":
         if (!query) return;
@@ -341,12 +394,14 @@ export function Tree<T>(props: TreeProps<T>) {
         break;
       }
       case "ArrowRight":
+        setQuery("");
         if (!row) return;
         if (row.expandable && !row.expanded) setExpanded(row, true);
         else if (row.expanded && rows[leadIndex + 1]?.parentKey === row.key && !rows[leadIndex + 1]!.loading)
           selectIndex(leadIndex + 1);
         break;
       case "ArrowLeft":
+        setQuery("");
         if (!row) return;
         if (row.expanded) setExpanded(row, false);
         else if (row.parentKey != null) {
@@ -355,15 +410,20 @@ export function Tree<T>(props: TreeProps<T>) {
         }
         break;
       case "Home":
-        selectIndex(step(-1, 1), range ? "range" : "single");
+      case "End": {
+        const first = e.key === "Home";
+        if (query) {
+          const hit = findMatch(-1, first ? 1 : -1, true, query, false);
+          if (hit >= 0) selectIndex(hit);
+        } else selectIndex(first ? step(-1, 1) : step(rows.length, -1), range ? "range" : "single");
         break;
-      case "End":
-        selectIndex(step(rows.length, -1), range ? "range" : "single");
-        break;
+      }
       case "PageDown":
+        setQuery("");
         selectIndex(Math.min(rows.length - 1, Math.max(0, leadIndex) + pageSize), range ? "range" : "single");
         break;
       case "PageUp":
+        setQuery("");
         selectIndex(Math.max(0, leadIndex - pageSize), range ? "range" : "single");
         break;
       case "Enter":
@@ -541,4 +601,43 @@ export function siblingPositions(
   });
   rows.forEach((r, i) => (out[i]![1] = counts.get(r.parentKey)!));
   return out;
+}
+
+/** The occurrence after (`dir` 1) / before (-1) `lead` in tree order over loaded nodes, with its ancestors. */
+export function findOccurrence<T>(
+  roots: readonly T[],
+  lead: string | null,
+  dir: 1 | -1,
+  model: {
+    getKey: (node: T) => string;
+    getChildren: (node: T) => readonly T[] | undefined;
+    isExpandable: (node: T) => boolean;
+    isOccurrence?: (node: T) => boolean;
+  },
+  skipSubtree = false,
+): { node: T; ancestors: T[]; index: number; total: number } | null {
+  const occurrences: Array<{ node: T; ancestors: T[]; at: number }> = [];
+  let leadAt = -1;
+  let leadEnd = -1;
+  let at = 0;
+  const walk = (nodes: readonly T[], ancestors: T[]) => {
+    for (const node of nodes) {
+      const here = at++;
+      const isLead = model.getKey(node) === lead;
+      if (isLead) leadAt = here;
+      const expandable = model.isExpandable(node);
+      if (model.isOccurrence ? model.isOccurrence(node) : !expandable) occurrences.push({ node, ancestors, at: here });
+      const children = expandable ? model.getChildren(node) : undefined;
+      if (children?.length) walk(children, [...ancestors, node]);
+      if (isLead) leadEnd = at - 1;
+    }
+  };
+  walk(roots, []);
+  const after = skipSubtree ? leadEnd : leadAt;
+  let i: number;
+  if (leadAt < 0) i = dir === 1 ? 0 : occurrences.length - 1;
+  else if (dir === 1) i = occurrences.findIndex((o) => o.at > after);
+  else i = occurrences.findLastIndex((o) => o.at < leadAt);
+  const hit = occurrences[i];
+  return hit ? { node: hit.node, ancestors: hit.ancestors, index: i + 1, total: occurrences.length } : null;
 }

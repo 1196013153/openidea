@@ -2,7 +2,6 @@
 import type { LiveTemplate, TemplateVariable } from "./model";
 
 export const TS_LANGS = ["typescript", "typescriptreact", "javascript", "javascriptreact", "vue", "svelte"];
-const C_LIKE = [...TS_LANGS, "java", "kotlin", "rust", "go", "c", "cpp", "csharp", "swift", "scala", "dart", "php"];
 
 type Def = Omit<LiveTemplate, "id" | "group" | "contexts"> & { id?: string };
 
@@ -301,130 +300,11 @@ const general = group(
   ],
 );
 
-/** `$SELECTION$` templates offered by Surround With (⌥⌘T). */
+/**
+ * `$SELECTION$` templates offered by Surround With (⌥⌘T) after the
+ * language surrounders (`./surrounders`).
+ */
 const surround = [
-  ...group(
-    "Surround",
-    "surround.c",
-    C_LIKE.filter((l) => l !== "rust" && l !== "go" && l !== "kotlin"),
-    [
-      { abbrev: "if", description: "if", body: "if ($COND$) {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "ife", description: "if / else", body: "if ($COND$) {\n\t$SELECTION$\n} else {\n\t$END$\n}" },
-      { abbrev: "while", description: "while", body: "while ($COND$) {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "block", description: "{ }", body: "{\n\t$SELECTION$\n}$END$" },
-      { abbrev: "par", description: "( )", body: "($SELECTION$)$END$" },
-    ],
-  ),
-  ...group("Surround", "surround.ts", TS_LANGS, [
-    { abbrev: "try", description: "try / catch", body: "try {\n\t$SELECTION$\n} catch (e) {\n\t$END$\n}" },
-    { abbrev: "tryf", description: "try / finally", body: "try {\n\t$SELECTION$\n} finally {\n\t$END$\n}" },
-    { abbrev: "region", description: "//region … //endregion", body: "//region $DESC$\n$SELECTION$\n//endregion$END$" },
-    { abbrev: "fn", description: "function", body: "function $NAME$() {\n\t$SELECTION$\n}$END$" },
-  ]),
-  ...group(
-    "Surround",
-    "surround.java",
-    ["java"],
-    [
-      {
-        abbrev: "try",
-        description: "try / catch",
-        body: "try {\n\t$SELECTION$\n} catch ($EXC$ e) {\n\t$END$\n}",
-        variables: [v("EXC", undefined, '"Exception"')],
-      },
-      { abbrev: "tryf", description: "try / finally", body: "try {\n\t$SELECTION$\n} finally {\n\t$END$\n}" },
-      {
-        abbrev: "sync",
-        description: "synchronized",
-        body: "synchronized ($LOCK$) {\n\t$SELECTION$\n}$END$",
-        variables: [v("LOCK", undefined, '"this"')],
-      },
-      {
-        abbrev: "region",
-        description: "//region … //endregion",
-        body: "//region $DESC$\n$SELECTION$\n//endregion$END$",
-      },
-    ],
-  ),
-  ...group(
-    "Surround",
-    "surround.kt",
-    ["kotlin"],
-    [
-      { abbrev: "if", description: "if", body: "if ($COND$) {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "ife", description: "if / else", body: "if ($COND$) {\n\t$SELECTION$\n} else {\n\t$END$\n}" },
-      { abbrev: "while", description: "while", body: "while ($COND$) {\n\t$SELECTION$\n}$END$" },
-      {
-        abbrev: "try",
-        description: "try / catch",
-        body: "try {\n\t$SELECTION$\n} catch (e: $EXC$) {\n\t$END$\n}",
-        variables: [v("EXC", undefined, '"Exception"')],
-      },
-      { abbrev: "run", description: "run { }", body: "run {\n\t$SELECTION$\n}$END$" },
-      {
-        abbrev: "region",
-        description: "//region … //endregion",
-        body: "//region $DESC$\n$SELECTION$\n//endregion$END$",
-      },
-    ],
-  ),
-  ...group(
-    "Surround",
-    "surround.rs",
-    ["rust"],
-    [
-      { abbrev: "if", description: "if", body: "if $COND$ {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "ifl", description: "if let", body: "if let $PAT$ = $EXPR$ {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "while", description: "while", body: "while $COND$ {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "loop", description: "loop", body: "loop {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "block", description: "{ }", body: "{\n\t$SELECTION$\n}$END$" },
-      { abbrev: "unsafe", description: "unsafe { }", body: "unsafe {\n\t$SELECTION$\n}$END$" },
-      {
-        abbrev: "region",
-        description: "// region … // endregion",
-        body: "// region $DESC$\n$SELECTION$\n// endregion$END$",
-      },
-    ],
-  ),
-  ...group(
-    "Surround",
-    "surround.go",
-    ["go"],
-    [
-      { abbrev: "if", description: "if", body: "if $COND$ {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "for", description: "for", body: "for $COND$ {\n\t$SELECTION$\n}$END$" },
-      { abbrev: "func", description: "func literal", body: "func() {\n\t$SELECTION$\n}()$END$" },
-      {
-        abbrev: "region",
-        description: "// region … // endregion",
-        body: "// region $DESC$\n$SELECTION$\n// endregion$END$",
-      },
-    ],
-  ),
-  ...group(
-    "Surround",
-    "surround.py",
-    ["python"],
-    [
-      { abbrev: "if", description: "if", body: "if $COND$:\n\t$SELECTION$\n$END$" },
-      { abbrev: "while", description: "while", body: "while $COND$:\n\t$SELECTION$\n$END$" },
-      { abbrev: "for", description: "for", body: "for $ITEM$ in $ITER$:\n\t$SELECTION$\n$END$" },
-      {
-        abbrev: "try",
-        description: "try / except",
-        body: "try:\n\t$SELECTION$\nexcept $EXC$ as e:\n\t$END$",
-        variables: [v("EXC", undefined, '"Exception"')],
-      },
-      { abbrev: "tryf", description: "try / finally", body: "try:\n\t$SELECTION$\nfinally:\n\t$END$" },
-      { abbrev: "with", description: "with", body: "with $EXPR$:\n\t$SELECTION$\n$END$" },
-      { abbrev: "def", description: "def", body: "def $NAME$():\n\t$SELECTION$\n$END$" },
-      {
-        abbrev: "region",
-        description: "# region … # endregion",
-        body: "# region $DESC$\n$SELECTION$\n# endregion$END$",
-      },
-    ],
-  ),
   ...group(
     "Surround",
     "surround.html",
@@ -433,7 +313,7 @@ const surround = [
       {
         abbrev: "T",
         id: "tag",
-        description: "<tag></tag>",
+        description: "Surround with <tag></tag>",
         body: "<$TAG$>$SELECTION$</$TAG$>$END$",
         variables: [v("TAG", undefined, '"div"')],
       },

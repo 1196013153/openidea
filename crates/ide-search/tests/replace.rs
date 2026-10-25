@@ -17,6 +17,7 @@ fn query(pattern: &str) -> SearchQuery {
         exclude: vec![],
         scope: SearchScope::Project,
         max_matches: 0,
+        context: Default::default(),
     }
 }
 

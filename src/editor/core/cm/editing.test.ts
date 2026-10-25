@@ -151,6 +151,10 @@ describe("multiple carets", () => {
     expect(show(v)).toBe("[a] [a] a");
     expect(v.state.selection.mainIndex).toBe(1);
     unselectOccurrence(v);
+    // A single selection collapses to its caret.
+    expect(show(v)).toBe("[a] a a");
+    expect(unselectOccurrence(v)).toBe(true);
+    expect(show(v)).toBe("a| a a");
     expect(unselectOccurrence(v)).toBe(false);
   });
 

@@ -1,10 +1,10 @@
 /** Call / type hierarchy state, with lazily expanded levels. */
 import { create } from "zustand";
-import type { HierarchyDirection, HierarchyItem } from "@/bindings";
-import { commands } from "@/platform/ipc";
+import type { HierarchyDirection, HierarchyItem, OutlineItem, Pos, SymbolKind } from "@/bindings";
+import { IpcError, call, commands } from "@/platform/ipc";
 import { toolWindowService } from "@/workbench/contributions";
 import { basename } from "@/platform/project";
-import { caretContext, hint, lspRequest, reportError, withDocument } from "./ipc";
+import { caretContext, hint, lspRequest, reportError, withDocument, type CaretContext } from "./ipc";
 
 export type HierarchyMode = "call" | "type";
 
@@ -88,24 +88,61 @@ function setChildren(generation: number, parent: string, items: HierarchyItem[])
   useHierarchy.setState({ children: new Map(s.children).set(parent, nodes) });
 }
 
-async function loadRoot() {
+type RootResult = "loaded" | "noTarget" | "failed" | "stale";
+
+/** Loads the root's level. `quiet`: a position without a symbol isn't reported (the caller retries). */
+async function loadRoot(quiet = false): Promise<RootResult> {
   const s = useHierarchy.getState();
   const root = s.root;
-  if (!root) return;
+  if (!root) return "stale";
   const generation = s.generation + 1;
   useHierarchy.setState({ generation, children: new Map(), failed: new Set(), loading: true });
   try {
     const items = await withDocument(root.path, (doc) => request(s.mode, doc, root.line, root.col, s.direction));
     setChildren(generation, ROOT_ID, items);
+    return "loaded";
   } catch (e) {
-    if (useHierarchy.getState().generation === generation)
-      useHierarchy.setState((st) => ({ failed: new Set(st.failed).add(ROOT_ID) }));
+    if (useHierarchy.getState().generation !== generation) return "stale";
+    const noTarget = e instanceof IpcError && e.kind === "notFound";
+    if (quiet && noTarget) return "noTarget";
+    useHierarchy.setState((st) => ({ failed: new Set(st.failed).add(ROOT_ID) }));
     reportError(e);
+    return noTarget ? "noTarget" : "failed";
   } finally {
     if (useHierarchy.getState().generation === generation) useHierarchy.setState({ loading: false });
   }
 }
 
+const CALLABLE = new Set<SymbolKind>(["function", "method", "constructor"]);
+const TYPES = new Set<SymbolKind>(["class", "interface", "struct", "enum", "trait"]);
+
+const before = (a: Pos, b: Pos) => a.line < b.line || (a.line === b.line && a.col <= b.col);
+
+/** The innermost outline symbol of `kinds` whose extent contains `pos`. */
+export function enclosingDeclaration(
+  items: readonly OutlineItem[],
+  pos: Pos,
+  kinds: ReadonlySet<SymbolKind>,
+): OutlineItem | null {
+  for (const item of items) {
+    if (!before(item.range.start, pos) || !before(pos, item.range.end)) continue;
+    return enclosingDeclaration(item.children, pos, kinds) ?? (kinds.has(item.kind) ? item : null);
+  }
+  return null;
+}
+
+/** IDEA: inside a method / class body the hierarchy is the enclosing declaration's. */
+async function enclosingRoot(c: CaretContext, mode: HierarchyMode): Promise<HierarchyRoot | null> {
+  try {
+    const outline = await call(commands.docOutline(c.doc));
+    const decl = enclosingDeclaration(outline, { line: c.line, col: c.col }, mode === "call" ? CALLABLE : TYPES);
+    if (!decl) return null;
+    const at = decl.selection_range.start;
+    return { name: decl.name, path: c.path, line: at.line, col: at.col };
+  } catch {
+    return null;
+  }
+}
 export async function loadChildren(node: HierarchyNode) {
   const { mode, direction, generation } = useHierarchy.getState();
   const at = node.item.selectionRange.start;
@@ -136,7 +173,28 @@ export async function showHierarchy(mode: HierarchyMode) {
     root: { name: c.word ?? basename(c.path), path: c.path, line: c.line, col: c.col },
   });
   toolWindowService().show("hierarchy");
-  await loadRoot();
+  if ((await loadRoot(true)) !== "noTarget") return;
+  // Nothing at the caret: retry at the enclosing method / class.
+  const root = await enclosingRoot(c, mode);
+  const now = useHierarchy.getState();
+  if (now.mode !== mode || now.root?.path !== c.path || now.root.line !== c.line || now.root.col !== c.col) return;
+  if (root && (root.line !== c.line || root.col !== c.col)) {
+    useHierarchy.setState({ root });
+    await loadRoot();
+  } else {
+    useHierarchy.setState((st) => ({ failed: new Set(st.failed).add(ROOT_ID) }));
+    hint(mode === "call" ? "No method at the caret to show the call hierarchy of" : "No type at the caret to show the hierarchy of");
+  }
+}
+
+/** Where activating a node goes: a caller's call site (as IDEA), else the symbol itself. */
+export function hierarchyTarget(
+  mode: HierarchyMode,
+  direction: HierarchyDirection,
+  item: HierarchyItem,
+): { path: string; line: number; col: number } {
+  const at = mode === "call" && direction === "incoming" && item.fromRanges[0] ? item.fromRanges[0].start : item.selectionRange.start;
+  return { path: item.path, line: at.line, col: at.col };
 }
 
 export function setDirection(direction: HierarchyDirection) {

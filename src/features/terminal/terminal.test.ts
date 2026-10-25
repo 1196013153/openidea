@@ -3,7 +3,8 @@ import { isAllowedIdeShortcut, terminalKeyAction } from "./keys";
 import { matchCounter } from "./FindBar";
 import { buildSearchDecorations } from "./theme";
 import { findTerminalLinks, resolvePath, trimUrl } from "./links";
-import { layoutPanes, nextTabName, removeFromLayout, splitLayout } from "./store";
+import { layoutPanes, nextTabName, removeFromLayout, splitLayout, tabFullTitle, tabTitle, trimMiddle, type TerminalTab } from "./store";
+import type { SessionSnapshot } from "./session";
 import { buildTheme, mix, parseColor, toHex, withFontExtras } from "./theme";
 
 describe("theme", () => {
@@ -220,5 +221,32 @@ describe("withFontExtras", () => {
   it("turns the column width into letter spacing", () => {
     expect(withFontExtras(font, { fallbackFontFamily: "", columnWidth: 1 }).letterSpacing).toBe(0);
     expect(withFontExtras(font, { fallbackFontFamily: "", columnWidth: 1.5 }).letterSpacing).toBe(3);
+  });
+});
+
+describe("terminal tab titles", () => {
+  const tab: TerminalTab = { id: "t1", name: "Local", customName: null, panes: ["s1"], layout: "s1", activePane: "s1" };
+  const snap = (appTitle: string | null): Record<string, SessionSnapshot> => ({
+    s1: { status: "running", exitCode: null, title: "zsh", appTitle, cwd: "/p" },
+  });
+
+  it("follows the title the running program sets, else the default name", () => {
+    expect(tabTitle(tab, snap(null))).toBe("Local");
+    expect(tabTitle(tab, snap("vim notes.md"))).toBe("vim notes.md");
+    const long = "ssh deploy@build-server-01.internal.example.com";
+    expect(tabTitle(tab, snap(long))).toHaveLength(30);
+    expect(tabTitle(tab, snap(long))).toBe(trimMiddle(long, 30));
+    expect(tabFullTitle(tab, snap(long))).toBe(long);
+  });
+
+  it("keeps a name the user gave the tab", () => {
+    const renamed = { ...tab, customName: "Server" };
+    expect(tabTitle(renamed, snap("top"))).toBe("Server");
+    expect(tabFullTitle(renamed, snap("top"))).toBe("Server");
+  });
+
+  it("elides the middle", () => {
+    expect(trimMiddle("abcdefghij", 5)).toBe("ab…ij");
+    expect(trimMiddle("abc", 5)).toBe("abc");
   });
 });

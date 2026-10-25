@@ -34,7 +34,7 @@ import {
   toggledCheck,
   type ChangeNode,
 } from "./changes";
-import { applyStash, commitChanges, dropStash, stashChanges } from "./changeOps";
+import { applyStash, commitChanges, dropStash, showUnstashDialog, stashChanges } from "./changeOps";
 import { CommitOptionsPopup } from "./CommitOptions";
 import { useChangelists, withListDefaults } from "./changelists";
 import { moveToChangelist } from "./changelistsUi";
@@ -775,6 +775,7 @@ function StashesPanel() {
           showContextMenu(e, [
             { label: "Apply Stash", icon: "check", run: () => void applyStash(s.index, false) },
             { label: "Pop Stash", icon: "undo", run: () => void applyStash(s.index, true) },
+            { label: "Unstash…", run: () => showUnstashDialog(s.index) },
             { kind: "separator" },
             { label: "Drop Stash", icon: "trash", run: () => void dropStash(s.index, s.message) },
           ]);

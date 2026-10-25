@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { history, undoDepth } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
-import { endInplaceRename, inplaceRenameActive, inplaceRenameExtension, startInplaceRename } from "./inplaceRename";
+import {
+  cycleSuggestion,
+  endInplaceRename,
+  inplaceRenameActive,
+  inplaceRenameExtension,
+  startInplaceRename,
+} from "./inplaceRename";
 
 const views: EditorView[] = [];
 afterEach(() => views.splice(0).forEach((v) => v.destroy()));
@@ -83,5 +89,36 @@ describe("in-place rename edits elsewhere", () => {
     view.dispatch({ changes: { from: 0, to: 0, insert: "// x\n" }, userEvent: "input.type" });
     await Promise.resolve();
     expect(commit).toHaveBeenCalledWith("bar");
+  });
+
+  it("cycles name suggestions with ↑ / ↓, mirrored and committed like typing", () => {
+    const view = new EditorView({
+      state: EditorState.create({ doc: "let foo = 1; foo + foo;", extensions: [inplaceRenameExtension()] }),
+    });
+    views.push(view);
+    const commit = vi.fn();
+    startInplaceRename(view, {
+      primary: { from: 4, to: 7 },
+      others: [{ from: 13, to: 16 }],
+      hint: "",
+      suggestions: ["count", "total"],
+      commit,
+      dialog: vi.fn(),
+    });
+    expect(cycleSuggestion(view, 1)).toBe(true);
+    expect(view.state.doc.toString()).toBe("let count = 1; count + foo;");
+    expect(view.state.selection.main).toMatchObject({ from: 4, to: 9 });
+    cycleSuggestion(view, 1);
+    expect(view.state.doc.toString()).toBe("let total = 1; total + foo;");
+    cycleSuggestion(view, 1);
+    expect(view.state.doc.toString()).toBe("let count = 1; count + foo;");
+    endInplaceRename(view, "commit");
+    expect(commit).toHaveBeenCalledWith("count");
+    expect(view.state.doc.toString()).toBe("let foo = 1; foo + foo;");
+  });
+
+  it("leaves the arrows alone without suggestions", () => {
+    const { view } = session();
+    expect(cycleSuggestion(view, 1)).toBe(false);
   });
 });

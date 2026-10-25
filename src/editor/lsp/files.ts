@@ -1,4 +1,4 @@
-/** Reading other files' text for previews (definitions, choosers). */
+/** Reading other files' text for previews (definitions, choosers), and backend documents for them. */
 import { editorsFor } from "@/editor/api";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { isVirtualUri, virtualDocument } from "@/platform/virtualDocs";
@@ -33,4 +33,31 @@ export async function readManyFileLines(paths: readonly string[], concurrency = 
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
   return out;
+}
+
+/**
+ * Runs `fn` with a backend document id for `path` (an open editor's when there
+ * is one; otherwise opened for the call only, the backend ref-counts it).
+ */
+export async function withDocument<T>(path: string, fn: (doc: number) => Promise<T>): Promise<T> {
+  const open = editorsFor(path)[0];
+  if (open) return fn(open.ctx.doc);
+  const info = await call(isVirtualUri(path) ? commands.docOpenVirtual(path) : commands.docOpen(path));
+  try {
+    return await fn(info.id);
+  } finally {
+    void commands.docClose(info.id);
+  }
+}
+
+/** The identifier at (or starting right after) `col` of `line`; null when there is none. */
+export function identifierAt(line: string, col: number): string | null {
+  const re = /[\p{L}\p{N}_$]+/gu;
+  for (let m = re.exec(line); m; m = re.exec(line)) {
+    const end = m.index + m[0].length;
+    if (end < col) continue;
+    if (m.index > col + 1) return null;
+    return /^\p{N}/u.test(m[0]) ? null : m[0];
+  }
+  return null;
 }

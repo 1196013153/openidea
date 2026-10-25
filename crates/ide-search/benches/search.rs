@@ -35,6 +35,7 @@ fn query(pattern: &str, is_regex: bool) -> SearchQuery {
         exclude: vec![],
         scope: SearchScope::Project,
         max_matches: 0,
+        context: Default::default(),
     }
 }
 

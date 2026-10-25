@@ -53,3 +53,16 @@ export function humpLeft(text: string, pos: number): number {
   while (i > 0 && !isHumpBoundary(text, i)) i--;
   return i;
 }
+
+/**
+ * Word start to the left of `pos` within a line without CamelHumps: the
+ * whitespace before `pos`, then a run of word characters or of punctuation.
+ */
+export function wordStartLeft(text: string, pos: number): number {
+  let i = pos;
+  while (i > 0 && kindOf(text[i - 1]) === "space") i--;
+  if (i <= 0) return 0;
+  const punct = kindOf(text[i - 1]) === "punct";
+  while (i > 0 && kindOf(text[i - 1]) !== "space" && (kindOf(text[i - 1]) === "punct") === punct) i--;
+  return i;
+}

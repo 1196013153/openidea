@@ -77,6 +77,9 @@
 }
 .search {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 6px 6px 4px;
   border-bottom: 1px solid var(--border-popup);
 }
@@ -166,4 +169,28 @@
 }
 .menuPopup {
   padding: 4px 0;
+}
+.star {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+.star > * {
+  grid-area: 1 / 1;
+}
+.star:not(.starOn) .starIcon {
+  visibility: hidden;
+}
+[role="option"]:hover .star:not(.starOn) .starIcon {
+  visibility: visible;
+}
+[role="option"]:hover .star:not(.starOn) .branchIcon {
+  visibility: hidden;
 }

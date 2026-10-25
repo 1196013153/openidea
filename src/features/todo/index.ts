@@ -3,7 +3,7 @@ import { registerActions } from "@/platform/actions";
 import { registerEditorContribution } from "@/editor/api";
 import { registerSettingsPage, registerToolWindow, toolWindowService } from "@/workbench/contributions";
 import { hasIcon, lazyComponent } from "@/ui";
-import { TodoHeaderActions, TodoTabs, TodoView, useTodoBadge, useTodoView } from "./TodoView";
+import { TodoHeaderActions, TodoTabs, TodoView, useTodoBadge, useTodoHeaderMenu, useTodoView } from "./TodoView";
 import { todoEditorExtension } from "./highlight";
 import { installTodoIndex, scanProject, syncTodoSettingsFromStorage } from "./store";
 
@@ -33,6 +33,7 @@ export function activate(): () => void {
       component: TodoView,
       headerContent: TodoTabs,
       headerActions: TodoHeaderActions,
+      headerMenu: useTodoHeaderMenu,
       useBadge: useTodoBadge,
     }),
     activateSettingsPages(),

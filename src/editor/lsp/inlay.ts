@@ -1,15 +1,41 @@
 /**
  * Inlay hints (settings.editor.inlayHints) for the visible range, refreshed
  * after edits / scrolling (debounced) and rendered as subtle inline widgets.
+ * Label parts that name a declaration navigate there on ⌘-click; right-click
+ * offers to disable hints of that kind.
  */
 import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { commands, type InlayHint } from "@/platform/ipc";
+import { call, commands, isTauri, type InlayHint } from "@/platform/ipc";
+import { executeAction } from "@/platform/actions";
+import { hasPrimaryModifier } from "@/platform/keymap";
+import { maybeEditorService } from "@/workbench/contributions";
+import { showContextMenu, type MenuItem } from "@/ui";
 import { useProject } from "@/platform/project";
 import { editorPrefs } from "@/platform/editorSettings";
 import { debounce, docOf, isUnavailable, lspRequest } from "./lsp";
 import { offsetsToRange, posToOffset } from "./positions";
 import { onLspRefresh, serverBackoff } from "./availability";
+
+const KIND_LABEL: Record<InlayHint["kind"], string> = {
+  type: "Type hints",
+  parameter: "Parameter name hints",
+  other: "Other hints",
+};
+
+async function setEditorSetting(key: string, value: unknown) {
+  if (!isTauri()) return;
+  useProject.setState({ settings: await call(commands.settingsSet("global", `editor.${key}`, JSON.stringify(value))) });
+}
+
+/** Right-click on a hint: turn its kind off (IDEA's "Disable '…' hints"), or open the settings. */
+export function inlayMenuItems(kind: InlayHint["kind"]): MenuItem[] {
+  return [
+    { label: `Disable ${KIND_LABEL[kind]}`, run: () => void setEditorSetting(`inlay.${kind}`, false) },
+    { kind: "separator" },
+    { label: "Inlay Hints Settings…", run: () => void executeAction("file.settings", "editor.inlayHints") },
+  ];
+}
 
 class InlayWidget extends WidgetType {
   constructor(readonly hint: InlayHint) {
@@ -18,16 +44,51 @@ class InlayWidget extends WidgetType {
   eq(other: InlayWidget) {
     const a = this.hint,
       b = other.hint;
-    return a.label === b.label && a.kind === b.kind && a.paddingLeft === b.paddingLeft && a.paddingRight === b.paddingRight;
+    return (
+      a.label === b.label &&
+      a.kind === b.kind &&
+      a.paddingLeft === b.paddingLeft &&
+      a.paddingRight === b.paddingRight &&
+      (a.parts?.length ?? 0) === (b.parts?.length ?? 0) &&
+      (a.parts ?? []).every((p, i) => p.location?.path === b.parts[i]?.location?.path && p.value === b.parts[i]?.value)
+    );
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     const el = document.createElement("span");
     el.className = `cm-lsp-inlay cm-lsp-inlay-${this.hint.kind}`;
     if (this.hint.paddingLeft) el.classList.add("cm-lsp-inlay-pl");
     if (this.hint.paddingRight) el.classList.add("cm-lsp-inlay-pr");
-    el.textContent = this.hint.label;
+    const parts = this.hint.parts ?? [];
+    if (parts.some((p) => p.location || p.tooltip)) {
+      for (const part of parts) {
+        const span = document.createElement("span");
+        span.textContent = part.value;
+        if (part.tooltip) span.title = part.tooltip;
+        if (part.location) {
+          span.className = "cm-lsp-inlay-part";
+          const loc = part.location;
+          // ⌘-click (Ctrl elsewhere) navigates to the declaration the part names, as in IDEA.
+          span.addEventListener("mousedown", (e) => {
+            if (e.button !== 0 || !hasPrimaryModifier(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            void maybeEditorService()?.openFile(loc.path, {
+              selection: { line: loc.range.start.line, col: loc.range.start.col },
+              focus: true,
+            });
+          });
+        }
+        el.appendChild(span);
+      }
+    } else el.textContent = this.hint.label;
     if (this.hint.tooltip) el.title = this.hint.tooltip;
     el.setAttribute("aria-hidden", "true");
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      view.focus();
+      showContextMenu(e, inlayMenuItems(this.hint.kind));
+    });
     return el;
   }
   ignoreEvent() {

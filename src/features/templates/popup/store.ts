@@ -7,6 +7,12 @@ export interface ChooserItem {
   detail?: string;
   /** Matched against the filter in addition to the label. */
   search?: string;
+  /** A section header row ("Live templates"); not selectable. */
+  section?: boolean;
+  /** Typing this character picks the item (see `ChooserRequest.mnemonics`). */
+  mnemonic?: string;
+  /** Where the mnemonic is underlined in the label; without it the label gets an `M. ` prefix. */
+  mnemonicIndex?: number;
 }
 
 export interface ChooserRequest {
@@ -17,6 +23,8 @@ export interface ChooserRequest {
   filter?: string;
   /** Allow typing to filter. */
   filterable?: boolean;
+  /** Typed characters pick items by `mnemonic` (instead of filtering). */
+  mnemonics?: boolean;
   /** Shown when nothing matches. */
   emptyText?: string;
   onPick: (item: ChooserItem, filter: string) => void;

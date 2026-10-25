@@ -1003,6 +1003,10 @@ export class EditorController implements SlotHost {
     });
   }
 
+  closeInput(key: string) {
+    this.apply((s) => closeKey(s, key));
+  }
+
   activePath(): string | null {
     return this.activeSlot?.model.path ?? this.activeTabOf()?.input.path ?? null;
   }

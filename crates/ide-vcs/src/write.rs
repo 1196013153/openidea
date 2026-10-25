@@ -598,10 +598,13 @@ pub(crate) fn rebase(r: &Repo, onto: &str) -> IdeResult<()> {
     run(r.root(), &["rebase", "--autostash", check_rev(onto)?], None).map(|_| ())
 }
 
-pub(crate) fn stash_push(r: &Repo, message: Option<&str>, include_untracked: bool) -> IdeResult<()> {
+pub(crate) fn stash_push(r: &Repo, message: Option<&str>, include_untracked: bool, keep_index: bool) -> IdeResult<()> {
     let mut args = vec!["stash", "push", "-q"];
     if include_untracked {
         args.push("--include-untracked");
+    }
+    if keep_index {
+        args.push("--keep-index");
     }
     if let Some(m) = message.filter(|m| !m.trim().is_empty()) {
         args.extend(["-m", m]);
@@ -609,9 +612,26 @@ pub(crate) fn stash_push(r: &Repo, message: Option<&str>, include_untracked: boo
     run(r.root(), &args, None).map(|_| ())
 }
 
-pub(crate) fn stash_apply(r: &Repo, index: u32, pop: bool) -> IdeResult<()> {
+pub(crate) fn stash_apply(r: &Repo, index: u32, pop: bool, reinstate_index: bool) -> IdeResult<()> {
     let spec = format!("stash@{{{index}}}");
-    run(r.root(), &["stash", if pop { "pop" } else { "apply" }, "-q", &spec], None).map(|_| ())
+    let mut args = vec!["stash", if pop { "pop" } else { "apply" }, "-q"];
+    if reinstate_index {
+        args.push("--index");
+    }
+    args.push(&spec);
+    run(r.root(), &args, None).map(|_| ())
+}
+
+pub(crate) fn stash_branch(r: &Repo, index: u32, branch: &str) -> IdeResult<()> {
+    let branch = branch.trim();
+    let valid = !branch.is_empty()
+        && !branch.starts_with('-')
+        && cli::run_raw(r.root(), &["check-ref-format", "--branch", branch], None)?.code == Some(0);
+    if !valid {
+        return Err(IdeError::invalid(format!("'{branch}' is not a valid branch name")));
+    }
+    let spec = format!("stash@{{{index}}}");
+    run(r.root(), &["stash", "branch", branch, &spec], None).map(|_| ())
 }
 
 pub(crate) fn stash_drop(r: &Repo, index: u32) -> IdeResult<()> {

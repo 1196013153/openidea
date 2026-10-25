@@ -41,7 +41,63 @@ pub struct SearchQuery {
     pub scope: SearchScope,
     /// Stop after this many matches overall (0 = 10 000).
     pub max_matches: u32,
+    /// Where in the code a match may lie (IDEA's search context filter).
+    #[serde(default)]
+    #[specta(optional)]
+    pub context: SearchContext,
 }
+
+/// IDEA's search context: matches anywhere, only in, or outside comments and
+/// string literals. Files whose language has no syntax tree contain neither.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum SearchContext {
+    #[default]
+    Any,
+    InComments,
+    InStringLiterals,
+    ExceptComments,
+    ExceptStringLiterals,
+    ExceptCommentsAndStringLiterals,
+}
+
+/// What a [`LiteralRange`] is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiteralKind {
+    Comment,
+    String,
+}
+
+/// Byte range of a comment or string literal in a file's text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiteralRange {
+    pub start: usize,
+    pub end: usize,
+    pub kind: LiteralKind,
+}
+
+impl SearchContext {
+    /// Whether a match starting in `kind` (`None`: plain code) is kept.
+    pub fn accepts(self, kind: Option<LiteralKind>) -> bool {
+        match self {
+            Self::Any => true,
+            Self::InComments => kind == Some(LiteralKind::Comment),
+            Self::InStringLiterals => kind == Some(LiteralKind::String),
+            Self::ExceptComments => kind != Some(LiteralKind::Comment),
+            Self::ExceptStringLiterals => kind != Some(LiteralKind::String),
+            Self::ExceptCommentsAndStringLiterals => kind.is_none(),
+        }
+    }
+
+    /// Only matches inside comments / string literals: files without any are skipped.
+    fn needs_literals(self) -> bool {
+        matches!(self, Self::InComments | Self::InStringLiterals)
+    }
+}
+
+/// Comments and string literals of a file's text (sorted, non-overlapping),
+/// or `None` when its language has no syntax tree.
+pub type Literals<'a> = &'a (dyn Fn(&Path, &str) -> Option<Vec<LiteralRange>> + Sync);
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -132,6 +188,20 @@ pub fn search_filtered(
     cancel: &CancellationToken,
     on_file: &(dyn Fn(FileMatches) + Sync),
 ) -> IdeResult<SearchSummary> {
+    search_in_context(root, query, filter, None, overlay, cancel, on_file)
+}
+
+/// [`search_filtered`] honouring [`SearchQuery::context`] with the comments and
+/// string literals `literals` finds; without it every match is plain code.
+pub fn search_in_context(
+    root: &Path,
+    query: &SearchQuery,
+    filter: Option<PathFilter<'_>>,
+    literals: Option<Literals<'_>>,
+    overlay: Overlay<'_>,
+    cancel: &CancellationToken,
+    on_file: &(dyn Fn(FileMatches) + Sync),
+) -> IdeResult<SearchSummary> {
     let mask = FileMask::new(&query.include, &query.exclude)?;
     if query.pattern.is_empty() {
         return Ok(SearchSummary::default());
@@ -142,6 +212,8 @@ pub fn search_filtered(
         compiled: query::compile(query)?,
         mask,
         filter,
+        context: query.context,
+        literals,
         max_matches: query.max_matches,
         overlay,
         cancel,

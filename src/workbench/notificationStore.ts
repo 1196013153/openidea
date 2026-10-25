@@ -85,8 +85,20 @@ interface NotificationState {
 
 export const useNotifications = create<NotificationState>(() => ({ items: [] }));
 
-/** IDEA fades balloons out after 10 s; errors stay until dismissed (as IDEA's sticky error groups). */
+/** IDEA fades balloons out after 10 s; errors are sticky balloons (as IDEA's error groups). */
 export const BALLOON_TIMEOUT: Record<NotificationLevel, number | null> = { info: 10000, warning: 10000, error: null };
+/**
+ * Sticky balloons fade too, after 5 minutes of active window time, as in IDEA:
+ * the notification stays unread in the Notifications tool window. One that the
+ * tool window does not list stays until dismissed.
+ */
+export const STICKY_BALLOON_TIMEOUT = 5 * 60 * 1000;
+
+/** Fade-out delay of a balloon, or null when it stays until dismissed. */
+export function balloonTimeout(n: Pick<IdeNotification, "level" | "sticky" | "logged">): number | null {
+  if (n.sticky || BALLOON_TIMEOUT[n.level] === null) return n.logged ? STICKY_BALLOON_TIMEOUT : null;
+  return BALLOON_TIMEOUT[n.level];
+}
 const MAX_HISTORY = 200;
 let seq = 0;
 

@@ -42,7 +42,7 @@ import { offsetToPos, rangeToOffsets } from "./positions";
 import { SYNTAX_NOTE, declarationFallback, isSelfTarget, localHighlights, type DeclarationTarget } from "./syntaxFallback";
 import { showHint } from "./hint";
 import { caretAnchor, openPopup, type ListPopupItem } from "./popupStore";
-import { readManyFileLines } from "./files";
+import { identifierAt, readManyFileLines } from "./files";
 import { documentLinks, followReference, knownLinks, linkReference, referenceAt, textReference } from "./links";
 import { serverBackoff } from "./availability";
 import { requestHover } from "./hover";
@@ -100,15 +100,30 @@ export async function locationItems(locs: readonly DeclarationTarget[]): Promise
         symbol: l.kind,
         run: () => navigateTo(l),
       };
+    // Server targets: the declared name (speed search matches it), file and line after it.
+    const name = identifierAt(files.get(l.path)?.[l.range.start.line] ?? "", l.range.start.col);
     return {
       id: `${i}`,
-      label: basename(l.path),
-      detail: where,
+      label: name ?? basename(l.path),
+      detail: name ? `${basename(l.path)} · ${where}` : where,
       preview,
       icon: fileIconName(basename(l.path)),
       run: () => navigateTo(l),
     };
   });
+}
+
+/** "Choose Implementation of foo (3 found)". */
+export function chooserTitle(kind: GotoKind, name: string | null, count: number, fromSyntax = false): string {
+  return `${TITLES[kind]}${name ? ` of ${name}` : ""} (${count} found${fromSyntax ? ", based on syntax" : ""})`;
+}
+
+/** Pin button of the targets chooser: the targets as a Find tool window tab (code-insight). */
+function pinToFind(symbol: string, locations: readonly Location[]) {
+  return {
+    label: "Open in Find Tool Window",
+    run: () => void executeAction("find.showUsageResults", { symbol, locations }),
+  };
 }
 
 export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number) {
@@ -169,11 +184,14 @@ export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number)
       }, 150);
     return;
   }
+  const word = view.state.wordAt(offset);
+  const name = word ? view.state.sliceDoc(word.from, word.to) : null;
   openPopup({
     kind: "list",
     anchor: caretAnchor(view, offset),
-    title: `${TITLES[kind]} (${locs.length} found${fromSyntax ? ", based on syntax" : ""})`,
+    title: chooserTitle(kind, name, locs.length, fromSyntax),
     items: await locationItems(locs),
+    pin: pinToFind(name ?? "", locs),
   });
 }
 
@@ -207,6 +225,7 @@ async function gotoWebReference(view: EditorView, doc: EditorDocContext, pos: Po
       anchor: caretAnchor(view, offset),
       title: `Choose Declaration of '${label}' (${targets.length} found)`,
       items: await locationItems(targets),
+      pin: pinToFind(label, targets),
     });
   return true;
 }

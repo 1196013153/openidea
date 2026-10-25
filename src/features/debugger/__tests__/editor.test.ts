@@ -88,7 +88,10 @@ describe("breakpoint click area", () => {
       parent: document.body,
     });
     views.push(view);
-    const down = (el: Element) => el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    const down = (el: Element) => {
+      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
+    };
     const cells = view.dom.querySelectorAll(".extra .cm-gutterElement");
     down(cells[cells.length - 1]!.firstElementChild!);
     expect(breakpointsOf(ctx.path)).toHaveLength(0);
@@ -98,10 +101,12 @@ describe("breakpoint click area", () => {
 });
 
 describe("breakpoint gutter clicks", () => {
-  const click = (view: EditorView, init: MouseEventInit) =>
-    view.dom
-      .querySelector(".cm-lineNumbers .cm-gutterElement:not([style*='hidden'])")!
-      .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, ...init }));
+  // Plain and modifier clicks act on release, so a drag over the gutter can select lines.
+  const click = (view: EditorView, init: MouseEventInit) => {
+    const cell = view.dom.querySelector(".cm-lineNumbers .cm-gutterElement:not([style*='hidden'])")!;
+    cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, ...init }));
+    cell.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, ...init }));
+  };
 
   it("⇧-click adds a non-suspending logging breakpoint, ⌥-click a temporary one", () => {
     localStorage.clear();

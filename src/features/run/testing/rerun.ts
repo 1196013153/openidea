@@ -113,8 +113,29 @@ function jvmArgs(config: RunConfig, paths: string[][]): string[] | null {
   return [...dropFlag(config.args, ["--tests"]), ...filters.flatMap((f) => ["--tests", f])];
 }
 
+/** Leaf test paths under the given nodes (a node without reported children stands for itself). */
+export function leafTestPaths(nodes: readonly TestNode[]): string[][] {
+  const out: string[][] = [];
+  const seen = new Set<string>();
+  const visit = (n: TestNode) => {
+    if (n.children.length) return n.children.forEach(visit);
+    const key = n.path.join("\u0000");
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(n.path);
+  };
+  nodes.forEach(visit);
+  return out;
+}
+
 /** Config running only `paths` (failed test paths from the results tree), or null when unsupported. */
 export function rerunFailedConfig(config: RunConfig, paths: string[][]): RunConfig | null {
+  const baseName = config.name.replace(/^Failed: /, "");
+  return testsConfig(config, paths, `Failed: ${baseName}`);
+}
+
+/** Config running only the tests at `paths` (test tree paths), named `name`; null when unsupported. */
+export function testsConfig(config: RunConfig, paths: string[][], name: string): RunConfig | null {
   if (!paths.length) return null;
   let args: string[] | null;
   switch (frameworkFor(config)) {
@@ -137,6 +158,5 @@ export function rerunFailedConfig(config: RunConfig, paths: string[][]): RunConf
       args = null;
   }
   if (!args) return null;
-  const baseName = config.name.replace(/^Failed: /, "");
-  return { ...config, args, name: `Failed: ${baseName}`, detected: true, env: { ...config.env } };
+  return { ...config, args, name, detected: true, env: { ...config.env } };
 }

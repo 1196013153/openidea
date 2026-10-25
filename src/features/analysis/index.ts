@@ -10,7 +10,7 @@ import { AnalysisDialogHost } from "./dialogs";
 import { resetDuplicates } from "./duplicates";
 import { DuplicatesHeaderActions, DuplicatesView } from "./DuplicatesView";
 import { resetInspection } from "./inspect";
-import { InspectionHeaderActions, InspectionView } from "./InspectionView";
+import { InspectionHeaderActions, InspectionView, useInspectionHeaderMenu } from "./InspectionView";
 
 export function activate(): () => void {
   const disposers = [
@@ -29,6 +29,7 @@ export function activate(): () => void {
       order: 36,
       component: InspectionView,
       headerActions: InspectionHeaderActions,
+      headerMenu: useInspectionHeaderMenu,
     }),
     registerToolWindow({
       id: "duplicates",

@@ -67,8 +67,10 @@ export async function expressionTypeInfo(view: EditorView) {
     openPopup({
       kind: "doc",
       anchor: caretAnchor(view, hover.range ? rangeToOffsets(view.state.doc, hover.range).from : pos),
-      markup: { kind: "markdown", value: `\`\`\`${language}\n${info.text}\n\`\`\`` },
-      language: docOf(view)?.uiMode ?? null,
+      entries: [
+        { markup: { kind: "markdown", value: `\`\`\`${language}\n${info.text}\n\`\`\`` }, language: docOf(view)?.uiMode ?? null },
+      ],
+      index: 0,
       themeClasses: view.themeClasses,
     });
   } catch (e) {

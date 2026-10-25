@@ -390,10 +390,12 @@ org.opentest4j.AssertionFailedError: expected: <3> but was: <2>
 `,
     );
     expect(nodeStatus(r.get("com.acme.OrderTest")!)).toBe("failed");
+    // Resolved by the frame's class (package directory + file), not by a bare file name.
     expect(leaf(r, "com.acme.OrderTest", "shouldTotal")?.location).toEqual({
-      path: "OrderTest.java",
+      path: "com/acme/OrderTest.java",
       line: 31,
       resolve: "name",
+      className: "com.acme.OrderTest",
     });
     expect(r.get("com.acme.UserTest")?.own).toBe("passed");
     expect(r.summary).toMatchObject({ passed: 2, failed: 1 });

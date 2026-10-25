@@ -156,6 +156,21 @@ pub async fn lsp_code_action_query(
     result
 }
 
+/// Resolves a code action's edit without applying it (intention preview).
+#[tauri::command]
+#[specta::specta]
+pub async fn lsp_resolve_code_action(
+    window: Window,
+    state: State<'_, AppState>,
+    doc: DocId,
+    action: CodeAction,
+) -> IdeResult<CodeAction> {
+    if action.edit.is_some() {
+        return Ok(action);
+    }
+    project!(window, state).lsp.resolve_code_action(doc, action).await
+}
+
 /// Resolves (if needed), applies the edit, then runs the command of a code action.
 #[tauri::command]
 #[specta::specta]

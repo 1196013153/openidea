@@ -278,3 +278,49 @@
 .previewNew {
   color: var(--vcs-added);
 }
+
+/* Inspection Results: tree on the left, problem details on the right. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.panel > * {
+  flex: 1;
+  min-height: 0;
+}
+.excluded .message,
+.excluded .strong {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  font-size: var(--fs-ui);
+}
+.detailsEmpty {
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-faint);
+}
+.detailsTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-strong);
+}
+.detailsMessage {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--fg);
+}
+.detailsActions {
+  display: flex;
+  gap: 6px;
+}

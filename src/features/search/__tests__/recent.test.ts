@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ToolWindowContribution } from "@/workbench/contributions";
-import { fromNavigationHistory, recordLocation, renameLocations, type RecentLocation } from "../common/locations";
+import {
+  fromNavigationHistory,
+  isDismissed,
+  recordLocation,
+  renameLocations,
+  type RecentLocation,
+} from "../common/locations";
 import {
   filterLocations,
   filterRecentFiles,
@@ -105,5 +111,15 @@ describe("navigation history snapshot", () => {
     expect(merged.map((l) => `${l.path}:${l.line}`)).toEqual(["/b:50", "/a:2"]);
     expect(merged[1]!.changed).toBe(true);
     expect(merged[1]!.snippet).toEqual(["code"]);
+  });
+});
+
+describe("removed recent locations", () => {
+  it("hide the place until it is visited again", () => {
+    const dismissed = [{ path: "/a", line: 10, time: 100 }];
+    expect(isDismissed(loc("/a", 12, { time: 90 }), dismissed)).toBe(true);
+    expect(isDismissed(loc("/a", 30, { time: 90 }), dismissed)).toBe(false);
+    expect(isDismissed(loc("/b", 10, { time: 90 }), dismissed)).toBe(false);
+    expect(isDismissed(loc("/a", 10, { time: 101 }), dismissed)).toBe(false);
   });
 });

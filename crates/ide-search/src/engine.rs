@@ -4,7 +4,10 @@ use crate::iter::for_each_match;
 use crate::line::line_match;
 use crate::mask::FileMask;
 use crate::query::{Compiled, line_terminator};
-use crate::{FileMatches, LineMatch, Overlay, PathFilter, SearchScope, SearchSummary};
+use crate::{
+    FileMatches, LineMatch, LiteralKind, LiteralRange, Literals, Overlay, PathFilter, SearchContext, SearchScope,
+    SearchSummary,
+};
 use grep_regex::RegexMatcher;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkMatch};
 use ide_core::{CancellationToken, IdeError, IdeResult};
@@ -25,6 +28,8 @@ pub(crate) struct Request<'a> {
     pub compiled: Compiled,
     pub mask: FileMask,
     pub filter: Option<PathFilter<'a>>,
+    pub context: SearchContext,
+    pub literals: Option<Literals<'a>>,
     pub max_matches: u32,
     pub overlay: Overlay<'a>,
     pub cancel: &'a CancellationToken,
@@ -86,6 +91,8 @@ struct Ctx<'a> {
     root: &'a Path,
     mask: &'a FileMask,
     filter: Option<PathFilter<'a>>,
+    context: SearchContext,
+    literals: Option<Literals<'a>>,
     overlay: Overlay<'a>,
     on_file: &'a (dyn Fn(FileMatches) + Sync),
     ctl: Control<'a>,
@@ -98,6 +105,8 @@ pub(crate) fn run(req: Request<'_>) -> IdeResult<SearchSummary> {
         root: req.root,
         mask: &req.mask,
         filter: req.filter,
+        context: req.context,
+        literals: if req.context == SearchContext::Any { None } else { req.literals },
         overlay: req.overlay,
         on_file: req.on_file,
         ctl: Control {
@@ -225,6 +234,25 @@ impl Ctx<'_> {
         if !self.mask.matches(&rel) || self.filter.is_some_and(|keep| !keep(&rel)) {
             return;
         }
+        // The search context needs the whole text to find comments and string literals.
+        let in_context = match self.literals {
+            Some(literals) => {
+                let text = match (self.overlay)(path) {
+                    Some(text) => text,
+                    // Unreadable or not UTF-8 (binary): nothing to classify.
+                    None => match std::fs::read_to_string(path) {
+                        Ok(text) => text,
+                        Err(_) => return,
+                    },
+                };
+                let ranges = literals(path, &text);
+                if ranges.is_none() && self.context.needs_literals() {
+                    return;
+                }
+                Some((text, ranges.unwrap_or_default()))
+            }
+            None => None,
+        };
         let mut sink = FileSink {
             matcher,
             ctl: &self.ctl,
@@ -234,12 +262,16 @@ impl Ctx<'_> {
             ticks: 0,
             found: Vec::new(),
             ranges: Vec::new(),
+            context: in_context.as_ref().map(|(_, ranges)| (self.context, ranges.as_slice())),
         };
-        let result = match (self.overlay)(path) {
-            Some(text) => searcher.search_slice(matcher, text.as_bytes(), &mut sink),
-            None => match std::fs::File::open(path) {
-                Ok(file) => searcher.search_reader(matcher, StopReader { inner: file, ctl: &self.ctl }, &mut sink),
-                Err(err) => Err(err),
+        let result = match &in_context {
+            Some((text, _)) => searcher.search_slice(matcher, text.as_bytes(), &mut sink),
+            None => match (self.overlay)(path) {
+                Some(text) => searcher.search_slice(matcher, text.as_bytes(), &mut sink),
+                None => match std::fs::File::open(path) {
+                    Ok(file) => searcher.search_reader(matcher, StopReader { inner: file, ctl: &self.ctl }, &mut sink),
+                    Err(err) => Err(err),
+                },
             },
         };
         if let Err(err) = result {
@@ -288,6 +320,14 @@ struct FileSink<'a> {
     /// Scratch buffers reused across lines.
     found: Vec<(usize, usize)>,
     ranges: Vec<(usize, usize)>,
+    /// Search context filter and the file's comments / string literals.
+    context: Option<(SearchContext, &'a [LiteralRange])>,
+}
+
+/// Kind of the comment or string literal containing byte `pos` (`literals` sorted).
+fn literal_at(literals: &[LiteralRange], pos: usize) -> Option<LiteralKind> {
+    let i = literals.partition_point(|l| l.start <= pos);
+    literals[..i].last().filter(|l| pos < l.end).map(|l| l.kind)
 }
 
 impl Sink for FileSink<'_> {
@@ -311,6 +351,10 @@ impl Sink for FileSink<'_> {
         for_each_match(self.matcher, &buffer[..range.end], range.start, |mm| {
             found.push((mm.start() - range.start, mm.end() - range.start));
         });
+        if let Some((context, literals)) = self.context {
+            let block_start = usize::try_from(m.absolute_byte_offset()).unwrap_or(usize::MAX);
+            found.retain(|&(a, _)| context.accepts(literal_at(literals, block_start.saturating_add(a))));
+        }
 
         let mut next = found.iter().copied().peekable();
         let mut line_start = 0;

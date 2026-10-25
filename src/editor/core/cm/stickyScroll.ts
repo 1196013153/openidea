@@ -2,9 +2,9 @@
  * Sticky scroll: the header lines of the scopes enclosing the first visible
  * line stay pinned at the top (IDEA 2023+ / VS Code). Scopes come from the
  * backend folding ranges, or from the syntax tree when there are none.
- * Clicking a sticky line scrolls to it.
+ * Clicking a sticky line scrolls to it, the caret where it was clicked.
  */
-import { Compartment, Facet, type EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorSelection, Facet, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { foldNodeProp, syntaxTree } from "@codemirror/language";
 import { highlightTree } from "@lezer/highlight";
@@ -78,6 +78,23 @@ function renderLineContent(state: EditorState, lineNo: number, target: HTMLEleme
     );
   }
   push(end, "");
+}
+
+/** Character offset in a rendered sticky line closest to `clientX`. */
+export function offsetAtX(inner: HTMLElement, clientX: number): number {
+  const range = document.createRange();
+  let offset = 0;
+  const walker = document.createTreeWalker(inner, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    for (let i = 0; i < node.length; i++) {
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const r = range.getBoundingClientRect();
+      if (clientX < r.left + r.width / 2) return offset + i;
+    }
+    offset += node.length;
+  }
+  return offset;
 }
 
 class StickyScroll {
@@ -203,14 +220,21 @@ class StickyScroll {
   }
 
   private onMouseDown = (e: MouseEvent) => {
+    if (e.button !== 0) return;
     const row = (e.target as HTMLElement).closest<HTMLElement>(".cm-openidea-stickyLine");
     if (!row?.dataset.line) return;
     e.preventDefault();
-    const line = this.view.state.doc.line(Math.min(Number(row.dataset.line), this.view.state.doc.lines));
-    const indent = /^\s*/.exec(line.text)![0].length;
+    // The line number of a sticky line is not a link (IDEA).
+    const inner = (e.target as HTMLElement).closest(".cm-openidea-stickyText")?.querySelector<HTMLElement>(".cm-openidea-stickyInner");
+    if (!inner) return;
+    const state = this.view.state;
+    const line = state.doc.line(Math.min(Number(row.dataset.line), state.doc.lines));
+    const offset = offsetAtX(inner, e.clientX);
+    const rowIndex = [...this.dom.children].indexOf(row);
+    // The line takes the place of its sticky row, so the text stays under the pointer.
     this.view.dispatch({
-      selection: { anchor: line.from + indent },
-      effects: EditorView.scrollIntoView(line.from, { y: "start" }),
+      selection: EditorSelection.cursor(line.from + Math.min(offset, line.length)),
+      effects: EditorView.scrollIntoView(line.from, { y: "start", yMargin: Math.max(0, rowIndex) * this.view.defaultLineHeight }),
       userEvent: "select.sticky",
     });
     this.view.focus();

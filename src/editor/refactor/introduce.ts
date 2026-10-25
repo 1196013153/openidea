@@ -16,6 +16,7 @@ import { docOf } from "@/editor/lsp/lsp";
 import { offsetsToRange, rangeToOffsets } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
 import { caretAnchor, openPopup } from "@/editor/lsp/popupStore";
+import { clearTemporaryHighlight, highlightRanges } from "@/editor/lsp/tempHighlight";
 import { call, commands, isCancelled, nextRequestId } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { expressionWords, findTextOccurrences, normalizeExpression } from "./occurrences";
@@ -150,7 +151,8 @@ function isCallee(doc: Text, node: SyntaxNode, outer: SyntaxNode | undefined): b
   return /^\s*(\(|<|::<)/.test(doc.sliceString(end, end + 4));
 }
 
-function preview(text: string): string {
+/** Chooser label of an expression: one line, shortened. */
+export function expressionPreview(text: string): string {
   const one = text.replace(/\s+/g, " ").trim();
   return one.length > 80 ? `${one.slice(0, 77)}…` : one;
 }
@@ -194,7 +196,7 @@ async function introduce(view: EditorView, kind: IntroduceKind, reason: Fallback
   const p: Prepared = { view, ctx, kind, reason, doc, at };
   let candidates: SyntaxNode[];
   if (sel.empty) {
-    candidates = at.candidates.filter((c, i) => !c.error && !c.missing && !isCallee(doc, c, at.candidates[i + 1]));
+    candidates = expressionCandidates(doc, at);
     if (!candidates.length) return refuse(p, "no expression at the caret");
   } else {
     if (!at.expression || !at.exact) return refuse(p, "selected block should represent an expression");
@@ -208,9 +210,20 @@ async function introduce(view: EditorView, kind: IntroduceKind, reason: Fallback
     kind: "list",
     anchor: caretAnchor(view, sel.head),
     title: "Expressions",
-    items: candidates.map((c, i) => ({ id: `${i}`, label: preview(nodeText(doc, c)), run: () => perform(p, c) })),
+    items: candidates.map((c, i) => ({
+      id: `${i}`,
+      label: expressionPreview(nodeText(doc, c)),
+      onActive: () => highlightRanges(view, [rangeToOffsets(doc, c.range)]),
+      run: () => perform(p, c),
+    })),
+    onClose: () => clearTemporaryHighlight(view),
   });
   return true;
+}
+
+/** The expressions at an empty selection, innermost first, that are worth extracting (no callee names). */
+export function expressionCandidates(doc: Text, at: ExpressionAt): SyntaxNode[] {
+  return at.candidates.filter((c, i) => !c.error && !c.missing && !isCallee(doc, c, at.candidates[i + 1]));
 }
 
 async function brokenAround(
@@ -331,7 +344,7 @@ async function introduceVariable(p: Prepared, expr: SyntaxNode, chain: SyntaxNod
     }
     return { changes: state.changes(specs), decl, declAt: stmtFrom, refs };
   };
-  await chooseOccurrences(p, others.length, (all) => applyAndName(p, plan(all), names));
+  await chooseOccurrences(p, { from: exprFrom, to: exprTo }, others, (all) => applyAndName(p, plan(all), names));
 }
 
 async function variableContext(
@@ -469,7 +482,7 @@ async function introduceConstant(p: Prepared, expr: SyntaxNode, chain: SyntaxNod
     }
     return { changes: state.changes(specs), decl, declAt: place.insertAt, declIndent: place.indent.length, refs };
   };
-  await chooseOccurrences(p, others.length, (all) => applyAndName(p, plan(all), names));
+  await chooseOccurrences(p, { from: exprFrom, to: exprTo }, others, (all) => applyAndName(p, plan(all), names));
 }
 
 /** Not an object key, type, import source…: a place where a named constant can stand. */
@@ -561,20 +574,32 @@ async function verifiedOccurrences(
 }
 
 /** IDEA's "Multiple occurrences found" choice; runs `apply` directly when there are none. */
-async function chooseOccurrences(p: Prepared, others: number, apply: (all: boolean) => void) {
-  if (!others) {
+async function chooseOccurrences(p: Prepared, self: Occurrence, others: Occurrence[], apply: (all: boolean) => void) {
+  if (!others.length) {
     apply(false);
     return;
   }
-  const head = p.view.state.selection.main.head;
+  const { view } = p;
+  const head = view.state.selection.main.head;
   openPopup({
     kind: "list",
-    anchor: caretAnchor(p.view, head),
+    anchor: caretAnchor(view, head),
     title: "Multiple occurrences found",
     items: [
-      { id: "one", label: "Replace this occurrence only", run: () => apply(false) },
-      { id: "all", label: `Replace all ${others + 1} occurrences`, run: () => apply(true) },
+      {
+        id: "one",
+        label: "Replace this occurrence only",
+        onActive: () => highlightRanges(view, [self]),
+        run: () => apply(false),
+      },
+      {
+        id: "all",
+        label: `Replace all ${others.length + 1} occurrences`,
+        onActive: () => highlightRanges(view, [self, ...others]),
+        run: () => apply(true),
+      },
     ],
+    onClose: () => clearTemporaryHighlight(view),
   });
 }
 

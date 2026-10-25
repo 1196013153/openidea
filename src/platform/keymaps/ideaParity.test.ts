@@ -36,6 +36,17 @@ describe("IDEA keymap parity", () => {
     ["project.copy", ["Meta+C"], ["Ctrl+C", "Ctrl+Insert"]],
     ["project.cut", ["Meta+X"], ["Ctrl+X", "Shift+Delete"]],
     ["project.paste", ["Meta+V"], ["Ctrl+V", "Shift+Insert"]],
+    ["editor.matchBrace", ["Ctrl+M"], ["Ctrl+Shift+M"]],
+    ["code.collapseRecursively", ["Meta+Alt+-"], ["Ctrl+Alt+-"]],
+    ["code.expandRecursively", ["Meta+Alt+="], ["Ctrl+Alt+="]],
+    ["editor.cloneCaretAbove", ["Alt Alt+Up"], ["Ctrl Ctrl+Up"]],
+    ["editor.cloneCaretBelow", ["Alt Alt+Down"], ["Ctrl Ctrl+Down"]],
+    ["editor.toggleInsertState", ["Insert"], ["Insert"]],
+    ["navigate.nextOccurrence", ["Meta+Alt+Down"], ["Ctrl+Alt+Down"]],
+    ["navigate.prevOccurrence", ["Meta+Alt+Up"], ["Ctrl+Alt+Up"]],
+    // Rerun in the Find / Find Usages tool windows uses the Rerun shortcut.
+    ["find.rerun", ["Meta+R"], ["Ctrl+F5"]],
+    ["usages.rerun", ["Meta+R"], ["Ctrl+F5"]],
   ])("%s", (id, mac, win) => {
     expect(intellijMacos[id]).toEqual(mac);
     expect(intellijWindows[id]).toEqual(win);
@@ -56,5 +67,6 @@ describe("IDEA keymap parity", () => {
     order(km, "code.fold", "project.collapseAll");
     order(km, "navigate.nextError", "vcs.changelist.edit");
     order(km, "debug.setValue", "vcs.changelist.edit");
+    order(km, "find.replaceInFile", "find.rerun");
   });
 });

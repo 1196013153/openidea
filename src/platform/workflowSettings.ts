@@ -73,6 +73,7 @@ export interface DebuggerSettingsValid {
 
 export interface RunSettingsValid {
   confirmRerun: boolean;
+  confirmTerminate: boolean;
   showOnStart: boolean;
   terminationTimeoutMs: number;
 }
@@ -211,7 +212,7 @@ export const DEFAULT_WORKFLOW: WorkflowSettings = {
     skipLibraryCode: true,
     python: { attachSubprocess: true, gevent: false },
   },
-  run: { confirmRerun: true, showOnStart: true, terminationTimeoutMs: 3000 },
+  run: { confirmRerun: true, confirmTerminate: true, showOnStart: true, terminationTimeoutMs: 3000 },
   terminal: {
     startDirectory: "",
     env: {},
@@ -341,6 +342,7 @@ export function validateRun(raw: unknown): RunSettingsValid {
   const v = obj(raw);
   return {
     confirmRerun: bool(v.confirmRerun, d.confirmRerun),
+    confirmTerminate: bool(v.confirmTerminate, d.confirmTerminate),
     showOnStart: bool(v.showOnStart, d.showOnStart),
     terminationTimeoutMs: num(v.terminationTimeoutMs, d.terminationTimeoutMs, WORKFLOW_LIMITS.terminationTimeoutMs, true),
   };

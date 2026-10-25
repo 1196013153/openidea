@@ -2,8 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RunConfig } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { menuGroupItems, registerMenuGroup } from "@/workbench/contributions";
-import { contextMenuItems } from "./contextRun";
+import type { MenuItem } from "@/ui";
+import { choiceItems, contextMenuItems } from "./contextRun";
+import { OPTIMISTIC, produceContextChoices } from "./producers";
+import { gutterTestState, markerIcon, targetMenuItems } from "./runGutter";
 import { useRun } from "./store";
+import type { RunTarget } from "./targets";
+import { TestResults } from "./testing";
+import { clearTestStates, recordTestStates } from "./testing/states";
 
 const ROOT = "/work/app";
 const SCRATCHES = "/Users/me/scratches";
@@ -129,5 +135,55 @@ describe("debug entry", () => {
     expect(labels(sh)).toEqual(["run.runContext|Run 'a.sh'|run", "run.modifyContext|Modify Run Configuration…|edit"]);
     const rs = contextMenuItems("editor", { paths: [`${SCRATCHES}/a.rs`], text: "fn main() {}", line: 0 });
     expect(labels(rs)[1]).toBe("run.debugContext|Debug 'a.rs'|debug");
+  });
+});
+
+describe("run gutter popup", () => {
+  const unit: RunConfig = { ...npmTest, id: "npm:test:unit", name: "npm run test:unit", args: ["run", "test:unit"] };
+  const text = "describe('math', () => {\n  it('adds', () => {\n  });\n});\n";
+  const adds: RunTarget = { line: 1, kind: "test", name: "math > adds", path: ["math", "adds"] };
+  const itemLabels = (items: MenuItem[]): string[] =>
+    items.map((i) => (i.kind === "separator" ? "---" : "label" in i ? `${i.label}${"submenu" in i && i.submenu ? " ▸" : ""}` : ""));
+
+  beforeEach(() => {
+    useProject.setState({ project: { name: "app", root: ROOT, isGit: false, settings: {} } as never });
+    useRun.setState({ configs: [npmTest], loaded: true });
+  });
+  afterEach(() => {
+    useProject.setState({ project: null });
+    useRun.setState({ configs: [], loaded: false });
+    clearTestStates();
+  });
+
+  it("ends with Modify Run Configuration… after the executors", () => {
+    const items = targetMenuItems(adds, `${ROOT}/src/m.test.ts`, text);
+    expect(itemLabels(items)).toEqual(["Run 'math > adds'", "Debug 'math > adds'", "---", "Modify Run Configuration…"]);
+  });
+
+  it("lists each matching test configuration when several match", () => {
+    useRun.setState({ configs: [npmTest, unit] });
+    const items = targetMenuItems(adds, `${ROOT}/src/m.test.ts`, text);
+    expect(itemLabels(items).slice(0, 2)).toEqual(["Run 'math > adds' ▸", "Debug 'math > adds' ▸"]);
+    const run = items[0] as Extract<MenuItem, { submenu?: MenuItem[] }>;
+    expect(run.submenu!.map((i) => ("shortcut" in i ? i.shortcut : null))).toEqual(["test", "npm run test:unit"]);
+    // ⌃⇧R's chooser lists the same, under a header.
+    expect(choiceItems(produceContextChoices({ path: `${ROOT}/src/m.test.ts`, root: ROOT, configs: [npmTest, unit], content: text, line: 1 }, OPTIMISTIC), false)[0]).toEqual({
+      kind: "header",
+      label: "Choose configuration to run",
+    });
+  });
+
+  it("icons follow the last test result", () => {
+    const path = `${ROOT}/src/m.test.ts`;
+    expect(markerIcon("test", gutterTestState(adds, path))).toBe("gutter-run");
+    const r = new TestResults();
+    r.apply([{ type: "result", path: ["src/m.test.ts", "math", "adds"], status: "failed" }]);
+    recordTestStates(r);
+    expect(markerIcon("test", gutterTestState(adds, path))).toBe("gutter-run-failed");
+    expect(markerIcon("suite", gutterTestState({ ...adds, kind: "suite", name: "math", path: ["math"] }, path))).toBe(
+      "gutter-run-failed",
+    );
+    // `main` targets never show results.
+    expect(gutterTestState({ line: 0, kind: "main", name: "main", path: [] }, path)).toBeNull();
   });
 });

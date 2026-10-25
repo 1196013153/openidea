@@ -56,9 +56,41 @@ pub(crate) fn merge_sides(r: &Repo) -> IdeResult<MergeSides> {
         }
         Some("cherry-pick") => sides.commit = read("CHERRY_PICK_HEAD").map(short),
         Some("revert") => sides.commit = read("REVERT_HEAD").map(short),
+        // Conflicts outside an operation come from restoring stashed changes (Smart
+        // Checkout, update with autostash): stage 2 is the new HEAD, stage 3 the user's.
+        None if !crate::write::unmerged_paths(r)?.is_empty() => {
+            sides.operation = Some("unstash".into());
+            sides.reversed = true;
+        }
         _ => {}
     }
     Ok(sides)
+}
+
+/// Three-way merge of file contents (`git merge-file --diff3`): changes that don't
+/// conflict are merged, each conflict is left as a diff3 block.
+pub(crate) fn merge_file(r: &Repo, ours: &str, base: &str, theirs: &str) -> IdeResult<String> {
+    struct TempDir(std::path::PathBuf);
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let dir = TempDir(r.git_dir.join(format!("openidea-merge-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0)?;
+    let file = |name: &str, text: &str| -> IdeResult<String> {
+        let path = dir.0.join(name);
+        std::fs::write(&path, text)?;
+        Ok(path.to_string_lossy().into_owned())
+    };
+    let (o, b, t) = (file("ours", ours)?, file("base", base)?, file("theirs", theirs)?);
+    let args = ["merge-file", "-p", "--diff3", "-L", "yours", "-L", "base", "-L", "theirs", &o, &b, &t];
+    let out = cli::run_raw(r.root(), &args, None)?;
+    // The exit status is the number of conflicts; only a negative one is a failure.
+    match out.code {
+        Some(code) if code >= 0 => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
+        code => Err(cli::failure(&args, &out.stderr, &out.stdout, code)),
+    }
 }
 
 /// The single branch (local first, then remote) pointing at `commit`.

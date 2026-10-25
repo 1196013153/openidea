@@ -109,6 +109,12 @@ pub struct LogQuery {
     /// `text` matches case-sensitively (Log filter `Cc`).
     #[serde(default)]
     pub text_match_case: bool,
+    /// More starting revisions next to `branch` (Log Branch filter with several branches).
+    #[serde(default)]
+    pub branches: Vec<String>,
+    /// More author needles next to `author`; a commit matches any of them (Log User filter).
+    #[serde(default)]
+    pub authors: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -359,6 +365,10 @@ pub struct MergeVersions {
     pub ours: Option<String>,
     pub theirs: Option<String>,
     pub sides: MergeSides,
+    /// Three-way merge of the versions above: non-conflicting changes merged, each
+    /// conflict left as a diff3 block (yours / base / theirs). `None` when a side is
+    /// missing (deleted on one side).
+    pub merged: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
@@ -599,11 +609,18 @@ impl Repo {
     pub fn rebase(&self, onto: &str) -> IdeResult<()> {
         write::rebase(self, onto)
     }
-    pub fn stash_push(&self, message: Option<&str>, include_untracked: bool) -> IdeResult<()> {
-        write::stash_push(self, message, include_untracked)
+    /// `keep_index`: changes already staged stay in the index (and the working tree).
+    pub fn stash_push(&self, message: Option<&str>, include_untracked: bool, keep_index: bool) -> IdeResult<()> {
+        write::stash_push(self, message, include_untracked, keep_index)
     }
-    pub fn stash_apply(&self, index: u32, pop: bool) -> IdeResult<()> {
-        write::stash_apply(self, index, pop)
+    /// `reinstate_index`: also restore what was staged when the stash was made.
+    pub fn stash_apply(&self, index: u32, pop: bool, reinstate_index: bool) -> IdeResult<()> {
+        write::stash_apply(self, index, pop, reinstate_index)
+    }
+    /// Creates and checks out `branch` at the commit the stash was made on, applies the
+    /// stash there (index included) and drops it.
+    pub fn stash_branch(&self, index: u32, branch: &str) -> IdeResult<()> {
+        write::stash_branch(self, index, branch)
     }
     /// Removes `stash@{index}` without applying it.
     pub fn stash_drop(&self, index: u32) -> IdeResult<()> {
@@ -786,7 +803,11 @@ impl Repo {
         let (base, ours, theirs) = self.conflict_versions(path)?;
         let sides = self.merge_sides()?;
         let (ours, theirs) = if sides.reversed { (theirs, ours) } else { (ours, theirs) };
-        Ok(MergeVersions { base, ours, theirs, sides })
+        let merged = match (&ours, &theirs) {
+            (Some(o), Some(t)) => Some(ops::merge_file(self, o, base.as_deref().unwrap_or(""), t)?),
+            _ => None,
+        };
+        Ok(MergeVersions { base, ours, theirs, sides, merged })
     }
     /// For conflict resolution: (base, ours, theirs) versions of a conflicted file.
     pub fn conflict_versions(&self, path: &Path) -> IdeResult<(Option<String>, Option<String>, Option<String>)> {

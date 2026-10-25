@@ -1,10 +1,16 @@
 /**
  * Editor side of live templates and postfix completion: Tab expansion,
- * ⌘J / Surround With choosers, completion source and snippet application.
+ * ⌘J template lookup, Surround With chooser, completion source and snippet
+ * application / field navigation.
  */
 import {
+  clearSnippet,
+  closeCompletion,
   completionStatus,
+  nextSnippetField,
+  prevSnippetField,
   snippet,
+  snippetKeymap,
   startCompletion,
   type Completion,
   type CompletionContext,
@@ -21,12 +27,14 @@ import {
   type Extension,
   type Transaction,
 } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, type Command } from "@codemirror/view";
+import { executeAction } from "@/platform/actions";
 import { useProject } from "@/platform/project";
 import { whenSynced, type EditorDocContext } from "@/editor/api";
 import { structure, type StructuralRanges } from "@/editor/structure";
 import { offsetToPos, posToOffset } from "@/editor/lsp/positions";
 import { calledFunctions, expandTemplate, applicableTemplates, usesSelection, type LiveTemplate } from "./live/model";
+import { surroundEntries, surroundersFor, type Surrounder } from "./live/surrounders";
 import { liveTemplates, useLiveTemplateOptions } from "./live/store";
 import { inCommentOrString, templateFunctions } from "./editorContext";
 import {
@@ -38,7 +46,7 @@ import {
   type PostfixTemplate,
 } from "./postfix/model";
 import { usePostfixSettings } from "./postfix/store";
-import { showChooser } from "./popup/store";
+import { showChooser, type ChooserItem } from "./popup/store";
 import { expandEmmetAtCaret } from "./emmet/editor";
 
 export interface TemplateDocInfo {
@@ -57,6 +65,13 @@ export const templateDoc = Facet.define<TemplateDocInfo, TemplateDocInfo>({
  * this key (`state.languageDataAt<CompletionSource>(EXTRA_COMPLETION_KEY, pos)`).
  */
 export const EXTRA_COMPLETION_KEY = "openideaCompletion";
+
+/**
+ * Language-data key for a lookup restricted to one source: `(state) =>
+ * CompletionSource | null`. While one returns a source, the LSP completion
+ * queries only that source (⌘J lists live templates only).
+ */
+export const EXCLUSIVE_COMPLETION_KEY = "openideaExclusiveCompletion";
 
 function userName(): string {
   const root = useProject.getState().project?.root ?? "";
@@ -147,6 +162,38 @@ const completeOnFieldMove = EditorView.updateListener.of((u) => {
     if (u.view.state.selection === u.state.selection) startCompletion(u.view);
   }, 0);
 });
+
+/**
+ * Esc in a template, as in IDEA: first drops the selection (closing the lookup)
+ * or closes the lookup; only with neither does it leave the template.
+ */
+export const escapeTemplate: Command = (view) => {
+  const sel = view.state.selection;
+  if (sel.ranges.some((r) => !r.empty)) {
+    closeCompletion(view);
+    view.dispatch({
+      selection: EditorSelection.create(
+        sel.ranges.map((r) => EditorSelection.cursor(r.head)),
+        sel.mainIndex,
+      ),
+    });
+    return true;
+  }
+  if (completionStatus(view.state) === "active") return closeCompletion(view);
+  return clearSnippet(view);
+};
+
+const unlessLookup =
+  (cmd: Command): Command =>
+  (view) =>
+    completionStatus(view.state) === "active" ? false : cmd(view);
+
+/** Tab and Enter both move to the next field (Enter is the lookup's while it is open). */
+const templateFieldKeys = snippetKeymap.of([
+  { key: "Tab", run: unlessLookup(nextSnippetField), shift: prevSnippetField },
+  { key: "Enter", run: unlessLookup(nextSnippetField) },
+  { key: "Escape", run: escapeTemplate },
+]);
 
 // ---------------------------------------------------------------------------
 // Live templates
@@ -243,19 +290,53 @@ export function expandLiveTemplateAtCaret(view: EditorView): boolean {
   return true;
 }
 
-/** ⌘J: chooser of templates applicable here, prefiltered by the word before the caret. */
-export function insertLiveTemplate(view: EditorView) {
-  const state = view.state;
-  const sel = state.selection.main;
-  const list = templatesAt(state, sel.head).filter((t) => !usesSelection(t.body));
-  const word = sel.empty ? wordBefore(state, sel.head) : null;
-  const prefix = word && state.sliceDoc(word.from - 1, word.from) !== "." ? word : null;
-  chooseTemplate(view, "Insert Live Template", list, prefix?.text ?? "", (t) => {
-    const s = view.state.selection.main;
-    // Replace the typed prefix only if it still precedes the caret.
-    const from = prefix && view.state.sliceDoc(prefix.from, s.head) === prefix.text ? prefix.from : s.from;
-    void expandInto(view, t, from, s.to);
+/** Whether the open (or opening) lookup is ⌘J's template-only one. */
+const setTemplateLookup = StateEffect.define<boolean>();
+const templateLookup = StateField.define<boolean>({
+  create: () => false,
+  update: (value, tr) => tr.effects.reduce((v, e) => (e.is(setTemplateLookup) ? e.value : v), value),
+});
+
+const endTemplateLookup = EditorView.updateListener.of((u) => {
+  if (!u.state.field(templateLookup) || completionStatus(u.startState) === null || completionStatus(u.state) !== null) return;
+  queueMicrotask(() => {
+    if (u.view.state.field(templateLookup) && completionStatus(u.view.state) === null)
+      u.view.dispatch({ effects: setTemplateLookup.of(false) });
   });
+});
+
+/** Live templates applicable at `pos` as lookup items replacing the word before it. */
+function liveTemplateOptions(state: EditorState, pos: number, word: { from: number; text: string } | null): CompletionResult | null {
+  const list = templatesAt(state, pos).filter((t) => !usesSelection(t.body));
+  if (!list.length) return null;
+  return {
+    from: word?.from ?? pos,
+    // IDEA: the description right-aligned, an exact abbreviation first.
+    options: list.map((t) => ({
+      label: t.abbrev,
+      typeText: t.description,
+      type: "snippet",
+      boost: word && t.abbrev === word.text ? 5 : -5,
+      apply: (view: EditorView, _c: Completion, from: number, to: number) => void expandInto(view, t, from, to),
+    })),
+    validFor: /^[\w$!#@-]*$/,
+  };
+}
+
+const templateLookupSource: CompletionSource = ({ state, pos }) => {
+  const word = wordBefore(state, pos);
+  const prefix = word && state.sliceDoc(word.from - 1, word.from) !== "." ? word : null;
+  return liveTemplateOptions(state, pos, prefix);
+};
+
+/**
+ * ⌘J: a completion lookup of the templates applicable here, filtered by the
+ * word before the caret; typing keeps filtering it.
+ */
+export function insertLiveTemplate(view: EditorView) {
+  closeCompletion(view);
+  view.dispatch({ effects: setTemplateLookup.of(true) });
+  if (!startCompletion(view)) view.dispatch({ effects: setTemplateLookup.of(false) });
 }
 
 /**
@@ -297,18 +378,23 @@ export async function surroundTarget(view: EditorView, ctx: EditorDocContext): P
   }
 }
 
+export const CONFIGURE_TEMPLATES_KEY = "\u0000configure";
+
 /**
  * ⌥⌘T: wraps the selection (or, without one, `target` — the statement at the
- * caret — or the current line) with a `$SELECTION$` template.
+ * caret — or the current line). As in IDEA the popup lists the language's
+ * surrounders (mnemonics 1–9, 0, A–Z), then the `$SELECTION$` live templates
+ * and "Configure Live Templates…".
  */
 export function surroundWith(view: EditorView, target?: { from: number; to: number } | null) {
   const state = view.state;
   const { language } = state.facet(templateDoc);
-  const list = applicableTemplates(liveTemplates(), language).filter((t) => usesSelection(t.body));
+  const templates = applicableTemplates(liveTemplates(), language).filter((t) => usesSelection(t.body));
   let { from, to } = state.selection.main;
-  if (from === to && target && target.from <= from && from <= target.to) {
+  const selected = from !== to;
+  if (!selected && target && target.from <= from && from <= target.to) {
     ({ from, to } = target);
-  } else if (from === to) {
+  } else if (!selected) {
     const line = state.doc.lineAt(from);
     from = line.from;
     to = line.to;
@@ -319,15 +405,46 @@ export function surroundWith(view: EditorView, target?: { from: number; to: numb
   if (from - first.from <= indent.length) from = first.from + indent.length;
   while (to > from && /\s/.test(state.sliceDoc(to - 1, to))) to--;
   const selection = state.sliceDoc(from, to);
+  const last = state.doc.lineAt(to);
+  const lines = !selected || (from === first.from + indent.length && !state.sliceDoc(to, last.to).trim());
+  const inline = selected && first.number === last.number && !!selection.trim();
+  const surrounders = surroundersFor(language, { lines, inline });
+  const entries = surroundEntries(surrounders, templates);
+  const byId = new Map<string, Surrounder | LiveTemplate>([...surrounders, ...templates].map((x) => [x.id, x]));
+  const items: ChooserItem[] = [];
+  for (const e of entries) {
+    if (e.kind === "template" && !items.some((i) => i.section))
+      items.push({ key: "\u0000templates", label: "Live templates", section: true });
+    const x = byId.get(e.id)!;
+    items.push(
+      e.kind === "surrounder"
+        ? { key: e.id, label: x.description, mnemonic: e.mnemonic ?? undefined }
+        : {
+            key: e.id,
+            label: (x as LiveTemplate).abbrev,
+            detail: x.description,
+            mnemonic: e.mnemonic ?? undefined,
+            mnemonicIndex: e.mnemonicIndex ?? undefined,
+          },
+    );
+  }
+  if (templates.length) {
+    items.push({ key: "\u0000separator", label: "", section: true });
+    items.push({ key: CONFIGURE_TEMPLATES_KEY, label: "Configure Live Templates…" });
+  }
   showChooser({
     title: "Surround With",
     anchor: caretAnchor(view),
-    filterable: true,
-    emptyText: "No surround templates for this language",
-    items: list.map((t) => ({ key: t.id, label: t.abbrev, detail: t.description, search: t.description })),
+    mnemonics: true,
+    emptyText: "Nothing to surround with here",
+    items,
     onPick: (item) => {
-      const t = list.find((x) => x.id === item.key);
       view.focus();
+      if (item.key === CONFIGURE_TEMPLATES_KEY) {
+        void executeAction("file.settings", "editor.liveTemplates");
+        return;
+      }
+      const t = byId.get(item.key);
       if (!t || view.state.sliceDoc(from, to) !== selection) return;
       view.dispatch({ selection: EditorSelection.range(from, to) });
       void expandInto(view, t, from, to, { selection, selectionIndent: indent });
@@ -390,6 +507,7 @@ export function expandPostfixAtCaret(view: EditorView): boolean {
 
 export const templateCompletionSource: CompletionSource = (ctx: CompletionContext): CompletionResult | null => {
   const { state, pos } = ctx;
+  if (state.field(templateLookup, false)) return templateLookupSource(ctx) as CompletionResult | null;
   const word = wordBefore(state, pos);
   const afterDot = word ? state.sliceDoc(word.from - 1, word.from) === "." : state.sliceDoc(pos - 1, pos) === ".";
   if (afterDot) {
@@ -415,20 +533,7 @@ export const templateCompletionSource: CompletionSource = (ctx: CompletionContex
     return { from: target.dot + 1, options, validFor: /^\w*$/ };
   }
   if (!word || !useLiveTemplateOptions.getState().showInCompletion) return null;
-  const list = templatesAt(state, pos).filter((t) => !usesSelection(t.body));
-  if (!list.length) return null;
-  return {
-    from: word.from,
-    // IDEA: the description right-aligned, an exact abbreviation first.
-    options: list.map((t) => ({
-      label: t.abbrev,
-      typeText: t.description,
-      type: "snippet",
-      boost: t.abbrev === word.text ? 5 : -5,
-      apply: (view: EditorView, _c: Completion, from: number, to: number) => void expandInto(view, t, from, to),
-    })),
-    validFor: /^[\w$!#@-]*$/,
-  };
+  return liveTemplateOptions(state, pos, word);
 };
 
 // ---------------------------------------------------------------------------
@@ -439,7 +544,15 @@ export function templateEditorExtension(ctx: EditorDocContext): Extension {
     templateDoc.of({ path: ctx.path, language: ctx.language }),
     fieldCompletion,
     completeOnFieldMove,
-    EditorState.languageData.of(() => [{ [EXTRA_COMPLETION_KEY]: templateCompletionSource }]),
+    templateFieldKeys,
+    templateLookup,
+    endTemplateLookup,
+    EditorState.languageData.of(() => [
+      {
+        [EXTRA_COMPLETION_KEY]: templateCompletionSource,
+        [EXCLUSIVE_COMPLETION_KEY]: (state: EditorState) => (state.field(templateLookup, false) ? templateLookupSource : null),
+      },
+    ]),
     Prec.high(
       keymap.of([
         {

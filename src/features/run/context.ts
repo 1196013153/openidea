@@ -39,17 +39,21 @@ function testKinds(relPath: string): string[] {
   return [];
 }
 
-/** Config whose working directory most specifically contains `relPath`. */
-function closest(configs: RunConfig[], relPath: string): RunConfig | undefined {
+/** Configs whose working directory most specifically contains `relPath` (ties in their original order). */
+function allClosest(configs: RunConfig[], relPath: string): RunConfig[] {
   const score = (c: RunConfig) => {
     const cwd = (c.cwd ?? "").replace(/^\.\/?/, "").replace(/\/+$/, "");
     if (!cwd) return 0;
     return relPath === cwd || relPath.startsWith(cwd + "/") ? cwd.length : -1;
   };
-  return configs
-    .map((c) => [c, score(c)] as const)
-    .filter(([, s]) => s >= 0)
-    .sort((a, b) => b[1] - a[1])[0]?.[0];
+  const scored = configs.map((c) => [c, score(c)] as const).filter(([, s]) => s >= 0);
+  const best = Math.max(...scored.map(([, s]) => s));
+  return scored.filter(([, s]) => s === best).map(([c]) => c);
+}
+
+/** Config whose working directory most specifically contains `relPath`. */
+function closest(configs: RunConfig[], relPath: string): RunConfig | undefined {
+  return allClosest(configs, relPath)[0];
 }
 
 function relToCwd(relPath: string, config: RunConfig): string {
@@ -111,11 +115,25 @@ function implicitPytest(relPath: string, configs: RunConfig[]): RunConfig | null
   };
 }
 
-/** File-level test configuration for `relPath` (the closest matching test config, narrowed to the file). */
-export function testConfigFor(relPath: string, configs: RunConfig[]): RunConfig | null {
+/**
+ * Test configurations that can run `relPath` equally well (same, closest working
+ * directory: `npm run test` and `npm run test:unit`…); the default one first.
+ */
+export function testBasesFor(relPath: string, configs: RunConfig[]): RunConfig[] {
   const kinds = testKinds(relPath);
   const candidates = configs.filter((c) => c.isTest && kinds.includes(c.kind));
-  const base = closest(candidates, relPath) ?? candidates[0] ?? implicitPytest(relPath, configs);
+  const best = allClosest(candidates, relPath);
+  if (best.length) return best;
+  const fallback = candidates[0] ?? implicitPytest(relPath, configs);
+  return fallback ? [fallback] : [];
+}
+
+/**
+ * File-level test configuration for `relPath` (the closest matching test config,
+ * or `base`, narrowed to the file).
+ */
+export function testConfigFor(relPath: string, configs: RunConfig[], base?: RunConfig): RunConfig | null {
+  base ??= testBasesFor(relPath, configs)[0];
   if (!base) return null;
   const file = relToCwd(relPath, base);
   switch (base.kind) {

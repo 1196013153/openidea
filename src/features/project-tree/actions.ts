@@ -1,6 +1,8 @@
 /** Actions of the project view (Find Action, keymap, other features via `executeAction`). */
-import { registerActions, type Action } from "@/platform/actions";
-import { maybeEditorService, toolWindowService } from "@/workbench/contributions";
+import { activeEditor } from "@/editor/api";
+import { getAction, registerActions, type Action } from "@/platform/actions";
+import { showContextMenu, type MenuItem } from "@/ui";
+import { maybeEditorService, menuGroupItems, toolWindowService } from "@/workbench/contributions";
 import { OPTION_LABELS } from "./HeaderActions";
 import { revealLabel } from "./contextMenu";
 import type { ProjectNode } from "./model";
@@ -77,6 +79,34 @@ export function selectInProjectView(path?: string | null, focus = true) {
   return revealPath(target, focus);
 }
 
+/**
+ * Select In (⌥F1): a chooser of the places that can show `path` (default: the
+ * active editor's file): the project view, contributed targets (`selectIn`
+ * menu groups), the navigation bar, Finder / Explorer and the terminal.
+ */
+export function selectInTargets(path: string): MenuItem[] {
+  return [
+    { kind: "header", label: "Select In" },
+    { label: "Project View", icon: "toolwindow-project", run: () => void selectInProjectView(path) },
+    ...menuGroupItems("selectIn", { paths: [path] }),
+    ...(getAction("navigate.navigationBar") && maybeEditorService()?.activePath() === path
+      ? [{ kind: "action" as const, action: "navigate.navigationBar", label: "Navigation Bar" }]
+      : []),
+    { label: revealLabel(), icon: "external-link", run: () => void revealInFinder(nodesFrom(path)) },
+    ...(getAction("terminal.openAt")
+      ? [{ label: "Terminal", icon: "terminal", run: () => void delegate("terminal.openAt", parentOf(path)) }]
+      : []),
+  ];
+}
+
+function showSelectIn(path: string) {
+  // At the caret, like IDEA's popup; centred near the top otherwise.
+  const view = activeEditor()?.view;
+  const coords = view && activeEditor()?.ctx.path === path ? view.coordsAtPos(view.state.selection.main.head) : null;
+  const at = coords ? { x: coords.left, y: coords.bottom + 2 } : { x: window.innerWidth / 2 - 100, y: 80 };
+  showContextMenu(at, selectInTargets(path));
+}
+
 export function registerProjectActions(): () => void {
   const copyPath = (kind: PathKind, id: string, title: string): Action => ({
     id,
@@ -97,16 +127,27 @@ export function registerProjectActions(): () => void {
 
   return registerActions([
     {
+      // A path argument (links, breadcrumbs, Open In › Project View) selects it in the project view.
       id: "navigate.selectIn",
+      title: "Select In…",
+      category: "Navigate",
+      when: OPEN,
+      keywords: ["locate", "reveal", "show in"],
+      run: ({ arg }) => {
+        const path = typeof arg === "string" ? arg : (arg as { path?: string } | undefined)?.path;
+        if (path) return void selectInProjectView(path);
+        const target = maybeEditorService()?.activePath() ?? leadNode()?.path;
+        if (target) showSelectIn(target);
+      },
+    },
+    {
+      id: "navigate.selectInProjectView",
       title: "Select in Project View",
       category: "Navigate",
       icon: "locate",
       when: OPEN,
-      keywords: ["locate", "reveal", "scroll from source"],
-      run: ({ arg }) =>
-        void selectInProjectView(
-          typeof arg === "string" ? arg : ((arg as { path?: string } | undefined)?.path ?? null),
-        ),
+      keywords: ["locate", "reveal", "scroll from source", "select opened file"],
+      run: ({ arg }) => void selectInProjectView(typeof arg === "string" ? arg : null),
     },
     {
       id: "project.reveal",

@@ -3,23 +3,26 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObjec
 import clsx from "clsx";
 import { create } from "zustand";
 import { executeAction } from "@/platform/actions";
+import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import {
   BarButton,
   HighlightedText,
   Icon,
+  IconButton,
   List,
   listNavigate,
   MenuList,
   Popup,
   SearchField,
   firstSelectable,
+  type MenuItem,
 } from "@/ui";
 import { buildBranchRows, type BranchRow, type PopupAction } from "./branches";
-import { branchMenu } from "./branchMenu";
-import { recentBranches } from "./branchOps";
+import { branchMenu, tagMenu } from "./branchMenu";
+import { loadFavoriteBranches, recentBranches, toggleFavoriteBranch, useFavoriteBranches } from "./branchOps";
 import { inProgress, operationTitle, type InProgress } from "./operations";
-import { loadBranches, repoName, selectRepo, useVcs } from "./store";
+import { currentRepo, loadBranches, repoName, selectRepo, useVcs } from "./store";
 import styles from "./BranchWidget.module.css";
 
 export const useBranchesPopup = create<{ open: boolean }>(() => ({ open: false }));
@@ -48,7 +51,8 @@ export function BranchWidget() {
     (repo ? `Repository: ${repo}\n` : "") +
     (branch.upstream
       ? `Git branch: ${headLabel(branch)}${op}\nTracking ${branch.upstream}`
-      : `Git branch: ${headLabel(branch)}${op}`) + (sync.length ? `\n${sync.join(", ")} commits` : "");
+      : `Git branch: ${headLabel(branch)}${op}`) +
+    (sync.length ? `\n${sync.join(", ")} commits` : "");
   return (
     <>
       <BarButton
@@ -63,9 +67,13 @@ export function BranchWidget() {
         <Icon name={branch.head ? "branch" : "commit"} size={16} className={styles.icon} />
         {repo && <span className={styles.repo}>{repo}</span>}
         <span className={styles.name}>
-          {inProgress(branch.operation) ? operationTitle(inProgress(branch.operation)!, branch.head) : headLabel(branch)}
+          {inProgress(branch.operation)
+            ? operationTitle(inProgress(branch.operation)!, branch.head)
+            : headLabel(branch)}
         </span>
-        {branch.operation && !inProgress(branch.operation) && <span className={styles.operation}>{branch.operation}</span>}
+        {branch.operation && !inProgress(branch.operation) && (
+          <span className={styles.operation}>{branch.operation}</span>
+        )}
         {/* Like IDEA's widget: icons only; counts are in the tooltip. */}
         {branch.behind > 0 && <Icon name="vcs-incoming" size={12} className={styles.sync} label="Incoming commits" />}
         {branch.ahead > 0 && <Icon name="vcs-outgoing" size={12} className={styles.sync} label="Outgoing commits" />}
@@ -117,26 +125,51 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
   const [query, setQuery] = useState("");
   const [recent] = useState(recentBranches);
   const [active, setActive] = useState(0);
-  const [menuFor, setMenuFor] = useState<{ row: Extract<BranchRow, { type: "branch" }>; el: HTMLElement } | null>(
-    null,
-  );
+  const [menuFor, setMenuFor] = useState<{ items: MenuItem[]; label: string; el: HTMLElement } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const repo = useVcs((s) => s.repo);
+  const favorites = useFavoriteBranches((s) => s.names);
+  const [tags, setTags] = useState<string[]>([]);
   useEffect(() => {
     void loadBranches().catch(() => undefined);
+    loadFavoriteBranches();
   }, []);
+  useEffect(() => {
+    let live = true;
+    call(commands.vcsTags(currentRepo())).then(
+      (t) => live && setTags(t),
+      () => live && setTags([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [repo, branches]);
 
   const op = useVcs((s) => inProgress(s.branch?.operation));
   const conflicts = useVcs((s) => s.status.filter((f) => f.unstaged === "conflicted").length);
   const actions = useMemo(() => [...operationActions(op, conflicts), ...POPUP_ACTIONS], [op, conflicts]);
-  const rows = useMemo(() => buildBranchRows(branches, recent, query, actions), [branches, recent, query, actions]);
+  const rows = useMemo(
+    () => buildBranchRows(branches, recent, query, actions, favorites, tags),
+    [branches, recent, query, actions, favorites, tags],
+  );
   const isSection = (r: BranchRow) => r.type === "section";
   const activeIndex = rows[active] && !isSection(rows[active]!) ? active : firstSelectable(rows, isSection);
 
+  const closeAll = () => {
+    setMenuFor(null);
+    onClose();
+  };
   const openMenu = (i: number) => {
     const row = rows[i];
-    if (row?.type !== "branch") return;
+    if (row?.type !== "branch" && row?.type !== "tag") return;
     const el = listRef.current?.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(row.key)}"]`);
-    if (el) setMenuFor({ row, el: (el.closest('[role="option"]') as HTMLElement | null) ?? el });
+    if (!el) return;
+    const anchorEl = (el.closest('[role="option"]') as HTMLElement | null) ?? el;
+    setMenuFor(
+      row.type === "branch"
+        ? { items: branchMenu(row.branch, current, closeAll), label: `Branch ${row.branch.name}`, el: anchorEl }
+        : { items: tagMenu(row.tag, closeAll), label: `Tag ${row.tag}`, el: anchorEl },
+    );
   };
 
   const activate = (i: number) => {
@@ -145,7 +178,7 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
     if (row.type === "action") {
       onClose();
       void executeAction(row.action.id, row.action.arg);
-    } else if (row.type === "branch") {
+    } else if (row.type === "branch" || row.type === "tag") {
       openMenu(i);
     }
   };
@@ -156,7 +189,8 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
       activate(activeIndex);
       return;
     }
-    if (e.key === "ArrowRight" && rows[activeIndex]?.type === "branch") {
+    const type = rows[activeIndex]?.type;
+    if (e.key === "ArrowRight" && (type === "branch" || type === "tag")) {
       const input = e.target as HTMLInputElement;
       if (input.selectionStart === input.value.length) {
         e.preventDefault();
@@ -197,6 +231,7 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
           variant="bare"
           onKeyDown={onKeyDown}
         />
+        <IconButton icon="git-fetch" title="Fetch" size="small" action="vcs.fetch" />
       </div>
       <div ref={listRef} style={{ height }} className={styles.listWrap}>
         <List
@@ -228,13 +263,10 @@ function BranchesPopup({ anchor, onClose }: { anchor: RefObject<HTMLElement | nu
           className={styles.menuPopup}
         >
           <MenuList
-            items={branchMenu(menuFor.row.branch, current, () => {
-              setMenuFor(null);
-              onClose();
-            })}
+            items={menuFor.items}
             onDone={() => setMenuFor(null)}
             onCloseLevel={() => setMenuFor(null)}
-            aria-label={`Branch ${menuFor.row.branch.name}`}
+            aria-label={menuFor.label}
           />
         </Popup>
       )}
@@ -276,11 +308,44 @@ function BranchRowView({ row }: { row: BranchRow }) {
       </span>
     );
   }
+  if (row.type === "tag") {
+    return (
+      <span className={styles.row} data-row-key={row.key}>
+        <Icon name="tag" size={14} className={styles.rowIcon} />
+        <HighlightedText
+          className={clsx(styles.label, styles.branchName)}
+          text={row.tag}
+          indices={row.matches}
+          tone="accent"
+        />
+        <Icon name="chevron-right" size={10} className={styles.chevron} />
+      </span>
+    );
+  }
   if (row.type !== "branch") return null;
   const b = row.branch;
   return (
     <span className={styles.row} data-row-key={row.key}>
-      <Icon name="branch" size={14} className={clsx(styles.rowIcon, b.current && styles.currentIcon)} />
+      {b.current ? (
+        <Icon name="current-branch" size={14} className={clsx(styles.rowIcon, styles.currentIcon)} />
+      ) : (
+        // Like IDEA: favorites show a star; others show an empty star on hover. Click toggles.
+        <button
+          type="button"
+          className={clsx(styles.star, row.favorite && styles.starOn)}
+          aria-label={row.favorite ? "Remove from Favorites" : "Add to Favorites"}
+          aria-pressed={row.favorite}
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFavoriteBranch(b);
+          }}
+        >
+          <Icon name={row.favorite ? "star" : "star-outline"} size={14} className={styles.starIcon} />
+          {!row.favorite && <Icon name="branch" size={14} className={styles.branchIcon} />}
+        </button>
+      )}
       <HighlightedText
         className={clsx(styles.label, styles.branchName, b.current && styles.current)}
         text={b.name}

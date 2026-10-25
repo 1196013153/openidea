@@ -122,6 +122,8 @@ fn merge_versions_put_the_users_work_on_the_left() {
     assert_eq!(v.sides.branch.as_deref(), Some("topic"));
     assert_eq!(v.sides.other_branch.as_deref(), Some("main"));
     assert_eq!(v.sides.commit.as_deref(), Some(&topic[..8]));
+    // The merged text puts the user's side first, whatever git's stage order.
+    assert_eq!(v.merged.as_deref(), Some("<<<<<<< yours\ntopic\n||||||| base\nbase\n=======\nmain\n>>>>>>> theirs\n"));
     let (cancel, out) = quiet();
     repo.abort_operation(&cancel, &out).unwrap();
 

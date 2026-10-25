@@ -13,8 +13,9 @@ mod registry;
 mod syntax;
 pub use registry::LanguageRegistry;
 pub use syntax::{
-    CSS_CLASS, CSS_ID, CSS_VARIABLE, FileReference, MAX_CACHED_TREES, MAX_PARSE_BYTES, ParsedTree, Syntax, SyntaxCache,
-    SyntaxCacheStats, SyntaxHighlightKind, SyntaxHighlights, TreeError, WebReference, WebReferenceKind,
+    CSS_CLASS, CSS_ID, CSS_VARIABLE, FileReference, Literal, LiteralKind, MAX_CACHED_TREES, MAX_PARSE_BYTES,
+    ParsedTree, Syntax, SyntaxCache, SyntaxCacheStats, SyntaxHighlightKind, SyntaxHighlights, TreeError, WebReference,
+    WebReferenceKind,
 };
 
 /// Parsed form of `languages/<id>.toml`. Backend-only; the UI gets [`LanguageInfo`].

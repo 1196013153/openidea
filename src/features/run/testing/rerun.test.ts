@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunConfig } from "@/platform/ipc";
 import { TestResults } from "./results";
-import { failedTestPaths, rerunFailedConfig } from "./rerun";
+import { failedTestPaths, leafTestPaths, rerunFailedConfig, testsConfig } from "./rerun";
 
 const cfg = (kind: string, command: string, args: string[]): RunConfig => ({
   id: `${kind}:test`,
@@ -26,6 +26,38 @@ describe("failedTestPaths", () => {
       { type: "result", path: ["b.test.ts", "ok"], status: "passed" },
     ]);
     expect(failedTestPaths(r)).toEqual([["a.test.ts", "subs"], ["b.test.ts"]]);
+  });
+});
+
+describe("tests selected in the test tree", () => {
+  it("expands suites to their tests; a suite without reported tests stands for itself", () => {
+    const r = new TestResults();
+    r.apply([
+      { type: "result", path: ["com.acme.ATest", "one()"], status: "passed" },
+      { type: "result", path: ["com.acme.ATest", "two()"], status: "failed" },
+      { type: "result", path: ["com.acme.BTest"], status: "passed" },
+    ]);
+    const nodes = [
+      r.get("com.acme.ATest")!,
+      r.get(["com.acme.ATest", "one()"].join("\u0000"))!,
+      r.get("com.acme.BTest")!,
+    ];
+    expect(leafTestPaths(nodes)).toEqual([
+      ["com.acme.ATest", "one()"],
+      ["com.acme.ATest", "two()"],
+      ["com.acme.BTest"],
+    ]);
+    const c = testsConfig(cfg("gradle", "./gradlew", ["test"]), leafTestPaths(nodes), "3 tests")!;
+    expect(c.name).toBe("3 tests");
+    expect(c.args).toEqual([
+      "test",
+      "--tests",
+      "com.acme.ATest.one",
+      "--tests",
+      "com.acme.ATest.two",
+      "--tests",
+      "com.acme.BTest",
+    ]);
   });
 });
 

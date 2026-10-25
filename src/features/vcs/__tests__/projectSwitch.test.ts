@@ -13,14 +13,14 @@ describe("switching the window to another repository", () => {
     disposers.push(installPreparedMessage(), installGitLog());
     useCommit.setState({ message: "wip", amend: true, selection: ["/a/x"] });
     useGitLog.setState({ commits: [{ id: "c1" } as never], selected: "c1", selection: ["c1"] });
-    useGitLog.setState((s) => ({ filters: { ...s.filters, author: "me" } }));
+    useGitLog.setState((s) => ({ filters: { ...s.filters, authors: ["me"] } }));
     logConsole("cmd", "git status");
 
     useVcs.setState({ root: "/b" });
 
     expect(useCommit.getState()).toMatchObject({ message: "", amend: false, selection: [] });
     expect(useGitLog.getState()).toMatchObject({ commits: [], selected: null, selection: [] });
-    expect(useGitLog.getState().filters.author).toBe("");
+    expect(useGitLog.getState().filters.authors).toEqual([]);
     expect(useVcsConsole.getState().lines).toEqual([]);
   });
 });

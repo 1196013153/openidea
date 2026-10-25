@@ -234,6 +234,7 @@ export const EXECUTION_PAGES: PageSpec[] = [
       {
         options: [
           { kind: "toggle", key: "run.confirmRerun", label: "Confirm rerun with process termination" },
+          { kind: "toggle", key: "run.confirmTerminate", label: "Confirm closing a tab with a running process" },
           {
             kind: "toggle",
             key: "run.showOnStart",

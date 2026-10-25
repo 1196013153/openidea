@@ -7,7 +7,13 @@ import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { create } from "zustand";
 import { activeEditor, isExternalChange, onEditorEvent, registerEditorContribution, useEditorRegistry } from "@/editor/api";
 import { call, commands, onIdeEvent } from "@/platform/ipc";
-import { recordLocation, renameLocations, type RecentLocation } from "./locations";
+import {
+  MERGE_DISTANCE,
+  recordLocation,
+  renameLocations,
+  type DismissedLocation,
+  type RecentLocation,
+} from "./locations";
 
 export interface CaretInfo {
   path: string;
@@ -25,6 +31,8 @@ interface TrackingState {
   /** Files edited in this session (Recent Files "Show edited only"). */
   edited: ReadonlySet<string>;
   locations: readonly RecentLocation[];
+  /** Places removed from Recent Locations (the editor's own history can't forget them). */
+  dismissed: readonly DismissedLocation[];
 }
 
 export const useTracking = create<TrackingState>(() => ({
@@ -32,13 +40,23 @@ export const useTracking = create<TrackingState>(() => ({
   editVersions: new Map(),
   edited: new Set(),
   locations: [],
+  dismissed: [],
 }));
+
+/** Recent Locations › Delete: forgets the place until it is visited again. */
+export function dismissLocation(l: RecentLocation) {
+  const near = (x: RecentLocation) => x.path === l.path && Math.abs(x.line - l.line) <= MERGE_DISTANCE;
+  useTracking.setState((s) => ({
+    locations: s.locations.filter((x) => !near(x)),
+    dismissed: [...s.dismissed.slice(-99), { path: l.path, line: l.line, time: Date.now() }],
+  }));
+}
 
 const docPaths = new Map<number, string>();
 
 /** The window switched projects: the previous one's places and edits don't apply. */
 export function resetTracking() {
-  useTracking.setState({ caret: null, editVersions: new Map(), edited: new Set(), locations: [] });
+  useTracking.setState({ caret: null, editVersions: new Map(), edited: new Set(), locations: [], dismissed: [] });
 }
 
 function bumpVersion(path: string, userEdit: boolean) {

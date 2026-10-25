@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import clsx from "clsx";
 import { editorsFor, getNavigationHistory } from "@/editor/api";
 import { call, commands } from "@/platform/ipc";
@@ -13,8 +13,8 @@ import {
   type ToolWindowContribution,
 } from "@/workbench/contributions";
 import { basename, openLocation } from "../common/open";
-import { fromNavigationHistory, mergeLocations, type RecentLocation } from "../common/locations";
-import { useTracking } from "../common/tracking";
+import { fromNavigationHistory, isDismissed, mergeLocations, type RecentLocation } from "../common/locations";
+import { dismissLocation, useTracking } from "../common/tracking";
 import {
   filterLocations,
   filterRecentFiles,
@@ -370,14 +370,16 @@ function dedent(lines: readonly string[]): string[] {
 function RecentLocationsDialog() {
   const changedOnly = useRecentPopup((s) => s.changedOnly);
   const recorded = useTracking((s) => s.locations);
+  const dismissed = useTracking((s) => s.dismissed);
   const root = useProject((s) => s.project?.root ?? null);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const source = useMemo(() => {
-    return withSnippets(mergeLocations(navigationHistory(), recorded), recorded);
-  }, [recorded]);
+    const all = withSnippets(mergeLocations(navigationHistory(), recorded), recorded);
+    return dismissed.length ? all.filter((l) => !isDismissed(l, dismissed)) : all;
+  }, [recorded, dismissed]);
   const items = useMemo(
     () => filterLocations(source, query, { changedOnly, root }),
     [source, query, changedOnly, root],
@@ -392,6 +394,12 @@ function RecentLocationsDialog() {
     if (e.key === "Enter") {
       e.preventDefault();
       open(items[active], e.shiftKey);
+      return;
+    }
+    // IDEA: Delete removes the selected place (Backspace too while there is no filter text).
+    if ((e.key === "Delete" || (e.key === "Backspace" && !query)) && items[active]) {
+      e.preventDefault();
+      dismissLocation(items[active]!);
       return;
     }
     if (!NAV_KEYS.includes(e.key)) return;
@@ -441,7 +449,11 @@ function RecentLocationsDialog() {
           getKey={(l) => `${l.path}:${l.line}:${l.time}`}
           activeIndex={active}
           onActiveChange={setIndex}
-          onActivate={(l, _i, e) => open(l, e.shiftKey)}
+          onActivate={(l, _i, e) => {
+            // A click selects (and previews the place); a double click opens it.
+            if (e.type === "click" && (e as ReactMouseEvent).detail < 2) return;
+            open(l, e.shiftKey);
+          }}
           focusable={false}
           rowHeight={LOCATION_ROW}
           aria-label="Recent locations"

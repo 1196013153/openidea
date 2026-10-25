@@ -1,5 +1,6 @@
 import { registerAction, registerActions } from "@/platform/actions";
-import { useContributions } from "../contributions";
+import { formatMessage, tx } from "@/platform/i18n";
+import { occurrenceNavigator, showStatusInfo, useContributions } from "../contributions";
 import { focusEditor } from "../focus";
 import { closeSelectedContent } from "./content";
 import {
@@ -8,9 +9,28 @@ import {
   hideAllToolWindows,
   hideToolWindow,
   jumpToLastToolWindow,
+  lastUsedToolWindow,
   useToolWindowLayout,
   toggleMaximizeToolWindow,
 } from "./store";
+
+/**
+ * Next / Previous Occurrence: steps through the results of the focused tool
+ * window, else of the last active one, else of a shown one, so it also works
+ * from the editor. The editor gets the focus only when the action ran outside
+ * the tool window.
+ */
+export function goToOccurrence(dir: 1 | -1): boolean {
+  const s = useToolWindowLayout.getState();
+  for (const id of new Set([s.focused, s.lastActive, lastUsedToolWindow(), ...Object.values(s.visible)])) {
+    const nav = id ? occurrenceNavigator(id) : null;
+    if (!nav) continue;
+    const step = nav.go(dir, s.focused !== id);
+    if (step) showStatusInfo(formatMessage(tx("{index} of {total}"), { index: step.index, total: step.total }));
+    return !!step;
+  }
+  return false;
+}
 
 /** Registers `toolwindow.<id>` for every tool window plus the generic tool window actions. */
 export function installToolWindowActions(): () => void {
@@ -79,6 +99,24 @@ export function installToolWindowActions(): () => void {
       category: "Window",
       when: "toolWindowFocus && !popupOpen",
       run: () => focusEditor(),
+    },
+    {
+      id: "navigate.nextOccurrence",
+      title: "Next Occurrence",
+      category: "Navigate",
+      icon: "arrow-down",
+      keywords: ["usage", "result", "find"],
+      when: "projectOpen",
+      run: () => void goToOccurrence(1),
+    },
+    {
+      id: "navigate.prevOccurrence",
+      title: "Previous Occurrence",
+      category: "Navigate",
+      icon: "arrow-up",
+      keywords: ["usage", "result", "find"],
+      when: "projectOpen",
+      run: () => void goToOccurrence(-1),
     },
     {
       id: "toolwindow.maximize",

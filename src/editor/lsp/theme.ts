@@ -256,6 +256,8 @@ export const lspTheme = EditorView.theme({
     backgroundColor: "var(--bg-identifier-under-caret-write, color-mix(in srgb, var(--danger) 12%, transparent))",
   },
   ".cm-lsp-nav-info": { padding: "4px 8px" },
+  // Chooser highlight (tempHighlight.ts): the expression / occurrences a choice would take.
+  ".cm-lsp-chooser-highlight": { backgroundColor: "var(--bg-text-search-result)" },
 
   // --- in-place rename (inplaceRename.ts) ------------------------------------
   ".cm-lsp-inplace": {
@@ -267,6 +269,17 @@ export const lspTheme = EditorView.theme({
     borderRadius: "2px",
   },
   ".cm-lsp-inplace-hint": { color: "var(--fg-secondary)", fontSize: "var(--fs-small)", padding: "3px 8px" },
+  ".cm-lsp-inplace-suggestions": {
+    listStyle: "none",
+    margin: "0 -8px 4px",
+    padding: "0",
+    fontFamily: "var(--openidea-editor-font, var(--font-mono))",
+    fontSize: "var(--fs-ui)",
+    color: "var(--fg)",
+  },
+  ".cm-lsp-inplace-suggestions li": { padding: "1px 8px", cursor: "pointer" },
+  ".cm-lsp-inplace-suggestions li:hover": { backgroundColor: "var(--bg-hover)" },
+  ".cm-lsp-inplace-suggestion-active": { backgroundColor: "var(--bg-selected)" },
 
   // --- floating lightbulb (intentions.ts) -----------------------------------
   ".cm-lsp-bulb": {
@@ -295,6 +308,8 @@ export const lspTheme = EditorView.theme({
     WebkitUserSelect: "none",
     userSelect: "none",
   },
+  // A part naming a declaration (⌘-click navigates there).
+  ".cm-lsp-inlay-part:hover": { textDecoration: "underline", textUnderlineOffset: "2px" },
   ".cm-lsp-inlay-pl": { marginLeft: "4px" },
   ".cm-lsp-inlay-pr": { marginRight: "4px" },
 

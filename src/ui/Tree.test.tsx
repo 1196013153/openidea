@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { Tree } from "./Tree";
+import { createRef } from "react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { Tree, type TreeHandle } from "./Tree";
 
 interface N {
   id: string;
@@ -78,6 +79,16 @@ describe("Tree keyboard navigation", () => {
     expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({ id: "README.md" }), expect.anything());
   });
 
+  it("F4 and ⌘↓ activate like Enter (Jump to Source)", () => {
+    const { key, onActivate } = setup();
+    key("End");
+    key("F4");
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    key("ArrowDown", { metaKey: true });
+    expect(onActivate).toHaveBeenCalledTimes(2);
+    expect(onActivate).toHaveBeenLastCalledWith(expect.objectContaining({ id: "README.md" }), expect.anything());
+  });
+
   it("extends the selection with Shift+Arrow", () => {
     const onSelectionChange = vi.fn();
     const { key } = setup({ defaultExpanded: ["src"], onSelectionChange });
@@ -121,6 +132,22 @@ describe("Tree speed search", () => {
     expect(tree.querySelectorAll("mark")).toHaveLength(0);
   });
 
+  it("Home / End jump to the first / last match; Left closes the search and collapses", () => {
+    const { tree, lead, key } = setup({ defaultExpanded: ["src", "main"] });
+    key("ArrowDown");
+    key("t");
+    key("s");
+    // "ts" matches App.tsx, index.ts and util.ts.
+    key("End");
+    expect(lead()).toBe("util.ts");
+    key("Home");
+    expect(lead()).toBe("App.tsx");
+    key("ArrowLeft");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(lead()).toBe("main");
+    expect(labels(tree)).toContain("App.tsx");
+  });
+
   it("filter mode hides non-matching rows but keeps ancestors", () => {
     const { tree, key } = setup({ defaultExpanded: ["src", "main"], speedSearchMode: "filter" });
     key("ArrowDown");
@@ -129,16 +156,56 @@ describe("Tree speed search", () => {
   });
 });
 
+describe("Tree occurrences", () => {
+  it("selects the next / previous leaf, expanding its ancestors", () => {
+    const handle = createRef<TreeHandle>();
+    const onSelectionChange = vi.fn();
+    const { tree, lead } = setup({ handleRef: handle, onSelectionChange });
+    let step: ReturnType<TreeHandle["selectOccurrence"]> = null;
+    act(() => void (step = handle.current!.selectOccurrence(1)));
+    expect(step).toMatchObject({ key: "App.tsx", index: 1, total: 4 });
+    expect(labels(tree)).toEqual(["src", "main", "App.tsx", "index.ts", "util.ts", "README.md"]);
+    expect(lead()).toBe("App.tsx");
+    expect(onSelectionChange).toHaveBeenLastCalledWith(
+      new Set(["App.tsx"]),
+      expect.objectContaining({ id: "App.tsx" }),
+    );
+    act(() => void (step = handle.current!.selectOccurrence(1)));
+    expect(step).toMatchObject({ key: "index.ts", index: 2 });
+    act(() => void (step = handle.current!.selectOccurrence(-1)));
+    expect(step).toMatchObject({ key: "App.tsx", index: 1 });
+    act(() => void (step = handle.current!.selectOccurrence(-1)));
+    expect(step).toBeNull();
+    expect(lead()).toBe("App.tsx");
+  });
+
+  it("starts from the selected group and honours isOccurrence", () => {
+    const handle = createRef<TreeHandle>();
+    const { key } = setup({ handleRef: handle, isOccurrence: (n) => n.id !== "src" });
+    key("ArrowDown"); // src
+    let step: ReturnType<TreeHandle["selectOccurrence"]> = null;
+    act(() => void (step = handle.current!.selectOccurrence(1)));
+    expect(step).toMatchObject({ key: "main", index: 1, total: 5 });
+    act(() => void (step = handle.current!.selectOccurrence(-1)));
+    expect(step).toBeNull();
+  });
+
+  it("skips the lead's subtree on request", () => {
+    const handle = createRef<TreeHandle>();
+    const { key } = setup({ handleRef: handle, defaultExpanded: ["src"] });
+    key("ArrowDown");
+    key("ArrowDown"); // main
+    let step: ReturnType<TreeHandle["selectOccurrence"]> = null;
+    act(() => void (step = handle.current!.selectOccurrence(1, { skipSubtree: true })));
+    expect(step).toMatchObject({ key: "util.ts", index: 3 });
+  });
+});
+
 describe("siblingPositions", () => {
   it("numbers rows among siblings", async () => {
     const { siblingPositions } = await import("./Tree");
     expect(
-      siblingPositions([
-        { parentKey: null },
-        { parentKey: "a" },
-        { parentKey: "a" },
-        { parentKey: null },
-      ]),
+      siblingPositions([{ parentKey: null }, { parentKey: "a" }, { parentKey: "a" }, { parentKey: null }]),
     ).toEqual([
       [1, 2],
       [1, 2],

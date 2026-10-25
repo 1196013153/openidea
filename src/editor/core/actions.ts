@@ -1,21 +1,22 @@
 /** Editor actions (ids from keymaps/intellij-macos.ts). */
 import { EditorSelection, type EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { addCursorAbove, addCursorBelow, deleteLine, moveLineDown, moveLineUp, toggleBlockComment } from "@codemirror/commands";
-import { foldAll, syntaxTree, toggleFold, unfoldAll } from "@codemirror/language";
+import { addCursorAbove, addCursorBelow, moveLineDown, moveLineUp, toggleBlockComment } from "@codemirror/commands";
+import { syntaxTree, toggleFold } from "@codemirror/language";
 import { acceptCompletion, completionStatus } from "@codemirror/autocomplete";
 import { executeAction, registerActions, type Action } from "@/platform/actions";
 import { getContext } from "@/platform/context";
 import { editorController, useGotoLine, useTabs } from "./controller";
 import {
-  addCaretNextOccurrence,
   addCaretsToLineEnds,
   commentLine,
   completeStatement,
+  deleteLine,
   duplicateLineOrSelection,
   joinLines,
   moveStatementDown,
   moveStatementUp,
+  nextOccurrence,
   selectAllOccurrences,
   startNewLine,
   startNewLineBefore,
@@ -25,9 +26,10 @@ import {
 import { emptyStack, extendSelection, shrinkSelection, type SelectionStack, type SimpleRange } from "./model/selectionStack";
 import type { EditorSlot } from "./model/slot";
 import { findAgain, openFindBar } from "./view/FindBar";
-import { foldAtCaret, foldSelection, unfoldAtCaret } from "./cm/folding";
+import { collapseAll, collapseRecursively, expandAll, expandRecursively, foldAtCaret, foldSelection, unfoldAtCaret } from "./cm/folding";
 import { reverseLines, sortLines } from "./cm/lines";
-import { cursorCodeBlockEnd, cursorCodeBlockStart, scrollToCenter, splitLine } from "./cm/caretCommands";
+import { cursorCodeBlockEnd, cursorCodeBlockStart, cursorMatchBrace, scrollToCenter, splitLine } from "./cm/caretCommands";
+import { isOverwrite, toggleOverwrite } from "./cm/overwrite";
 import { isColumnMode, toggleColumnMode } from "./cm/columnMode";
 import { pasteAsPlainText, pasteFromHistory, unwrapAtCaret } from "./extras";
 import { cyclicExpandWord } from "./wordCompletion";
@@ -289,6 +291,11 @@ function copyReference(view: EditorView, slot: EditorSlot) {
   void executeAction("editor.showHint", { text: `Copied reference: ${reference}` });
 }
 
+/** ⌃G; when nothing more is found, a hint first and the search from the top on the next press (IDEA). */
+function addNextOccurrence(view: EditorView) {
+  if (nextOccurrence(view) === "notFound") void executeAction("editor.showHint", { text: "Not found, press again to search from the top" });
+}
+
 // ---------------------------------------------------------------------------------
 
 export function registerEditorActions(): () => void {
@@ -341,9 +348,11 @@ export function registerEditorActions(): () => void {
       toggled: () => activeSlot()?.model.softWrapOn() ?? false,
       run: () => activeSlot()?.model.toggleSoftWrap(),
     },
-    text("code.foldAll", "Collapse All", (v) => foldAll(v), { category: "Folding", icon: "collapse-all" }),
-    text("code.unfoldAll", "Expand All", (v) => unfoldAll(v), { category: "Folding", icon: "expand-all" }),
-    text("code.addCaretNextOccurrence", "Add Selection for Next Occurrence", (v) => addCaretNextOccurrence(v), { category: "Edit" }),
+    text("code.foldAll", "Collapse All", (v) => collapseAll(v), { category: "Folding", icon: "collapse-all" }),
+    text("code.unfoldAll", "Expand All", (v) => expandAll(v), { category: "Folding", icon: "expand-all" }),
+    text("code.collapseRecursively", "Collapse Recursively", (v) => collapseRecursively(v), { category: "Folding", keywords: ["fold"] }),
+    text("code.expandRecursively", "Expand Recursively", (v) => expandRecursively(v), { category: "Folding", keywords: ["unfold"] }),
+    text("code.addCaretNextOccurrence", "Add Selection for Next Occurrence", (v) => addNextOccurrence(v), { category: "Edit" }),
     text("code.selectAllOccurrences", "Select All Occurrences", (v) => selectAllOccurrences(v), { category: "Edit" }),
     text("code.completeStatement", "Complete Current Statement", (v, slot) => completeCurrentStatement(v, slot)),
     text("code.startNewLine", "Start New Line", (v) => startNewLine(v)),
@@ -354,6 +363,19 @@ export function registerEditorActions(): () => void {
     text("editor.codeBlockEnd", "Move Caret to Code Block End", (v) => cursorCodeBlockEnd(v), { category: "Editor Actions" }),
     text("editor.cloneCaretAbove", "Clone Caret Above", (v) => addCursorAbove(v), { category: "Editor Actions" }),
     text("editor.cloneCaretBelow", "Clone Caret Below", (v) => addCursorBelow(v), { category: "Editor Actions" }),
+    text("editor.matchBrace", "Move Caret to Matching Brace", (v) => cursorMatchBrace(v), {
+      category: "Editor Actions",
+      // ⌃M is Show Commit Message History in the commit window.
+      keyWhen: "editorTextFocus",
+    }),
+    text("editor.toggleInsertState", "Toggle Insert/Overwrite", (v) => toggleOverwrite(v), {
+      category: "Editor Actions",
+      keywords: ["overwrite mode", "overtype"],
+      toggled: () => {
+        const view = activeSlot()?.view;
+        return view ? isOverwrite(view.state) : false;
+      },
+    }),
     text("code.joinLines", "Join Lines", (v) => joinLines(v)),
     text("code.toggleCase", "Toggle Case", (v) => toggleCase(v), { keywords: ["upper", "lower"] }),
     text("code.addCaretsToLineEnds", "Add Carets to Ends of Selected Lines", (v) => addCaretsToLineEnds(v), { category: "Edit" }),

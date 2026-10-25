@@ -2,7 +2,8 @@
  * The 3px change lane next to the line numbers (`gutterLaneMarkers`) and the
  * right-hand overview lane over the scrollbar (`scrollbarMarks`).
  */
-import { type Extension } from "@codemirror/state";
+import { EditorSelection, type EditorState, type Extension, type StateEffect } from "@codemirror/state";
+import { foldedRanges, unfoldEffect } from "@codemirror/language";
 import { EditorView, ViewPlugin, gutter, type ViewUpdate } from "@codemirror/view";
 import { gutterLaneMarkers, scrollbarMarks, type ScrollbarMark } from "@/editor/api";
 
@@ -12,6 +13,29 @@ export const changeLane: Extension = gutter({
 });
 
 const MAX_RENDERED = 4000;
+
+/** How far (px) a click may miss a mark on the overview lane. */
+const MARK_TOLERANCE = 6;
+
+/** The mark nearest to `y` (by its top) among those within the tolerance. */
+export function nearestMark<M extends { top: number; bottom: number }>(marks: readonly M[], y: number): M | null {
+  let best: M | null = null;
+  for (const m of marks) {
+    if (y < m.top - MARK_TOLERANCE || y > m.bottom + MARK_TOLERANCE) continue;
+    if (!best || Math.abs(m.top - y) < Math.abs(best.top - y)) best = m;
+  }
+  return best;
+}
+
+/** Unfolds the folds hiding `pos` or the rest of its line (navigating to a mark shows it). */
+export function unfoldAround(state: EditorState, pos: number): StateEffect<unknown>[] {
+  const lineEnd = state.doc.lineAt(pos).to;
+  const out: StateEffect<unknown>[] = [];
+  foldedRanges(state).between(pos, lineEnd, (from, to) => {
+    if (from <= lineEnd && to > pos) out.push(unfoldEffect.of({ from, to }));
+  });
+  return out;
+}
 
 class OverviewLane {
   dom: HTMLElement;
@@ -101,13 +125,19 @@ class OverviewLane {
   }
 
   private onMouseDown = (e: MouseEvent) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>(".cm-openidea-overviewMark");
-    if (!el?.dataset.pos) return;
+    if (e.button !== 0) return;
+    const marks = [...this.dom.querySelectorAll<HTMLElement>(".cm-openidea-overviewMark")].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, pos: Number(el.dataset.pos) };
+    });
+    const hit = nearestMark(marks, e.clientY);
+    if (!hit) return;
     e.preventDefault();
-    const pos = Math.min(Number(el.dataset.pos), this.view.state.doc.length);
+    const state = this.view.state;
+    const pos = Math.min(hit.pos, state.doc.length);
     this.view.dispatch({
-      selection: { anchor: pos },
-      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+      selection: EditorSelection.cursor(pos),
+      effects: [...unfoldAround(state, pos), EditorView.scrollIntoView(pos, { y: "center" })],
       userEvent: "select.overview",
     });
     this.view.focus();
