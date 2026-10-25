@@ -33,7 +33,7 @@ import {
 } from "./state";
 import { focusedDebugView } from "./ui/focusedView";
 import { expressionAt } from "./editor/valueTooltip";
-import { startInlineSmartStep } from "./editor/smartStep";
+import { pausedLineTargets, startInlineSmartStep } from "./editor/smartStep";
 import {
   openBreakpointsDialog,
   openConfigChooser,
@@ -92,7 +92,7 @@ async function smartStepInto() {
     await call(commands.debugStep(t.s.id, t.thread, "into"));
     return;
   }
-  const targets = await call(commands.debugStepInTargets(t.s.id, frame.id));
+  const targets = pausedLineTargets(await call(commands.debugStepInTargets(t.s.id, frame.id)));
   if (targets.length <= 1) {
     await call(
       targets[0]

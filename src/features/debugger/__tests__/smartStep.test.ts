@@ -10,6 +10,7 @@ import {
   locateStepTargets,
   smartStepTargets,
   startInlineSmartStep,
+  targetsOnLine,
 } from "../editor/smartStep";
 
 const ipc = vi.hoisted(() => ({ debugStepInTarget: vi.fn() }));
@@ -50,6 +51,14 @@ describe("locating Smart Step Into targets", () => {
       { id: 8, from: 14, to: 17 },
     ]);
     expect(locateStepTargets(line, 3, [target(1, "missing()")])).toBeNull();
+  });
+
+  it("keeps only the paused line's calls when the adapter lists the whole function", () => {
+    const line = "        total = add(total, square(i))";
+    const all = [target(0, "square(i)"), target(1, "add(total, square(i))"), target(2, 'print("total", total)')];
+    expect(targetsOnLine(line, 11, all).map((t) => t.id)).toEqual([0, 1]);
+    expect(targetsOnLine(line, 11, [{ ...target(5, "print()"), line: 11 }, { ...target(6, "add()"), line: 12 }]).map((t) => t.id)).toEqual([5]);
+    expect(targetsOnLine("pass", 0, all)).toBe(all);
   });
 });
 

@@ -40,12 +40,15 @@ export interface LensTarget {
   col: number;
 }
 
+/** Servers name callbacks and anonymous functions (`<function>`, `map() callback`); they have no usages. */
+const anonymous = (name: string) => /^<.*>$/.test(name) || / callback$/.test(name);
+
 /** Declarations worth a usages lens, in document order. Exported for tests. */
 export function lensTargets(items: readonly OutlineItem[]): LensTarget[] {
   const out: LensTarget[] = [];
   const walk = (list: readonly OutlineItem[]) => {
     for (const it of list) {
-      if (LENS_KINDS.has(it.kind)) out.push({ name: it.name, line: it.selection_range.start.line, col: it.selection_range.start.col });
+      if (LENS_KINDS.has(it.kind) && !anonymous(it.name)) out.push({ name: it.name, line: it.selection_range.start.line, col: it.selection_range.start.col });
       if (it.children.length) walk(it.children);
     }
   };

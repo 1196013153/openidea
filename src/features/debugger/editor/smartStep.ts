@@ -23,6 +23,11 @@ export function calleeName(label: string): string | null {
   return name && [...name].every((c) => IDENT.test(c)) ? name : null;
 }
 
+/** A call of `name`: `name(` not preceded by an identifier character. */
+function callPattern(name: string, flags: string): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{N}_$])${name.replace(/\$/g, "\\$")}\\s*\\(`, flags);
+}
+
 function identifierEnd(text: string, from: number): number {
   let i = from;
   while (i < text.length && IDENT.test(text[i]!)) i++;
@@ -46,8 +51,7 @@ export function locateStepTargets(lineText: string, line: number, targets: StepI
     } else {
       const name = calleeName(t.label);
       if (!name) return null;
-      const re = new RegExp(`(?<![\\p{L}\\p{N}_$])${name.replace(/\$/g, "\\$")}\\s*\\(`, "gu");
-      for (const m of lineText.matchAll(re)) {
+      for (const m of lineText.matchAll(callPattern(name, "gu"))) {
         if (used.has(m.index!)) continue;
         from = m.index!;
         to = from + name.length;
@@ -59,6 +63,28 @@ export function locateStepTargets(lineText: string, line: number, targets: StepI
     out.push({ id: t.id, from, to });
   }
   return out.sort((a, b) => a.from - b.from);
+}
+
+/**
+ * Targets that belong to the paused line. Some adapters (debugpy) list every
+ * call left in the function without positions; those are kept only when their
+ * callee appears on the line. Unchanged when nothing would remain.
+ */
+export function targetsOnLine(lineText: string, line: number, targets: StepInTarget[]): StepInTarget[] {
+  const kept = targets.filter((t) => {
+    if (t.line != null) return t.line === line;
+    if (t.column != null) return true;
+    const name = calleeName(t.label);
+    return !name || callPattern(name, "u").test(lineText);
+  });
+  return kept.length ? kept : targets;
+}
+
+/** Targets of the paused line, when that line is open in an editor. */
+export function pausedLineTargets(targets: StepInTarget[]): StepInTarget[] {
+  const { path, line } = useExecutionPoint.getState();
+  const doc = path ? editorShowing(path)?.view.state.doc : null;
+  return doc && line < doc.lines ? targetsOnLine(doc.line(line + 1).text, line, targets) : targets;
 }
 
 /** Editor to pick in: the active one when it shows `path`, else any showing it. */

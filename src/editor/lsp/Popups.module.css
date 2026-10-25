@@ -108,10 +108,14 @@
   color: var(--fg-faint);
 }
 .label {
-  flex: none;
-  max-width: 60%;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.label:has(+ .preview) {
+  flex: none;
+  max-width: 60%;
 }
 .preview {
   min-width: 80px;
