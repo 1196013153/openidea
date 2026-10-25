@@ -5,15 +5,21 @@
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
 import { registerOverlay, registerToolWindow } from "@/workbench/contributions";
-import { showCodeCleanupDialog, showDuplicatesDialog, showInspectCodeDialog, showStructuralDialog } from "./AnalysisDialogs";
+import {
+  showCodeCleanupDialog,
+  showDuplicatesDialog,
+  showInspectCodeDialog,
+  showStructuralDialog,
+} from "./AnalysisDialogs";
 import { AnalysisDialogHost } from "./dialogs";
 import { resetDuplicates } from "./duplicates";
 import { DuplicatesHeaderActions, DuplicatesView } from "./DuplicatesView";
-import { resetInspection } from "./inspect";
+import { installInspectionProfileSync, resetInspection } from "./inspect";
 import { InspectionHeaderActions, InspectionView, useInspectionHeaderMenu } from "./InspectionView";
 
 export function activate(): () => void {
   const disposers = [
+    installInspectionProfileSync(),
     useProject.subscribe((s, prev) => {
       if (s.project?.root === prev.project?.root) return;
       resetInspection();

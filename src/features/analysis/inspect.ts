@@ -22,6 +22,7 @@ import {
   profileOverrides,
   type ProfileId,
 } from "@/platform/inspections";
+import { useProject } from "@/platform/project";
 import { notifications, toolWindowService } from "@/workbench/contributions";
 import { describeScope, resolveScope, type ScopeChoice } from "./scope";
 
@@ -100,6 +101,8 @@ interface InspectState {
   running: boolean;
   total: number;
   done: number;
+  /** Unfiltered server results, retained so disabled inspections can be restored. */
+  rawFiles: Map<string, InspectedFileResult>;
   /** Files with problems, by path. */
   files: Map<string, InspectedFileResult>;
   summary: InspectSummary | null;
@@ -117,6 +120,7 @@ const initialInspection = (): InspectState => ({
   running: false,
   total: 0,
   done: 0,
+  rawFiles: new Map(),
   files: new Map(),
   summary: null,
   scopeLabel: null,
@@ -140,6 +144,28 @@ export function toggleExcludedProblems(problems: readonly InspectionProblem[]) {
 }
 
 export const useInspection = create<InspectState>(initialInspection);
+
+/** Rebuild from server diagnostics rather than previously overridden severities. */
+function projectResults(rawFiles: Map<string, InspectedFileResult>, profileId: ProfileId) {
+  const profile = profileOverrides(profileId);
+  const files = new Map<string, InspectedFileResult>();
+  for (const [path, file] of rawFiles) {
+    const diagnostics = applyProfileMixed(profile, file.diagnostics);
+    if (diagnostics.length) files.set(path, { ...file, diagnostics });
+  }
+  return { files, problems: [...files.values()].reduce((n, f) => n + f.diagnostics.length, 0) };
+}
+
+/** Keep both completed and streaming results in sync with edits to their chosen profile. */
+export function installInspectionProfileSync() {
+  return useProject.subscribe((state, prev) => {
+    if (state.settings?.inspections === prev.settings?.inspections) return;
+    const { rawFiles, profile, summary } = useInspection.getState();
+    if (profile === null) return;
+    const { files, problems } = projectResults(rawFiles, profile);
+    useInspection.setState({ files, summary: summary ? { ...summary, problems } : null });
+  });
+}
 
 let inflight: RequestId | null = null;
 
@@ -169,6 +195,7 @@ export async function runInspection(choice: ScopeChoice, profileId: ProfileId = 
     running: true,
     total: 0,
     done: 0,
+    rawFiles: new Map(),
     files: new Map(),
     summary: null,
     error: null,
@@ -177,7 +204,6 @@ export async function runInspection(choice: ScopeChoice, profileId: ProfileId = 
     profile: profileId,
     excluded: new Set(),
   });
-  const profile = profileOverrides(profileId);
   toolWindowService().show("inspection");
   if (!isTauri()) {
     useInspection.setState({ running: false, error: "Inspect Code needs the desktop app" });
@@ -187,7 +213,8 @@ export async function runInspection(choice: ScopeChoice, profileId: ProfileId = 
   let flush: ReturnType<typeof setTimeout> | null = null;
   const publish = () => {
     flush = null;
-    if (inflight === id) useInspection.setState({ files: new Map(found) });
+    if (inflight === id)
+      useInspection.setState({ rawFiles: new Map(found), files: projectResults(found, profileId).files });
   };
   const channel = new Channel<InspectEvent>();
   channel.onmessage = (ev) => {
@@ -197,23 +224,25 @@ export async function runInspection(choice: ScopeChoice, profileId: ProfileId = 
         useInspection.setState({ total: ev.total });
         break;
       case "file": {
-        const diagnostics = applyProfileMixed(profile, ev.file.diagnostics);
         for (const d of ev.file.diagnostics) if (d.code) noteDiagnosticCodes(producerOf(d), [d]);
-        if (diagnostics.length) found.set(ev.file.path, { ...ev.file, diagnostics });
+        found.set(ev.file.path, ev.file);
         useInspection.setState({ done: ev.done });
         flush ??= setTimeout(publish, 150);
         break;
       }
-      case "done":
+      case "done": {
+        const { files, problems } = projectResults(found, profileId);
         if (flush) clearTimeout(flush);
         inflight = null;
         useInspection.setState({
           running: false,
-          files: new Map(found),
+          rawFiles: new Map(found),
+          files,
           // Problems the profile kept, not all the servers reported.
-          summary: { ...ev.summary, problems: [...found.values()].reduce((n, f) => n + f.diagnostics.length, 0) },
+          summary: { ...ev.summary, problems },
         });
         break;
+      }
     }
   };
   try {

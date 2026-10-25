@@ -10,5 +10,5 @@ ui-mode = "SCSS"
 name = "vscode-css-language-server"
 command = "vscode-css-language-server"
 args = ["--stdio"]
-initialization-options = { provideFormatter = true }
+initialization-options = { provideFormatter = true, css = {}, scss = {}, less = {} }
 install-hint = "npm i -g vscode-langservers-extracted"
