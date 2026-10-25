@@ -3522,6 +3522,8 @@ export type RunInfo = {
 /**  Run/Debug configuration behaviour. */
 export type RunSettings = {
 	confirmRerun?: boolean,
+	/**  Ask before closing a Run tab whose process is still running. */
+	confirmTerminate?: boolean,
 	showOnStart?: boolean,
 	/**  Grace period between interrupt and kill when stopping a process. */
 	terminationTimeoutMs?: number,

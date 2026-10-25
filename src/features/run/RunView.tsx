@@ -9,7 +9,7 @@ import { runDirectory } from "./navigate";
 import {
   acceptsInput,
   clearConsole,
-  closeSession,
+  closeSessionTab,
   closeStdin,
   failedTests,
   rerunFailed,
@@ -217,7 +217,7 @@ export function RunTabs() {
       items={items}
       activeId={"session" in current ? current.session.id : current.trace.id}
       onSelect={(id) => useRun.setState({ activeSession: id })}
-      onClose={(id) => (traces.some((t) => t.id === id) ? closeStackTrace(id) : closeSession(id))}
+      onClose={(id) => (traces.some((t) => t.id === id) ? closeStackTrace(id) : void closeSessionTab(id))}
       panelIdPrefix="openidea-run"
     />
   );

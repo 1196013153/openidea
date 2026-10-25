@@ -13,10 +13,11 @@ import { ConsoleModel } from "./console";
 import { ConsoleView, type ConsoleInput } from "./ConsoleView";
 import { buildRows, mnemonics } from "./ConfigChooser";
 import { activate } from "./index";
-import { resetRuns, startRun, useRun, type RunSession } from "./store";
+import { closeSessionTab, resetRuns, startRun, useRun, type RunSession } from "./store";
 
 const confirm = vi.hoisted(() => vi.fn(async () => true));
-vi.mock("./dialogs", () => ({ confirmRerun: confirm, promptValue: vi.fn(), RunDialogsOverlay: () => null }));
+const confirmTerminate = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("./dialogs", () => ({ confirmRerun: confirm, confirmTerminate, promptValue: vi.fn(), RunDialogsOverlay: () => null }));
 
 const config = (id: string, extra: Partial<RunConfig> = {}): RunConfig => ({
   id,
@@ -51,7 +52,7 @@ beforeEach(() => {
   provideNotificationService({ notify: () => undefined });
 });
 
-describe("single-instance runs (IDEA restartRunProfile)", () => {
+describe("single-instance runs", () => {
   it("Run on a running configuration asks, then restarts it in its tab", async () => {
     const app = config("app");
     useRun.setState({ sessions: [running("run1", app)] });
@@ -82,6 +83,26 @@ describe("single-instance runs (IDEA restartRunProfile)", () => {
     await startRun(app);
     expect(confirm).not.toHaveBeenCalled();
     expect(useRun.getState().sessions).toHaveLength(2);
+  });
+});
+
+describe("closing a Run tab", () => {
+  it("asks before terminating a running process and keeps the tab when cancelled", async () => {
+    const app = config("app");
+    useRun.setState({ sessions: [running("run1", app)] });
+    confirmTerminate.mockResolvedValueOnce(false);
+    expect(await closeSessionTab("run1")).toBe(false);
+    expect(confirmTerminate).toHaveBeenCalledWith("app");
+    expect(useRun.getState().sessions).toHaveLength(1);
+    expect(await closeSessionTab("run1")).toBe(true);
+    expect(useRun.getState().sessions).toHaveLength(0);
+  });
+
+  it("closes a finished session without asking", async () => {
+    confirmTerminate.mockClear();
+    useRun.setState({ sessions: [{ ...running("run1", config("app")), status: "finished", exitCode: 0 }] });
+    expect(await closeSessionTab("run1")).toBe(true);
+    expect(confirmTerminate).not.toHaveBeenCalled();
   });
 });
 

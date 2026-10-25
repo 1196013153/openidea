@@ -65,6 +65,18 @@ describe("EditorController", () => {
     expect(openFilePaths(useTabs.getState())).toEqual(["/p/a.ts", "/p/b.ts"]);
   });
 
+  it("closes a tab by its input key", async () => {
+    ctrl = new EditorController(createMemoryBackend());
+    ctrl.start();
+    await ctrl.openFile("/p/a.ts", { focus: false });
+    await ctrl.openFile("/p/b.ts", { focus: false });
+    const key = Object.values(useTabs.getState().panes)
+      .flatMap((p) => p.tabs)
+      .find((t) => t.input.path === "/p/b.ts")!.input.key;
+    ctrl.closeInput(key);
+    expect(openFilePaths(useTabs.getState())).toEqual(["/p/a.ts"]);
+  });
+
   it("builds IDEA's editor tab menu", async () => {
     useProject.setState({ project: { name: "p", root: "/p", isGit: true, settings: {} } as never, settings: {} as never });
     const ids = ["navigate.selectIn", "project.revealInFinder", "vcs.localHistory", "vcs.commit", "project.copyAbsolutePath", "project.rename", "file.settings"];

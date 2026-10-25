@@ -13,7 +13,7 @@ import { workflowSettings } from "@/platform/workflowSettings";
 import { maybeEditorService, notifications, toolWindowService } from "@/workbench/contributions";
 import { ConsoleModel } from "./console";
 import { jvmFrameTarget } from "./links";
-import { confirmRerun } from "./dialogs";
+import { confirmRerun, confirmTerminate } from "./dialogs";
 import { createTestParser, frameworkFor, TestResults, withTestReporting, type TestEvent, type TestOutputParser } from "./testing";
 import { recordTestStates } from "./testing/states";
 import { failedTestPaths, leafTestPaths, rerunFailedConfig, testsConfig } from "./testing/rerun";
@@ -698,6 +698,16 @@ export async function closeStdin(sessionId: string): Promise<void> {
 export function clearConsole(sessionId: string) {
   runtimes.get(sessionId)?.console.clear();
   bump(sessionId);
+}
+
+/** Closing a Run tab: a process still running is terminated once the user agrees, as IDEA asks. */
+export async function closeSessionTab(sessionId: string): Promise<boolean> {
+  const session = getSession(sessionId);
+  if (!session) return false;
+  const running = session.status === "running" || session.status === "starting";
+  if (running && workflowSettings().run.confirmTerminate && !(await confirmTerminate(session.config.name))) return false;
+  closeSession(sessionId);
+  return true;
 }
 
 export function closeSession(sessionId: string) {

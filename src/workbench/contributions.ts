@@ -311,6 +311,8 @@ export interface EditorService {
   openPaths?(): string[];
   /** Closes every tab showing `path`. */
   closePath?(path: string): void;
+  /** Closes the tab of the input with this `key` (e.g. a merge editor once applied). */
+  closeInput?(key: string): void;
 }
 
 export interface ToolWindowService {

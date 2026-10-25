@@ -269,6 +269,8 @@ export function MergeEditor({ input }: { input: EditorInput }) {
     if (ok !== undefined) {
       setResolved(true);
       await refreshNow();
+      // Like IDEA, applying the result closes the merge editor.
+      editorService().closeInput?.(input.key);
     }
   };
 

@@ -40,6 +40,7 @@ export function activate(): void | (() => void) {
     focus: () => ctrl.focus(),
     openPaths: () => ctrl.openPaths(),
     closePath: (path) => ctrl.closePath(path),
+    closeInput: (key) => ctrl.closeInput(key),
   });
   _provideDocumentAttacher((path) => attachDocument(ctrl.manager, path));
   _provideCodePreview((path) => previewExtensions(path, ctrl.manager.settings()?.editor));
