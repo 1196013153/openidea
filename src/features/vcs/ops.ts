@@ -112,6 +112,7 @@ export async function saveAll() {
 const REMOTE_TITLE: Record<RemoteOp["op"], [string, string]> = {
   fetch: ["Fetching", "Fetch"],
   pull: ["Updating project", "Update"],
+  pullFrom: ["Pulling", "Pull"],
   push: ["Pushing", "Push"],
   deleteBranch: ["Deleting remote branch", "Delete remote branch"],
   pushBranch: ["Pushing", "Push"],
@@ -191,7 +192,7 @@ export async function runRemote(
         }
       }
       try {
-        const before = op.op === "pull" ? await headCommit(repo) : null;
+        const before = op.op === "pull" || op.op === "pullFrom" ? await headCommit(repo) : null;
         await call(commands.vcsRemote(repo, request, op, channel));
         const after = before ? await headCommit(repo) : null;
         if (before && after && before !== after) updated.push({ repo, from: before, to: after });
@@ -203,7 +204,7 @@ export async function runRemote(
     }
     if (failures.length) throw new Error(failures.join("\n"));
     lastRemoteError = null;
-    if (op.op === "pull") await notifyUpdated(updated);
+    if (op.op === "pull" || op.op === "pullFrom") await notifyUpdated(updated);
     else
       notifications().notify({
         group: "vcs",

@@ -5,7 +5,7 @@
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
 import { registerOverlay, registerToolWindow } from "@/workbench/contributions";
-import { showDuplicatesDialog, showInspectCodeDialog, showStructuralDialog } from "./AnalysisDialogs";
+import { showCodeCleanupDialog, showDuplicatesDialog, showInspectCodeDialog, showStructuralDialog } from "./AnalysisDialogs";
 import { AnalysisDialogHost } from "./dialogs";
 import { resetDuplicates } from "./duplicates";
 import { DuplicatesHeaderActions, DuplicatesView } from "./DuplicatesView";
@@ -50,6 +50,14 @@ export function activate(): () => void {
         when: "projectOpen",
         keywords: ["inspection", "analyze", "diagnostics", "problems"],
         run: () => void showInspectCodeDialog(),
+      },
+      {
+        id: "code.cleanup",
+        title: "Code Cleanup…",
+        category: "Code",
+        when: "projectOpen",
+        keywords: ["fix all", "cleanup", "organize imports", "reformat"],
+        run: () => void showCodeCleanupDialog(),
       },
       {
         id: "analyze.locateDuplicates",

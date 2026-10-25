@@ -7,6 +7,7 @@ import { useProject } from "@/platform/project";
 import {
   provideNotificationService,
   provideToolWindowService,
+  registerOverlay,
   registerStatusItem,
   registerToolWindow,
 } from "./contributions";
@@ -22,6 +23,7 @@ import {
 } from "./Notifications";
 import { loadPlatformInfo } from "@/platform/platformInfo";
 import { registerShellActions } from "./shellActions";
+import { MainToolbarDialogHost } from "./MainToolbarDialog";
 import { StatusInfo, TaskStatus } from "./StatusBar";
 import { installTaskEvents } from "./tasks";
 import { installToolWindowActions } from "./toolwindows/actions";
@@ -60,6 +62,7 @@ export function activateWorkbench(): () => void {
     installTaskEvents(),
     installNotifyEvents(),
     installBrowserGuards(),
+    registerOverlay({ id: "workbench.customizeToolbar", component: MainToolbarDialogHost }),
     registerStatusItem({ id: "workbench.tasks", align: "right", priority: 0, component: TaskStatus }),
     registerStatusItem({ id: "workbench.info", align: "left", priority: 5, component: StatusInfo }),
     registerToolWindow({

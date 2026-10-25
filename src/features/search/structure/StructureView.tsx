@@ -9,36 +9,99 @@ import {
   HighlightedText,
   Icon,
   IconButton,
+  Menu,
   SymbolBadge,
   Tree,
   fileIconName,
+  type MenuItem,
   type TreeHandle,
   T,
 } from "@/ui";
+import type { OutlineItem } from "@/platform/ipc";
 import { badgeKind, basename, openLocation } from "../common/open";
 import { useTracking } from "../common/tracking";
 import {
   allKeys,
+  applyViewFilter,
   filterOutline,
+  hasFields,
+  hasVisibility,
   keyOutline,
   parentKeys,
   sortOutline,
   symbolPathAt,
   visibleCount,
+  withInherited,
   type OutlineNode,
 } from "./outline";
 import { useLiveOutline, useOutline, useStructureOptions } from "./store";
 import styles from "./StructureView.module.css";
 
-function useOutlineNodes(alphabetical: boolean) {
+function useOutlineNodes() {
   const items = useOutline((s) => s.items);
-  return useMemo(() => sortOutline(keyOutline(items ?? []), alphabetical), [items, alphabetical]);
+  const alphabetical = useStructureOptions((s) => s.alphabetical);
+  const byVisibility = useStructureOptions((s) => s.sortByVisibility);
+  const fields = useStructureOptions((s) => s.showFields);
+  const nonPublic = useStructureOptions((s) => s.showNonPublic);
+  const showInherited = useStructureOptions((s) => s.showInherited);
+  const supported = useOutline((s) => s.inheritedSupported);
+  const inherited = useOutline((s) => s.inherited);
+  const extra = showInherited && supported ? inherited : null;
+  return useMemo(
+    () => sortOutline(applyViewFilter(withInherited(keyOutline(items ?? []), extra), { fields, nonPublic }), alphabetical, byVisibility),
+    [items, extra, alphabetical, byVisibility, fields, nonPublic],
+  );
+}
+
+/** IDEA's view options: Show Fields, Show Non-Public and Sort by Visibility (only when the outline knows visibility). */
+function viewOptionItems(items: readonly OutlineItem[]): MenuItem[] {
+  const o = useStructureOptions.getState();
+  const out: MenuItem[] = [];
+  if (hasFields(items) || !o.showFields)
+    out.push({
+      label: "Show Fields",
+      checked: o.showFields,
+      run: () => useStructureOptions.setState({ showFields: !o.showFields }),
+    });
+  if (hasVisibility(items)) {
+    out.push(
+      {
+        label: "Show Non-Public",
+        checked: o.showNonPublic,
+        run: () => useStructureOptions.setState({ showNonPublic: !o.showNonPublic }),
+      },
+      { kind: "separator" },
+      {
+        label: "Sort by Visibility",
+        checked: o.sortByVisibility,
+        run: () => useStructureOptions.setState({ sortByVisibility: !o.sortByVisibility }),
+      },
+    );
+  }
+  return out;
 }
 
 const navigate = (path: string, node: OutlineNode, focus: boolean) => {
   const p = node.item.selection_range.start;
-  void openLocation(path, { line: p.line, col: p.col }, { focus });
+  void openLocation(node.inherited?.path ?? path, { line: p.line, col: p.col }, { focus });
 };
+
+/** A symbol row; inherited members are greyed and name their supertype. */
+function SymbolRow({ node, indices, selected, dim }: { node: OutlineNode; indices?: readonly number[] | null; selected: boolean; dim?: boolean }) {
+  return (
+    <span className={clsx(styles.node, dim && styles.ancestor, node.inherited && styles.inherited)}>
+      <SymbolBadge kind={badgeKind(node.item.kind)} className={styles.badge} />
+      <HighlightedText
+        className={styles.name}
+        text={node.item.name}
+        indices={indices}
+        tone={selected ? "accent" : "strong"}
+      />
+      {node.item.detail && <span className={styles.detail}>{node.item.detail}</span>}
+      {node.inherited && <span className={styles.detail}>{`↑${node.inherited.owner}`}</span>}
+    </span>
+  );
+}
 
 const useCollapsed = create<{ keys: ReadonlySet<string> }>(() => ({ keys: new Set() }));
 
@@ -62,11 +125,10 @@ export function StructureView() {
   const items = useOutline((s) => s.items);
   const loading = useOutline((s) => s.loading);
   const error = useOutline((s) => s.error);
-  const alphabetical = useStructureOptions((s) => s.alphabetical);
   const autoscroll = useStructureOptions((s) => s.autoscrollFromSource);
   const caret = useTracking((s) => s.caret);
   const collapsed = useCollapsed((s) => s.keys);
-  const nodes = useOutlineNodes(alphabetical);
+  const nodes = useOutlineNodes();
   const tree = useRef<TreeHandle>(null);
   const revealing = useRef(false);
 
@@ -145,16 +207,7 @@ export function StructureView() {
               )}
             </span>
           ) : (
-            <span className={styles.node}>
-              <SymbolBadge kind={badgeKind(n.item.kind)} className={styles.badge} />
-              <HighlightedText
-                className={styles.name}
-                text={n.item.name}
-                indices={s.matches}
-                tone={s.selected ? "accent" : "strong"}
-              />
-              {n.item.detail && <span className={styles.detail}>{n.item.detail}</span>}
-            </span>
+            <SymbolRow node={n} indices={s.matches} selected={s.selected} />
           )
         }
       />
@@ -166,7 +219,14 @@ function StructureToolbar() {
   const alphabetical = useStructureOptions((s) => s.alphabetical);
   const autoscroll = useStructureOptions((s) => s.autoscrollFromSource);
   const autoscrollToSource = useStructureOptions((s) => s.autoscrollToSource);
+  const showInherited = useStructureOptions((s) => s.showInherited);
+  const inheritedSupported = useOutline((s) => s.inheritedSupported);
   const items = useOutline((s) => s.items);
+  const filterRef = useRef<HTMLButtonElement>(null);
+  const [menu, setMenu] = useState<MenuItem[] | null>(null);
+  // Subscribed so the menu's availability and pressed state follow the options.
+  const narrowed = useStructureOptions((s) => !s.showFields || !s.showNonPublic || s.sortByVisibility);
+  const hasOptions = viewOptionItems(items ?? []).length > 0;
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Structure actions">
       <IconButton
@@ -177,6 +237,28 @@ function StructureToolbar() {
         pressed={alphabetical}
         onClick={() => useStructureOptions.setState({ alphabetical: !alphabetical })}
       />
+      {hasOptions && (
+        <IconButton
+          ref={filterRef}
+          icon="filter"
+          title="View Options"
+          size="small"
+          iconSize={16}
+          pressed={narrowed}
+          onClick={() => setMenu(viewOptionItems(useOutline.getState().items ?? []))}
+        />
+      )}
+      {inheritedSupported && (
+        <IconButton
+          icon="hierarchy"
+          title="Show Inherited"
+          size="small"
+          iconSize={16}
+          pressed={showInherited}
+          onClick={() => useStructureOptions.setState({ showInherited: !showInherited })}
+        />
+      )}
+      <Menu open={!!menu} anchor={filterRef} items={menu ?? []} onClose={() => setMenu(null)} />
       <span className={styles.sep} />
       <IconButton
         icon="autoscroll-to-source"
@@ -232,7 +314,11 @@ function FileStructureDialog() {
   const loading = useOutline((s) => s.loading);
   const alphabetical = useStructureOptions((s) => s.alphabetical);
   const narrowDown = useStructureOptions((s) => s.narrowDown);
-  const nodes = useOutlineNodes(alphabetical);
+  const showFields = useStructureOptions((s) => s.showFields);
+  const showNonPublic = useStructureOptions((s) => s.showNonPublic);
+  const showInherited = useStructureOptions((s) => s.showInherited);
+  const inheritedSupported = useOutline((s) => s.inheritedSupported);
+  const nodes = useOutlineNodes();
   const [query, setQuery] = useState("");
   // IDEA opens the popup fully expanded.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -365,6 +451,27 @@ function FileStructureDialog() {
           checked={narrowDown}
           onChange={(v) => useStructureOptions.setState({ narrowDown: v })}
         />
+        {(hasFields(items ?? []) || !showFields) && (
+          <Checkbox
+            label="Show fields"
+            checked={showFields}
+            onChange={(v) => useStructureOptions.setState({ showFields: v })}
+          />
+        )}
+        {hasVisibility(items ?? []) && (
+          <Checkbox
+            label="Show non-public"
+            checked={showNonPublic}
+            onChange={(v) => useStructureOptions.setState({ showNonPublic: v })}
+          />
+        )}
+        {inheritedSupported && (
+          <Checkbox
+            label="Show inherited members"
+            checked={showInherited}
+            onChange={(v) => useStructureOptions.setState({ showInherited: v })}
+          />
+        )}
       </div>
       <div className={styles.popupList} style={{ height }}>
         <Tree<OutlineNode>
@@ -386,18 +493,7 @@ function FileStructureDialog() {
           empty={<span className={styles.popupEmpty}>{!path ? "Open a file first" : loading && !items ? "Loading…" : "No symbols"}</span>}
           renderNode={(n, s) => {
             const matched = filter.matches.get(n.key);
-            return (
-              <span className={clsx(styles.node, query.trim() && !matched && styles.ancestor)}>
-                <SymbolBadge kind={badgeKind(n.item.kind)} className={styles.badge} />
-                <HighlightedText
-                  className={styles.name}
-                  text={n.item.name}
-                  indices={matched}
-                  tone={s.selected ? "accent" : "strong"}
-                />
-                {n.item.detail && <span className={styles.detail}>{n.item.detail}</span>}
-              </span>
-            );
+            return <SymbolRow node={n} indices={matched} selected={s.selected} dim={!!query.trim() && !matched} />;
           }}
         />
       </div>

@@ -3,7 +3,9 @@
  * `languages/*.toml`) and Editor › File Encodings. Indentation feeds the
  * editor's effective indent (EditorConfig › detected › language override ›
  * language definition › Other File Types); line separator and encodings feed
- * new-file creation in the backend (`ide-workspace::FileDefaults`).
+ * new-file creation in the backend (`ide-workspace::FileDefaults`). The
+ * Scheme (Default / Project) is the scope these pages share; the Formatter tab
+ * feeds `platform/formatGuard`.
  */
 import { useId, useState } from "react";
 import { Button, Checkbox, Input, type SelectOption, T } from "@/ui";
@@ -12,7 +14,8 @@ import { ENCODING_CHOICES, lineCommentDefaults, type LanguageCodeStyle } from "@
 import { NumberInput, Row } from "../../components/Form";
 import { useSetting } from "../../components/context";
 import type { PageSpec } from "../spec";
-import { editorPage } from "./kit";
+import { CODE_STYLE_SCOPE, CodeStyleMain, SchemeRow, formatterLabels } from "./codeStyleScheme";
+import { editorPage, sectionLabels, type EditorSection } from "./kit";
 import styles from "./Editor.module.css";
 
 function VisualGuidesRow() {
@@ -53,13 +56,7 @@ const LINE_SEPARATORS: SelectOption[] = [
   { value: "cr", label: "Classic Mac OS (\\r)" },
 ];
 
-const CODE_STYLE = editorPage({
-  id: "editor.codeStyle",
-  title: "Code Style",
-  order: 24,
-  projectScope: true,
-  keywords: ["indent", "indentation", "tabs", "line separator", "editorconfig", "right margin"],
-  sections: [
+const GENERAL_SECTIONS: EditorSection[] = [
     {
       items: [
         {
@@ -94,25 +91,41 @@ const CODE_STYLE = editorPage({
         },
       ],
     },
-  ],
-});
+];
 
-const OTHER = editorPage({
-  id: "editor.codeStyle.other",
-  title: "Other File Types",
-  order: 1000,
-  projectScope: true,
-  keywords: ["tab size", "indent"],
-  sections: [
-    {
-      title: "Tabs and Indents",
+/** Shared by Code Style and its sub-pages: the scheme is one scope. */
+const SCHEME_SCOPE = { projectScope: true, scopeGroup: CODE_STYLE_SCOPE, ownScopeSwitch: true } as const;
+
+const CODE_STYLE: PageSpec = {
+  id: "editor.codeStyle",
+  title: "Code Style",
+  group: "Editor",
+  order: 24,
+  ...SCHEME_SCOPE,
+  keywords: ["indent", "indentation", "tabs", "line separator", "editorconfig", "right margin", "scheme", "formatter"],
+  component: () => <CodeStyleMain general={GENERAL_SECTIONS} />,
+  dynamicLabels: () => [...sectionLabels(GENERAL_SECTIONS), ...formatterLabels()],
+};
+
+const OTHER = {
+  ...editorPage({
+    id: "editor.codeStyle.other",
+    title: "Other File Types",
+    order: 1000,
+    keywords: ["tab size", "indent"],
+    sections: [
+      { items: [{ t: "custom", label: "Scheme", component: SchemeRow }] },
+      {
+        title: "Tabs and Indents",
       items: [
-        { t: "check", key: "editor.insertSpaces", label: "Use tab character", invert: true },
-        { t: "number", key: "editor.tabSize", label: "Tab size", min: 1, max: 16 },
-      ],
-    },
-  ],
-});
+          { t: "check", key: "editor.insertSpaces", label: "Use tab character", invert: true },
+          { t: "number", key: "editor.tabSize", label: "Tab size", min: 1, max: 16 },
+        ],
+      },
+    ],
+  }),
+  ...SCHEME_SCOPE,
+};
 
 /** Tabs and Indents of one language: overrides on top of the language definition. */
 function LanguageStyle({ lang }: { lang: LanguageInfo }) {
@@ -141,6 +154,7 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
   };
   return (
     <div className={styles.page}>
+      <SchemeRow />
       <section aria-label="Tabs and Indents">
         <div className={styles.previewTitle}>
           <T>Tabs and Indents</T>
@@ -231,8 +245,8 @@ export async function codeStyleLanguagePages(): Promise<PageSpec[]> {
       title: lang.name,
       group: "Editor",
       order: 100,
-      projectScope: true,
-      keywords: ["Tabs and Indents", "Tab size", "Indent", "Use tab character", "Hard wrap at", "Comment Code", "Line comment at first column"],
+      ...SCHEME_SCOPE,
+      keywords: ["Scheme", "Tabs and Indents", "Tab size", "Indent", "Use tab character", "Hard wrap at", "Comment Code", "Line comment at first column"],
       component: () => <LanguageStyle lang={lang} />,
     }));
 }

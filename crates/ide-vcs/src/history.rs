@@ -1,7 +1,7 @@
 //! Commit history (topological walk) and per-commit changed files via gitoxide.
 
 use crate::repo::{gx, resolve, to_string};
-use crate::{ChangeKind, ChangedFile, Commit, LogQuery, Repo};
+use crate::{ChangeKind, ChangedFile, Commit, LogOrder, LogQuery, Repo};
 use gix::ObjectId;
 use gix::bstr::ByteSlice;
 use ide_core::{IdeError, IdeResult};
@@ -72,6 +72,7 @@ pub(crate) fn log(r: &Repo, q: &LogQuery) -> IdeResult<Vec<Commit>> {
     let limit = if q.limit == 0 { usize::MAX } else { q.limit as usize };
     let mut to_skip = q.skip as usize;
 
+    let path_walk = path_filter.is_some();
     type Walk<'a> = Box<dyn Iterator<Item = IdeResult<(ObjectId, Vec<ObjectId>)>> + 'a>;
     let walk: Walk<'_> = if let Some(range) = range {
         let ids = range_ids(r, range, path_filter.as_deref())?;
@@ -81,29 +82,64 @@ pub(crate) fn log(r: &Repo, q: &LogQuery) -> IdeResult<Vec<Commit>> {
             Ok((id, commit.parent_ids().map(|p| p.detach()).collect()))
         }))
     } else if let Some(rel) = path_filter {
-        Box::new(PathWalk::new(&repo, tips, rel)?)
+        Box::new(PathWalk::new(&repo, tips, rel, q.first_parent)?)
     } else if repo.is_shallow().unwrap_or(false) {
         // Topological order needs complete history; shallow clones fall back to date order.
-        let walk = repo
-            .rev_walk(tips)
-            .sorting(gix::revision::walk::Sorting::ByCommitTime(Default::default()))
-            .all()
-            .map_err(gx)?;
+        let mut walk = repo.rev_walk(tips).sorting(gix::revision::walk::Sorting::ByCommitTime(Default::default()));
+        if q.first_parent {
+            walk = walk.first_parent_only();
+        }
+        let walk = walk.all().map_err(gx)?;
         Box::new(walk.map(|info| info.map(|i| (i.id, i.parent_ids.to_vec())).map_err(gx)))
     } else {
+        use gix::traverse::commit::{Parents, topo};
         let graph = repo.commit_graph_if_enabled().ok().flatten();
-        let topo = gix::traverse::commit::topo::Builder::from_iters(&repo.objects, tips, None::<Vec<ObjectId>>)
-            .sorting(gix::traverse::commit::topo::Sorting::TopoOrder)
+        let sorting = match q.order {
+            LogOrder::Topo => topo::Sorting::TopoOrder,
+            LogOrder::Date => topo::Sorting::DateOrder,
+        };
+        let topo = topo::Builder::from_iters(&repo.objects, tips, None::<Vec<ObjectId>>)
+            .sorting(sorting)
+            .parents(if q.first_parent { Parents::First } else { Parents::All })
             .with_commit_graph(graph)
             .build()
             .map_err(gx)?;
         Box::new(topo.map(|info| info.map(|i| (i.id, i.parent_ids.to_vec())).map_err(gx)))
     };
 
+    let shape = Shape {
+        no_merges: q.no_merges,
+        first_parent: q.first_parent,
+        since: q.since_ms.map(|ms| (ms / 1000.0).floor() as i64),
+        until: q.until_ms.map(|ms| (ms / 1000.0).ceil() as i64),
+    };
+    // Walks in (roughly) commit time order can stop once they are well past `since`.
+    let time_ordered = range.is_none() && (q.order == LogOrder::Date || path_walk);
+    let mut older_run = 0usize;
+
     let mut out = Vec::new();
     for item in walk {
-        let (id, parents) = item?;
+        let (id, mut parents) = item?;
+        if q.first_parent {
+            parents.truncate(1);
+        }
         let commit = repo.find_commit(id).map_err(gx)?;
+        let commit_time = commit.time().map(|t| t.seconds).unwrap_or(0);
+        if shape.is_active() {
+            let merge = commit.parent_ids().nth(1).is_some();
+            if shape.since.is_some_and(|s| commit_time < s) {
+                older_run += 1;
+                if time_ordered && older_run >= OLDER_RUN_LIMIT {
+                    break;
+                }
+                continue;
+            }
+            older_run = 0;
+            if !shape.shows(merge, commit_time) {
+                continue;
+            }
+            parents = shape.rewrite_parents(&repo, &parents)?;
+        }
         let sig = commit.author().map_err(gx)?;
         let name = to_string(sig.name.trim().as_bstr());
         let email = to_string(sig.email.trim().as_bstr());
@@ -136,12 +172,73 @@ pub(crate) fn log(r: &Repo, q: &LogQuery) -> IdeResult<Vec<Commit>> {
             summary,
             message: message.trim_end().to_string(),
             refs: decorations.get(&id).cloned().unwrap_or_default(),
+            commit_time_ms: commit_time as f64 * 1000.0,
         });
         if out.len() >= limit {
             break;
         }
     }
     Ok(out)
+}
+
+/// Consecutive commits older than `since` after which a time-ordered walk stops.
+const OLDER_RUN_LIMIT: usize = 64;
+
+/// Which commits the Log graph shows independently of the detail filters (author, text):
+/// `--no-merges` and the date range. Hidden commits are skipped and the parents of shown
+/// ones rewritten past them, like git's parent rewriting.
+struct Shape {
+    no_merges: bool,
+    first_parent: bool,
+    /// Commit time bounds in seconds; `since` inclusive, `until` exclusive.
+    since: Option<i64>,
+    until: Option<i64>,
+}
+
+/// Upper bound of commits visited while rewriting one commit's parents.
+const REWRITE_LIMIT: usize = 4096;
+
+impl Shape {
+    fn is_active(&self) -> bool {
+        self.no_merges || self.since.is_some() || self.until.is_some()
+    }
+
+    fn shows(&self, merge: bool, time: i64) -> bool {
+        !(self.no_merges && merge) && self.since.is_none_or(|s| time >= s) && self.until.is_none_or(|u| time < u)
+    }
+
+    /// `parents` with each hidden one replaced by its nearest shown ancestors; parents
+    /// older than `since` are dropped (their history is not shown).
+    fn rewrite_parents(&self, repo: &gix::Repository, parents: &[ObjectId]) -> IdeResult<Vec<ObjectId>> {
+        let mut out: Vec<ObjectId> = Vec::new();
+        let mut seen: HashSet<ObjectId> = HashSet::new();
+        let mut stack: Vec<ObjectId> = parents.iter().rev().copied().collect();
+        let mut visited = 0usize;
+        while let Some(p) = stack.pop() {
+            if !seen.insert(p) || !repo.has_object(p) {
+                continue;
+            }
+            visited += 1;
+            if visited > REWRITE_LIMIT {
+                break;
+            }
+            let commit = repo.find_commit(p).map_err(gx)?;
+            let time = commit.time().map(|t| t.seconds).unwrap_or(0);
+            if self.since.is_some_and(|s| time < s) {
+                continue;
+            }
+            let ids: Vec<ObjectId> = commit.parent_ids().map(|i| i.detach()).collect();
+            if self.shows(ids.len() > 1, time) {
+                if !out.contains(&p) {
+                    out.push(p);
+                }
+                continue;
+            }
+            let next = if self.first_parent { &ids[..ids.len().min(1)] } else { &ids[..] };
+            stack.extend(next.iter().rev());
+        }
+        Ok(out)
+    }
 }
 
 /// Commit ids of a revision range (`A..B`, `A...B`, `^A B`…), topologically ordered, via
@@ -234,10 +331,11 @@ struct PathWalk<'r> {
     seen: HashSet<ObjectId>,
     memo: HashMap<ObjectId, Option<ObjectId>>,
     seq: u64,
+    first_parent: bool,
 }
 
 impl<'r> PathWalk<'r> {
-    fn new(repo: &'r gix::Repository, tips: Vec<ObjectId>, rel: String) -> IdeResult<Self> {
+    fn new(repo: &'r gix::Repository, tips: Vec<ObjectId>, rel: String, first_parent: bool) -> IdeResult<Self> {
         let mut walk = PathWalk {
             repo,
             rel,
@@ -245,6 +343,7 @@ impl<'r> PathWalk<'r> {
             seen: Default::default(),
             memo: Default::default(),
             seq: 0,
+            first_parent,
         };
         for tip in tips {
             walk.push(tip)?;
@@ -268,7 +367,12 @@ impl<'r> PathWalk<'r> {
             let commit = self.repo.find_commit(id).map_err(gx)?;
             let parents: Vec<ObjectId> = commit.parent_ids().map(|p| p.detach()).collect();
             // Parents cut off by a shallow boundary are treated as absent.
-            let present: Vec<ObjectId> = parents.iter().copied().filter(|p| self.repo.has_object(p)).collect();
+            let present: Vec<ObjectId> = parents
+                .iter()
+                .copied()
+                .filter(|p| self.repo.has_object(p))
+                .take(if self.first_parent { 1 } else { usize::MAX })
+                .collect();
             let mine = path_entry(self.repo, id, &self.rel, &mut self.memo)?;
             let mut same_parent = None;
             for p in &present {

@@ -4,7 +4,14 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { BookmarkPopupsOverlay, bookmarkRows } from "../bookmarks/BookmarkPopups";
 import { bookmarkGutter } from "../bookmarks/gutter";
-import { loadBookmarks, updateBookmarks, useBookmarkPopups, useBookmarks, type Bookmark } from "../bookmarks/store";
+import {
+  loadBookmarks,
+  updateBookmarkData,
+  updateBookmarks,
+  useBookmarkPopups,
+  useBookmarks,
+  type Bookmark,
+} from "../bookmarks/store";
 
 beforeEach(() => {
   localStorage.clear();
@@ -41,6 +48,8 @@ describe("Bookmarks popup", () => {
       { path: "/p/b", line: 0, text: "zero", created: 3 },
     ]);
     expect(bookmarkRows(useBookmarks.getState().items).map((r) => r.kind)).toEqual(["file", "mark", "mark", "file", "mark"]);
+    const { items, lists } = useBookmarks.getState();
+    expect(bookmarkRows(items, [], lists).map((r) => r.kind)).toEqual(["list", "file", "mark", "mark", "file", "mark"]);
     render(<BookmarkPopupsOverlay />);
     act(() => useBookmarkPopups.setState({ list: true }));
     const list = screen.getByRole("listbox", { name: "Bookmarks" });
@@ -53,6 +62,49 @@ describe("Bookmarks popup", () => {
     fireEvent.change(input, { target: { value: "main" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(useBookmarks.getState().items[0]!.description).toBe("main");
+  });
+});
+
+describe("Bookmarks popup with file and folder bookmarks", () => {
+  it("groups by list: folders, then files with their line bookmarks; folders select in the project view", async () => {
+    const actions = await import("@/platform/actions");
+    const run = vi.spyOn(actions, "executeAction").mockResolvedValue(undefined as never);
+    act(() =>
+      updateBookmarkData((d) => ({
+        ...d,
+        lists: [...d.lists, { id: "list2", name: "Review" }],
+        items: [
+          { path: "/p/a.ts", line: 3, text: "three", created: 1, list: "default" },
+          { path: "/p/c.ts", line: 0, text: "zero", created: 1, list: "list2" },
+        ],
+        paths: [
+          { path: "/p/src", dir: true, list: "default", created: 1 },
+          { path: "/p/a.ts", dir: false, list: "default", created: 1 },
+          { path: "/p/b.ts", dir: false, list: "list2", created: 1 },
+        ],
+      })),
+    );
+    const { items, paths, lists } = useBookmarks.getState();
+    expect(bookmarkRows(items, paths, lists).map((r) => r.key)).toEqual([
+      "l:default",
+      "d:default:/p/src",
+      "p:default:/p/a.ts",
+      "b:/p/a.ts:3",
+      "l:list2",
+      "p:list2:/p/b.ts",
+      "f:list2:/p/c.ts",
+      "b:/p/c.ts:0",
+    ]);
+    render(<BookmarkPopupsOverlay />);
+    act(() => useBookmarkPopups.setState({ list: true }));
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    // The folder is the first selectable row: Enter selects it in the project view.
+    vi.useFakeTimers();
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Bookmarks" }), { key: "Enter" });
+    vi.runAllTimers();
+    vi.useRealTimers();
+    expect(run).toHaveBeenCalledWith("navigate.selectInProjectView", "/p/src");
+    run.mockRestore();
   });
 });
 

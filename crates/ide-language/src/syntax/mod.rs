@@ -15,7 +15,8 @@ pub use cache::{MAX_CACHED_TREES, SyntaxCache, SyntaxCacheStats};
 use grammars::{SPECS, Spec};
 pub use highlight::{SyntaxHighlightKind, SyntaxHighlights};
 use ide_core::{LanguageId, OutlineItem, Pos, Range};
-pub use literals::{Literal, LiteralKind};
+pub use literals::{Literal, LiteralKind, SpellingKind, SpellingRegion};
+pub use outline::merge_visibility;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -233,6 +234,12 @@ impl Syntax {
     /// `None` without a grammar for `lang` or for texts too large to parse.
     pub fn literals(&self, lang: &LanguageId, text: &str) -> Option<Vec<Literal>> {
         self.analyze(lang, text, |_, tree, _| Some(literals::literals(tree)))
+    }
+
+    /// Comments, string literals and declared names (byte ranges, document
+    /// order) for the Typo inspection; `None` like [`Self::literals`].
+    pub fn spelling_regions(&self, lang: &LanguageId, text: &str) -> Option<Vec<SpellingRegion>> {
+        self.analyze(lang, text, |_, tree, _| Some(literals::spelling_regions(tree)))
     }
 
     /// Syntax-aware selection ranges for IDEA "Extend Selection" (⌥↑), innermost first.

@@ -26,6 +26,24 @@ pub async fn lsp_completion(
     result
 }
 
+/// Inline (ghost text) suggestions at `pos`; `automatic` when triggered by typing.
+#[tauri::command]
+#[specta::specta]
+pub async fn lsp_inline_completion(
+    window: Window,
+    state: State<'_, AppState>,
+    request: RequestId,
+    doc: DocId,
+    pos: Pos,
+    automatic: bool,
+) -> IdeResult<Vec<InlineCompletionItem>> {
+    let lsp = project!(window, state).lsp.clone();
+    let cancel = state.begin_request(request);
+    let result = lsp.inline_completion(doc, pos, automatic, cancel).await;
+    state.end_request(request);
+    result
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn lsp_resolve_completion(

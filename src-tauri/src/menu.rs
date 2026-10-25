@@ -20,15 +20,17 @@
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
 
 /// Event emitted to the focused window when an IDE menu item is clicked.
 pub const MENU_EVENT: &str = "openidea://menu";
 /// Prefix of Open Recent item ids; the rest of the id is the project path.
 const RECENT_PREFIX: &str = "recent:";
+/// Prefix of items the frontend lists ([`MenuConfig::dynamic`]): `dyn:<action>` or `dyn:<action>|<arg>`.
+const DYNAMIC_PREFIX: &str = "dyn:";
 /// Action run for an Open Recent entry (argument: the project path).
 pub const OPEN_RECENT_ACTION: &str = "file.openRecentProject";
 const MAX_RECENT: usize = 15;
@@ -145,6 +147,9 @@ pub enum Entry {
     Separator,
     /// Open Recent entries, filled from the recent-projects list.
     RecentProjects,
+    /// Items the frontend lists under this slot name (registered tool windows,
+    /// saved layouts), from [`MenuConfig::dynamic`].
+    Dynamic(&'static str),
 }
 
 fn sub(id: &'static str, label: &'static str, children: Vec<Entry>) -> Entry {
@@ -160,6 +165,10 @@ fn hinted(id: &'static str, label: &'static str, hint: &'static str) -> Entry {
     Entry::Action { id, label, accel: None, hint: Some(hint) }
 }
 const SEP: Entry = Entry::Separator;
+
+/// [`Entry::Dynamic`] slots the frontend fills.
+pub const DYNAMIC_TOOL_WINDOWS: &str = "toolWindows";
+pub const DYNAMIC_LAYOUTS: &str = "toolWindowLayouts";
 
 /// The menu bar for `os`. Labels are English defaults; the frontend replaces
 /// them with `menu.<id>` strings from the active locale catalog.
@@ -194,6 +203,7 @@ pub fn spec(os: Os) -> Vec<Entry> {
     }
 
     let mut file = vec![
+        act("file.newProject", "New Project…"),
         act("file.new", "New…"),
         act("file.newScratchFile", "New Scratch File…"),
         act("file.openProject", "Open…"),
@@ -204,16 +214,26 @@ pub fn spec(os: Os) -> Vec<Entry> {
             vec![Entry::RecentProjects, SEP, act("welcome.recentProjects", "Manage Projects…")],
         ),
         act("file.closeProject", "Close Project"),
+        act("file.renameProject", "Rename Project…"),
         SEP,
         act("file.save", "Save All"),
+        act("file.reloadAllFromDisk", "Reload All from Disk"),
         sub("fileProperties", "File Properties", vec![act("file.toggleReadOnly", "Make File Read-only / Writable")]),
         SEP,
+        act("file.invalidateCaches", "Invalidate Caches…"),
+        SEP,
+        sub(
+            "manageIdeSettings",
+            "Manage IDE Settings",
+            vec![act("file.exportSettings", "Export Settings…"), act("file.importSettings", "Import Settings…")],
+        ),
         sub(
             "newProjectsSetup",
             "New Projects Setup",
             vec![act("file.newProjectsSettings", "Settings for New Projects…")],
         ),
-        act("file.invalidateCaches", "Invalidate Caches…"),
+        SEP,
+        act("file.togglePowerSave", "Power Save Mode"),
     ];
     if !mac {
         // macOS keeps Settings… and Quit in the application menu.
@@ -237,6 +257,34 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("find.showUsages", "Show Usages"),
         ],
     );
+    let macros = || {
+        sub(
+            "macros",
+            "Macros",
+            vec![
+                act("macro.startRecording", "Start Macro Recording"),
+                act("macro.stopRecording", "Stop Macro Recording"),
+                act("macro.playBack", "Play Back Last Macro"),
+                SEP,
+                act("macro.playSaved", "Play Saved Macros…"),
+                act("macro.edit", "Edit Macros…"),
+            ],
+        )
+    };
+    let bookmarks = || {
+        sub(
+            "bookmarks",
+            "Bookmarks",
+            vec![
+                act("navigate.toggleBookmark", "Toggle Bookmark"),
+                act("navigate.toggleBookmarkWithMnemonic", "Toggle Bookmark with Mnemonic"),
+                SEP,
+                act("navigate.showBookmarks", "Show All Bookmarks…"),
+                act("navigate.nextBookmark", "Next Bookmark"),
+                act("navigate.prevBookmark", "Previous Bookmark"),
+            ],
+        )
+    };
     let edit = if mac {
         vec![
             Entry::Native(Native::Undo),
@@ -258,6 +306,9 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("code.reverseLines", "Reverse Lines"),
             SEP,
             act("editor.toggleColumnSelection", "Column Selection Mode"),
+            SEP,
+            macros(),
+            bookmarks(),
         ]
     } else {
         // GTK/Win32 accelerators would swallow these keys before the webview, so
@@ -282,6 +333,9 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("code.reverseLines", "Reverse Lines"),
             SEP,
             act("editor.toggleColumnSelection", "Column Selection Mode"),
+            SEP,
+            macros(),
+            bookmarks(),
         ]
     };
     menus.push(sub("edit", "Edit", edit));
@@ -293,37 +347,39 @@ pub fn spec(os: Os) -> Vec<Entry> {
             sub(
                 "toolWindows",
                 "Tool Windows",
-                vec![
-                    act("toolwindow.project", "Project"),
-                    act("toolwindow.bookmarks", "Bookmarks"),
-                    act("toolwindow.find", "Find"),
-                    act("toolwindow.run", "Run"),
-                    act("toolwindow.build", "Build"),
-                    act("toolwindow.debug", "Debug"),
-                    act("toolwindow.coverage", "Coverage"),
-                    act("toolwindow.profiler", "Profiler"),
-                    act("toolwindow.problems", "Problems"),
-                    act("toolwindow.structure", "Structure"),
-                    act("toolwindow.services", "Services"),
-                    act("toolwindow.git", "Git"),
-                    act("toolwindow.commit", "Commit"),
-                    act("toolwindow.terminal", "Terminal"),
-                    SEP,
-                    act("toolwindow.hideAll", "Hide All Tool Windows"),
-                ],
+                vec![Entry::Dynamic(DYNAMIC_TOOL_WINDOWS), SEP, act("toolwindow.hideAll", "Hide All Tool Windows")],
             ),
             sub(
                 "appearance",
                 "Appearance",
                 vec![
                     act("editor.toggleZen", "Enter Distraction Free Mode"),
+                    act("window.toggleFullScreen", "Toggle Full Screen"),
+                    act("view.toggleCompactMode", "Compact Mode"),
+                    SEP,
+                    act("view.zoomIn", "Zoom In IDE"),
+                    act("view.zoomOut", "Zoom Out IDE"),
+                    act("view.resetZoom", "Reset IDE Zoom"),
                     SEP,
                     act("view.toggleTheme", "Toggle Light/Dark Theme"),
+                    act("toolbar.customize", "Customize Main Toolbar…"),
                 ],
             ),
-            act("view.notifications", "Notifications"),
             SEP,
-            act("window.toggleFullScreen", "Toggle Full Screen"),
+            act("code.quickDefinition", "Quick Definition"),
+            act("code.quickTypeDefinition", "Quick Type Definition"),
+            SEP,
+            act("navigate.recentLocations", "Recent Locations"),
+            act("navigate.recentFiles", "Recent Files"),
+            act("localHistory.recentChanges", "Recent Changes"),
+            SEP,
+            act("diff.compareWithClipboard", "Compare with Clipboard"),
+            SEP,
+            act("view.quickSwitchScheme", "Quick Switch Scheme…"),
+            SEP,
+            act("editor.resetFontSize", "Reset Font Size in All Editors"),
+            SEP,
+            act("view.notifications", "Notifications"),
         ],
     ));
 
@@ -337,8 +393,6 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("navigate.gotoSymbol", "Symbol…"),
             act("navigate.gotoLine", "Line/Column…"),
             SEP,
-            act("navigate.recentFiles", "Recent Files"),
-            act("navigate.recentLocations", "Recent Locations"),
             act("navigate.back", "Back"),
             act("navigate.forward", "Forward"),
             act("navigate.lastEditLocation", "Last Edit Location"),
@@ -360,8 +414,6 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("navigate.nextError", "Next Highlighted Error"),
             act("navigate.prevError", "Previous Highlighted Error"),
             SEP,
-            act("navigate.toggleBookmark", "Toggle Bookmark"),
-            act("navigate.showBookmarks", "Show Bookmarks"),
             act("navigate.selectIn", "Select In…"),
         ],
     ));
@@ -394,6 +446,7 @@ pub fn spec(os: Os) -> Vec<Entry> {
             SEP,
             act("code.reformat", "Reformat Code"),
             act("code.optimizeImports", "Optimize Imports"),
+            act("code.cleanup", "Code Cleanup…"),
             SEP,
             act("code.commentLine", "Comment with Line Comment"),
             act("code.commentBlock", "Comment with Block Comment"),
@@ -469,6 +522,7 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("run.stop", "Stop"),
             SEP,
             act("run.chooseConfig", "Run…"),
+            act("runAnything.show", "Run Anything…"),
             act("run.editConfigs", "Edit Configurations…"),
             act("debug.attachToProcess", "Attach to Process…"),
             SEP,
@@ -508,12 +562,19 @@ pub fn spec(os: Os) -> Vec<Entry> {
             act("vcs.commit", "Commit…"),
             act("vcs.push", "Push…"),
             act("vcs.update", "Update Project…"),
+            act("vcs.pull", "Pull…"),
             act("vcs.fetch", "Fetch"),
+            SEP,
+            act("vcs.merge", "Merge…"),
+            act("vcs.rebase", "Rebase…"),
             SEP,
             act("vcs.branches", "Branches…"),
             act("vcs.newBranch", "New Branch…"),
             act("vcs.newTag", "New Tag…"),
             act("vcs.resetHead", "Reset HEAD…"),
+            SEP,
+            act("vcs.newWorktree", "New Worktree…"),
+            act("vcs.worktrees", "Worktrees…"),
             SEP,
             act("vcs.showDiff", "Show Diff"),
             act("vcs.rollback", "Rollback…"),
@@ -552,6 +613,10 @@ pub fn spec(os: Os) -> Vec<Entry> {
                     act("github.openInBrowser", "Open on GitHub"),
                 ],
             ),
+            act("vcs.manageRemotes", "Manage Remotes…"),
+            act("vcs.clone", "Clone…"),
+            SEP,
+            act("vcs.operations", "VCS Operations Popup…"),
         ],
     ));
 
@@ -573,14 +638,64 @@ pub fn spec(os: Os) -> Vec<Entry> {
         window.extend([Entry::Native(Native::Minimize), Entry::Native(Native::Zoom), SEP]);
     }
     window.extend([
-        act("window.new", "New Window"),
-        accel("window.next", "Next Project Window", "CmdOrCtrl+`"),
-        accel("window.previous", "Previous Project Window", "CmdOrCtrl+Shift+`"),
+        sub(
+            "toolWindowLayouts",
+            "Tool Window Layouts",
+            vec![
+                act("layout.save", "Save Current Layout as…"),
+                act("layout.restoreDefault", "Restore Default Layout"),
+                SEP,
+                Entry::Dynamic(DYNAMIC_LAYOUTS),
+                SEP,
+                act("layout.rename", "Rename Layout…"),
+                act("layout.delete", "Delete Layout…"),
+            ],
+        ),
         SEP,
-        act("editor.splitRight", "Split Right"),
-        act("editor.splitDown", "Split Down"),
-        act("editor.unsplit", "Unsplit"),
+        sub(
+            "activeToolWindow",
+            "Active Tool Window",
+            vec![
+                act("toolwindow.hideActive", "Hide Active Tool Window"),
+                act("toolwindow.maximize", "Maximize Tool Window"),
+                act("toolwindow.closeContent", "Close Active Tab"),
+                SEP,
+                act("toolwindow.jumpToLast", "Jump to Last Tool Window"),
+                act("toolwindow.focusEditor", "Focus Editor"),
+            ],
+        ),
+        sub(
+            "editorTabs",
+            "Editor Tabs",
+            vec![
+                act("editor.nextTab", "Select Next Tab"),
+                act("editor.prevTab", "Select Previous Tab"),
+                SEP,
+                act("editor.pinTab", "Pin Tab"),
+                act("editor.closeTab", "Close Tab"),
+                act("editor.closeOtherTabs", "Close Other Tabs"),
+                act("editor.closeAllTabs", "Close All Tabs"),
+                act("editor.reopenClosedTab", "Reopen Closed Tab"),
+                SEP,
+                act("editor.splitRight", "Split Right"),
+                act("editor.splitDown", "Split Down"),
+                act("editor.unsplit", "Unsplit"),
+                act("editor.moveToOppositeGroup", "Move to Opposite Group"),
+            ],
+        ),
+        SEP,
+        act("window.new", "New Window"),
     ]);
+    // ⌘` is macOS's window cycling; elsewhere Ctrl+` is Quick Switch Scheme and the keymap's
+    // Ctrl+Alt+] / Ctrl+Alt+[ switch windows.
+    if mac {
+        window.extend([
+            accel("window.next", "Next Project Window", "Cmd+`"),
+            accel("window.previous", "Previous Project Window", "Cmd+Shift+`"),
+        ]);
+    } else {
+        window.extend([act("window.next", "Next Project Window"), act("window.previous", "Previous Project Window")]);
+    }
     if mac {
         window.extend([SEP, Entry::Native(Native::BringAllToFront)]);
     }
@@ -612,6 +727,13 @@ pub struct MenuRoute {
 pub fn route(spec: &[Entry], id: &str) -> Option<MenuRoute> {
     if let Some(path) = id.strip_prefix(RECENT_PREFIX) {
         return Some(MenuRoute { action: OPEN_RECENT_ACTION.into(), arg: Some(path.into()) });
+    }
+    if let Some(rest) = id.strip_prefix(DYNAMIC_PREFIX) {
+        let (action, arg) = match rest.split_once('|') {
+            Some((action, arg)) => (action, Some(arg.to_owned())),
+            None => (rest, None),
+        };
+        return (!action.is_empty()).then(|| MenuRoute { action: action.into(), arg });
     }
     action_ids(spec).into_iter().any(|a| a == id).then(|| MenuRoute { action: id.into(), arg: None })
 }
@@ -660,11 +782,45 @@ pub struct MenuConfig {
     pub labels: HashMap<String, String>,
     /// Action id → display shortcut from the JS keymap, e.g. `⇧⌘O`.
     pub shortcuts: HashMap<String, String>,
+    /// [`Entry::Dynamic`] slot → its items, already localised.
+    #[serde(default)]
+    pub dynamic: HashMap<String, Vec<DynamicItem>>,
+}
+
+/// An item of a frontend-listed menu slot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DynamicItem {
+    pub action: String,
+    pub arg: Option<String>,
+    pub label: String,
+}
+
+impl DynamicItem {
+    /// Native menu item id, decoded again by [`route`].
+    pub fn item_id(&self) -> String {
+        match &self.arg {
+            Some(arg) => format!("{DYNAMIC_PREFIX}{}|{arg}", self.action),
+            None => format!("{DYNAMIC_PREFIX}{}", self.action),
+        }
+    }
 }
 
 impl MenuConfig {
     fn label(&self, id: &str, default: &str) -> String {
         self.labels.get(&format!("menu.{id}")).cloned().unwrap_or_else(|| default.to_owned())
+    }
+
+    fn dynamic_items(&self, slot: &str) -> &[DynamicItem] {
+        self.dynamic.get(slot).map(Vec::as_slice).unwrap_or_default()
+    }
+
+    /// A dynamic item's text: its label, plus the action's shortcut unless it carries an argument.
+    fn dynamic_text(&self, item: &DynamicItem) -> String {
+        match self.shortcuts.get(&item.action).filter(|s| item.arg.is_none() && !s.is_empty()) {
+            Some(shortcut) => format!("{}\t{shortcut}", item.label),
+            None => item.label.clone(),
+        }
     }
 
     /// Item text with the keymap shortcut appended after a tab (display only).
@@ -680,6 +836,48 @@ impl MenuConfig {
 #[derive(Default)]
 pub struct MenuState {
     pub config: Mutex<MenuConfig>,
+    /// Action ids the focused window reports as disabled (no context / not registered).
+    pub disabled: Mutex<HashSet<String>>,
+}
+
+/// The action an item id stands for, if it is an IDE action item.
+fn item_action(id: &str) -> Option<&str> {
+    if id.starts_with(RECENT_PREFIX) || id == "recent.none" || id.starts_with("submenu:") {
+        return None;
+    }
+    Some(id.strip_prefix(DYNAMIC_PREFIX).map_or(id, |rest| rest.split_once('|').map_or(rest, |(a, _)| a)))
+}
+
+/// Whether the item `id` is enabled given the disabled action ids.
+pub fn item_enabled(id: &str, disabled: &HashSet<String>) -> bool {
+    item_action(id).is_none_or(|a| !disabled.contains(a))
+}
+
+/// Updates the enabled state of the installed menu's items in place (no rebuild).
+pub fn apply_disabled<R: Runtime>(app: &AppHandle<R>, disabled: &HashSet<String>) {
+    fn walk<R: Runtime>(items: Vec<MenuItemKind<R>>, disabled: &HashSet<String>) {
+        for item in items {
+            match item {
+                MenuItemKind::MenuItem(i) => {
+                    let enabled = item_enabled(i.id().as_ref(), disabled);
+                    if i.is_enabled().is_ok_and(|e| e != enabled) {
+                        let _ = i.set_enabled(enabled);
+                    }
+                }
+                MenuItemKind::Submenu(s) => {
+                    if let Ok(children) = s.items() {
+                        walk(children, disabled)
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if let Some(menu) = app.menu()
+        && let Ok(items) = menu.items()
+    {
+        walk(items, disabled);
+    }
 }
 
 pub struct RecentItem {
@@ -707,6 +905,7 @@ pub fn build<R: Runtime>(
     os: Os,
     config: &MenuConfig,
     recent: &[RecentItem],
+    disabled: &HashSet<String>,
 ) -> tauri::Result<Menu<R>> {
     let menu = Menu::new(app)?;
     let mut spec = spec(os);
@@ -715,7 +914,7 @@ pub fn build<R: Runtime>(
     }
     for entry in spec {
         if let Entry::Submenu { id, label, children } = entry {
-            let submenu = build_submenu(app, config, recent, id, label, &children)?;
+            let submenu = build_submenu(app, config, recent, disabled, id, label, &children)?;
             #[cfg(target_os = "macos")]
             match id {
                 "window" => submenu.set_as_windows_menu_for_nsapp()?,
@@ -732,6 +931,7 @@ fn build_submenu<R: Runtime>(
     app: &AppHandle<R>,
     config: &MenuConfig,
     recent: &[RecentItem],
+    disabled: &HashSet<String>,
     id: &str,
     label: &str,
     children: &[Entry],
@@ -740,14 +940,22 @@ fn build_submenu<R: Runtime>(
     for child in children {
         match child {
             Entry::Submenu { id, label, children } => {
-                submenu.append(&build_submenu(app, config, recent, id, label, children)?)?
+                submenu.append(&build_submenu(app, config, recent, disabled, id, label, children)?)?
             }
             Entry::Action { id, label, accel, hint } => {
+                let enabled = item_enabled(id, disabled);
                 let item = match accel {
-                    Some(a) => MenuItem::with_id(app, *id, config.label(id, label), true, Some(*a))?,
-                    None => MenuItem::with_id(app, *id, config.item_text(id, label, *hint), true, None::<&str>)?,
+                    Some(a) => MenuItem::with_id(app, *id, config.label(id, label), enabled, Some(*a))?,
+                    None => MenuItem::with_id(app, *id, config.item_text(id, label, *hint), enabled, None::<&str>)?,
                 };
                 submenu.append(&item)?;
+            }
+            Entry::Dynamic(slot) => {
+                for d in config.dynamic_items(slot) {
+                    let id = d.item_id();
+                    let enabled = item_enabled(&id, disabled);
+                    submenu.append(&MenuItem::with_id(app, id, config.dynamic_text(d), enabled, None::<&str>)?)?;
+                }
             }
             Entry::Native(n) => submenu.append(native(app, config, *n)?.as_ref())?,
             Entry::Separator => submenu.append(&PredefinedMenuItem::separator(app)?)?,
@@ -814,15 +1022,21 @@ pub enum MenuNode {
 }
 
 /// The spec as [`MenuNode`]s; native role items (macOS only) are left out.
-pub fn model(spec: &[Entry], recent: &[RecentItem]) -> Vec<MenuNode> {
+pub fn model(spec: &[Entry], recent: &[RecentItem], config: &MenuConfig) -> Vec<MenuNode> {
     let mut out = Vec::new();
     for e in spec {
         match e {
             Entry::Submenu { id, label, children } => out.push(MenuNode::Submenu {
                 id: (*id).into(),
                 label: (*label).into(),
-                children: model(children, recent),
+                children: model(children, recent, config),
             }),
+            Entry::Dynamic(slot) => out.extend(config.dynamic_items(slot).iter().map(|d| MenuNode::Action {
+                id: d.action.clone(),
+                label: d.label.clone(),
+                hint: None,
+                arg: d.arg.clone(),
+            })),
             Entry::Action { id, label, hint, .. } => out.push(MenuNode::Action {
                 id: (*id).into(),
                 label: (*label).into(),
@@ -859,7 +1073,8 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, menu_state: &MenuState, recent: &
     let home = dirs::home_dir();
     let items = recent_items(recent, home.as_deref());
     let config = menu_state.config.lock().clone();
-    match build(app, Os::current(), &config, &items).and_then(|m| app.set_menu(m)) {
+    let disabled = menu_state.disabled.lock().clone();
+    match build(app, Os::current(), &config, &items, &disabled).and_then(|m| app.set_menu(m)) {
         Ok(_) => {}
         Err(e) => tracing::warn!("failed to build the app menu: {e}"),
     }
@@ -1107,14 +1322,131 @@ mod tests {
             vec![Entry::Native(Native::Undo), act("file.save", "Save All"), SEP, Entry::RecentProjects],
         )];
         let recent = [RecentItem { path: "/p/a".into(), label: "a  —  ~/a".into() }];
-        let MenuNode::Submenu { children, .. } = &model(&spec, &recent)[0] else { panic!("not a submenu") };
+        let MenuNode::Submenu { children, .. } = &model(&spec, &recent, &MenuConfig::default())[0] else {
+            panic!("not a submenu")
+        };
         assert_eq!(children.len(), 3);
         assert!(matches!(&children[0], MenuNode::Action { id, arg: None, .. } if id == "file.save"));
         assert!(
             matches!(&children[2], MenuNode::Action { id, arg: Some(p), .. } if id == OPEN_RECENT_ACTION && p == "/p/a")
         );
 
-        let MenuNode::Submenu { children, .. } = &model(&spec, &[])[0] else { panic!("not a submenu") };
+        let MenuNode::Submenu { children, .. } = &model(&spec, &[], &MenuConfig::default())[0] else {
+            panic!("not a submenu")
+        };
         assert!(matches!(&children[2], MenuNode::Placeholder { id, .. } if id == "recent.none"));
+    }
+
+    fn dynamic_item(action: &str, arg: Option<&str>, label: &str) -> DynamicItem {
+        DynamicItem { action: action.into(), arg: arg.map(Into::into), label: label.into() }
+    }
+
+    #[test]
+    fn dynamic_items_route_with_their_argument() {
+        let spec = spec(Os::Mac);
+        let plain = dynamic_item("toolwindow.project", None, "Project");
+        let named = dynamic_item("layout.restore", Some("Review | wide"), "Review | wide");
+        assert_eq!(route(&spec, &plain.item_id()), Some(MenuRoute { action: "toolwindow.project".into(), arg: None }));
+        assert_eq!(
+            route(&spec, &named.item_id()),
+            Some(MenuRoute { action: "layout.restore".into(), arg: Some("Review | wide".into()) })
+        );
+        assert_eq!(route(&spec, "dyn:"), None);
+    }
+
+    #[test]
+    fn tool_windows_and_layouts_are_listed_by_the_frontend() {
+        fn slots(entries: &[Entry], out: &mut Vec<&'static str>) {
+            for e in entries {
+                match e {
+                    Entry::Submenu { children, .. } => slots(children, out),
+                    Entry::Dynamic(slot) => out.push(slot),
+                    _ => {}
+                }
+            }
+        }
+        for os in ALL_OS {
+            let spec = spec(os);
+            let mut found = Vec::new();
+            slots(&spec, &mut found);
+            assert_eq!(found, [DYNAMIC_TOOL_WINDOWS, DYNAMIC_LAYOUTS], "{os:?}");
+            assert!(!action_ids(&spec).iter().any(|id| {
+                id.starts_with("toolwindow.")
+                    && *id != "toolwindow.hideAll"
+                    && ![
+                        "toolwindow.hideActive",
+                        "toolwindow.maximize",
+                        "toolwindow.closeContent",
+                        "toolwindow.jumpToLast",
+                        "toolwindow.focusEditor",
+                    ]
+                    .contains(id)
+            }));
+        }
+        let mut config = MenuConfig::default();
+        config.dynamic.insert(
+            DYNAMIC_TOOL_WINDOWS.into(),
+            vec![dynamic_item("toolwindow.project", None, "Project"), dynamic_item("toolwindow.git", None, "Git")],
+        );
+        config.shortcuts.insert("toolwindow.project".into(), "⌘1".into());
+        assert_eq!(config.dynamic_text(&config.dynamic[DYNAMIC_TOOL_WINDOWS][0]), "Project\t⌘1");
+        assert_eq!(config.dynamic_text(&dynamic_item("toolwindow.project", Some("x"), "X")), "X");
+        let spec = vec![sub("toolWindows", "Tool Windows", vec![Entry::Dynamic(DYNAMIC_TOOL_WINDOWS), SEP])];
+        let MenuNode::Submenu { children, .. } = &model(&spec, &[], &config)[0] else { panic!("not a submenu") };
+        assert!(
+            matches!(&children[1], MenuNode::Action { id, arg: None, label, .. } if id == "toolwindow.git" && label == "Git")
+        );
+        let MenuNode::Submenu { children, .. } = &model(&spec, &[], &MenuConfig::default())[0] else { panic!() };
+        assert_eq!(children, &[MenuNode::Separator]);
+    }
+
+    #[test]
+    fn disabled_actions_disable_their_items_only() {
+        let disabled: HashSet<String> = ["refactor.rename".to_owned(), "layout.restore".to_owned()].into();
+        assert!(!item_enabled("refactor.rename", &disabled));
+        assert!(item_enabled("refactor.inline", &disabled));
+        assert!(!item_enabled("dyn:layout.restore|Review", &disabled));
+        assert!(item_enabled("dyn:toolwindow.git", &disabled));
+        assert!(item_enabled("recent:/p/refactor.rename", &disabled));
+        assert!(item_enabled("submenu:refactor", &disabled));
+    }
+
+    #[test]
+    fn idea_menu_items_are_present() {
+        for os in ALL_OS {
+            let ids = action_ids(&spec(os));
+            for required in [
+                "file.newProject",
+                "file.renameProject",
+                "file.reloadAllFromDisk",
+                "file.exportSettings",
+                "file.importSettings",
+                "file.togglePowerSave",
+                "macro.startRecording",
+                "macro.stopRecording",
+                "macro.playBack",
+                "macro.playSaved",
+                "macro.edit",
+                "navigate.toggleBookmark",
+                "navigate.showBookmarks",
+                "code.quickDefinition",
+                "code.quickTypeDefinition",
+                "localHistory.recentChanges",
+                "editor.resetFontSize",
+                "diff.compareWithClipboard",
+                "view.quickSwitchScheme",
+                "code.cleanup",
+                "runAnything.show",
+                "layout.save",
+                "layout.restoreDefault",
+                "layout.rename",
+                "layout.delete",
+                "toolwindow.hideActive",
+                "editor.closeOtherTabs",
+                "toolbar.customize",
+            ] {
+                assert!(ids.contains(&required), "{required} missing on {os:?}");
+            }
+        }
     }
 }

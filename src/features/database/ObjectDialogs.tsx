@@ -515,8 +515,8 @@ function SourceUrlDialog() {
         />
         <span className={styles.formHint}>
           {url.trim() && !parsed
-            ? "Not a PostgreSQL, MySQL / MariaDB or SQLite URL"
-            : "postgresql://, mysql://, mariadb://, jdbc:…, sqlite:path"}
+            ? "Not a URL of PostgreSQL, MySQL, SQLite or a compatible database"
+            : "postgresql://, mysql://, mariadb://, redshift://, tidb://…, jdbc:…, sqlite:path"}
         </span>
       </div>
     </Dialog>
@@ -550,6 +550,7 @@ function QuickDoc({ node, anchor }: { node: DbNode; anchor: { x: number; y: numb
   switch (node.kind) {
     case "source":
       rows.push(["Driver", sourceLabel(node.source).replace(/^.*\((.*)\)$/, "$1")]);
+      if (node.source.comment?.trim()) rows.push(["Comment", node.source.comment.trim()]);
       rows.push(
         node.source.driver === "sqlite"
           ? ["File", node.source.file ?? ""]

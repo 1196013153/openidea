@@ -1,6 +1,9 @@
 import { executeAction, getAction, registerActions } from "@/platform/actions";
 import { isTauri } from "@/platform/ipc";
 import { closeProject, confirmLeaveProject, openProject, useProject } from "@/platform/project";
+import { runSearchFieldCommand, showContextMenu } from "@/ui";
+import { showCustomizeToolbar } from "./MainToolbarDialog";
+import { quickSwitchItems } from "./quickSwitch";
 import { notify } from "./notificationStore";
 import { NOTIFICATIONS_TOOL_WINDOW } from "./Notifications";
 import { activateToolWindow } from "./toolwindows/store";
@@ -61,11 +64,42 @@ export function registerShellActions(): () => void {
       run: toggleTheme,
     },
     {
+      id: "view.quickSwitchScheme",
+      title: "Quick Switch Scheme…",
+      category: "View",
+      keywords: ["theme", "color scheme", "keymap", "view mode"],
+      run: () => showContextMenu({ x: window.innerWidth / 2 - 120, y: 96 }, quickSwitchItems()),
+    },
+    {
+      id: "toolbar.customize",
+      title: "Customize Main Toolbar…",
+      category: "View",
+      keywords: ["toolbar", "widgets", "title bar"],
+      run: showCustomizeToolbar,
+    },
+    {
       id: "view.notifications",
       title: "Notifications",
       category: "View",
       icon: "bell",
       run: () => activateToolWindow(NOTIFICATIONS_TOOL_WINDOW),
+    },
+    // Keys of search fields (find bar, Find in Files) that are editor shortcuts elsewhere.
+    {
+      id: "find.field.newLine",
+      title: "New Line in Search Field",
+      category: "Find",
+      hidden: true,
+      when: "searchFieldNewLine",
+      run: () => void runSearchFieldCommand("newLine"),
+    },
+    {
+      id: "find.field.recentSearches",
+      title: "Recent Searches",
+      category: "Find",
+      hidden: true,
+      when: "searchFieldHistory",
+      run: () => void runSearchFieldCommand("history"),
     },
   ]);
 }

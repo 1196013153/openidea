@@ -10,7 +10,9 @@ pub mod sql;
 pub mod tunnel;
 
 pub use conn::{Held, Pool, QueryResult, ResultColumn};
-pub use source::{DataSource, DbDriver, DbSsh, DbSshAuth, DbSslMode};
+pub use source::{
+    DataSource, DbColor, DbDriver, DbIntrospection, DbOptions, DbProperty, DbSsh, DbSshAuth, DbSslMode, DbTxMode,
+};
 pub use sql::{CellValue, DbRowEdit, SortKey};
 
 use ide_core::{CancellationToken, IdeError, IdeResult, error::ErrorKind};
@@ -21,6 +23,7 @@ use specta::Type;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tunnel::{OpenError, Tunnel, TunnelSpec, UnknownHostKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -219,6 +222,24 @@ fn through_tunnel(e: IdeError, source: &DataSource, tunneled: bool) -> IdeError 
     )
 }
 
+/// Options › Run keep-alive query: pings the pool until it is closed or dropped
+/// (a dropped SSH tunnel or an idle-killing proxy stays alive meanwhile).
+fn keep_alive(pool: &Arc<Pool>, every: Duration) {
+    let pool = Arc::downgrade(pool);
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(every);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            let Some(p) = pool.upgrade().filter(|p| !p.is_closed()) else { break };
+            if let Err(e) = p.rows("SELECT 1", 1).await {
+                tracing::debug!("keep-alive: {}", e.message);
+            }
+        }
+    });
+}
+
 /// Rolls back a session's transaction and releases its connection.
 async fn end_session(session: &Session) {
     let held = session.lock().await.take();
@@ -261,14 +282,16 @@ impl DbManager {
         source::load(&self.root)
     }
 
-    /// The data source of connection target `target`, with its database for `<id>:<database>`.
+    /// The connection settings of target `target` ([`DataSource::resolved`]), with
+    /// its database for `<id>:<database>`.
     pub fn source(&self, target: &str) -> IdeResult<DataSource> {
         let (id, database) = split_target(target);
         let mut source = self
             .sources()?
             .into_iter()
             .find(|s| s.id == id)
-            .ok_or_else(|| IdeError::not_found(format!("no data source {id}")))?;
+            .ok_or_else(|| IdeError::not_found(format!("no data source {id}")))?
+            .resolved()?;
         if let Some(db) = database {
             source.database = db.to_owned();
         }
@@ -341,7 +364,10 @@ impl DbManager {
     }
 
     async fn password(&self, source: &DataSource) -> Option<String> {
-        self.secret(source.id.clone(), source.driver != DbDriver::Sqlite && source.save_password).await
+        match self.secret(source.id.clone(), source.driver != DbDriver::Sqlite && source.save_password).await {
+            Some(p) => Some(p),
+            None => source.url_password(),
+        }
     }
 
     /// Trusts the host key that failed the last connection of `id` (adds it to `known_hosts`).
@@ -411,6 +437,7 @@ impl DbManager {
         password: Option<String>,
         ssh_secret: Option<String>,
     ) -> IdeResult<String> {
+        let source = &source.resolved()?;
         let password = match password {
             Some(p) => Some(p),
             None => self.password(source).await,
@@ -458,9 +485,14 @@ impl DbManager {
                 return Err(through_tunnel(e, &source, tunnel.is_some()));
             }
         };
-        let mut pools = self.pools.lock();
         // Another caller may have connected meanwhile; keep theirs.
-        Ok(pools.entry(id.to_owned()).or_insert(pool).clone())
+        let kept = self.pools.lock().entry(id.to_owned()).or_insert_with(|| pool.clone()).clone();
+        if Arc::ptr_eq(&kept, &pool)
+            && let Some(secs) = source.options.keep_alive_secs.filter(|s| *s > 0)
+        {
+            keep_alive(&pool, Duration::from_secs(secs.into()));
+        }
+        Ok(kept)
     }
 
     /// Closes the tunnel of `source_id` once none of its targets is connected.
@@ -496,24 +528,29 @@ impl DbManager {
 
     /// The databases of the server of data source `id` (PostgreSQL), the connected one first.
     pub async fn databases(&self, id: &str) -> IdeResult<Databases> {
-        let pool = self.pool(split_target(id).0).await?;
+        let id = split_target(id).0;
+        let system = self.source(id)?.introspection.show_system;
+        let pool = self.pool(id).await?;
         if pool.driver() != DbDriver::Postgres {
             return Err(IdeError::invalid("only PostgreSQL data sources list databases"));
         }
         let first = |rows: Vec<Vec<Option<String>>>| rows.into_iter().filter_map(|r| r.into_iter().next().flatten());
         let current = first(pool.rows("SELECT current_database()", 1).await?).next().unwrap_or_default();
-        let rows = pool.rows(sql::DATABASES, MAX_META_ROWS).await?;
+        let rows = pool.rows(sql::databases(system), MAX_META_ROWS).await?;
         let mut names: Vec<String> =
-            first(rows).filter(|n| *n == current || !sql::INTERNAL_DATABASES.contains(&n.as_str())).collect();
+            first(rows).filter(|n| system || *n == current || !sql::INTERNAL_DATABASES.contains(&n.as_str())).collect();
         if !names.contains(&current) {
             names.insert(0, current.clone());
         }
         Ok(Databases { current, names })
     }
 
+    /// Every schema (the Schemas tab picks the ones the tree shows); system schemas
+    /// only with [`DbIntrospection::show_system`].
     pub async fn schemas(&self, id: &str) -> IdeResult<Vec<String>> {
+        let system = self.source(id)?.introspection.show_system;
         let pool = self.pool(id).await?;
-        let rows = pool.rows(sql::schemas(pool.driver()), MAX_META_ROWS).await?;
+        let rows = pool.rows(sql::schemas(pool.driver(), system), MAX_META_ROWS).await?;
         Ok(rows.into_iter().filter_map(|r| r.into_iter().next().flatten()).collect())
     }
 

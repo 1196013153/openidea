@@ -1,7 +1,7 @@
 //! Run with Coverage: launch plans and coverage reports.
 
 use crate::state::AppState;
-use ide_core::{IdeError, IdeResult};
+use ide_core::{IdeError, IdeResult, IpcPath};
 use ide_coverage::{CoveragePrepared, CoverageReportSpec, CoverageSuite};
 use ide_run::RunConfig;
 use tauri::{State, Window};
@@ -36,4 +36,13 @@ pub async fn coverage_prepare(
 #[specta::specta]
 pub async fn coverage_collect(report: CoverageReportSpec) -> IdeResult<CoverageSuite> {
     blocking(move || ide_coverage::collect(&report)).await
+}
+
+/// Reads a report collected elsewhere (CI): lcov, a Go cover profile or JaCoCo XML,
+/// with paths mapped into this project.
+#[tauri::command]
+#[specta::specta]
+pub async fn coverage_import(window: Window, state: State<'_, AppState>, path: IpcPath) -> IdeResult<CoverageSuite> {
+    let root = state.project(window.label())?.root.clone();
+    blocking(move || ide_coverage::import(&path, &root)).await
 }

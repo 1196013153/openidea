@@ -8,16 +8,9 @@ import { useMemo, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import type { BuildTool } from "@/platform/ipc";
 import { HighlightedText, Input, List, Popup, Select, listNavigate, T } from "@/ui";
-import {
-  goalCompletions,
-  gradleTaskConfig,
-  mavenGoalConfig,
-  parseGoalLine,
-  parseTaskLine,
-  taskCompletions,
-  type Completion,
-} from "./model";
-import { pushHistory, readHistory, runConfig, useBuild } from "./store";
+import { goalCompletions, taskCompletions, type Completion } from "./model";
+import { executeBuildLine } from "./runAnything";
+import { readHistory, useBuild } from "./store";
 import styles from "./BuildTools.module.css";
 
 export function ExecutePopupHost() {
@@ -58,20 +51,7 @@ function ExecutePopup({ tool }: { tool: BuildTool }) {
 
   const execute = () => {
     const text = line.trim();
-    if (!text) return;
-    if (tool === "maven" && maven) {
-      const p = maven.projects.find((x) => x.pom === project);
-      const goals = parseGoalLine(text);
-      if (!p || !goals.length) return;
-      runConfig(mavenGoalConfig(p, goals, maven, useBuild.getState().settings.maven), "run");
-    } else if (gradle) {
-      const p = gradle.projects.find((x) => x.path === project);
-      const tasks = parseTaskLine(text);
-      if (!p || !tasks.length) return;
-      runConfig(gradleTaskConfig(gradle, p, tasks, useBuild.getState().settings.gradle), "run");
-    }
-    pushHistory(tool, text);
-    close();
+    if (text && executeBuildLine(tool, text, project)) close();
   };
 
   const accept = (c: Completion | undefined) => {

@@ -21,6 +21,7 @@ import clsx from "clsx";
 import { useEditorRegistry } from "@/editor/api";
 import { executeAction } from "@/platform/actions";
 import { setContext } from "@/platform/context";
+import { useTxTemplate } from "@/platform/i18n";
 import { isTauri } from "@/platform/ipc";
 import type { RootFolder } from "@/platform/languageSettings";
 import { useEffectiveRoots } from "@/platform/projectRoots";
@@ -39,9 +40,10 @@ import {
   type TreeRowState,
 } from "@/ui";
 import { contextMenuItems, menuGroupContext, newMenuItems } from "./contextMenu";
+import { openNewPopup } from "./newPopupModel";
 import { folderKind } from "./folderKind";
 import { useHomeDir } from "./home";
-import { nodeKeyFor, visibleInfo, type ProjectNode } from "./model";
+import { keyLike, nodeKeyFor, visibleInfo, type ProjectNode } from "./model";
 import { lastFileRefactoring, undoFileRefactoring } from "./fileRefactor";
 import {
   cancelEditing,
@@ -61,6 +63,8 @@ import {
 } from "./operations";
 import { isInside, nameOf, parentOf, splitExtension, tildify } from "./paths";
 import {
+  VIEW_MODES,
+  autoExpand,
   clearRevealRequest,
   loadDir,
   revealPath,
@@ -89,7 +93,7 @@ export function showNewPopup(): boolean {
   const row = lead ? document.querySelector<HTMLElement>(`[data-project-key="${CSS.escape(lead)}"]`) : null;
   const rect = (row ?? document.querySelector<HTMLElement>('[role="tree"][aria-label="Project"]'))?.getBoundingClientRect();
   if (!rect) return false;
-  showContextMenu({ x: rect.left + 24, y: rect.bottom }, newMenuItems(targetFolder()));
+  openNewPopup({ x: rect.left + 24, y: rect.bottom }, newMenuItems(targetFolder()));
   return true;
 }
 
@@ -100,7 +104,8 @@ const loadChildren = (n: ProjectNode) => loadDir(n.path);
 
 function iconFor(node: ProjectNode, roots: readonly RootFolder[], root: string | null): string {
   if (node.placeholder) return node.placeholder === "dir" ? "folder" : "file";
-  if (node.root) return node.icon ?? "module";
+  if (node.icon) return node.icon;
+  if (node.root) return "module";
   if (node.dir) return folderIconName(folderKind(node, roots, root));
   return fileIconName(node.label);
 }
@@ -310,6 +315,7 @@ function folderAt(container: HTMLElement | null, x: number, y: number): { key: s
 // ---------------------------------------------------------------------------
 
 export function ProjectView() {
+  const txTemplate = useTxTemplate();
   const root = useProjectTree((s) => s.root);
   const model = useProjectTree(selectModel);
   const expanded = useProjectTree((s) => s.expanded);
@@ -326,6 +332,10 @@ export function ProjectView() {
   const revealing = useRef(false);
 
   const info = useMemo(() => visibleInfo(model, expanded), [model, expanded]);
+  const mode = useProjectTree((s) => s.mode);
+
+  // Open Files / All Changed Files: show new files' folders expanded.
+  useEffect(() => autoExpand(model), [model]);
 
   // Load folders that are expanded (restored state, reveal, chains) but not read yet.
   useEffect(() => {
@@ -363,7 +373,7 @@ export function ProjectView() {
 
   const onExpandedChange = useCallback((next: Set<string>, node: ProjectNode, open: boolean) => {
     // Expanding a compacted chain opens every folder in it, so it stays open if the chain breaks.
-    if (open) for (const p of node.chain) next.add(p);
+    if (open) for (const p of node.chain) next.add(keyLike(node.key, p));
     setExpanded(next);
   }, []);
 
@@ -389,6 +399,7 @@ export function ProjectView() {
     }
     const nodes = [...sel].map((k) => m.byKey.get(k)).filter((n): n is ProjectNode => !!n && !n.placeholder);
     const target = nodes.length ? nodes : [node];
+    if (target.every((n) => n.group)) return;
     // Contributed groups may read the file first (bounded wait).
     const at = { x: e.clientX, y: e.clientY };
     void prepareMenuGroups("projectView", menuGroupContext(target)).then(() => showContextMenu(at, contextMenuItems(target)));
@@ -407,7 +418,7 @@ export function ProjectView() {
 
   // Pointer-driven drag & drop (HTML5 DnD is unreliable inside the Tauri webview).
   const onRowPointerDown = useCallback((node: ProjectNode, e: ReactPointerEvent) => {
-    if (e.button !== 0 || node.root || node.placeholder || useProjectTree.getState().editing) return;
+    if (e.button !== 0 || node.root || node.placeholder || node.readOnly || useProjectTree.getState().editing) return;
     const before = useProjectTree.getState().selected;
     const lead = useProjectTree.getState().lead;
     const startX = e.clientX,
@@ -553,7 +564,7 @@ export function ProjectView() {
         editing={editing}
         cut={cutPaths.has(node.path)}
         dropTarget={dropTarget === node.key}
-        detail={node.root && !node.icon ? rootDetail : null}
+        detail={node.root && !node.icon ? rootDetail : (node.detail ?? null)}
         onEditDone={focusTree}
         onClick={onRowClick}
         onPointerDown={onRowPointerDown}
@@ -576,6 +587,9 @@ export function ProjectView() {
       onFocus={(e) => setContext("projectViewFocus", (e.target as HTMLElement).getAttribute("role") === "tree")}
       onBlur={() => setContext("projectViewFocus", false)}
     >
+      {!model.roots.length && (
+        <div className={styles.empty}>{txTemplate(`Nothing to show in ${VIEW_MODES.find(([id]) => id === mode)?.[1] ?? "this view"}`)}</div>
+      )}
       <Tree<ProjectNode>
         aria-label="Project"
         handleRef={setTreeHandle}

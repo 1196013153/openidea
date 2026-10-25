@@ -1,5 +1,6 @@
 //! Which paths belong in the index: `.gitignore`/`.ignore` rules (via the
-//! `ignore` crate) plus the user's `files.exclude` globs.
+//! `ignore` crate) plus the user's `files.exclude` globs, below the project root
+//! and the extra content roots (Project Structure).
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -14,10 +15,45 @@ const ALWAYS_SKIP: &[&str] = &[".git", ".hg", ".svn", ".jj"];
 
 pub(crate) struct PathFilter {
     root: PathBuf,
+    /// Content roots outside `root`, indexed as `<folder name>/<path>`.
+    extra: Vec<ExtraRoot>,
     excludes: GlobSet,
     /// Root-level ignore files, for paths reported by the watcher (the walker
     /// applies nested ignore files itself).
     gitignore: Gitignore,
+    /// What the filter was built from: `(extra roots, exclude globs)`.
+    config: (Vec<PathBuf>, Vec<String>),
+}
+
+struct ExtraRoot {
+    path: PathBuf,
+    /// Shown before the paths inside it (`shared-lib/src/x.rs`).
+    name: String,
+    gitignore: Gitignore,
+}
+
+fn root_ignores(root: &Path) -> Gitignore {
+    let mut gi = GitignoreBuilder::new(root);
+    for f in [".gitignore", ".ignore", ".git/info/exclude"] {
+        let path = root.join(f);
+        if path.is_file()
+            && let Some(e) = gi.add(&path)
+        {
+            tracing::debug!("{}: {e}", path.display());
+        }
+    }
+    gi.build().unwrap_or_else(|_| Gitignore::empty())
+}
+
+fn rel_string(rel: &Path) -> String {
+    let mut out = String::new();
+    for c in rel.components() {
+        if !out.is_empty() {
+            out.push('/');
+        }
+        out.push_str(&c.as_os_str().to_string_lossy());
+    }
+    out
 }
 
 #[derive(Clone, Debug)]
@@ -32,9 +68,9 @@ pub(crate) fn mtime_of(meta: &std::fs::Metadata) -> u64 {
 }
 
 impl PathFilter {
-    pub(crate) fn new(root: &Path, excludes: &[String]) -> Self {
+    pub(crate) fn new(root: &Path, extra_roots: &[PathBuf], exclude_globs: &[String]) -> Self {
         let mut set = GlobSetBuilder::new();
-        for raw in excludes {
+        for raw in exclude_globs {
             let p = raw.trim().trim_end_matches('/');
             let anchored = p.starts_with('/');
             let p = p.trim_start_matches("./").trim_start_matches('/');
@@ -55,34 +91,76 @@ impl PathFilter {
             }
         }
         let excludes = set.build().unwrap_or_else(|_| GlobSet::empty());
-        let mut gi = GitignoreBuilder::new(root);
-        for f in [".gitignore", ".ignore", ".git/info/exclude"] {
-            let path = root.join(f);
-            if path.is_file()
-                && let Some(e) = gi.add(&path)
-            {
-                tracing::debug!("{}: {e}", path.display());
+        let mut extra: Vec<ExtraRoot> = Vec::new();
+        for r in extra_roots {
+            let path = dunce::canonicalize(r).unwrap_or_else(|_| r.clone());
+            let nested = path.starts_with(root)
+                || root.starts_with(&path)
+                || extra.iter().any(|e| path.starts_with(&e.path) || e.path.starts_with(&path));
+            if nested || !path.is_dir() {
+                continue;
             }
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            extra.push(ExtraRoot { gitignore: root_ignores(&path), name, path });
         }
-        let gitignore = gi.build().unwrap_or_else(|_| Gitignore::empty());
-        Self { root: root.to_owned(), excludes, gitignore }
+        Self {
+            root: root.to_owned(),
+            extra,
+            excludes,
+            gitignore: root_ignores(root),
+            config: (extra_roots.to_vec(), exclude_globs.to_vec()),
+        }
+    }
+
+    /// Whether the filter was built from these roots and globs.
+    pub(crate) fn same_config(&self, extra_roots: &[PathBuf], excludes: &[String]) -> bool {
+        self.config.0 == extra_roots && self.config.1 == excludes
     }
 
     pub(crate) fn root(&self) -> &Path {
         &self.root
     }
 
-    /// `/`-separated path relative to the root.
-    pub(crate) fn rel(&self, path: &Path) -> Option<String> {
-        let rel = path.strip_prefix(&self.root).ok()?;
-        let mut out = String::new();
-        for c in rel.components() {
-            if !out.is_empty() {
-                out.push('/');
-            }
-            out.push_str(&c.as_os_str().to_string_lossy());
+    /// The project root, then the extra content roots.
+    pub(crate) fn roots(&self) -> impl Iterator<Item = &Path> {
+        std::iter::once(self.root.as_path()).chain(self.extra.iter().map(|e| e.path.as_path()))
+    }
+
+    /// The root containing `path`, its display prefix (`None` for the project root) and ignore rules.
+    fn base_of(&self, path: &Path) -> Option<(&Path, Option<&str>, &Gitignore)> {
+        if path.starts_with(&self.root) {
+            return Some((&self.root, None, &self.gitignore));
         }
-        (!out.is_empty()).then_some(out)
+        self.extra
+            .iter()
+            .find(|e| path.starts_with(&e.path))
+            .map(|e| (e.path.as_path(), Some(e.name.as_str()), &e.gitignore))
+    }
+
+    /// Whether `path` is (at or) below one of the roots.
+    pub(crate) fn contains(&self, path: &Path) -> bool {
+        self.base_of(path).is_some()
+    }
+
+    /// `/`-separated path relative to its root, as displayed; paths in extra
+    /// content roots start with the root's folder name.
+    pub(crate) fn rel(&self, path: &Path) -> Option<String> {
+        let (base, prefix, _) = self.base_of(path)?;
+        let rel = rel_string(path.strip_prefix(base).ok()?);
+        if rel.is_empty() {
+            return None;
+        }
+        Some(match prefix {
+            Some(p) => format!("{p}/{rel}"),
+            None => rel,
+        })
+    }
+
+    /// Key of `path` in the persistent store: only files below the project root
+    /// are persisted (extra content roots are rescanned when the project opens).
+    pub(crate) fn store_key(&self, path: &Path) -> Option<String> {
+        let rel = rel_string(path.strip_prefix(&self.root).ok()?);
+        (!rel.is_empty()).then_some(rel)
     }
 
     fn excluded_rel(&self, rel: &str) -> bool {
@@ -96,7 +174,11 @@ impl PathFilter {
     /// Whether a path reported by the watcher should be ignored (outside the
     /// root, inside an excluded/ignored directory, or ignored itself).
     pub(crate) fn is_excluded(&self, path: &Path, is_dir: bool) -> bool {
-        let Some(rel) = self.rel(path) else { return true };
+        let Some((base, _, gitignore)) = self.base_of(path) else { return true };
+        let rel = path.strip_prefix(base).map(rel_string).unwrap_or_default();
+        if rel.is_empty() {
+            return true;
+        }
         let mut prefix = String::new();
         for seg in rel.split('/') {
             if Self::skip_name(seg) {
@@ -110,14 +192,15 @@ impl PathFilter {
                 return true;
             }
         }
-        self.gitignore.matched_path_or_any_parents(path, is_dir).is_ignore()
+        gitignore.matched_path_or_any_parents(path, is_dir).is_ignore()
     }
 
     /// All indexable files at or below `dir`, walked in parallel.
     /// Stops early (returning what was found so far) once `cancel` is set.
     pub(crate) fn walk(&self, dir: &Path, cancel: &AtomicBool) -> Vec<Found> {
         let (tx, rx) = mpsc::channel::<Vec<Found>>();
-        let root = self.root.clone();
+        let Some((root, _, _)) = self.base_of(dir) else { return Vec::new() };
+        let root = root.to_path_buf();
         let excludes = self.excludes.clone();
         let walker = WalkBuilder::new(dir)
             .hidden(false)
@@ -207,7 +290,7 @@ mod tests {
             touch(&root, f);
         }
         std::fs::write(root.join(".gitignore"), "build/\n").unwrap();
-        let filter = PathFilter::new(&root, &["**/node_modules".into(), "target".into(), "docs/**".into()]);
+        let filter = PathFilter::new(&root, &[], &["**/node_modules".into(), "target".into(), "docs/**".into()]);
         let mut found: Vec<String> =
             filter.walk(&root, &AtomicBool::new(false)).iter().filter_map(|f| filter.rel(&f.path)).collect();
         found.sort();
@@ -219,5 +302,32 @@ mod tests {
         assert!(filter.is_excluded(&root.join(".git/HEAD"), false));
         assert!(filter.is_excluded(Path::new("/elsewhere/x.rs"), false));
         assert!(!filter.is_excluded(&root.join("src/new.rs"), false));
+    }
+
+    #[test]
+    fn extra_content_roots_are_walked_and_prefixed() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(dir.path()).unwrap();
+        let (root, shared) = (base.join("app"), base.join("shared-lib"));
+        for f in ["app/src/a.rs", "shared-lib/src/b.rs", "shared-lib/target/gen.rs", "shared-lib/out/x.rs"] {
+            touch(&base, f);
+        }
+        std::fs::write(shared.join(".gitignore"), "out/\n").unwrap();
+        let filter = PathFilter::new(&root, &[shared.clone(), root.join("src")], &["target".into()]);
+        assert_eq!(filter.roots().count(), 2, "roots inside the project are not extra roots");
+        let mut found: Vec<String> = filter
+            .roots()
+            .flat_map(|r| filter.walk(r, &AtomicBool::new(false)))
+            .filter_map(|f| filter.rel(&f.path))
+            .collect();
+        found.sort();
+        assert_eq!(found, ["shared-lib/.gitignore", "shared-lib/src/b.rs", "src/a.rs"]);
+        assert_eq!(filter.store_key(&shared.join("src/b.rs")), None, "extra roots are not persisted");
+        assert_eq!(filter.store_key(&root.join("src/a.rs")).as_deref(), Some("src/a.rs"));
+        assert!(!filter.is_excluded(&shared.join("src/new.rs"), false));
+        assert!(filter.is_excluded(&shared.join("target/y.rs"), false));
+        assert!(filter.is_excluded(&shared.join("out/y.rs"), false));
+        assert!(filter.same_config(&[shared.clone(), root.join("src")], &["target".into()]));
+        assert!(!filter.same_config(&[shared], &["target".into()]));
     }
 }

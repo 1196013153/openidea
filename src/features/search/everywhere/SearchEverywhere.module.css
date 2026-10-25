@@ -295,3 +295,49 @@
   display: flex;
   align-items: center;
 }
+.filterPopup {
+  min-width: 220px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 6px 0;
+}
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 12px 8px;
+}
+.filterGroup + .filterGroup {
+  border-top: 1px solid var(--border-popup);
+  padding-top: 8px;
+}
+.filterTitle {
+  color: var(--fg-secondary);
+  font-size: var(--fs-small);
+}
+.filterAll {
+  font-weight: 600;
+}
+.filterItems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 4px;
+}
+.filterMasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.filterMask {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-family: var(--font-mono);
+}
+.filterMask:hover {
+  background: var(--bg-hover);
+}

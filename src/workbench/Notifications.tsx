@@ -3,10 +3,12 @@ import { useTxTemplate } from "@/platform/i18n";
 import { EmptyState, IconButton, Toast, T } from "@/ui";
 import {
   balloonTimeout,
+  canSuppress,
   clearNotifications,
   dismissBalloon,
   markAllNotificationsRead,
   removeNotification,
+  suppressGroup,
   useNotifications,
   type IdeNotification,
 } from "./notificationStore";
@@ -34,6 +36,15 @@ function useWindowActive(): boolean {
   return useSyncExternalStore(subscribeWindowFocus, () => document.hasFocus(), () => true);
 }
 
+const DONT_SHOW_AGAIN = "Don't Show Again";
+
+/** The notification's own actions, then "Don't Show Again" for its group (IDEA). */
+export function notificationActions(n: IdeNotification, wrap: (run: () => void) => () => void = (r) => r) {
+  const own = n.actions ?? [];
+  if (!canSuppress(n)) return own;
+  return [...own, { label: DONT_SHOW_AGAIN, run: wrap(() => void suppressGroup(n.group).catch(() => {})) }];
+}
+
 function Balloon({ n }: { n: IdeNotification }) {
   const [hover, setHover] = useState(false);
   const active = useWindowActive();
@@ -57,7 +68,7 @@ function Balloon({ n }: { n: IdeNotification }) {
       level={n.level}
       title={txt(n.title)}
       body={n.body}
-      actions={n.actions?.map((a) => ({
+      actions={notificationActions(n).map((a) => ({
         label: txt(a.label),
         run: () => {
           dismissBalloon(n.id);
@@ -120,7 +131,7 @@ export function NotificationsToolWindow() {
             title={txt(n.title)}
             body={n.body}
             meta={timeLabel(n.time)}
-            actions={n.actions?.map((a) => ({ ...a, label: txt(a.label) }))}
+            actions={notificationActions(n).map((a) => ({ ...a, label: txt(a.label) }))}
             onClose={() => removeNotification(n.id)}
           />
         ))

@@ -66,4 +66,19 @@ describe("File Structure popup", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(useFileStructurePopup.getState().open).toBe(false);
   });
+
+  it("offers Show inherited members only when the server knows type hierarchies", () => {
+    open();
+    expect(screen.queryByLabelText("Show inherited members")).toBeNull();
+    const inherited = [{ item: item("toString", "method", 40), path: "/lib/Object.kt", owner: "Any" }];
+    act(() => useOutline.setState({ inheritedSupported: true, inherited: new Map([["0:4", inherited]]) }));
+    expect(rows()).toEqual(["OrderController", "list", "create", "helper"]);
+    fireEvent.click(screen.getByLabelText("Show inherited members"));
+    expect(useStructureOptions.getState().showInherited).toBe(true);
+    expect(rows()).toEqual(["OrderController", "list", "create", "toString↑Any", "helper"]);
+    act(() => {
+      useStructureOptions.setState({ showInherited: false });
+      useOutline.setState({ inheritedSupported: false, inherited: null });
+    });
+  });
 });

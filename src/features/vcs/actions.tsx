@@ -28,6 +28,14 @@ import { allRepos, runRemote } from "./ops";
 import { showPushDialog, showUpdateDialog, type PushTarget } from "./remoteUi";
 import { chooseRevision } from "./RevisionChooser";
 import { showCloneDialog } from "./clone";
+import {
+  showManageRemotes,
+  showMergeDialog,
+  showNewWorktree,
+  showPullDialog,
+  showRebaseDialog,
+  showWorktrees,
+} from "./gitMenuDialogs";
 import { refreshNow, repoName } from "./store";
 
 const VCS = "vcsAvailable";
@@ -86,6 +94,7 @@ const OPERATIONS: MenuItem[] = [
   { kind: "action", action: "vcs.commit" },
   { kind: "action", action: "vcs.push" },
   { kind: "action", action: "vcs.update" },
+  { kind: "action", action: "vcs.pull" },
   { kind: "action", action: "vcs.fetch" },
   { kind: "separator" },
   { kind: "action", action: "vcs.rollback" },
@@ -191,6 +200,54 @@ export function registerVcsActions(): () => void {
       when: VCS,
       keywords: ["pull"],
       run: showUpdateDialog,
+    },
+    {
+      id: "vcs.pull",
+      title: "Pull…",
+      category: "Git",
+      icon: "git-pull",
+      when: VCS,
+      run: showPullDialog,
+    },
+    {
+      id: "vcs.merge",
+      title: "Merge…",
+      category: "Git",
+      when: VCS,
+      keywords: ["merge branch"],
+      run: showMergeDialog,
+    },
+    {
+      id: "vcs.rebase",
+      title: "Rebase…",
+      category: "Git",
+      when: VCS,
+      keywords: ["rebase branch"],
+      run: showRebaseDialog,
+    },
+    {
+      id: "vcs.manageRemotes",
+      title: "Manage Remotes…",
+      category: "Git",
+      when: VCS,
+      keywords: ["remote", "origin", "url"],
+      run: showManageRemotes,
+    },
+    {
+      id: "vcs.newWorktree",
+      title: "New Worktree…",
+      category: "Git",
+      when: VCS,
+      keywords: ["worktree"],
+      run: () => showNewWorktree(),
+    },
+    {
+      id: "vcs.worktrees",
+      title: "Worktrees…",
+      category: "Git",
+      when: VCS,
+      keywords: ["worktree"],
+      run: showWorktrees,
     },
     {
       id: "vcs.fetch",

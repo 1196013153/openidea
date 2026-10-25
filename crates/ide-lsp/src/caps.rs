@@ -157,6 +157,7 @@ pub fn client_capabilities() -> Value {
                 "augmentsSyntaxTokens": true
             },
             "inlayHint": { "dynamicRegistration": false },
+            "inlineCompletion": { "dynamicRegistration": true },
             "callHierarchy": { "dynamicRegistration": false },
             "typeHierarchy": { "dynamicRegistration": false }
         },
@@ -204,6 +205,7 @@ pub fn capability_key(method: &str) -> Option<&'static str> {
         "textDocument/formatting" => "documentFormattingProvider",
         "textDocument/rangeFormatting" => "documentRangeFormattingProvider",
         "textDocument/inlayHint" => "inlayHintProvider",
+        "textDocument/inlineCompletion" => "inlineCompletionProvider",
         "textDocument/semanticTokens" | "textDocument/semanticTokens/full" => "semanticTokensProvider",
         "textDocument/codeLens" => "codeLensProvider",
         "textDocument/documentLink" => "documentLinkProvider",

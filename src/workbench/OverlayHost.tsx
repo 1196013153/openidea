@@ -1,6 +1,7 @@
 import { ContextMenuHost, TooltipHost } from "@/ui";
 import { useContributions } from "./contributions";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { InputDialogsHost } from "./inputDialogs";
 import { MessagesHost } from "./messages";
 import { Balloons } from "./Notifications";
 
@@ -15,6 +16,7 @@ export function OverlayHost() {
         </ErrorBoundary>
       ))}
       <MessagesHost />
+      <InputDialogsHost />
       <Balloons />
       <ContextMenuHost />
       <TooltipHost />

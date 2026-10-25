@@ -182,6 +182,8 @@ const ICONS = {
   "text-match": "openidea/nodes/textMatch",
   "open-in-tool-window": "general/openInToolWindow",
   "preserve-case": "openidea/inline/preserveCase",
+  "new-line": "openidea/inline/newLine",
+  "search-history": "openidea/inline/searchHistory",
   filter: "general/filter",
   refresh: "general/refresh",
   settings: "general/settings",
@@ -253,6 +255,18 @@ const ICONS = {
   "db-sqlite": "openidea/database/sqlite",
   "db-postgres": "openidea/database/postgres",
   "db-mysql": "openidea/database/mysql",
+  "db-mariadb": "openidea/database/mariadb",
+  "db-aurora": "openidea/database/aurora",
+  "db-redshift": "openidea/database/redshift",
+  "db-cockroach": "openidea/database/cockroach",
+  "db-greenplum": "openidea/database/greenplum",
+  "db-neon": "openidea/database/neon",
+  "db-oceanbase": "openidea/database/oceanbase",
+  "db-singlestore": "openidea/database/singlestore",
+  "db-supabase": "openidea/database/supabase",
+  "db-tidb": "openidea/database/tidb",
+  "db-timescale": "openidea/database/timescale",
+  "db-yugabyte": "openidea/database/yugabyte",
   export: "openidea/general/export",
   web: "openidea/general/web",
   "browser-chrome": "openidea/browsers/chrome",
@@ -790,8 +804,17 @@ const EXT_ICONS = table({
 /** Source files for languages without a file-type icon. */
 const CODE_EXT = new Set(["astro", "nim", "wit", "wat", "sol", "v", "sv"]);
 
+let iconOverride: ((fileName: string) => IconName | null) | null = null;
+
+/** Lets the user's file type associations (Settings › File Types) pick icons first. */
+export function setFileIconOverride(resolve: ((fileName: string) => IconName | null) | null) {
+  iconOverride = resolve;
+}
+
 /** Picks a file-type icon from a file name. */
 export function fileIconName(fileName: string): IconName {
+  const custom = iconOverride?.(fileName);
+  if (custom) return custom;
   const lower = fileName.toLowerCase();
   const named = FILE_NAMES[lower] ?? NAME_PATTERNS.find(([re]) => re.test(lower))?.[1];
   if (named) return named;

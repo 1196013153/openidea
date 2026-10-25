@@ -6,11 +6,14 @@
  * unmarks the folder (`projectStructure.*`, project scope). Roots drive the
  * project tree icons, package inference for new classes, the "Project
  * Production / Test Files" scopes, and Excluded folders are skipped by the
- * tree, Find in Files and indexing.
+ * tree, Find in Files and indexing. Content roots besides the project folder
+ * (`projectStructure.contentRoots`) are listed in the Project view and searched
+ * by Find in Files; "Exclude files" name patterns (`projectStructure.excludeFiles`)
+ * are hidden from the tree and skipped by search and indexing.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Icon, IconButton, Tree, folderIconName, type FolderKind, T } from "@/ui";
+import { Button, Icon, IconButton, Input, Tree, folderIconName, type FolderKind, T } from "@/ui";
 import { call, commands, isTauri, type FileEntry } from "@/platform/ipc";
 import { relativePath, useProject } from "@/platform/project";
 import {
@@ -20,18 +23,25 @@ import {
   restoreDetected,
   rootRole,
   unmarkedRoots,
+  type FolderListKey,
   type FolderRole,
   type ProjectStructureValid,
 } from "@/platform/languageSettings";
 import { initProjectRoots, useDetectedRoots } from "@/platform/projectRoots";
+import { choosePath } from "./api";
 import { useProjectSetting } from "./components";
 import styles from "./Sdk.module.css";
 
 interface DirNode {
   path: string;
   name: string;
-  rel: string;
+  /** Project-relative; null outside the project (another content root). */
+  rel: string | null;
+  /** A content root besides the project folder. */
+  contentRoot?: boolean;
 }
+
+const inside = (root: string, path: string) => path === root || path.startsWith(root + "/");
 
 const ROLES: Array<{ role: FolderRole; label: string; title: string; kind: FolderKind; cls: string }> = [
   { role: "source", label: "Sources", title: "Source Folders", kind: "source", cls: styles.sourceTitle! },
@@ -53,7 +63,7 @@ async function readDirs(root: string, path: string): Promise<DirNode[]> {
   return entries
     .filter((e) => e.kind === "dir" || (e.kind === "symlink" && e.targetKind === "dir"))
     .filter((e) => e.name !== ".git")
-    .map((e) => ({ path: e.path, name: e.name, rel: relativePath(root, e.path) }));
+    .map((e) => ({ path: e.path, name: e.name, rel: inside(root, e.path) ? relativePath(root, e.path) : null }));
 }
 
 function useStructure(): [ProjectStructureValid, (next: ProjectStructureValid) => void] {
@@ -65,6 +75,8 @@ function useStructure(): [ProjectStructureValid, (next: ProjectStructureValid) =
   );
   const [excluded, setExcluded] = useProjectSetting<string[] | undefined>("projectStructure.excluded");
   const [unmarked, setUnmarked] = useProjectSetting<string[] | undefined>("projectStructure.unmarked");
+  const [contentRoots] = useProjectSetting<string[] | undefined>("projectStructure.contentRoots");
+  const [excludeFiles] = useProjectSetting<string | undefined>("projectStructure.excludeFiles");
   const ps = useMemo<ProjectStructureValid>(
     () => ({
       sourceRoots: sourceRoots ?? [],
@@ -73,12 +85,14 @@ function useStructure(): [ProjectStructureValid, (next: ProjectStructureValid) =
       testResourceRoots: testResourceRoots ?? [],
       excluded: excluded ?? [],
       unmarked: unmarked ?? [],
+      contentRoots: contentRoots ?? [],
+      excludeFiles: excludeFiles ?? "",
     }),
-    [sourceRoots, testRoots, resourceRoots, testResourceRoots, excluded, unmarked],
+    [sourceRoots, testRoots, resourceRoots, testResourceRoots, excluded, unmarked, contentRoots, excludeFiles],
   );
   const set = useCallback(
     (next: ProjectStructureValid) => {
-      const setters: Record<keyof ProjectStructureValid, (v: string[]) => void> = {
+      const setters: Record<FolderListKey, (v: string[]) => void> = {
         sourceRoots: setSource,
         testRoots: setTest,
         resourceRoots: setResources,
@@ -92,6 +106,65 @@ function useStructure(): [ProjectStructureValid, (next: ProjectStructureValid) =
     [ps, setSource, setTest, setResources, setTestResources, setExcluded, setUnmarked],
   );
   return [ps, set];
+}
+
+/** "+ Add Content Root" and the content roots, the project folder first (IDEA's module Sources tab). */
+function ContentRoots({ root }: { root: string }) {
+  const [roots, setRoots] = useProjectSetting<string[] | undefined>("projectStructure.contentRoots");
+  const list = roots ?? [];
+  const add = async () => {
+    const picked = await choosePath({ directory: true, title: "Add Content Root", defaultPath: root });
+    if (!picked || inside(root, picked) || list.includes(picked)) return;
+    setRoots([...list, picked]);
+  };
+  return (
+    <div className={styles.rootGroup}>
+      <Button size="small" variant="ghost" icon="plus" onClick={() => void add()}>
+        <T>Add Content Root</T>
+      </Button>
+      <div className={clsx(styles.rootItem, styles.contentRoot)}>
+        <span className={styles.rootPath} title={root}>
+          {root}
+        </span>
+      </div>
+      {list.map((r) => (
+        <div key={r} className={clsx(styles.rootItem, styles.contentRoot)}>
+          <span className={styles.rootPath} title={r}>
+            {r}
+          </span>
+          <IconButton
+            icon="close"
+            size="small"
+            iconSize={12}
+            title={`Remove content root ${r}`}
+            onClick={() => setRoots(list.filter((x) => x !== r))}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExcludeFiles() {
+  const [value, setValue] = useProjectSetting<string | undefined>("projectStructure.excludeFiles");
+  const id = useId();
+  return (
+    <div className={styles.excludeFiles}>
+      <label htmlFor={id}>
+        <T>Exclude files:</T>
+      </label>
+      <Input
+        id={id}
+        className={styles.excludeInput}
+        value={value ?? ""}
+        placeholder="*.log;tmp*"
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <div className={styles.excludeHint}>
+        <T>Use ; to separate name patterns, * for any number of symbols, ? for one.</T>
+      </div>
+    </div>
+  );
 }
 
 export function ProjectStructurePage() {
@@ -115,14 +188,32 @@ export function ProjectStructurePage() {
   );
 
   const rootNode = useMemo<DirNode | null>(() => (root ? { path: root, name, rel: "" } : null), [root, name]);
+  const treeRoots = useMemo<DirNode[]>(
+    () =>
+      rootNode
+        ? [
+            rootNode,
+            ...ps.contentRoots.map((p) => ({
+              path: p,
+              name: p.slice(p.lastIndexOf("/") + 1) || p,
+              rel: null,
+              contentRoot: true,
+            })),
+          ]
+        : [],
+    [rootNode, ps.contentRoots],
+  );
   useEffect(() => {
     if (!root) return;
     let live = true;
-    void readDirs(root, root).then((dirs) => live && setChildren((m) => new Map(m).set(root, dirs)));
+    for (const dir of [root, ...ps.contentRoots])
+      void readDirs(root, dir)
+        .then((dirs) => live && setChildren((m) => new Map(m).set(dir, dirs)))
+        .catch(() => {});
     return () => {
       live = false;
     };
-  }, [root]);
+  }, [root, ps.contentRoots]);
 
   if (!rootNode)
     return (
@@ -131,10 +222,11 @@ export function ProjectStructurePage() {
       </div>
     );
 
-  const role = selected ? rootRole(roots, selected.rel) : null;
+  const markable = selected?.rel ?? null;
+  const role = markable !== null ? rootRole(roots, markable) : null;
   const mark = (r: FolderRole) => {
-    if (!selected) return;
-    setPs(markFolder(ps, selected.rel, role === r ? null : r, detected));
+    if (markable === null) return;
+    setPs(markFolder(ps, markable, role === r ? null : r, detected));
   };
   const unmarkedDetected = unmarkedRoots(detected, ps);
   const restore = () => setPs(restoreDetected(ps, detected));
@@ -153,7 +245,7 @@ export function ProjectStructurePage() {
                 type="button"
                 className={styles.markButton}
                 aria-pressed={role === r.role}
-                disabled={!selected || (!selected.rel && r.role === "excluded")}
+                disabled={markable === null || (!markable && r.role === "excluded")}
                 onClick={() => mark(r.role)}
               >
                 <Icon name={folderIconName(r.kind)} size={14} />
@@ -164,7 +256,7 @@ export function ProjectStructurePage() {
           <div className={styles.treeScroll}>
             <Tree<DirNode>
               aria-label="Content root"
-              roots={[rootNode]}
+              roots={treeRoots}
               getKey={(n) => n.path}
               getLabel={(n) => n.name}
               getChildren={(n) => children.get(n.path)}
@@ -176,15 +268,18 @@ export function ProjectStructurePage() {
               selected={selected ? new Set([selected.path]) : new Set()}
               onSelectionChange={(_s, lead) => setSelected(lead)}
               getIcon={(n) => {
+                if (n.rel === null) return n.contentRoot ? "module" : folderIconName("plain");
                 const r = rootRole(roots, n.rel);
                 if (!n.rel && !r) return "module";
                 return folderIconName(r ? ROLES.find((x) => x.role === r)!.kind : "plain");
               }}
-              getDetail={(n) => (n.rel ? undefined : (root ?? undefined))}
+              getDetail={(n) => (n.rel === "" ? (root ?? undefined) : n.contentRoot ? n.path : undefined)}
             />
           </div>
+          <ExcludeFiles />
         </div>
         <div className={styles.roots} aria-label="Marked folders">
+          <ContentRoots root={rootNode.path} />
           {ROLES.map((r) => {
             const list = roots.filter((x) => x.kind === r.role);
             return (

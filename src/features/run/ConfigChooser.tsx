@@ -5,16 +5,18 @@ import { shortcutLabel } from "@/platform/keymap";
 import { HighlightedText, Icon, IconButton, List, Popup, SearchField, fuzzyMatch, listNavigate, T } from "@/ui";
 import type { RunConfig } from "@/platform/ipc";
 import { commandLine, configIcon, groupConfigs } from "./configs";
-import { canDeleteConfig, deleteConfig, saveTemporary, selectConfig, startRun, useRun } from "./store";
+import { canDeleteConfig, CURRENT_FILE, deleteConfig, saveTemporary, selectConfig, startRun, useRun } from "./store";
 import styles from "./Run.module.css";
 
 type Row =
   | { type: "section"; key: string; label: string }
   | { type: "config"; key: string; config: RunConfig; indices: number[] | null }
   | { type: "edit"; key: string }
+  | { type: "current"; key: string; indices: number[] | null }
   | { type: "save"; key: string; config: RunConfig };
 
 const ROW = 24;
+const CURRENT_FILE_LABEL = "Current File";
 
 export function buildRows(
   configs: readonly RunConfig[],
@@ -25,6 +27,9 @@ export function buildRows(
   const rows: Row[] = [];
   // IDEA: "Save '<name>' Configuration" first while a temporary configuration is selected.
   if (!query && selected && temporary.includes(selected.id)) rows.push({ type: "save", key: "save", config: selected });
+  // IDEA: the permanent "Current File" entry runs the active file's context.
+  const currentIndices = query ? fuzzyMatch(CURRENT_FILE_LABEL, query) : null;
+  if (!query || currentIndices) rows.push({ type: "current", key: "current", indices: currentIndices });
   for (const group of groupConfigs(configs)) {
     const matched = group.configs
       .map((c) => ({ c, indices: query ? fuzzyMatch(c.name, query) : null }))
@@ -84,7 +89,9 @@ function ConfigChooser() {
   const isSection = (r: Row) => r.type === "section";
   const initial = Math.max(
     0,
-    rows.findIndex((r) => r.type === "config" && r.config.id === selectedId),
+    rows.findIndex(
+      (r) => (r.type === "config" && r.config.id === selectedId) || (r.type === "current" && selectedId === CURRENT_FILE),
+    ),
   );
   const [active, setActive] = useState(initial);
   const [anchor] = useState(anchorElement);
@@ -122,6 +129,12 @@ function ConfigChooser() {
     }
     if (row.type === "save") {
       void saveTemporary(row.config.id);
+      return;
+    }
+    if (row.type === "current") {
+      selectConfig(CURRENT_FILE);
+      if (how === "run" || how === "debug")
+        void executeAction(how === "run" ? "run.runContext" : "run.debugContext").then(() => selectConfig(CURRENT_FILE));
       return;
     }
     if (row.type !== "config") return;
@@ -222,6 +235,16 @@ function ConfigChooser() {
                 <span className={clsx(styles.chooserRow, styles.chooserEdit)}>
                   <Icon name="check" size={13} />
                   <span>Save &apos;{r.config.name}&apos; Configuration</span>
+                </span>
+              );
+            }
+            if (r.type === "current") {
+              return (
+                <span className={styles.chooserRow}>
+                  <Icon name="file" size={13} className={styles.chooserIcon} />
+                  <span className={clsx(styles.chooserName, selectedId === CURRENT_FILE && styles.chooserSelected)}>
+                    {r.indices ? <HighlightedText text={CURRENT_FILE_LABEL} indices={r.indices} /> : <T>{CURRENT_FILE_LABEL}</T>}
+                  </span>
                 </span>
               );
             }

@@ -225,7 +225,7 @@ export function UsagesView() {
 
   return (
     <div className={styles.view}>
-      <div className={styles.toolbar} role="toolbar" aria-orientation="vertical" aria-label="Usages actions">
+      <div className={styles.toolbar} role="toolbar" aria-orientation="vertical" aria-label={tx("Usages actions")}>
         <IconButton
           icon="rerun"
           title={tx("Rerun Find Usages")}

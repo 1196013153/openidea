@@ -6,6 +6,7 @@
  */
 import type { ReactNode } from "react";
 import type { Diagnostic } from "@/bindings";
+import { formatExcluded, formatGuardOptions, guardTextEdits } from "@/platform/formatGuard";
 import { call, commands, isTauri, onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { workflowSettings } from "@/platform/workflowSettings";
@@ -140,15 +141,21 @@ async function modifyFile(path: string, mods: Modifications) {
       await step("Cleanup", async () =>
         applyKind(info.id, (await call(commands.docSnapshot(info.id))).text, "source.fixAll"),
       );
-    if (mods.reformat)
+    const { project, settings } = useProject.getState();
+    const guard = formatGuardOptions(settings);
+    if (mods.reformat && !formatExcluded(path, project?.root ?? null, guard.doNotFormat))
       await step("Reformat code", async () => {
-        const editor = useProject.getState().settings?.editor as
-          { tabSize?: number; insertSpaces?: boolean } | undefined;
-        const edits = await call(
-          commands.lspFormat(info.id, null, {
-            tabSize: editor?.tabSize ?? 4,
-            insertSpaces: editor?.insertSpaces ?? true,
-          }),
+        const editor = settings?.editor as { tabSize?: number; insertSpaces?: boolean } | undefined;
+        const text = (await call(commands.docSnapshot(info.id))).text;
+        const edits = guardTextEdits(
+          text,
+          await call(
+            commands.lspFormat(info.id, null, {
+              tabSize: editor?.tabSize ?? 4,
+              insertSpaces: editor?.insertSpaces ?? true,
+            }),
+          ),
+          guard,
         );
         if (edits.length) await call(commands.applyWorkspaceEdit({ files: [{ kind: "edit", path, edits }] }));
       });

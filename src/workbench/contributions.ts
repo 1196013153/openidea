@@ -46,6 +46,12 @@ export interface ToolWindowContribution {
    * present the header title also gets a "▾" opening just these items.
    */
   headerMenu?: MenuItem[] | ((id: string) => MenuItem[]);
+  /**
+   * The title as a view switcher (IDEA's "Project ▾" panes): a React hook
+   * returning the current view's label and the items the title opens instead
+   * of `headerMenu`'s.
+   */
+  titleMenu?: (id: string) => { label: string; items: MenuItem[] };
   /** Badge (e.g. problem count) shown on the stripe button. */
   useBadge?: () => number | string | null;
   /** Only shown when a project is open (default true). */
@@ -81,6 +87,8 @@ export interface TitleItemContribution {
   /** Higher = further from the centre (closer to the window edge). */
   priority: number;
   component: ComponentType;
+  /** Name in Customize Main Toolbar (defaults to the id). */
+  title?: string;
 }
 
 /** Popups / dialogs rendered above the workbench (Search Everywhere, Settings…). */
@@ -112,6 +120,73 @@ export interface ServiceViewContribution {
   headerActions?: ComponentType;
   /** Listed only once shown with `showServiceView` (a request ran…), like `stripe: "onUse"`. */
   onUse?: boolean;
+}
+
+/** A node of the Services tree; `key` is unique across providers (prefix it with the provider id). */
+export interface ServiceTreeItem {
+  key: string;
+  label: string;
+  icon: string;
+  /** Grey text after the label (status, counts…). */
+  detail?: string;
+  /** Greyed label (stopped, not running). */
+  dim?: boolean;
+  /** Undefined for leaves. */
+  children?: ServiceTreeItem[];
+}
+
+/** A toolbar button the Services tree shows for the selected node. */
+export interface ServiceItemAction {
+  id: string;
+  title: string;
+  icon: string;
+  disabled?: boolean;
+  run(): void;
+}
+
+/**
+ * Top-level nodes of the Services tree (IDEA's ServiceViewContributor): Docker
+ * connections, run configurations… Each provider owns its nodes' toolbar,
+ * context menu and detail pane, and adds entries to the "Add Service" menu.
+ */
+export interface ServiceProviderContribution {
+  id: string;
+  /** Root order; lower first. */
+  order?: number;
+  /** React hook: this provider's root nodes (none: nothing shown). */
+  useRoots(): ServiceTreeItem[];
+  /** Keeps the provider's data live while the tree is shown; returns a disposer. */
+  watch?(): () => void;
+  /** Toolbar buttons for a selected node of this provider. */
+  actions?(item: ServiceTreeItem): ServiceItemAction[];
+  menu?(item: ServiceTreeItem): MenuItem[];
+  /** Double click / Enter. */
+  activate?(item: ServiceTreeItem): void;
+  /** Right pane for a selected node. */
+  detail?: ComponentType<{ item: ServiceTreeItem }>;
+  /** Status line above the tree (a long operation in progress…); renders null when idle. */
+  banner?: ComponentType;
+  /** Entries of the "Add Service" (+, ⌘N) menu. */
+  addMenu?(): MenuItem[];
+}
+
+export const useServiceProviders = create<{ providers: Map<string, ServiceProviderContribution> }>(() => ({
+  providers: new Map(),
+}));
+
+export function registerServiceProvider(p: ServiceProviderContribution): () => void {
+  useServiceProviders.setState((s) => ({ providers: new Map(s.providers).set(p.id, p) }));
+  return () =>
+    useServiceProviders.setState((s) => {
+      if (s.providers.get(p.id) !== p) return s;
+      const providers = new Map(s.providers);
+      providers.delete(p.id);
+      return { providers };
+    });
+}
+
+export function serviceProviders(map = useServiceProviders.getState().providers): ServiceProviderContribution[] {
+  return [...map.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
 }
 
 export interface EditorInput {
@@ -313,6 +388,8 @@ export interface EditorService {
   closePath?(path: string): void;
   /** Closes the tab of the input with this `key` (e.g. a merge editor once applied). */
   closeInput?(key: string): void;
+  /** Reformat Code on the whole open document at `path` (quietly); whether anything changed. */
+  reformat?(path: string): Promise<boolean>;
 }
 
 export interface ToolWindowService {
@@ -342,10 +419,32 @@ export interface NotificationService {
   expire?(key: string): void;
 }
 
+/** A terminal widget (xterm) embedded in another view, e.g. a Run console emulating a terminal. */
+export interface EmbeddedTerminal {
+  write(data: string): void;
+  clear(): void;
+  focus(): void;
+  /** Re-measures the host element (after it was shown or resized). */
+  fit(): void;
+  dispose(): void;
+}
+
+export interface EmbeddedTerminalOptions {
+  /** Keystrokes and pastes, as terminal input. */
+  onData(data: string): void;
+  onResize(cols: number, rows: number): void;
+  /** Directory relative file links resolve against. */
+  cwd?: string;
+  "aria-label"?: string;
+}
+
+export type EmbeddedTerminalFactory = (host: HTMLElement, options: EmbeddedTerminalOptions) => Promise<EmbeddedTerminal>;
+
 const services: {
   editor?: EditorService;
   toolWindows?: ToolWindowService;
   notifications?: NotificationService;
+  embeddedTerminal?: EmbeddedTerminalFactory;
 } = {};
 
 function need<T>(s: T | undefined, name: string): T {
@@ -356,6 +455,7 @@ function need<T>(s: T | undefined, name: string): T {
 export const provideEditorService = (s: EditorService) => void (services.editor = s);
 export const provideToolWindowService = (s: ToolWindowService) => void (services.toolWindows = s);
 export const provideNotificationService = (s: NotificationService) => void (services.notifications = s);
+export const provideEmbeddedTerminal = (f: EmbeddedTerminalFactory | undefined) => void (services.embeddedTerminal = f);
 
 export const editorService = (): EditorService => need(services.editor, "editor");
 export const toolWindowService = (): ToolWindowService => need(services.toolWindows, "toolWindows");
@@ -363,6 +463,8 @@ export const notifications = (): NotificationService =>
   services.notifications ?? { notify: (n) => console.info(`[${n.level}] ${n.title}`) };
 /** The editor service if one has been provided (for optional integrations). */
 export const maybeEditorService = (): EditorService | undefined => services.editor;
+/** Creates terminal widgets; provided by the terminal feature. */
+export const embeddedTerminal = (): EmbeddedTerminalFactory | undefined => services.embeddedTerminal;
 
 // ---------------------------------------------------------------------------
 // File decorations: colour / badge / tooltip for a path, shown by the project
@@ -372,6 +474,8 @@ export const maybeEditorService = (): EditorService | undefined => services.edit
 export interface FileDecoration {
   /** CSS colour, normally a token like `var(--vcs-modified)`. */
   color?: string;
+  /** CSS colour tinting the editor tab (a data source's colour on its console). */
+  tint?: string;
   /** Short badge text, e.g. a problem count. */
   badge?: string;
   tooltip?: string;
@@ -483,18 +587,54 @@ export function registerSettingsPage(page: SettingsPageContribution): () => void
     });
 }
 
-// ---------------------------------------------------------------------------
-// Project view roots shown below the project ("Scratches").
+/** A searchable settings entry: a page, or an option label on it (Search Everywhere's "Settings: …" items). */
+export interface SettingsSearchEntry {
+  pageId: string;
+  /** Page title or option label. */
+  title: string;
+  /** Breadcrumb of the page ("Editor", "General"). */
+  path: string[];
+  /** Extra words that match this entry (page keywords). */
+  keywords?: string[];
+}
 
-export interface ProjectViewRootContribution {
-  id: string;
+let settingsSearchIndex: (() => Promise<SettingsSearchEntry[]>) | null = null;
+
+/** The settings feature provides its search index (pages load lazily, so it is async). */
+export function provideSettingsSearchIndex(index: () => Promise<SettingsSearchEntry[]>): () => void {
+  settingsSearchIndex = index;
+  return () => {
+    if (settingsSearchIndex === index) settingsSearchIndex = null;
+  };
+}
+
+export function searchableSettings(): Promise<SettingsSearchEntry[]> {
+  return settingsSearchIndex ? settingsSearchIndex() : Promise.resolve([]);
+}
+
+// ---------------------------------------------------------------------------
+// Project view roots shown below the project ("External Libraries", "Scratches").
+
+export interface ProjectViewRootEntry {
   label: string;
   /** Icon name from `ui/icons`. */
   icon: string;
-  /** Folder whose contents the node lists (outside the project). */
-  path: string;
+  /** Folder whose contents the node lists (outside the project); omitted for a group of `children`. */
+  path?: string;
+  /** Child nodes of a group node (one per SDK, then its library folders). */
+  children?: readonly ProjectViewRootEntry[];
+  /** Grey text after the label ("library root"). */
+  detail?: string;
+  /** Library sources: shown read-only (no new / rename / move / delete). */
+  readOnly?: boolean;
+}
+
+export interface ProjectViewRootContribution extends ProjectViewRootEntry {
+  id: string;
   /** Lower first. */
   order?: number;
+  /** Which project view mode lists it besides "Project" ("Scratches and Consoles"). */
+  scope?: "scratches";
 }
 
 export const useProjectViewRoots = create<{ roots: Map<string, ProjectViewRootContribution> }>(() => ({
@@ -525,6 +665,8 @@ export function projectViewRoots(map: ReadonlyMap<string, ProjectViewRootContrib
 // `stopProcess` is the Stop chooser (as IDEA): one item per running process
 // a feature can stop (features/run: run sessions, features/debugger: debug sessions).
 // `selectIn` is the Select In chooser (⌥F1): targets for a file besides the project view.
+// `new` is the New popup / New › submenu (IDEA's NewGroup): file kinds a feature creates
+// in `paths[0]`, the target directory (features/templates: file templates, http-client: HTTP Request).
 
 export type ContextMenuId =
   | "editor"
@@ -533,7 +675,8 @@ export type ContextMenuId =
   | "editorGutter"
   | "openIn"
   | "stopProcess"
-  | "selectIn";
+  | "selectIn"
+  | "new";
 
 export interface MenuGroupContext {
   /** Files / directories the menu is for (absolute paths; a virtual URI for virtual documents). */
@@ -648,6 +791,72 @@ export function runExecutors(map = useRunExecutors.getState().executors): RunExe
 }
 
 // ---------------------------------------------------------------------------
+// Run configuration types (IDEA's "Add New Configuration" list), contributed by
+// features and edited by features/run. A type is declarative: its form fields
+// write `RunConfig.params`, and `commandLine` turns them into what is launched.
+
+export interface RunConfigTypeField {
+  /** Key in `RunConfig.params`. */
+  key: string;
+  label: string;
+  /** `checkbox` values are `"true"` or absent. */
+  control?: "text" | "textarea" | "select" | "checkbox";
+  mono?: boolean;
+  placeholder?: string;
+  options?: ReadonlyArray<{ value: string; label: string }>;
+  /** Values offered while typing (e.g. the scripts of detected configurations). */
+  suggestions?(configs: readonly RunConfig[], params: Readonly<Record<string, string>>): string[];
+  required?: boolean;
+  visible?(params: Readonly<Record<string, string>>): boolean;
+}
+
+export interface RunConfigTypeContribution {
+  /** Stored as `RunConfig.kind`. */
+  id: string;
+  label: string;
+  icon: string;
+  description?: string;
+  /** Parent node in "Add New Configuration" (e.g. `Docker`). */
+  group?: string;
+  /** Params of a new configuration (before templates apply). */
+  defaults?: Readonly<Record<string, string>>;
+  fields: readonly RunConfigTypeField[];
+  /**
+   * What is launched for `params`; null when the type runs no process itself (Compound).
+   * `stop`: a shell command line run on Stop before the process is signalled (`docker stop …`).
+   */
+  commandLine(
+    params: Readonly<Record<string, string>>,
+  ): { command: string; args: string[]; cwd?: string | null; stop?: string | null } | null;
+  /** Params that reproduce a configuration made elsewhere (detection, older files); null when it doesn't fit. */
+  paramsFrom?(config: RunConfig): Record<string, string> | null;
+  /** The type's fields set the working directory (no separate field). */
+  ownsWorkingDirectory?: boolean;
+  /** "Emulate terminal in output console" applies (default true). */
+  terminal?: boolean;
+  /** Adjusts what is launched right before it starts (e.g. the environment selecting a Docker daemon). */
+  prepareLaunch?(config: RunConfig): Promise<RunConfig>;
+}
+
+export const useRunConfigTypes = create<{ types: Map<string, RunConfigTypeContribution> }>(() => ({ types: new Map() }));
+
+export function registerRunConfigType(type: RunConfigTypeContribution): () => void {
+  useRunConfigTypes.setState((s) => ({ types: new Map(s.types).set(type.id, type) }));
+  return () =>
+    useRunConfigTypes.setState((s) => {
+      if (s.types.get(type.id) !== type) return s;
+      const types = new Map(s.types);
+      types.delete(type.id);
+      return { types };
+    });
+}
+
+/** Registered configuration types, by label. */
+export function runConfigTypes(map = useRunConfigTypes.getState().types): RunConfigTypeContribution[] {
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// ---------------------------------------------------------------------------
 // Occurrence navigators: result views (Find, Usages, Problems, TODO…) let
 // Next / Previous Occurrence step through their results from anywhere, the
 // editor included. The actions ask the focused, else the last active tool
@@ -693,6 +902,127 @@ export function useOccurrenceNavigator(toolWindow: string, nav: OccurrenceNaviga
     () => registerOccurrenceNavigator(toolWindow, { go: (dir, focus) => latest.current(dir, focus) }),
     [toolWindow],
   );
+}
+
+// ---------------------------------------------------------------------------
+// Editor notification banners (IDEA's EditorNotificationProvider): a feature
+// answers, per file, with a banner shown above its text editor, or null.
+
+export interface EditorBanner {
+  text: string;
+  level?: "info" | "warning";
+  /** Icon name (`ui/icons`); defaults to the level's icon. */
+  icon?: string;
+  /** Links on the right ("Install", "Ignore"). */
+  actions?: Array<{ label: string; run: () => void }>;
+}
+
+export interface EditorBannerContribution {
+  id: string;
+  /** Lower first. */
+  order?: number;
+  /** A React hook (may read stores), called for each open text editor's file. */
+  useBanner(path: string): EditorBanner | null;
+}
+
+export const useEditorBanners = create<{ banners: Map<string, EditorBannerContribution> }>(() => ({
+  banners: new Map(),
+}));
+
+export function registerEditorBanner(banner: EditorBannerContribution): () => void {
+  useEditorBanners.setState((s) => ({ banners: new Map(s.banners).set(banner.id, banner) }));
+  return () =>
+    useEditorBanners.setState((s) => {
+      if (s.banners.get(banner.id) !== banner) return s;
+      const banners = new Map(s.banners);
+      banners.delete(banner.id);
+      return { banners };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Local changes: the VCS provider publishes its change lists (IDEA's
+// ChangeListManager) for features that filter by changed files (TODO › Changes,
+// the project view's "All Changed Files"). Unversioned and ignored files belong
+// to no list.
+
+export interface LocalChangedFile {
+  path: string;
+  /** Deleted in the working tree (no longer on disk). */
+  deleted?: boolean;
+}
+
+export interface LocalChangelist {
+  id: string;
+  name: string;
+  /** New changes go to the active list. */
+  active: boolean;
+  files: LocalChangedFile[];
+}
+
+export const useLocalChanges = create<{ provider: string | null; lists: LocalChangelist[] }>(() => ({
+  provider: null,
+  lists: [],
+}));
+
+/** Replaces the change lists (one VCS provider at a time); the returned function clears them. */
+export function setLocalChanges(provider: string, lists: LocalChangelist[]): () => void {
+  useLocalChanges.setState({ provider, lists });
+  return () => {
+    if (useLocalChanges.getState().provider === provider) useLocalChanges.setState({ provider: null, lists: [] });
+  };
+}
+
+/** Paths of the changed files, of one list (`listId`) or all; `existing` leaves out deleted files. */
+export function localChangedPaths(lists: readonly LocalChangelist[], listId?: string | null, existing = false): string[] {
+  const out: string[] = [];
+  for (const l of lists) {
+    if (listId && l.id !== listId) continue;
+    for (const f of l.files) if (!existing || !f.deleted) out.push(f.path);
+  }
+  return out.sort();
+}
+
+// ---------------------------------------------------------------------------
+// Run Anything (⌃⌃) providers: features offer entries for the typed text
+// (run configurations, `mvn …` / `gradle …` command lines) and may take over
+// running a whole command line; anything else runs as a shell command.
+
+export interface RunAnythingItem {
+  /** Stable within the provider. */
+  key: string;
+  label: string;
+  detail?: string;
+  icon?: string;
+  /** Text put in the field when the item is completed with Tab (default: label). */
+  completion?: string;
+  run(): void | Promise<void>;
+}
+
+export interface RunAnythingProvider {
+  id: string;
+  /** Group heading, e.g. "Run Configurations". */
+  group: string;
+  /** Lower first. */
+  order?: number;
+  /** Matching entries for the field's text (cheap, synchronous). */
+  items(query: string): RunAnythingItem[];
+  /** Runs `line` when it belongs to this provider (`mvn clean`); false leaves it to the next one. */
+  execute?(line: string): boolean | Promise<boolean>;
+}
+
+const runAnythingProviders = new Map<string, RunAnythingProvider>();
+
+export function registerRunAnythingProvider(p: RunAnythingProvider): () => void {
+  runAnythingProviders.set(p.id, p);
+  return () => {
+    if (runAnythingProviders.get(p.id) === p) runAnythingProviders.delete(p.id);
+  };
+}
+
+/** Registered providers in order. */
+export function runAnythingProviderList(): RunAnythingProvider[] {
+  return [...runAnythingProviders.values()].sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.id.localeCompare(b.id));
 }
 
 // ---------------------------------------------------------------------------

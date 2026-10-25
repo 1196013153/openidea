@@ -11,10 +11,57 @@ import {
   filterLocations,
   filterRecentFiles,
   initialFileIndex,
+  lineSegments,
+  locationBreadcrumb,
+  locationTime,
   switcherPaths,
   switcherSelection,
   switcherToolWindows,
 } from "../recent/model";
+
+describe("recent location details", () => {
+  const now = 1_000_000_000_000;
+  it("formats times like IDEA", () => {
+    const pretty = () => "Yesterday 22:52";
+    expect(locationTime(0, now, pretty)).toBe("");
+    expect(locationTime(now - 20_000, now, pretty)).toBe("Just now");
+    expect(locationTime(now - 60_000, now, pretty)).toBe("1 minute ago");
+    expect(locationTime(now - 14 * 60_000, now, pretty)).toBe("14 minutes ago");
+    expect(locationTime(now - 26 * 3_600_000, now, pretty)).toBe("Yesterday 22:52");
+  });
+
+  it("builds the symbol breadcrumb", () => {
+    expect(
+      locationBreadcrumb([
+        { name: "Foo", kind: "class" },
+        { name: "bar", kind: "method" },
+      ]),
+    ).toBe("Foo > bar()");
+    expect(locationBreadcrumb([])).toBe("");
+  });
+
+  it("splits highlight tokens per line, also across line breaks", () => {
+    const lines = ["let a = 1;", "/* x", "y */ b"];
+    const tokens = [
+      { from: 0, to: 3, cls: "tok-keyword" },
+      { from: 8, to: 9, cls: "tok-number" },
+      { from: 11, to: 20, cls: "tok-comment" },
+    ];
+    const segs = lineSegments(lines, tokens);
+    expect(segs[0]).toEqual([
+      { text: "let", cls: "tok-keyword" },
+      { text: " a = ", cls: "" },
+      { text: "1", cls: "tok-number" },
+      { text: ";", cls: "" },
+    ]);
+    expect(segs[1]).toEqual([{ text: "/* x", cls: "tok-comment" }]);
+    expect(segs[2]).toEqual([
+      { text: "y */", cls: "tok-comment" },
+      { text: " b", cls: "" },
+    ]);
+    expect(lineSegments(["", "x"], [])).toEqual([[], [{ text: "x", cls: "" }]]);
+  });
+});
 
 const loc = (path: string, line: number, extra: Partial<RecentLocation> = {}): RecentLocation => ({
   path,

@@ -9,6 +9,8 @@ import { executeAction, registerActions } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
+import { EDIT_SCOPES_ACTION } from "@/platform/search";
+import { isVirtualUri } from "@/platform/virtualDocs";
 import { registerMenuGroup, registerOverlay, registerToolWindow } from "@/workbench/contributions";
 import { BookmarkPopupsOverlay } from "./bookmarks/BookmarkPopups";
 import { bookmarkGutter } from "./bookmarks/gutter";
@@ -16,9 +18,13 @@ import {
   bookmarkByMnemonic,
   hasBookmark,
   loadBookmarks,
+  pathBookmarkAt,
   renameBookmarks,
+  renamePathBookmarks,
   toggleBookmark,
+  togglePathBookmarks,
   toggleMnemonic,
+  updateBookmarkData,
   updateBookmarks,
   useBookmarkPopups,
   useBookmarks,
@@ -30,11 +36,13 @@ import { installTracking, resetTracking } from "./common/tracking";
 import { SearchEverywhereOverlay } from "./everywhere/SearchEverywhere";
 import { hideSearchEverywhere, showSearchEverywhere } from "./everywhere/store";
 import { FindInFilesOverlay } from "./find/FindInFiles";
+import { ScopesDialogOverlay, showScopesDialog } from "./find/ScopesDialog";
 import { hideFindPopup, parseFindArg, runFindPopupCommand, showFindPopup, useFindPopup } from "./find/store";
 import { disposeFindWindow, rerunActiveFindTab, useFindHeaderMenu } from "./find/windowStore";
 import { RecentPopupsOverlay } from "./recent/RecentPopups";
 import { cycleSwitcher, hideRecentPopup, showRecentPopup } from "./recent/store";
 import { FileStructureOverlay, useFileStructurePopup } from "./structure/StructureView";
+import { useOutline, useStructureOptions } from "./structure/store";
 
 /** Single-line editor selection, used to prefill search fields. */
 function editorSelectionText(): string | null {
@@ -115,6 +123,7 @@ export function activate(): void | (() => void) {
     registerOverlay({ id: "search.everywhere", component: SearchEverywhereOverlay }),
     registerOverlay({ id: "search.recent", component: RecentPopupsOverlay }),
     registerOverlay({ id: "search.findInFiles", component: FindInFilesOverlay }),
+    registerOverlay({ id: "search.scopes", component: ScopesDialogOverlay }),
     registerOverlay({ id: "search.fileStructure", component: FileStructureOverlay }),
     registerOverlay({ id: "search.bookmarks", component: BookmarkPopupsOverlay }),
 
@@ -186,6 +195,27 @@ export function activate(): void | (() => void) {
             label: on ? "Remove Bookmark" : "Add Bookmark",
             shortcut: shortcutLabel("navigate.toggleBookmark"),
             run: () => void executeAction("navigate.toggleBookmark", { path, line }),
+          },
+        ];
+      },
+    }),
+
+    registerMenuGroup({
+      // File / folder bookmarks (IDEA's Bookmarks › Toggle Bookmark on the project view and editor tabs).
+      id: "search.bookmarks.files",
+      menus: ["projectView", "editorTab"],
+      order: 60,
+      items: (_menu, { paths, dirs }) => {
+        const targets = paths
+          .map((path, i) => ({ path, dir: dirs?.[i] ?? false }))
+          .filter((t) => !isVirtualUri(t.path));
+        if (!targets.length) return [];
+        const on = targets.every((t) => pathBookmarkAt(useBookmarks.getState().paths, t.path));
+        return [
+          {
+            label: on ? "Remove Bookmark" : "Add Bookmark",
+            icon: "bookmark",
+            run: () => void executeAction("bookmarks.toggleFileBookmark", { targets }),
           },
         ];
       },
@@ -307,6 +337,14 @@ export function activate(): void | (() => void) {
         run: rerunActiveFindTab,
       },
       {
+        id: EDIT_SCOPES_ACTION,
+        title: "Edit Scopes…",
+        category: "Find",
+        keywords: ["custom scope", "file pattern"],
+        when: "projectOpen",
+        run: ({ arg }) => showScopesDialog(arg),
+      },
+      {
         id: "find.replaceInPath",
         title: "Replace in Files…",
         category: "Find",
@@ -340,8 +378,12 @@ export function activate(): void | (() => void) {
         icon: "structure",
         keywords: ["outline", "members"],
         run: () => {
-          // Pressed again IDEA toggles "Show inherited members"; outlines have none, so the popup stays.
-          if (useFileStructurePopup.getState().open) return;
+          // Pressed again, IDEA toggles "Show inherited members" (when the server knows supertypes).
+          if (useFileStructurePopup.getState().open) {
+            if (useOutline.getState().inheritedSupported)
+              useStructureOptions.setState((s) => ({ showInherited: !s.showInherited }));
+            return;
+          }
           closeAllPopups("fileStructure");
           useFileStructurePopup.setState({ open: true });
         },
@@ -363,6 +405,36 @@ export function activate(): void | (() => void) {
           if (!at) return;
           const description = selectionDescription();
           updateBookmarks((list) => toggleBookmark(list, at.path, at.line, at.text, Date.now(), description));
+        },
+      },
+      {
+        id: "bookmarks.toggleFileBookmark",
+        title: "Toggle File Bookmark",
+        category: "Bookmarks",
+        icon: "bookmark",
+        when: "projectOpen",
+        run: ({ arg }) => {
+          const given = (arg as { targets?: unknown } | undefined)?.targets;
+          const targets = Array.isArray(given)
+            ? given.filter((t): t is { path: string; dir: boolean } => typeof t?.path === "string")
+            : activeEditor()
+              ? [{ path: activeEditor()!.ctx.path, dir: false }]
+              : [];
+          updateBookmarkData((d) =>
+            togglePathBookmarks(
+              d,
+              targets.map((t) => ({ path: t.path, dir: !!t.dir })),
+            ),
+          );
+        },
+      },
+      {
+        id: "bookmarks.newList",
+        title: "New Bookmark List…",
+        category: "Bookmarks",
+        when: "projectOpen",
+        run: () => {
+          useBookmarkPopups.setState({ naming: {} });
         },
       },
       {
@@ -446,6 +518,10 @@ export function activate(): void | (() => void) {
     onIdeEvent("fsChanged", (e) => {
       if (!e.removed.length) return;
       updateBookmarks((list) => e.removed.reduce<Bookmark[]>((acc, p) => renameBookmarks(acc, p, null), [...list]));
+      updateBookmarkData((d) => {
+        const paths = e.removed.reduce((acc, p) => renamePathBookmarks(acc, p, null), d.paths);
+        return paths.length === d.paths.length ? d : { ...d, paths };
+      });
     }),
   );
 

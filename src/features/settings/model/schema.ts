@@ -5,6 +5,11 @@
  * back to the default (mirrors `ide-core::settings` defaults).
  */
 import { DEFAULT_IGNORED_NAMES } from "@/platform/ignoredNames";
+import {
+  validateFileTypeOverrides,
+  validateFileTypes,
+  type FileTypeAssociations,
+} from "@/platform/fileTypes";
 import type { Settings } from "@/platform/ipc";
 import {
   DEFAULT_LANGUAGES,
@@ -16,6 +21,7 @@ import {
 } from "@/platform/languageSettings";
 import { EDITOR_EXTRA_DEFAULTS, validateEditorExtras, type EditorExtras } from "@/platform/editorSettings";
 import { DEFAULT_WORKFLOW, validateWorkflow, type WorkflowSettings } from "@/platform/workflowSettings";
+import { DEFAULT_INSPECTIONS, validateInspections, type InspectionSettingsValid } from "@/platform/inspections";
 import {
   DEFAULT_APPEARANCE_EXTRAS,
   DEFAULT_GENERAL_EXTRAS,
@@ -66,12 +72,37 @@ export interface ValidSettings extends WorkflowSettings {
     localHistoryDays: number;
     /** Local History size bound per project, MB. */
     localHistoryMaxMb: number;
+    /** File Types: the user's patterns per language id. */
+    fileTypes: FileTypeAssociations;
+    /** Override File Type: file → language id (project scope). */
+    fileTypeOverrides: Record<string, string>;
   };
   keymapOverrides: Record<string, string[]>;
   customKeymaps: Record<string, CustomKeymapSettings>;
   notifications: NotificationsValid;
   languages: LanguagesValid;
   projectStructure: ProjectStructureValid;
+  inspections: InspectionSettingsValid;
+  /** Editor › Natural Languages › Spelling. */
+  spelling: SpellingValid;
+}
+
+export interface SpellingValid {
+  ideWords: string[];
+  projectWords: string[];
+  customDictionaries: string[];
+}
+
+const stringList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()) : [];
+
+function validateSpelling(raw: unknown): SpellingValid {
+  const r = obj(raw);
+  return {
+    ideWords: stringList(r.ideWords),
+    projectWords: stringList(r.projectWords),
+    customDictionaries: stringList(r.customDictionaries),
+  };
 }
 
 export { ACCENT_PRESETS } from "@/workbench/theme";
@@ -102,12 +133,16 @@ export const DEFAULT_SETTINGS: ValidSettings = {
     ensureFinalNewline: true,
     localHistoryDays: 5,
     localHistoryMaxMb: 512,
+    fileTypes: {},
+    fileTypeOverrides: {},
   },
   keymapOverrides: {},
   customKeymaps: {},
   notifications: DEFAULT_NOTIFICATIONS,
   languages: DEFAULT_LANGUAGES,
   projectStructure: DEFAULT_PROJECT_STRUCTURE,
+  inspections: DEFAULT_INSPECTIONS,
+  spelling: { ideWords: [], projectWords: [], customDictionaries: [] },
   ...DEFAULT_WORKFLOW,
 };
 
@@ -198,12 +233,16 @@ export function validateSettings(raw: Settings | unknown): ValidSettings {
       ensureFinalNewline: bool(f.ensureFinalNewline, d.files.ensureFinalNewline),
       localHistoryDays: num(f.localHistoryDays, d.files.localHistoryDays, LIMITS.localHistoryDays, true),
       localHistoryMaxMb: num(f.localHistoryMaxMb, d.files.localHistoryMaxMb, LIMITS.localHistoryMaxMb, true),
+      fileTypes: validateFileTypes(f.fileTypes),
+      fileTypeOverrides: validateFileTypeOverrides(f.fileTypeOverrides),
     },
     keymapOverrides: overrides,
     customKeymaps,
     notifications: validateNotifications(root.notifications),
     languages: validateLanguages(root.languages),
     projectStructure: validateProjectStructure(root.projectStructure),
+    inspections: validateInspections(root.inspections),
+    spelling: validateSpelling(root.spelling),
     ...validateWorkflow(root),
   };
 }

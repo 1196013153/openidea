@@ -188,8 +188,10 @@ describe("Refactor This", () => {
   it("says so when nothing applies", async () => {
     const v = editor();
     await refactorThis(v, vi.fn());
-    expect(useLspPopup.getState().popup).toBeNull();
-    expect(showHint).toHaveBeenCalledWith(v, "No refactorings available at the caret");
+    expect(labels()).toEqual(["Nothing here"]);
+    const popup = useLspPopup.getState().popup as { items: { disabled?: string | null }[] };
+    expect(popup.items[0]!.disabled).toBeTruthy();
+    expect(showHint).not.toHaveBeenCalled();
   });
 
   it("cancels a superseded query and drops answers after the caret moved", async () => {

@@ -334,3 +334,26 @@
 .search {
   width: 180px;
 }
+
+/* Project Structure: content roots and "Exclude files". */
+.contentRoot {
+  padding-left: 4px;
+  font-weight: 600;
+}
+.excludeFiles {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+.excludeInput {
+  width: 100%;
+}
+.excludeHint {
+  grid-column: 2;
+  color: var(--fg-subtle);
+  font-size: var(--fs-small);
+}

@@ -9,6 +9,7 @@
 import {
   acceptCompletion,
   autocompletion,
+  closeCompletion,
   completeFromList,
   completionStatus,
   currentCompletions,
@@ -24,7 +25,8 @@ import {
 } from "@codemirror/autocomplete";
 import { EditorSelection, Prec, type Text } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap, type ViewUpdate } from "@codemirror/view";
-import { commands, isTauri, nextRequestId, type CompletionItem, type Markup, type RequestId } from "@/platform/ipc";
+import { call, commands, isTauri, nextRequestId, type CompletionItem, type Markup, type RequestId } from "@/platform/ipc";
+import { useProject } from "@/platform/project";
 import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter } from "./completionItems";
 import { lspSnippetToCm, snippetVariables } from "./snippet";
 import { docOf, isUnavailable, lspDoc, lspRequest, reportLspError } from "./lsp";
@@ -35,6 +37,7 @@ import { triggerSignatureHelp } from "./signature";
 import { serverBackoff } from "./availability";
 import { pathCompletionSource } from "./fileReferences";
 import { editorPrefs } from "@/platform/editorSettings";
+import { tx } from "@/platform/i18n";
 import { showHint } from "./hint";
 import { inplaceRenameActive } from "./inplaceRename";
 
@@ -177,6 +180,7 @@ export function applyLspCompletion(
     .map((c) => ({ from: mapOld(c.from), to: mapOld(c.to), insert: c.insert }))
     .filter((c) => c.to <= start || c.from >= end);
 
+  let insertedParens: ReturnType<typeof callParens> = null;
   if (item.isSnippet) {
     if (extra.length) {
       const tr = state.update({ changes: extra, userEvent: "input.complete" });
@@ -186,10 +190,13 @@ export function applyLspCompletion(
     }
     snippet(lspSnippetToCm(item.insertText, snippetVariables(req.path)))(view, completion, start, end);
   } else {
-    const changes = state.changes([...extra, { from: start, to: end, insert: item.insertText }]);
+    const parens = editorPrefs().completion.insertParentheses ? callParens(item, state.doc.lineAt(start), start, end) : null;
+    insertedParens = parens;
+    const changes = state.changes([...extra, { from: start, to: end, insert: item.insertText + (parens ? "()" : "") }]);
+    const caret = changes.mapPos(end, 1) - (parens === "inside" ? 1 : 0);
     view.dispatch({
       changes,
-      selection: EditorSelection.cursor(changes.mapPos(end, 1)),
+      selection: EditorSelection.cursor(caret),
       userEvent: "input.complete",
       annotations: pickedCompletion.of(completion),
       scrollIntoView: true,
@@ -197,7 +204,32 @@ export function applyLspCompletion(
   }
 
   if (!completion.resolved && !item.additionalEdits.length && item.data != null) void applyLateEdits(view, completion, start);
+  if (insertedParens === "inside" && !item.command) setTimeout(() => triggerSignatureHelp(view), 0);
   runCommand(view, item);
+}
+
+const CALLABLE = new Set(["function", "method", "constructor"]);
+/** Lines where a callable is named, not called (imports, `use` paths). */
+const IMPORT_LINE = /^\s*(import|from|use|pub\s+use|export\s+\{|#include|require)\b/;
+
+/**
+ * Code Completion › Insert parentheses automatically: `()` after a function or
+ * method name inserted as plain text (snippets bring their own), with the
+ * caret `inside` unless the signature shows no parameters. Null when the
+ * name is followed by `(` or an identifier, or names an import.
+ */
+export function callParens(
+  item: Pick<CompletionItem, "kind" | "insertText" | "isSnippet" | "labelDetail" | "detail">,
+  line: { from: number; text: string },
+  start: number,
+  end: number,
+): "inside" | "after" | null {
+  if (item.isSnippet || !item.kind || !CALLABLE.has(item.kind) || /[(<[{]/.test(item.insertText)) return null;
+  const next = line.text.charAt(end - line.from);
+  if (next && /[(\p{L}\p{N}_$]/u.test(next)) return null;
+  if (IMPORT_LINE.test(line.text.slice(0, start - line.from))) return null;
+  const sig = item.labelDetail ?? item.detail ?? "";
+  return /^\s*\(\s*\)/.test(sig) || /^\s*fn\s*\(\s*\)|^\s*\(\)\s*(=>|->|:)/.test(sig) ? "after" : "inside";
 }
 
 /**
@@ -338,6 +370,57 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
   };
 }
 
+/**
+ * Code Completion › Sort suggestions alphabetically: the source's options are
+ * filtered here (prefix, substring, then subsequence) and listed by name;
+ * typing on re-filters the same options while the source's `validFor` holds.
+ */
+export function sortAlphabetically(result: CompletionResult, typed: string): CompletionResult {
+  if (result.filter === false) return result;
+  const matched = new Map<Completion, readonly number[]>();
+  for (const o of result.options) {
+    const m = matchRanges(o.label, typed);
+    if (m) matched.set(o, o.displayLabel ? [] : m);
+  }
+  const name = (c: Completion) => c.displayLabel ?? c.label;
+  const options = [...matched.keys()].sort(
+    (a, b) => name(a).localeCompare(name(b), undefined, { sensitivity: "base" }) || name(a).localeCompare(name(b)),
+  );
+  const { validFor } = result;
+  return {
+    from: result.from,
+    to: result.to,
+    options,
+    filter: false,
+    getMatch: (c) => matched.get(c) ?? [],
+    update: validFor
+      ? (_cur, from, to, ctx) => {
+          const text = ctx.state.sliceDoc(from, to);
+          const ok = typeof validFor === "function" ? validFor(text, from, to, ctx.state) : new RegExp(`^(?:${validFor.source})$`, validFor.flags).test(text);
+          return ok ? sortAlphabetically({ ...result, from }, text) : null;
+        }
+      : undefined,
+  };
+}
+
+/** Matched ranges of `typed` in `label`, ignoring case: a substring, else a subsequence; null without a match. */
+export function matchRanges(label: string, typed: string): number[] | null {
+  if (!typed) return [];
+  const lower = label.toLowerCase();
+  const p = typed.toLowerCase();
+  const at = lower.indexOf(p);
+  if (at >= 0) return [at, at + p.length];
+  const ranges: number[] = [];
+  let i = 0;
+  for (let j = 0; j < lower.length && i < p.length; j++) {
+    if (lower[j] !== p[i]) continue;
+    if (ranges.length && ranges[ranges.length - 1] === j) ranges[ranges.length - 1] = j + 1;
+    else ranges.push(j, j + 1);
+    i++;
+  }
+  return i === p.length ? ranges : null;
+}
+
 /** Code Completion › Match case: first letter only, or every typed letter (as a subsequence). */
 export function matchesCase(label: string, typed: string, mode: string): boolean {
   if (!typed) return true;
@@ -370,7 +453,9 @@ function gated(source: CompletionSource): CompletionSource {
   return (ctx) => {
     const only = exclusiveSource(ctx);
     if (only) return source === contributedSource ? only(ctx) : null;
-    return !ctx.explicit && (!editorPrefs().completion.autoPopup || inplaceRenameActive(ctx.state)) ? null : source(ctx);
+    if (!ctx.explicit && (!editorPrefs().completion.autoPopup || inplaceRenameActive(ctx.state))) return null;
+    if (!editorPrefs().completion.sortAlphabetically) return source(ctx);
+    return Promise.resolve(source(ctx)).then((r) => r && sortAlphabetically(r, ctx.state.sliceDoc(r.from, r.to ?? ctx.pos)));
   };
 }
 
@@ -412,9 +497,9 @@ const lookupKeys = Prec.highest(
       const itemChars = isLsp(selected) ? selected.lsp.commitCharacters : (selected.commitCharacters ?? []);
       if (!commitsLookup(e.key, focusedLookups.has(view), editorPrefs().completion.insertOnSpecialKeys, itemChars)) return false;
       if (!acceptCompletion(view)) return false;
-      // A call snippet already opened the parenthesis: the typed one is consumed.
+      // A call snippet or inserted parentheses already opened the call: the typed one is consumed.
       const head = view.state.selection.main.head;
-      if (e.key === "(" && view.state.sliceDoc(head - 1, head) === "(") {
+      if (e.key === "(" && (view.state.sliceDoc(head - 1, head) === "(" || view.state.sliceDoc(head - 2, head) === "()")) {
         e.preventDefault();
         return true;
       }
@@ -423,7 +508,7 @@ const lookupKeys = Prec.highest(
   }),
 );
 
-/** IDEA inserts a sole candidate right away on explicit invocation. */
+/** IDEA inserts a sole candidate right away on explicit invocation (Code Completion › Automatically insert single suggestions). */
 const AUTO_INSERT_DELAY = 80; // past CodeMirror's interactionDelay
 
 const lookupTracker = ViewPlugin.fromClass(
@@ -446,7 +531,7 @@ const lookupTracker = ViewPlugin.fromClass(
       } else if (status === "active" && explicitPending.has(view)) {
         explicitPending.delete(view);
         const options = currentCompletions(u.state);
-        if (options.length === 1) {
+        if (options.length === 1 && editorPrefs().completion.autoInsertSingle) {
           const doc = u.state.doc;
           setTimeout(() => {
             const now = currentCompletions(view.state);
@@ -494,7 +579,33 @@ function typeColumn(c: Completion): Node | null {
   return span;
 }
 
-/** IDEA's advertiser bar under the list (one tip: "Press ↵ to insert, ⇥ to replace"). */
+/** Toggles Code Completion › Sort suggestions alphabetically (globally) and re-opens the lookup. */
+async function toggleSortByName(view: EditorView) {
+  const on = !editorPrefs().completion.sortAlphabetically;
+  if (isTauri()) {
+    const settings = await call(commands.settingsSet("global", "editor.completion.sortAlphabetically", JSON.stringify(on)));
+    useProject.setState({ settings });
+  }
+  if (!view.dom.isConnected) return;
+  closeCompletion(view);
+  startCompletion(view);
+}
+
+function sortToggle(view: EditorView): HTMLElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cm-lsp-completion-sort";
+  button.textContent = tx("Sort by name");
+  const on = editorPrefs().completion.sortAlphabetically;
+  button.setAttribute("aria-pressed", String(on));
+  button.title = tx(on ? "Sort suggestions by relevance" : "Sort suggestions alphabetically");
+  // Keep the editor focused so the lookup survives the click.
+  button.addEventListener("mousedown", (e) => e.preventDefault());
+  button.addEventListener("click", () => void toggleSortByName(view).catch(() => {}));
+  return button;
+}
+
+/** IDEA's advertiser bar under the list (one tip: "Press ↵ to insert, ⇥ to replace") and its Sort by Name toggle. */
 const completionFooter = ViewPlugin.fromClass(
   class {
     constructor(private view: EditorView) {}
@@ -512,7 +623,9 @@ const completionFooter = ViewPlugin.fromClass(
             if (t.querySelector(":scope > .cm-lsp-completion-footer")) continue;
             const footer = document.createElement("div");
             footer.className = "cm-lsp-completion-footer";
-            footer.textContent = "Press ↵ to insert, ⇥ to replace";
+            const tip = document.createElement("span");
+            tip.textContent = tx("Press ↵ to insert, ⇥ to replace");
+            footer.append(tip, sortToggle(this.view));
             t.appendChild(footer);
           }
         },

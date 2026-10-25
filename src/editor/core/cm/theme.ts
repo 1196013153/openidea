@@ -176,6 +176,10 @@ export const openideaTheme = EditorView.theme({
     backgroundColor: "var(--editor-search)",
     borderRadius: "2px",
   },
+  ".cm-openidea-findExcluded": {
+    textDecoration: "line-through",
+    textDecorationColor: "var(--fg-muted)",
+  },
   ".cm-openidea-findScope": {
     backgroundColor: "var(--editor-selection-inactive)",
   },

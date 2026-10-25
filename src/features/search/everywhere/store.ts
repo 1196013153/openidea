@@ -3,6 +3,7 @@ import { getContext, type ContextKeys } from "@/platform/context";
 import { loadJson, saveJson } from "../common/open";
 import type { ProjectFileSet } from "@/platform/ipc";
 import type { SeTab } from "./model";
+import { DEFAULT_FILTERS, sanitizeFilters, type FilterTab, type SeFilters } from "./filters";
 
 interface SeState {
   open: boolean;
@@ -23,9 +24,12 @@ interface SeState {
    */
   autoEverywhere: boolean;
   notFound: string | null;
+  /** The funnel's per-tab filters (remembered). */
+  filters: SeFilters;
 }
 
 const PREVIEW_KEY = "openidea.search.everywherePreview.v1";
+const FILTERS_KEY = "openidea.search.everywhereFilters.v1";
 
 export const useSearchEverywhere = create<SeState>(() => ({
   open: false,
@@ -38,11 +42,18 @@ export const useSearchEverywhere = create<SeState>(() => ({
   preview: loadJson<unknown>(PREVIEW_KEY, false) === true,
   autoEverywhere: true,
   notFound: null,
+  filters: sanitizeFilters(loadJson<unknown>(FILTERS_KEY, DEFAULT_FILTERS)),
 }));
 
 export function setSearchEverywherePreview(preview: boolean) {
   useSearchEverywhere.setState({ preview });
   saveJson(PREVIEW_KEY, preview);
+}
+
+export function setSearchEverywhereFilter<T extends FilterTab>(tab: T, value: SeFilters[T]) {
+  const filters = { ...useSearchEverywhere.getState().filters, [tab]: value };
+  useSearchEverywhere.setState({ filters });
+  saveJson(FILTERS_KEY, filters);
 }
 
 /**

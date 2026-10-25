@@ -37,6 +37,7 @@ impl Fixture {
         let idx = ProjectIndex::open(
             &self.root,
             &self.cache,
+            Vec::new(),
             vec!["**/node_modules".into(), "**/target".into()],
             languages,
             syntax,
@@ -402,4 +403,73 @@ fn css_selectors_are_found_by_exact_name() {
     assert_eq!(found, vec![("web/a.css".into(), 0), ("web/b.scss".into(), 0), ("web/index.html".into(), 0)]);
     assert_eq!(idx.symbols_named("--gap", None, 10).len(), 1);
     assert!(idx.symbols_named(".card", Some(SymbolKind::Field), 10).is_empty());
+}
+
+#[test]
+fn content_roots_and_excludes_change_without_reopening() {
+    let fx = Fixture::new(&[("src/main.rs", "fn alpha() {}\n"), ("src/gen/out.rs", "fn generated() {}\n")]);
+    let shared = fx._dir.path().join("shared-lib");
+    std::fs::create_dir_all(shared.join("src")).unwrap();
+    std::fs::write(shared.join("src/lib.rs"), "fn gamma() {}\n").unwrap();
+    let idx = fx.open();
+    assert!(files(&idx, "lib.rs").is_empty());
+
+    let excludes = vec!["**/node_modules".to_owned(), "**/target".to_owned()];
+    assert!(idx.set_scope(vec![shared.clone()], excludes.clone()));
+    assert!(!idx.set_scope(vec![shared.clone()], excludes.clone()), "unchanged scope");
+    assert!(idx.wait_idle(WAIT));
+    assert_eq!(files(&idx, "lib.rs"), ["shared-lib/src/lib.rs"]);
+    let gamma = &idx.find_symbols("gamma", SymbolFilter::All, 5)[0];
+    assert_eq!(gamma.path, dunce::canonicalize(shared.join("src/lib.rs")).unwrap());
+
+    // Files created in a content root are picked up incrementally.
+    std::fs::write(shared.join("src/more.rs"), "fn delta() {}\n").unwrap();
+    idx.update(&[shared.join("src/more.rs")], &[]);
+    assert!(idx.wait_idle(WAIT));
+    assert_eq!(symbols(&idx, "delta", SymbolFilter::All), ["delta"]);
+
+    // A new exclude drops what it matches; removing the root drops its files.
+    let mut more = excludes.clone();
+    more.push("gen".into());
+    idx.set_scope(Vec::new(), more);
+    assert!(idx.wait_idle(WAIT));
+    assert!(files(&idx, "out.rs").is_empty());
+    assert!(files(&idx, "lib.rs").is_empty());
+    assert_eq!(idx.status().files, 1);
+    drop(idx);
+
+    // Extra roots are not persisted: reopening without them lists only the project.
+    let idx = fx.open();
+    assert!(symbols(&idx, "gamma", SymbolFilter::All).is_empty());
+}
+
+#[test]
+fn file_type_changes_reparse_affected_files() {
+    let fx = Fixture::new(&[("src/main.rs", "fn alpha() {}\n"), ("src/legacy.inc", "fn beta() {}\n")]);
+    let languages = Arc::new(LanguageRegistry::load(None).unwrap());
+    let idx = ProjectIndex::open(
+        &fx.root,
+        &fx.cache,
+        Vec::new(),
+        Vec::new(),
+        languages.clone(),
+        Arc::new(Syntax::new()),
+        Arc::new(NullSink),
+    )
+    .unwrap();
+    assert!(idx.wait_idle(WAIT));
+    assert!(symbols(&idx, "beta", SymbolFilter::All).is_empty(), "plain text has no symbols");
+    let parsed = idx.shared.parsed.load(Ordering::SeqCst);
+
+    let before = Arc::new(languages.snapshot());
+    let mut ft = ide_language::FileTypes::default();
+    ft.associations.insert(
+        "rust".into(),
+        ide_core::settings::FileTypeAssociation { patterns: vec!["*.inc".into()], ..Default::default() },
+    );
+    assert!(languages.set_file_types(ft));
+    idx.languages_changed(before);
+    assert!(idx.wait_idle(WAIT));
+    assert_eq!(symbols(&idx, "beta", SymbolFilter::All), ["beta"]);
+    assert_eq!(idx.shared.parsed.load(Ordering::SeqCst), parsed + 1, "only the affected file is re-parsed");
 }

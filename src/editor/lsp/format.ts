@@ -12,9 +12,12 @@ import type { EditorView } from "@codemirror/view";
 import { commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { executeAction } from "@/platform/actions";
+import { formatExcluded, formatGuardOptions, guardFormatChanges, type FormatGuardOptions } from "@/platform/formatGuard";
+import { useProject } from "@/platform/project";
 import { CONTRIBUTED_FORMAT, contributedAt, whenSynced, type ContributedFormatter } from "@/editor/api";
 import { docOf, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, textEditsToChanges } from "./positions";
+import { tx, txTemplate } from "@/platform/i18n";
 import { showHint } from "./hint";
 import { openPopup, type ReformatOptions } from "./popupStore";
 
@@ -46,15 +49,15 @@ function formattedHint(view: EditorView, lines: number) {
   const keys = shortcutLabel("code.reformatDialog");
   showHint(view, () => {
     const box = document.createElement("div");
-    box.textContent = `Formatted ${lines} ${lines === 1 ? "line" : "lines"}`;
+    box.textContent = txTemplate(`Formatted ${lines} ${lines === 1 ? "line" : "lines"}`);
     const more = document.createElement("div");
     const link = document.createElement("button");
     link.type = "button";
     link.className = "cm-lsp-link-button";
-    link.textContent = "Show";
+    link.textContent = tx("Show");
     link.addEventListener("mousedown", (e) => e.preventDefault());
     link.addEventListener("click", () => void executeAction("code.reformatDialog"));
-    more.append(link, ` the Reformat dialog${keys ? `: ${keys}` : ""}`);
+    more.append(link, `${tx(" the Reformat dialog")}${keys ? `: ${keys}` : ""}`);
     box.appendChild(more);
     return box;
   });
@@ -70,8 +73,15 @@ export async function formatDocument(
 }
 
 async function format(view: EditorView, opts: { explicit: boolean; selectionOnly?: boolean }): Promise<FormatResult> {
+  const { project, settings } = useProject.getState();
+  const guard = formatGuardOptions(settings);
+  const path = docOf(view)?.path;
+  if (path && formatExcluded(path, project?.root ?? null, guard.doNotFormat)) {
+    if (opts.explicit) showHint(view, "Formatting is turned off for this file (Code Style › Formatter › Do not format)");
+    return NOTHING;
+  }
   const own = contributedAt<ContributedFormatter>(view.state, CONTRIBUTED_FORMAT, 0);
-  if (own) return applyContributedFormat(view, own, opts);
+  if (own) return applyContributedFormat(view, own, opts, guard);
   const doc = docOf(view);
   if (!doc || doc.readOnly) return NOTHING;
   // The server formats the backend's copy: let pending keystrokes reach it first.
@@ -92,7 +102,7 @@ async function format(view: EditorView, opts: { explicit: boolean; selectionOnly
     if (opts.explicit) showHint(view, "The file changed while formatting; try again");
     return NOTHING;
   }
-  const changes = textEditsToChanges(state.doc, edits);
+  const changes = guardFormatChanges(state.doc.toString(), textEditsToChanges(state.doc, edits), guard);
   if (!changes.length) {
     if (opts.explicit) showHint(view, "No lines changed: content is already properly formatted");
     return NOTHING;
@@ -110,13 +120,18 @@ function applyContributedFormat(
   view: EditorView,
   format: ContributedFormatter,
   opts: { explicit: boolean; selectionOnly?: boolean },
+  guard: FormatGuardOptions,
 ): FormatResult {
   const state = view.state;
   if (state.readOnly) return NOTHING;
   const sel = state.selection.main;
   const useSelection = (opts.selectionOnly ?? true) && !sel.empty;
-  const changes = format(state, useSelection ? { from: sel.from, to: sel.to } : null).filter(
-    (c) => state.sliceDoc(c.from, c.to) !== c.insert,
+  const changes = guardFormatChanges(
+    state.doc.toString(),
+    format(state, useSelection ? { from: sel.from, to: sel.to } : null)
+      .filter((c) => state.sliceDoc(c.from, c.to) !== c.insert)
+      .sort((a, b) => a.from - b.from),
+    guard,
   );
   if (!changes.length) {
     if (opts.explicit) showHint(view, "No lines changed: content is already properly formatted");

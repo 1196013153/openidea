@@ -1,10 +1,12 @@
 /** Actions of the project view (Find Action, keymap, other features via `executeAction`). */
 import { activeEditor } from "@/editor/api";
 import { getAction, registerActions, type Action } from "@/platform/actions";
+import { dirname, useProject } from "@/platform/project";
 import { showContextMenu, type MenuItem } from "@/ui";
 import { maybeEditorService, menuGroupItems, toolWindowService } from "@/workbench/contributions";
 import { OPTION_LABELS } from "./HeaderActions";
-import { revealLabel } from "./contextMenu";
+import { newMenuItems, revealLabel } from "./contextMenu";
+import { openNewPopup } from "./newPopupModel";
 import type { ProjectNode } from "./model";
 import {
   beginNew,
@@ -28,7 +30,18 @@ import {
 import { nameOf, parentOf } from "./paths";
 import { showNewPopup, treeHandle } from "./ProjectView";
 import { lastFileRefactoring, undoFileRefactoring } from "./fileRefactor";
-import { collapseAll, currentModel, expandAll, reloadAll, revealPath, setViewOption, useProjectTree } from "./store";
+import {
+  VIEW_MODES,
+  collapseAll,
+  currentModel,
+  expandAll,
+  modeShows,
+  reloadAll,
+  revealPath,
+  setViewMode,
+  setViewOption,
+  useProjectTree,
+} from "./store";
 
 const FOCUS = "projectViewFocus";
 const OPEN = "projectOpen";
@@ -75,6 +88,7 @@ function showProjectView(focus: boolean) {
 export function selectInProjectView(path?: string | null, focus = true) {
   const target = path ?? maybeEditorService()?.activePath() ?? null;
   if (!target) return false;
+  if (!modeShows(target)) setViewMode("project");
   showProjectView(focus);
   return revealPath(target, focus);
 }
@@ -97,6 +111,23 @@ export function selectInTargets(path: string): MenuItem[] {
       ? [{ label: "Terminal", icon: "terminal", run: () => void delegate("terminal.openAt", parentOf(path)) }]
       : []),
   ];
+}
+
+/**
+ * The New popup for the active editor's directory, at the caret (centred near
+ * the top without one); `orRoot` falls back to the project root without a file.
+ */
+export function showNewPopupForEditor(orRoot = false): boolean {
+  const editor = activeEditor();
+  const path = editor && !editor.ctx.virtual ? editor.ctx.path : null;
+  const directory = path ? dirname(path) : orRoot ? (useProject.getState().project?.root ?? null) : null;
+  if (!directory) return false;
+  const coords = path ? editor!.view.coordsAtPos(editor!.view.state.selection.main.head) : null;
+  const at = coords
+    ? { x: coords.left, y: coords.bottom + 2 }
+    : { x: window.innerWidth / 2 - 140, y: window.innerHeight / 5 };
+  openNewPopup(at, newMenuItems(directory, { outsideTree: true }));
+  return true;
 }
 
 function showSelectIn(path: string) {
@@ -123,6 +154,18 @@ export function registerProjectActions(): () => void {
     category: "View",
     keywords: ["project", "tree", "toggle"],
     run: () => setViewOption(key, !useProjectTree.getState().options[key]),
+  }));
+
+  const modes: Action[] = VIEW_MODES.map(([mode, label]) => ({
+    id: `project.viewMode.${mode}`,
+    title: `Project View: Show ${label}`,
+    category: "View",
+    when: OPEN,
+    keywords: ["project", "pane", "scope", "view as"],
+    run: () => {
+      setViewMode(mode);
+      showProjectView(false);
+    },
   }));
 
   return registerActions([
@@ -165,11 +208,26 @@ export function registerProjectActions(): () => void {
       when: OPEN,
       keywords: ["create"],
       run: ({ arg, ctx }) => {
-        // ⌘N inside the project view opens the New popup (File, Directory, templates).
+        // ⌘N inside the project view opens the New popup (File, Directory, templates);
+        // in an editor (where Generate does not apply) it opens for the file's directory.
         if (arg === undefined && ctx[FOCUS] && showNewPopup()) return;
+        if (arg === undefined && ctx.editorFocus && showNewPopupForEditor()) return;
         // No focus request: the inline editor takes focus itself.
         showProjectView(false);
         return beginNew("file", folderFrom(arg));
+      },
+    },
+    {
+      // IDEA's NewElementSamePlace: the New popup for the current file's directory, wherever the focus is.
+      id: "project.newInThisDirectory",
+      title: "New in This Directory…",
+      category: "File",
+      icon: "plus",
+      when: OPEN,
+      keywords: ["create", "file", "same place", "current directory"],
+      run: ({ ctx }) => {
+        if (ctx[FOCUS] && showNewPopup()) return;
+        showNewPopupForEditor(true);
       },
     },
     {
@@ -380,7 +438,7 @@ export function registerProjectActions(): () => void {
       keyWhen: FOCUS,
       run: () => {
         const lead = leadNode();
-        return expandAll(lead?.dir && !lead.root ? lead.path : undefined);
+        return expandAll(lead?.dir && !lead.root ? lead.key : undefined);
       },
     },
     {
@@ -405,5 +463,6 @@ export function registerProjectActions(): () => void {
       run: reloadAll,
     },
     ...toggles,
+    ...modes,
   ]);
 }

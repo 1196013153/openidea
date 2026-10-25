@@ -2,7 +2,8 @@
  * "N usages" code lenses above declarations (IDEA's usages inlay). Cheap by
  * construction: only declarations in (and near) the viewport are counted, one
  * debounced pass after edits / scrolling, results cached per document text
- * and symbol, and at most a few reference requests in flight.
+ * and symbol, and at most a few reference requests in flight. Beside each
+ * count, the declaration's last author from VCS blame (`authorLens`).
  */
 import { EditorSelection, MapMode, StateEffect, StateField, type Extension, type Text } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
@@ -14,6 +15,7 @@ import { debounce, docOf, isUnavailable, lspRequest } from "./lsp";
 import { posToOffset } from "./positions";
 import { onLspRefresh, serverBackoff } from "./availability";
 import { editorPrefs } from "@/platform/editorSettings";
+import { authorLabel, authorSummary, authorTooltip, blameFor, onBlameInvalidated } from "./authorLens";
 
 const LENS_KINDS = new Set<SymbolKind>([
   "class",
@@ -38,6 +40,9 @@ export interface LensTarget {
   /** 0-based line / UTF-16 col of the identifier. */
   line: number;
   col: number;
+  /** 0-based lines of the whole declaration. */
+  startLine: number;
+  endLine: number;
 }
 
 /** Servers name callbacks and anonymous functions (`<function>`, `map() callback`); they have no usages. */
@@ -48,7 +53,13 @@ export function lensTargets(items: readonly OutlineItem[]): LensTarget[] {
   const out: LensTarget[] = [];
   const walk = (list: readonly OutlineItem[]) => {
     for (const it of list) {
-      if (LENS_KINDS.has(it.kind) && !anonymous(it.name)) out.push({ name: it.name, line: it.selection_range.start.line, col: it.selection_range.start.col });
+      if (LENS_KINDS.has(it.kind) && !anonymous(it.name)) out.push({
+          name: it.name,
+          line: it.selection_range.start.line,
+          col: it.selection_range.start.col,
+          startLine: it.range.start.line,
+          endLine: it.range.end.line,
+        });
       if (it.children.length) walk(it.children);
     }
   };
@@ -82,9 +93,8 @@ const lensField = StateField.define<CodeLens[]>({
   provide: (f) => codeLenses.from(f),
 });
 
-const enabled = () => {
-  return editorPrefs().inlay.codeVisionUsages;
-};
+const usagesEnabled = () => editorPrefs().inlay.codeVisionUsages;
+const authorEnabled = () => editorPrefs().inlay.codeVisionAuthor;
 
 function openUsages(view: EditorView, offset: number) {
   view.dispatch({ selection: EditorSelection.cursor(offset), userEvent: "select.lens" });
@@ -101,6 +111,7 @@ class UsagesLensPlugin {
   private generation = 0;
   private unsubscribe: () => void;
   private offReady: () => void;
+  private offBlame: () => void;
 
   constructor(private view: EditorView) {
     this.refresh();
@@ -112,6 +123,7 @@ class UsagesLensPlugin {
       this.cache.clear();
       this.refresh();
     });
+    this.offBlame = onBlameInvalidated(() => this.refresh());
   }
 
   update(u: ViewUpdate) {
@@ -124,11 +136,15 @@ class UsagesLensPlugin {
     const doc = docOf(view);
     if (!doc) return;
     const gen = ++this.generation;
-    if (!enabled() || serverBackoff.active(doc.doc)) {
+    const usages = usagesEnabled() && !serverBackoff.active(doc.doc);
+    const authors = authorEnabled() && !doc.virtual;
+    if (!usages && !authors) {
       if (view.state.field(lensField).length) view.dispatch({ effects: setLenses.of([]) });
       return;
     }
     const text = view.state.doc;
+    // Blame runs beside the reference requests; it never holds up the counts.
+    const blame = authors ? blameFor(doc.path, text) : Promise.resolve(null);
     if (this.cacheDoc !== text) {
       this.cache = new Map();
       this.cacheDoc = text;
@@ -144,7 +160,7 @@ class UsagesLensPlugin {
       const lastLine = text.lineAt(to).number - 1 + MARGIN_LINES;
       const visible = this.outline.targets.filter((t) => t.line >= firstLine && t.line <= lastLine).slice(0, MAX_PER_PASS);
       const key = (t: LensTarget) => `${t.line}:${t.col}:${t.name}`;
-      const todo = visible.filter((t) => !this.cache.has(key(t)));
+      const todo = usages ? visible.filter((t) => !this.cache.has(key(t))) : [];
       let unavailable = false;
       for (let i = 0; i < todo.length && !unavailable; i += CONCURRENCY) {
         await Promise.all(
@@ -160,11 +176,15 @@ class UsagesLensPlugin {
         if (gen !== this.generation || view.state.doc !== text) return;
       }
       if (unavailable) serverBackoff.mark(doc.doc);
+      const lines = await blame;
+      if (gen !== this.generation || view.state.doc !== text) return;
       const lenses: CodeLens[] = [];
       for (const t of visible) {
-        const n = this.cache.get(key(t));
-        if (n === undefined) continue;
         const offset = posToOffset(text, { line: t.line, col: t.col });
+        const who = lines && authorSummary(lines, t.startLine, t.endLine);
+        if (who) lenses.push({ pos: offset, title: authorLabel(who), tooltip: authorTooltip(who), icon: "user", order: 20 });
+        const n = usages ? this.cache.get(key(t)) : undefined;
+        if (n === undefined) continue;
         lenses.push({
           pos: offset,
           title: usagesLabel(n),
@@ -183,12 +203,16 @@ class UsagesLensPlugin {
     this.refresh.cancel();
     this.unsubscribe();
     this.offReady();
+    this.offBlame();
     this.generation++;
   }
 }
 
 function sameLenses(a: readonly CodeLens[], b: readonly CodeLens[]) {
-  return a.length === b.length && a.every((l, i) => l.pos === b[i]!.pos && l.title === b[i]!.title);
+  return (
+    a.length === b.length &&
+    a.every((l, i) => l.pos === b[i]!.pos && l.title === b[i]!.title && l.tooltip === b[i]!.tooltip)
+  );
 }
 
 export function usagesLensExtension(): Extension {

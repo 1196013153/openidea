@@ -46,6 +46,9 @@ pub struct TextSnapshot {
     pub text: String,
 }
 
+/// Language of a file from its path and first line (hashbangs).
+pub type DetectLanguage = dyn Fn(&Path, Option<&str>) -> LanguageId + Send + Sync;
+
 /// Registry of open documents keyed by path, with ref-counting so split
 /// editors on the same file share one buffer.
 ///
@@ -55,7 +58,7 @@ pub struct Documents {
     registry: Mutex<Registry>,
     observers: RwLock<Vec<Arc<dyn DocumentObserver>>>,
     sink: SharedSink,
-    detect_language: Box<dyn Fn(&Path) -> LanguageId + Send + Sync>,
+    detect_language: Box<DetectLanguage>,
     editorconfig: EditorConfig,
     defaults: RwLock<FileDefaults>,
 }
@@ -148,7 +151,7 @@ fn read_only_error(path: &Path) -> IdeError {
 }
 
 impl Documents {
-    pub fn new(sink: SharedSink, detect_language: Box<dyn Fn(&Path) -> LanguageId + Send + Sync>) -> Self {
+    pub fn new(sink: SharedSink, detect_language: Box<DetectLanguage>) -> Self {
         Self {
             registry: Mutex::default(),
             observers: RwLock::default(),
@@ -238,13 +241,19 @@ impl Documents {
         }
         let defaults = self.file_defaults();
         let loaded = ide_vfs::load_text_with_fallback(path, defaults.fallback_for(&absolute(path)))?;
-        let language = (self.detect_language)(path);
-        let meta = std::fs::metadata(path).ok();
-        let writable = meta.as_ref().map(|m| !m.permissions().readonly()).unwrap_or(true);
+        let language = (self.detect_language)(path, loaded.text.lines().next());
+        // Archive entries (`<jar>!/<entry>`) are read-only and kept from language
+        // servers and Local History, which only know real files.
+        let in_archive = ide_vfs::is_archive_path(path);
+        let meta = if in_archive { None } else { std::fs::metadata(path).ok() };
+        let writable = !in_archive && meta.as_ref().map(|m| !m.permissions().readonly()).unwrap_or(true);
         let empty_file = meta.as_ref().is_some_and(|m| m.len() == 0);
-        let observed = !(loaded.binary || loaded.too_large);
-        let editorconfig =
-            if loaded.binary || !defaults.editorconfig { None } else { self.editorconfig.resolve(&absolute(path)) };
+        let observed = !(loaded.binary || loaded.too_large || in_archive);
+        let editorconfig = if loaded.binary || in_archive || !defaults.editorconfig {
+            None
+        } else {
+            self.editorconfig.resolve(&absolute(path))
+        };
         let mut doc = Document::new(&loaded.text);
         let (mut encoding, mut has_bom) = (loaded.encoding, loaded.has_bom);
         // An empty file has nothing to detect: Code Style / File Encodings defaults apply.
@@ -575,6 +584,37 @@ impl Documents {
     /// Ids of all open documents.
     pub fn open_documents(&self) -> Vec<DocId> {
         self.registry.lock().docs.keys().copied().collect()
+    }
+
+    /// Detects the language of every open file again (file type associations
+    /// changed). A document whose language changes is reopened for the
+    /// observers, so it moves to the matching language servers and syntax tree,
+    /// and reported as [`IdeEvent::DocLanguage`]. Returns the changed documents.
+    pub fn redetect_languages(&self) -> Vec<DocId> {
+        let slots: Vec<(DocId, Slot)> = self.registry.lock().docs.iter().map(|(id, e)| (*id, e.slot.clone())).collect();
+        let mut changed = Vec::new();
+        for (id, slot) in slots {
+            let mut st = slot.lock();
+            if st.closed || st.uri.is_some() {
+                continue;
+            }
+            let text = st.doc.text();
+            let language = (self.detect_language)(&st.path, text.lines().next());
+            if language == st.language {
+                continue;
+            }
+            st.language = language.clone();
+            if st.observed {
+                let info = Self::info_with_text(id, &st, text);
+                for o in self.observers() {
+                    o.closed(id, &st.path);
+                    o.opened(&info);
+                }
+            }
+            self.sink.emit(IdeEvent::DocLanguage { doc: id, language });
+            changed.push(id);
+        }
+        changed
     }
 
     /// Changes the line ending used on save; marks the document dirty.

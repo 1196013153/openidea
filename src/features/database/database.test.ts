@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { exportData, type ExportData } from "./export";
-import { buildRowEdits, connectRemedy, emptyEdits, hasEdits, parseSourceUrl, sourceLabel, splitTarget, sshLabel, targetOf, toCsv, toTsv } from "./model";
+import {
+  buildRowEdits,
+  colorVar,
+  connectRemedy,
+  emptyEdits,
+  hasEdits,
+  idleTargets,
+  matchesPattern,
+  parseSourceUrl,
+  shownNames,
+  sourceLabel,
+  splitTarget,
+  sshLabel,
+  targetOf,
+  toCsv,
+  toTsv,
+} from "./model";
+import { VENDORS, sourceUrl, vendorById, vendorOf, vendorPreset } from "./vendors";
 
 describe("clipboard formats", () => {
   it("copies TSV with NULL as empty and whitespace flattened", () => {
@@ -129,5 +146,90 @@ describe("parseSourceUrl", () => {
   it("reads SQLite files and rejects other drivers", () => {
     expect(parseSourceUrl("jdbc:sqlite:C:/data/shop.db")?.source).toEqual({ driver: "sqlite", file: "C:/data/shop.db", name: "shop" });
     expect(parseSourceUrl("oracle://x")).toBeNull();
+  });
+});
+
+describe("data source types", () => {
+  it("presets wire-compatible products on the existing drivers", () => {
+    expect(vendorPreset(vendorById("cockroachdb")!)).toEqual({ driver: "postgres", vendor: "cockroachdb", port: 26257 });
+    expect(vendorPreset(vendorById("postgres")!)).toEqual({ driver: "postgres", vendor: "", port: 5432 });
+    expect(vendorPreset(vendorById("supabase")!).ssl).toBe("require");
+    expect(VENDORS.every((v) => ["postgres", "mysql", "sqlite"].includes(v.driver))).toBe(true);
+    const labels = VENDORS.map((v) => v.label);
+    expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("falls back to the driver for unknown or mismatched presets", () => {
+    expect(vendorOf({ driver: "mysql", vendor: "tidb" }).label).toBe("TiDB");
+    expect(vendorOf({ driver: "postgres", vendor: "tidb" }).id).toBe("postgres");
+    expect(vendorOf({ driver: "mysql" }).id).toBe("mysql");
+    expect(sourceLabel({ name: "tidb", driver: "mysql", vendor: "tidb" })).toBe("tidb (TiDB)");
+  });
+
+  it("previews the JDBC URL of the fields", () => {
+    expect(sourceUrl({ driver: "postgres", host: "localhost", port: 5432, database: "postgres" })).toBe(
+      "jdbc:postgresql://localhost:5432/postgres",
+    );
+    expect(sourceUrl({ driver: "postgres", vendor: "redshift", host: "r", port: null, database: "" })).toBe("jdbc:redshift://r:5439");
+    expect(sourceUrl({ driver: "mysql", vendor: "mariadb", host: "::1", port: 3307, database: "a b" })).toBe(
+      "jdbc:mariadb://[::1]:3307/a%20b",
+    );
+    expect(sourceUrl({ driver: "sqlite", file: "app.db" })).toBe("jdbc:sqlite:app.db");
+  });
+
+  it("reads URLs of compatible products, SSL settings and driver properties", () => {
+    const tidb = parseSourceUrl("jdbc:tidb://root@tidb.local:4000/test?sslmode=verify-full&sslrootcert=/ca.pem&sql_mode=ANSI");
+    expect(tidb?.source).toEqual({
+      driver: "mysql",
+      vendor: "tidb",
+      host: "tidb.local",
+      port: 4000,
+      user: "root",
+      database: "test",
+      ssl: "verifyFull",
+      sslCaFile: "/ca.pem",
+      properties: [{ name: "sql_mode", value: "ANSI" }],
+    });
+    expect(parseSourceUrl("redshift://r.example:5439/dev")?.source.vendor).toBe("redshift");
+    expect(parseSourceUrl("postgresql://h:70000/db")).toBeNull();
+  });
+});
+
+describe("Schemas tab", () => {
+  it("matches names and * / ? patterns", () => {
+    expect(matchesPattern("app_1", "app_*")).toBe(true);
+    expect(matchesPattern("app.1", "app?1")).toBe(true);
+    expect(matchesPattern("apps", "app")).toBe(false);
+    expect(matchesPattern("a.b", "a.b")).toBe(true);
+  });
+
+  it("shows all names, or the chosen ones and the connected database", () => {
+    const names = ["app", "app_test", "billing", "postgres"];
+    expect(shownNames(names, undefined, undefined)).toEqual(names);
+    expect(shownNames(names, true, ["billing"])).toEqual(names);
+    expect(shownNames(names, false, ["app*"], "postgres")).toEqual(["app", "app_test", "postgres"]);
+    expect(shownNames(names, false, [])).toEqual([]);
+  });
+});
+
+describe("Options tab", () => {
+  it("finds connections idle past their auto-disconnect", () => {
+    const sources = [
+      { id: "a", options: { autoDisconnectSecs: 60 } },
+      { id: "b", options: { autoDisconnectSecs: null } },
+    ];
+    const used = new Map([
+      ["a", 0],
+      ["a:other", 50_000],
+      ["b", 0],
+    ]);
+    const idle = (busy: string[]) => idleTargets(["a", "a:other", "b", "c"], sources, used, (t) => busy.includes(t), 60_000);
+    expect(idle([])).toEqual(["a"]);
+    expect(idle(["a"])).toEqual([]);
+  });
+
+  it("names the colour tokens", () => {
+    expect(colorVar("red")).toBe("var(--db-color-red)");
+    expect(colorVar(null)).toBeUndefined();
   });
 });

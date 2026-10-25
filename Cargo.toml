@@ -33,6 +33,7 @@ ide-profiler = { path = "crates/ide-profiler" }
 ide-http = { path = "crates/ide-http" }
 ide-db = { path = "crates/ide-db" }
 ide-web = { path = "crates/ide-web" }
+ide-spell = { path = "crates/ide-spell" }
 
 # serialization & IPC typing
 serde = { version = "1", features = ["derive"] }

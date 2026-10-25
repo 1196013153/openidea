@@ -9,6 +9,7 @@ pub mod apply;
 mod discover;
 mod exec;
 pub mod java;
+pub mod libraries;
 pub mod locate;
 pub mod lombok;
 pub mod python;

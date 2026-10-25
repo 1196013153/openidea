@@ -4,6 +4,7 @@
  */
 import type { Action } from "@/platform/actions";
 import type { FileMatch, LineMatch, SymbolMatch, WorkspaceSymbol } from "@/platform/ipc";
+import type { SettingsSearchEntry } from "@/workbench/contributions";
 import { tx } from "@/platform/i18n";
 import { basename, isTypeKind, relDir, symbolDisplayName } from "../common/open";
 import { byScore, matchText } from "../common/rank";
@@ -116,7 +117,18 @@ export interface TextItem {
   indices: number[];
 }
 
-export type SeItem = FileItem | SymbolItem | ActionItem | TextItem;
+/** A settings page or option, listed among actions ("Settings: Editor | General"). */
+export interface SettingItem {
+  kind: "setting";
+  key: string;
+  pageId: string;
+  title: string;
+  path: string[];
+  indices: number[];
+  score: number;
+}
+
+export type SeItem = FileItem | SymbolItem | ActionItem | TextItem | SettingItem;
 
 export type SeRow =
   | { kind: "section"; key: string; section: SectionId; title: string }
@@ -281,6 +293,44 @@ export function matchActions(
   return byScore(out);
 }
 
+/** Settings below equally good actions, as IDEA's option matches. */
+const SETTING_PENALTY = 120;
+
+export function matchSettings(entries: readonly SettingsSearchEntry[], query: string): SettingItem[] {
+  const q = query.trim();
+  if (!q) return [];
+  const out: SettingItem[] = [];
+  const seen = new Set<string>();
+  for (const e of entries) {
+    const title = tx(e.title);
+    const hit = matchText(title, q, { wordAligned: true });
+    const english = hit || title === e.title ? null : matchText(e.title, q, { wordAligned: true });
+    let score: number;
+    let indices: number[] = [];
+    if (hit) {
+      score = hit.score;
+      indices = hit.indices;
+    } else if (english) {
+      score = english.score;
+    } else {
+      const extra = [...e.path.map((p) => tx(p)), ...(e.keywords ?? [])];
+      const best = Math.max(-Infinity, ...extra.map((t) => matchText(t, q, { wordAligned: true })?.score ?? -Infinity));
+      if (!Number.isFinite(best)) continue;
+      score = best - 400;
+    }
+    const key = `set:${e.pageId}:${e.title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ kind: "setting", key, pageId: e.pageId, title, path: e.path, indices, score: score - SETTING_PENALTY });
+  }
+  return byScore(out);
+}
+
+/** Actions and settings in one relevance order (ties keep actions first). */
+export function mergeActionResults(actions: readonly ActionItem[], settings: readonly SettingItem[]): SeItem[] {
+  return byScore<ActionItem | SettingItem>([...actions, ...settings]);
+}
+
 export function actionItem(a: Action, enabled: boolean): ActionItem {
   return {
     kind: "action",
@@ -343,6 +393,7 @@ export function itemWeight(item: SeItem, query: string): number {
     case "symbol":
       return name(item.name) ?? (item.container ? name(`${item.container}.${item.name}`) : undefined) ?? 0;
     case "action":
+    case "setting":
       return item.score;
     case "text":
       return TEXT_WEIGHT;

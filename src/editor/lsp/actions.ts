@@ -15,10 +15,37 @@ import { workflowSettings, type ActionsOnSaveValid } from "@/platform/workflowSe
 import { startRename } from "./rename";
 import { formatDocument, reformatDialog } from "./format";
 import { showHint } from "./hint";
-import { refactorThis, runRefactoring, safeDelete } from "@/editor/refactor";
+import { refactorThis, runRefactoring, safeDelete, showNothingHere } from "@/editor/refactor";
+import { evaluateWhen } from "@/platform/context";
 
 /** Editor actions apply to the active text editor unless a tool window or popup owns the keyboard. */
 export const EDITOR_WHEN = "textEditorActive && (editorFocus || popupOpen || !toolWindowFocus)";
+
+/**
+ * Languages whose servers offer Generate (constructors, accessors, overrides…).
+ * Elsewhere the Generate shortcut (⌘N / Alt+Insert) yields to the New popup, as in IDEA.
+ */
+const GENERATE_LANGUAGES = [
+  "java",
+  "kotlin",
+  "scala",
+  "groovy",
+  "rust",
+  "go",
+  "typescript",
+  "typescriptreact",
+  "javascript",
+  "javascriptreact",
+  "c",
+  "cpp",
+  "objective-c",
+  "objective-cpp",
+  "csharp",
+  "swift",
+  "dart",
+  "php",
+];
+export const GENERATE_KEY_WHEN = GENERATE_LANGUAGES.map((id) => `editorLangId == ${id}`).join(" || ");
 
 function withEditor(run: (view: EditorView) => unknown): Action["run"] {
   return () => {
@@ -58,6 +85,19 @@ const optimizeImports = (v: EditorView) =>
     none: "Optimize imports is not available",
     label: "Optimize Imports",
   });
+
+interface CleanupOptions {
+  fixAll?: boolean;
+  optimizeImports?: boolean;
+  reformat?: boolean;
+}
+
+/** Code Cleanup of one document: the server's fix-all, organize imports, then reformat. */
+async function cleanup(view: EditorView, o: CleanupOptions) {
+  if (o.fixAll !== false) await applyKindSilently(view, "source.fixAll");
+  if (o.optimizeImports !== false) await applyKindSilently(view, "source.organizeImports");
+  if (o.reformat !== false) await formatDocument(view, { explicit: false });
+}
 
 /** Code action titles of Implement Methods (⌃I) and Override Methods (⌃O). */
 export const IMPLEMENT_TITLE = /\bimplement\b|\b(add|generate) (missing|unimplemented|all missing)\b|missing (members|methods|trait items)/i;
@@ -108,6 +148,9 @@ export function registerLspActions(): () => void {
       keywords: ["javadoc", "docs", "hover"],
     }),
     editorAction("code.quickDefinition", "Quick Definition", "Code", quickDefinition),
+    editorAction("code.quickTypeDefinition", "Quick Type Definition", "View", (v) => quickDefinition(v, "typeDefinition"), {
+      keywords: ["type declaration", "preview"],
+    }),
     editorAction("code.showIntentions", "Show Context Actions", "Code", showIntentions, {
       keywords: ["intention", "quick fix", "lightbulb"],
     }),
@@ -120,6 +163,18 @@ export function registerLspActions(): () => void {
     editorAction("code.optimizeImports", "Optimize Imports", "Code", optimizeImports, { keywords: ["organize imports"] }),
     // Project view / editor tab variants: `{ path }` of a file, opened first.
     { id: "code.reformatFile", title: "Reformat File", category: "Code", hidden: true, when: "projectOpen", run: inFile(reformat) },
+    {
+      id: "code.cleanupFile",
+      title: "Code Cleanup in File",
+      description: "Code Cleanup on `{ path, fixAll?, optimizeImports?, reformat? }` (all steps by default), opened first.",
+      category: "Code",
+      hidden: true,
+      when: "projectOpen",
+      run: (c) => {
+        const o = (c.arg ?? {}) as CleanupOptions;
+        return inFile((v) => cleanup(v, o))(c);
+      },
+    },
     {
       id: "code.optimizeImportsFile",
       title: "Optimize Imports in File",
@@ -136,7 +191,18 @@ export function registerLspActions(): () => void {
     editorAction("navigate.nextError", "Next Highlighted Error", "Navigate", (v) => gotoDiagnostic(v, 1)),
     editorAction("navigate.prevError", "Previous Highlighted Error", "Navigate", (v) => gotoDiagnostic(v, -1)),
     editorAction("find.highlightUsages", "Highlight Usages in File", "Find", highlightUsages),
-    editorAction("refactor.thisMenu", "Refactor This…", "Refactor", (v) => refactorThis(v, startRename)),
+    {
+      // Also outside an editor, where nothing applies: IDEA's "Nothing here" popup.
+      id: "refactor.thisMenu",
+      title: "Refactor This…",
+      category: "Refactor",
+      when: "projectOpen",
+      run: ({ ctx }) => {
+        const ed = activeEditor();
+        if (ed && evaluateWhen(EDITOR_WHEN, ctx)) return refactorThis(ed.view, startRename);
+        showNothingHere();
+      },
+    },
     editorAction("refactor.rename", "Rename…", "Refactor", startRename),
     editorAction("refactor.extractVariable", "Introduce Variable…", "Refactor", (v) => runRefactoring(v, "extractVariable")),
     editorAction("refactor.extractMethod", "Extract Method…", "Refactor", (v) => runRefactoring(v, "extractMethod")),
@@ -146,12 +212,17 @@ export function registerLspActions(): () => void {
     editorAction("refactor.move", "Move…", "Refactor", (v) => runRefactoring(v, "move")),
     editorAction("refactor.changeSignature", "Change Signature…", "Refactor", (v) => runRefactoring(v, "changeSignature")),
     editorAction("refactor.safeDelete", "Safe Delete…", "Refactor", safeDelete),
-    editorAction("code.generate", "Generate…", "Code", (v) =>
-      runKindAction(v, "", {
-        title: /^(generate|implement|override|add (missing|derive|impl|getter|setter|constructor)|create (constructor|getter|setter))/i,
-        none: "Nothing to generate here",
-        label: "Generate",
-      }),
+    editorAction(
+      "code.generate",
+      "Generate…",
+      "Code",
+      (v) =>
+        runKindAction(v, "", {
+          title: /^(generate|implement|override|add (missing|derive|impl|getter|setter|constructor)|create (constructor|getter|setter))/i,
+          none: "Nothing to generate here",
+          label: "Generate",
+        }),
+      { keyWhen: GENERATE_KEY_WHEN },
     ),
     editorAction("refactor.inline", "Inline…", "Refactor", (v) => runRefactoring(v, "inline")),
     // Implement / Override Methods: the server's code actions for them (jdtls "Override/Implement

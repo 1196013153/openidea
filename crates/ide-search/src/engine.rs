@@ -3,6 +3,7 @@
 use crate::iter::for_each_match;
 use crate::line::line_match;
 use crate::mask::FileMask;
+use crate::pattern::ScopePattern;
 use crate::query::{Compiled, line_terminator};
 use crate::{
     FileMatches, LineMatch, LiteralKind, LiteralRange, Literals, Overlay, PathFilter, SearchContext, SearchScope,
@@ -27,6 +28,7 @@ pub(crate) struct Request<'a> {
     pub scope: &'a SearchScope,
     pub compiled: Compiled,
     pub mask: FileMask,
+    pub pattern: Option<ScopePattern>,
     pub filter: Option<PathFilter<'a>>,
     pub context: SearchContext,
     pub literals: Option<Literals<'a>>,
@@ -90,6 +92,7 @@ impl Control<'_> {
 struct Ctx<'a> {
     root: &'a Path,
     mask: &'a FileMask,
+    pattern: Option<&'a ScopePattern>,
     filter: Option<PathFilter<'a>>,
     context: SearchContext,
     literals: Option<Literals<'a>>,
@@ -104,6 +107,7 @@ pub(crate) fn run(req: Request<'_>) -> IdeResult<SearchSummary> {
     let ctx = Ctx {
         root: req.root,
         mask: &req.mask,
+        pattern: req.pattern.as_ref(),
         filter: req.filter,
         context: req.context,
         literals: if req.context == SearchContext::Any { None } else { req.literals },
@@ -170,7 +174,8 @@ pub(crate) fn run(req: Request<'_>) -> IdeResult<SearchSummary> {
                         return WalkState::Continue;
                     }
                 };
-                if entry.file_type().is_some_and(|t| t.is_file()) {
+                // Archives (jar, zip) are browsed, not searched (IDEA skips them too).
+                if entry.file_type().is_some_and(|t| t.is_file()) && !ide_vfs::is_archive_file(entry.path()) {
                     ctx.search_file(entry.path(), &matcher, &mut searcher);
                 }
                 if ctx.ctl.stopped() { WalkState::Quit } else { WalkState::Continue }
@@ -199,7 +204,7 @@ pub(crate) fn roots(root: &Path, scope: &SearchScope) -> IdeResult<Vec<PathBuf>>
         }
     };
     Ok(match scope {
-        SearchScope::Project | SearchScope::FileSet { .. } => vec![dir(Path::new(""))?],
+        SearchScope::Project | SearchScope::FileSet { .. } | SearchScope::Pattern { .. } => vec![dir(Path::new(""))?],
         SearchScope::Directory { path } => vec![dir(path)?],
         SearchScope::Files { paths } => {
             let mut out: Vec<PathBuf> = Vec::with_capacity(paths.len());
@@ -231,7 +236,10 @@ pub(crate) fn rel_path(root: &Path, path: &Path) -> String {
 impl Ctx<'_> {
     fn search_file(&self, path: &Path, matcher: &RegexMatcher, searcher: &mut Searcher) {
         let rel = rel_path(self.root, path);
-        if !self.mask.matches(&rel) || self.filter.is_some_and(|keep| !keep(&rel)) {
+        if !self.mask.matches(&rel)
+            || self.pattern.is_some_and(|p| !p.matches(&rel))
+            || self.filter.is_some_and(|keep| !keep(&rel))
+        {
             return;
         }
         // The search context needs the whole text to find comments and string literals.

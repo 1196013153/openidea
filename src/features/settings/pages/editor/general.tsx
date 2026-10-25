@@ -5,10 +5,11 @@
  * Editing and Inlay Hints. Every option is read by `editor/core` or
  * `editor/lsp` through `platform/editorSettings`.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import clsx from "clsx";
 import { commands, isTauri } from "@/platform/ipc";
 import { Checkbox } from "@/ui";
-import { SearchLabel } from "../../components/Form";
+import { SearchLabel, Select } from "../../components/Form";
 import { useLabelMatch, useSetting } from "../../components/context";
 import { editorPage, type Item } from "./kit";
 import styles from "./Editor.module.css";
@@ -77,6 +78,13 @@ function BreadcrumbLanguages() {
 function InlayLanguages() {
   const [on] = useSetting<boolean>(`${P}.inlayHints`);
   return <LanguageChecks k={`${P}.inlay.disabledLanguages`} label="Show inlay hints for:" disabled={!on} />;
+}
+
+function InlineCompletionLanguages() {
+  const [on] = useSetting<boolean>(`${P}.inlineCompletion.enabled`);
+  return (
+    <LanguageChecks k={`${P}.inlineCompletion.disabledLanguages`} label="Show inline completion for:" disabled={!on} />
+  );
 }
 
 const GENERAL = editorPage({
@@ -273,7 +281,7 @@ const COMPLETION = editorPage({
   id: "editor.general.codeCompletion",
   title: "Code Completion",
   order: 3,
-  keywords: ["autocomplete", "suggestions", "case sensitive", "parameter info"],
+  keywords: ["autocomplete", "suggestions", "case sensitive", "parameter info", "popup", "sort", "parentheses"],
   sections: [
     {
       items: [
@@ -290,17 +298,41 @@ const COMPLETION = editorPage({
             ],
           },
         },
-        { t: "check", key: `${P}.completion.autoPopup`, label: "Show suggestions as you type" },
         {
           t: "check",
-          key: `${P}.completion.insertOnSpecialKeys`,
-          label: "Insert selected suggestion by pressing space, dot, or other context-dependent keys",
+          key: `${P}.completion.autoInsertSingle`,
+          label: "Automatically insert single suggestions",
+          hint: "When Basic Completion (⌃Space) finds only one suggestion.",
+        },
+        {
+          t: "check",
+          key: `${P}.completion.sortAlphabetically`,
+          label: "Sort suggestions alphabetically",
+          hint: "Also toggled by Sort by name in the completion popup.",
+        },
+        {
+          t: "check",
+          key: `${P}.completion.autoPopup`,
+          label: "Show suggestions as you type",
+          children: [
+            {
+              t: "check",
+              key: `${P}.completion.insertOnSpecialKeys`,
+              label: "Insert selected suggestion by pressing space, dot, or other context-dependent keys",
+            },
+          ],
         },
         {
           t: "check",
           key: `${P}.completion.showDocumentation`,
           label: "Show the documentation popup in",
           inline: ms(`${P}.completion.documentationDelay`),
+        },
+        {
+          t: "check",
+          key: `${P}.completion.insertParentheses`,
+          label: "Insert parentheses automatically when applicable",
+          hint: "Function and method suggestions get (); the caret goes inside unless there are no parameters.",
         },
       ],
     },
@@ -347,7 +379,7 @@ const TABS = editorPage({
   id: "editor.general.editorTabs",
   title: "Editor Tabs",
   order: 5,
-  keywords: ["tab limit", "preview tab", "close button"],
+  keywords: ["tab limit", "preview tab", "close button", "pinned", "squeeze", "rows"],
   sections: [
     {
       title: "Appearance",
@@ -358,19 +390,41 @@ const TABS = editorPage({
           label: "Tab placement",
           options: [
             { value: "top", label: "Top" },
+            { value: "bottom", label: "Bottom" },
+            { value: "left", label: "Left" },
+            { value: "right", label: "Right" },
             { value: "none", label: "None" },
           ],
         },
-        { t: "check", key: `${P}.tabs.multipleRows`, label: "Show tabs in multiple rows" },
+        {
+          t: "custom",
+          label: "Show tabs in:",
+          keywords: ["One row", "Scroll the tabs panel", "Squeeze tabs", "Multiple rows"],
+          component: TabRows,
+        },
+        { t: "check", key: `${P}.tabs.pinnedSeparateRow`, label: "Show pinned tabs in a separate row" },
+        { t: "check", key: `${P}.tabs.showFileIcon`, label: "Show file icon" },
         { t: "check", key: `${P}.tabs.showExtension`, label: "Show file extension" },
+        {
+          t: "check",
+          key: `${P}.tabs.showDirectoryForNonUnique`,
+          label: "Show directory for non-unique file names",
+        },
         { t: "check", key: `${P}.tabs.markModified`, label: "Mark modified (*)" },
-        { t: "check", key: `${P}.tabs.showCloseButton`, label: "Show close button" },
+        { t: "check", key: `${P}.tabs.showFullPathOnHover`, label: "Show full path on mouse hover" },
+        { t: "custom", label: "Close button position:", keywords: ["Right", "Left", "None"], component: CloseButtonPosition },
+      ],
+    },
+    {
+      title: "Tab Order",
+      items: [
+        { t: "check", key: `${P}.tabs.sortAlphabetically`, label: "Sort tabs alphabetically" },
+        { t: "check", key: `${P}.tabs.openAtEnd`, label: "Open new tabs at the end" },
       ],
     },
     {
       title: "Opening Policy",
       items: [
-        { t: "check", key: `${P}.tabs.openAtEnd`, label: "Open new tabs at the end" },
         { t: "check", key: `${P}.tabs.previewTab`, label: "Enable preview tab" },
       ],
     },
@@ -401,6 +455,67 @@ const TABS = editorPage({
     },
   ],
 });
+
+/** Show tabs in: one row (scroll or squeeze when they don't fit) or multiple rows. */
+function TabRows() {
+  const [multiple, setMultiple] = useSetting<boolean>(`${P}.tabs.multipleRows`);
+  const [overflow, setOverflow] = useSetting<string>(`${P}.tabs.oneRowOverflow`);
+  const [placement] = useSetting<string>(`${P}.tabs.placement`);
+  const matched = useLabelMatch("Show tabs in:");
+  const name = useId();
+  // Vertical (left / right) tabs always scroll in one column.
+  const disabled = placement === "none" || placement === "left" || placement === "right";
+  const radio = (label: string, checked: boolean, onChange: () => void, off = disabled) => (
+    <label className={clsx(styles.radio, off && styles.dim)}>
+      <input type="radio" name={name} checked={checked} disabled={off} onChange={onChange} />
+      <SearchLabel text={label} />
+    </label>
+  );
+  return (
+    <div className={clsx(styles.radioBlock, matched && styles.matched)} role="radiogroup" aria-label="Show tabs in">
+      <div className={clsx(styles.radioLabel, disabled && styles.dim)}>
+        <SearchLabel text="Show tabs in" />:
+      </div>
+      <div className={styles.radios}>
+        {radio("One row, and if tabs don't fit:", !multiple, () => setMultiple(false))}
+        <div className={styles.children} role="radiogroup" aria-label="If tabs don't fit">
+          {radio("Scroll the tabs panel", !multiple && overflow !== "squeeze", () => setOverflow("scroll"), disabled || multiple)}
+          {radio("Squeeze tabs", !multiple && overflow === "squeeze", () => setOverflow("squeeze"), disabled || multiple)}
+        </div>
+        {radio("Multiple rows", multiple, () => setMultiple(true))}
+      </div>
+    </div>
+  );
+}
+
+const CLOSE_POSITIONS = [
+  { value: "right", label: "Right" },
+  { value: "left", label: "Left" },
+  { value: "none", label: "None" },
+];
+
+/** Close button position: `showCloseButton` off is "None", else `closeButtonPosition`. */
+function CloseButtonPosition() {
+  const [show, setShow] = useSetting<boolean>(`${P}.tabs.showCloseButton`);
+  const [position, setPosition] = useSetting<string>(`${P}.tabs.closeButtonPosition`);
+  const matched = useLabelMatch("Close button position:");
+  return (
+    <div className={clsx(styles.check, matched && styles.matched)}>
+      <span>
+        <SearchLabel text="Close button position:" />
+      </span>
+      <Select
+        value={show ? (position === "left" ? "left" : "right") : "none"}
+        options={CLOSE_POSITIONS}
+        aria-label="Close button position"
+        onChange={(v) => {
+          setShow(v !== "none");
+          if (v !== "none") setPosition(v);
+        }}
+      />
+    </div>
+  );
+}
 
 const GUTTER = editorPage({
   id: "editor.general.gutterIcons",
@@ -515,6 +630,40 @@ const SMART_KEYS = editorPage({
   ],
 });
 
+const INLINE_COMPLETION = editorPage({
+  id: "editor.general.inlineCompletion",
+  title: "Inline Completion",
+  order: 7,
+  keywords: ["ghost text", "inline suggestions", "full line completion", "copilot"],
+  sections: [
+    {
+      items: [
+        {
+          t: "note",
+          text: "Gray suggestions at the caret from language servers that support inline completion. Tab accepts a suggestion, Escape dismisses it.",
+        },
+        {
+          t: "check",
+          key: `${P}.inlineCompletion.enabled`,
+          label: "Enable inline completion",
+          children: [
+            {
+              t: "check",
+              key: `${P}.inlineCompletion.onlyOnPause`,
+              label: "Show only when typing pauses for",
+              inline: ms(`${P}.inlineCompletion.pauseMs`, 3000),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: "Languages",
+      items: [{ t: "custom", label: "Show inline completion for:", component: InlineCompletionLanguages }],
+    },
+  ],
+});
+
 const STICKY = editorPage({
   id: "editor.general.stickyLines",
   title: "Sticky Lines",
@@ -603,7 +752,13 @@ const INLAY_HINTS = editorPage({
   keywords: ["hints", "code vision", "usages", "parameter hints", "type hints"],
   sections: [
     { items: INLAY },
-    { title: "Code Vision", items: [{ t: "check", key: `${P}.inlay.codeVisionUsages`, label: "Usages" }] },
+    {
+      title: "Code Vision",
+      items: [
+        { t: "check", key: `${P}.inlay.codeVisionUsages`, label: "Usages" },
+        { t: "check", key: `${P}.inlay.codeVisionAuthor`, label: "Code author" },
+      ],
+    },
     { title: "Languages", items: [{ t: "custom", label: "Show inlay hints for:", component: InlayLanguages }] },
   ],
 });
@@ -617,6 +772,7 @@ export const GENERAL_PAGES = [
   FOLDING,
   TABS,
   GUTTER,
+  INLINE_COMPLETION,
   RICH_COPY,
   SMART_KEYS,
   STICKY,

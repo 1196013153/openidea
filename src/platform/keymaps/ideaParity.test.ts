@@ -47,6 +47,8 @@ describe("IDEA keymap parity", () => {
     // Rerun in the Find / Find Usages tool windows uses the Rerun shortcut.
     ["find.rerun", ["Meta+R"], ["Ctrl+F5"]],
     ["usages.rerun", ["Meta+R"], ["Ctrl+F5"]],
+    // Vcs.Log.GoToRef: Find in the Git Log table.
+    ["vcs.log.goToRef", ["Meta+F"], ["Ctrl+F"]],
   ])("%s", (id, mac, win) => {
     expect(intellijMacos[id]).toEqual(mac);
     expect(intellijWindows[id]).toEqual(win);
@@ -68,5 +70,6 @@ describe("IDEA keymap parity", () => {
     order(km, "navigate.nextError", "vcs.changelist.edit");
     order(km, "debug.setValue", "vcs.changelist.edit");
     order(km, "find.replaceInFile", "find.rerun");
+    order(km, "find.inFile", "vcs.log.goToRef");
   });
 });

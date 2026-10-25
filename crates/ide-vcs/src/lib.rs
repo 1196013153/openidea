@@ -88,6 +88,20 @@ pub struct Commit {
     pub summary: String,
     pub message: String,
     pub refs: Vec<String>,
+    /// Committer time (Log › View Options › Commit Timestamp).
+    #[serde(default)]
+    pub commit_time_ms: f64,
+}
+
+/// Order of the Git Log (Graph Options › Sort).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum LogOrder {
+    /// `--topo-order`: lines of history are not intermixed.
+    #[default]
+    Topo,
+    /// `--date-order`: commit time, but never a parent before its children.
+    Date,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Type)]
@@ -115,6 +129,21 @@ pub struct LogQuery {
     /// More author needles next to `author`; a commit matches any of them (Log User filter).
     #[serde(default)]
     pub authors: Vec<String>,
+    #[serde(default)]
+    pub order: LogOrder,
+    /// Follow only the first parent of merges (`--first-parent`).
+    #[serde(default)]
+    pub first_parent: bool,
+    /// Leave out merge commits (`--no-merges`); their children link to their parents.
+    #[serde(default)]
+    pub no_merges: bool,
+    /// Committer time bounds (epoch ms; `since` inclusive, `until` exclusive). Parents
+    /// outside the range are rewritten to their nearest shown ancestors (or dropped when
+    /// older), so the graph stays connected.
+    #[serde(default)]
+    pub since_ms: Option<f64>,
+    #[serde(default)]
+    pub until_ms: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -397,6 +426,7 @@ pub mod changelists;
 mod cli;
 mod diff;
 mod history;
+mod manage;
 mod ops;
 mod patch;
 mod refs;
@@ -409,6 +439,7 @@ mod write;
 
 pub use cli::{detected_git_executable, git_version, set_git_executable};
 pub use diff::build_partial_patch;
+pub use manage::{MergeOptions, RebaseOptions, RemoteEdit, Worktree};
 pub use remotes::Remote;
 pub use roots::Repos;
 
@@ -418,6 +449,11 @@ pub fn clone(url: &str, dest: &Path, cancel: &CancellationToken, on_output: &dyn
     std::fs::create_dir_all(parent)?;
     let dest = dest.to_string_lossy();
     cli::run_streaming(parent, &["clone", "--progress", "--", url, &dest], cancel, on_output)
+}
+
+/// Creates an empty repository in `dir` (`git init`).
+pub fn init(dir: &Path) -> IdeResult<()> {
+    cli::run(dir, &["init", "-q"], None).map(|_| ())
 }
 
 /// Line hunks of `new_text` against `old_text` (CRLF-normalised, Histogram diff), in the

@@ -38,6 +38,7 @@ fn config(id: impl Into<String>, name: impl Into<String>, kind: &str, command: &
         is_test: false,
         debug_adapter: None,
         allow_parallel: false,
+        extras: Default::default(),
     }
 }
 

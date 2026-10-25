@@ -9,13 +9,17 @@ import { activeEditor, editorsFor, type TextEditorHandle } from "@/editor/api";
 import { editorService, maybeEditorService, notifications } from "@/workbench/contributions";
 import {
   GO_PACKAGE_RE,
+  caretAfterReformat,
   inferGoPackage,
   inferJvmPackage,
   planFile,
+  reformatsOnCreate,
   renderFileTemplate,
+  withKind,
   type FileTemplate,
   type FileTemplateKind,
 } from "./model";
+import { templateIncludes } from "./store";
 
 async function siblingGoPackage(directory: string): Promise<string | null> {
   if (!isTauri()) return null;
@@ -85,17 +89,21 @@ export async function createFromTemplate(
   /** Called once the file exists (e.g. to close the dialog before the editor takes focus). */
   onCreated?: () => void,
 ): Promise<string> {
-  const plan = planFile(t, directory, input);
+  const plan = planFile(withKind(t, kind), directory, input);
   if (!plan) throw new Error("Invalid file name");
   const project = useProject.getState().project;
   const packageName = await packageFor(t, plan.directory);
-  const { text, caret } = renderFileTemplate(kind.body, {
-    name: plan.name,
-    fileName: plan.fileName,
-    packageName,
-    projectName: project?.name,
-    user: userName(project?.root ?? ""),
-  });
+  const { text, caret } = renderFileTemplate(
+    kind.body,
+    {
+      name: plan.name,
+      fileName: plan.fileName,
+      packageName,
+      projectName: project?.name,
+      user: userName(project?.root ?? ""),
+    },
+    templateIncludes(),
+  );
   await call(commands.fsCreateFile(plan.path));
   notifyFileOperation({ kind: "created", paths: [plan.path] });
   onCreated?.();
@@ -119,6 +127,15 @@ export async function createFromTemplate(
       userEvent: "input",
     });
     view.focus();
+    if (reformatsOnCreate(t)) {
+      // Keep the caret at `$END$` whatever edits the formatter made.
+      const before = view.state.doc.toString();
+      const at = view.state.selection.main.head;
+      const applied = await editorService().reformat?.(plan.path);
+      const after = view.state.doc.toString();
+      if (applied && after !== before)
+        view.dispatch({ selection: EditorSelection.cursor(caretAfterReformat(before, at, after)), scrollIntoView: true });
+    }
     await executeAction("file.save");
   }
   return plan.path;

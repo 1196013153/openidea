@@ -391,6 +391,28 @@ export function _provideOpenEditorPaths(provider: () => string[]) {
   openPathsProvider = provider;
 }
 
+// --- library sources -----------------------------------------------------------------
+
+const libraryRoots = new Map<string, readonly string[]>();
+
+/**
+ * Folders of library / SDK sources ("External Libraries") contributed by `owner`;
+ * files below them open read-only, like IDEA's library sources. Replaces the
+ * owner's previous roots; returns a disposer.
+ */
+export function setLibraryRoots(owner: string, roots: readonly string[]): () => void {
+  libraryRoots.set(owner, roots);
+  return () => {
+    if (libraryRoots.get(owner) === roots) libraryRoots.delete(owner);
+  };
+}
+
+export function isLibraryPath(path: string): boolean {
+  for (const roots of libraryRoots.values())
+    for (const r of roots) if (path === r || path.startsWith(r.endsWith("/") ? r : `${r}/`)) return true;
+  return false;
+}
+
 // --- documents shown outside editor tabs ---------------------------------------
 
 /**

@@ -32,6 +32,11 @@ pub enum IdeEvent {
         doc: DocId,
         dirty: bool,
     },
+    /// An open document's language changed (Settings › File Types, Override File Type).
+    DocLanguage {
+        doc: DocId,
+        language: crate::LanguageId,
+    },
     /// Full replacement of diagnostics for one file from one producer.
     Diagnostics {
         path: crate::IpcPath,

@@ -115,3 +115,8 @@
   pointer-events: none;
   white-space: nowrap;
 }
+
+.empty {
+  padding: 8px 12px;
+  color: var(--fg-subtle);
+}

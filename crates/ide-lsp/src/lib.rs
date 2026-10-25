@@ -804,6 +804,40 @@ impl LspManager {
         out.finish(CompletionList { is_incomplete: false, items: Vec::new() })
     }
 
+    /// LSP 3.18 `textDocument/inlineCompletion` from every server advertising
+    /// `inlineCompletionProvider` (`automatic`: triggered by typing, not explicitly).
+    pub async fn inline_completion(
+        &self,
+        doc: DocId,
+        pos: Pos,
+        automatic: bool,
+        cancel: CancellationToken,
+    ) -> IdeResult<Vec<InlineCompletionItem>> {
+        let (snap, targets) = self.doc_targets(doc, "inline completion", |c| c.has("inlineCompletionProvider")).await?;
+        let requests = targets.iter().map(|t| {
+            let mut params = snap.pos_params(t, pos);
+            params["context"] = json!({ "triggerKind": if automatic { 2 } else { 1 } });
+            let cancel = &cancel;
+            async move {
+                let r =
+                    self.call::<_, Value>(t, "textDocument/inlineCompletion", params, Some(cancel), COMPLETION_TIMEOUT);
+                (t, r.await)
+            }
+        });
+        let mut out = Outcome::new();
+        for (t, result) in join_all(requests).await {
+            match result {
+                Ok(v) => {
+                    let conv = self.conv(t.enc());
+                    let items = convert::inline_completion_items(&conv, &snap.path, v, t.server.id);
+                    out.value.get_or_insert_with(Vec::new).extend(items);
+                }
+                Err(e) => out.fail(e),
+            }
+        }
+        out.finish(Vec::new())
+    }
+
     pub async fn resolve_completion(&self, doc: DocId, item: CompletionItem) -> IdeResult<CompletionItem> {
         let snap = self.snapshot(doc)?;
         let Some(server) = snap.servers.iter().find(|s| s.id == item.server) else { return Ok(item) };

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import clsx from "clsx";
 import { actionToggled, executeAction, getAction } from "@/platform/actions";
 import type { ProjectFileSet } from "@/platform/ipc";
-import { useTx } from "@/platform/i18n";
+import { tx as translate, useTx } from "@/platform/i18n";
 import { hasPrimaryModifier, shortcutLabel } from "@/platform/keymap";
 import {
   Checkbox,
@@ -27,7 +27,9 @@ import { badgeKind, basename, openLocation, relDir } from "../common/open";
 import { parseLocationQuery } from "../common/query";
 import { CodePreview, type PreviewHighlight } from "../find/parts";
 import { SeController, type SeSnapshot } from "./controller";
-import { ipcDeps } from "./deps";
+import { ipcDeps, loadLanguages } from "./deps";
+import { extensionIndex, filterActive, isFilterTab, languageOf, resolveFilter } from "./filters";
+import { FilterPopup } from "./FilterPopup";
 import {
   MORE_STEP_ALL,
   MORE_STEP_TAB,
@@ -88,6 +90,7 @@ function SearchEverywhereDialog() {
   const session = useSearchEverywhere((s) => s.session);
   const ctx = useSearchEverywhere((s) => s.ctx);
   const preview = useSearchEverywhere((s) => s.preview);
+  const filters = useSearchEverywhere((s) => s.filters);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -103,6 +106,21 @@ function SearchEverywhereDialog() {
   } | null>(null);
   /** Position in the tab's history while ⌥↑/⌥↓ browse it (-1 = the typed draft). */
   const history = useRef({ pos: -1, draft: "" });
+  const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null);
+  const [byExt, setByExt] = useState<ReadonlyMap<string, string> | null>(null);
+  const needsLanguages = (tab === "files" || tab === "classes" || tab === "symbols") && filterActive(filters, tab);
+  useEffect(() => {
+    if (!needsLanguages || byExt) return;
+    let alive = true;
+    void loadLanguages().then((l) => alive && setByExt(extensionIndex(l)));
+    return () => {
+      alive = false;
+    };
+  }, [needsLanguages, byExt]);
+  const filter = useMemo(
+    () => resolveFilter(filters, tab, byExt ? (path) => languageOf(path, byExt) : undefined),
+    [filters, tab, byExt],
+  );
   const [toggleTick, setToggleTick] = useState(0);
   const bumpToggles = () => setToggleTick((t) => t + 1);
 
@@ -130,8 +148,19 @@ function SearchEverywhereDialog() {
   const searchQuery = parseCommand(debounced)?.kind === "list" ? "" : debounced;
 
   useEffect(() => {
-    controller.run({ query: searchQuery, tab, includeNonProject, fileSet: tab === "all" ? null : fileSet, extra });
-  }, [controller, searchQuery, tab, includeNonProject, fileSet, extra]);
+    // A language filter waits for the language list (nothing would be filtered yet).
+    if (filter?.excludedLanguages?.length && !filter.languageOf) return;
+    controller.run({
+      query: searchQuery,
+      tab,
+      includeNonProject,
+      fileSet: tab === "all" ? null : fileSet,
+      filter,
+      // IDEA: the Actions tab's "everywhere" checkbox is "Include disabled actions".
+      includeDisabled: tab === "actions" ? includeNonProject : undefined,
+      extra,
+    });
+  }, [controller, searchQuery, tab, includeNonProject, fileSet, filter, extra]);
 
   useEffect(() => {
     inputRef.current?.select();
@@ -241,6 +270,8 @@ function SearchEverywhereDialog() {
           return;
         }
         return closeThen(() => void executeAction(row.id));
+      case "setting":
+        return closeThen(() => void executeAction("file.settings", row.pageId));
     }
   };
 
@@ -251,19 +282,19 @@ function SearchEverywhereDialog() {
     activate(activeRow, pending.side);
   });
 
+  /** IDEA's ⌥↵ on an action: record a shortcut for it (written to the active keymap). */
+  const assignShortcut = (id: string) => closeThen(() => void executeAction("settings.assignShortcut", id));
+
   const openIntentions = () => {
     const row = activeRow;
     if (!row || row.kind === "section" || row.kind === "more" || row.kind === "command") return;
+    if (row.kind === "action") return assignShortcut(row.id);
     const anchor = listRef.current?.querySelector('[aria-selected="true"]') ?? inputRef.current;
     if (!anchor) return;
     const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
     const items: MenuItem[] =
-      row.kind === "action"
-        ? [
-            { label: "Execute", disabled: !row.enabled, run: () => activate(row) },
-            { kind: "separator" },
-            { label: "Copy Action ID", run: () => copy(row.id) },
-          ]
+      row.kind === "setting"
+        ? [{ label: "Open Settings Page", run: () => activate(row) }]
         : [
             { label: "Open", run: () => activate(row) },
             { label: "Open to the Side", shortcut: "⇧↵", run: () => activate(row, true) },
@@ -374,7 +405,7 @@ function SearchEverywhereDialog() {
               setIncludeNonProject(v);
               inputRef.current?.focus();
             }}
-            label="Include non-project items"
+            label={tab === "actions" ? "Include disabled actions" : "Include non-project items"}
           />
         ) : (
           // IDEA's scope chooser of the Classes / Files / Symbols / Text tabs.
@@ -400,6 +431,19 @@ function SearchEverywhereDialog() {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setSearchEverywherePreview(!preview)}
         />
+        {isFilterTab(tab) && (
+          <IconButton
+            icon="filter"
+            size="small"
+            className={styles.headerButton}
+            title={tx("Filter")}
+            pressed={filterActive(filters, tab)}
+            aria-haspopup="dialog"
+            aria-expanded={!!filterAnchor}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => setFilterAnchor(filterAnchor ? null : e.currentTarget)}
+          />
+        )}
         <IconButton
           icon="open-in-tool-window"
           size="small"
@@ -511,6 +555,17 @@ function SearchEverywhereDialog() {
           )}
         </footer>
       )}
+      {filterAnchor && isFilterTab(tab) && (
+        <FilterPopup
+          tab={tab}
+          filters={filters}
+          anchor={filterAnchor}
+          onClose={() => {
+            setFilterAnchor(null);
+            inputRef.current?.focus();
+          }}
+        />
+      )}
       <Menu
         open={!!menu}
         anchor={menu?.anchor ?? null}
@@ -534,8 +589,11 @@ function describe(row: SeRow | undefined): string {
       return "";
     case "action": {
       const a = getAction(row.id);
-      return a?.description ?? (row.category ? `${row.category} | ${row.title}` : row.title);
+      const text = a?.description ?? (row.category ? `${row.category} | ${row.title}` : row.title);
+      return `${text}  ·  ${translate("⌥↵ to assign a shortcut")}`;
     }
+    case "setting":
+      return [...row.path, row.title].map((p) => translate(p)).join(" | ");
     case "file":
       return row.rel;
     case "symbol":
@@ -669,6 +727,21 @@ function ResultRow({
         </span>
       );
     }
+    case "setting":
+      return (
+        <>
+          <span className={styles.icon}>
+            <Icon name="settings" size={16} />
+          </span>
+          <span className={styles.main}>
+            <HighlightedText className={styles.name} text={row.title} indices={row.indices} tone={tone} />
+          </span>
+          <span className={styles.right}>
+            {tx("Settings")}
+            {row.path.length ? `: ${row.path.map((p) => tx(p)).join(" | ")}` : ""}
+          </span>
+        </>
+      );
     case "text":
       return (
         <>

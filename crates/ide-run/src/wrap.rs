@@ -261,6 +261,7 @@ mod tests {
             is_test: false,
             debug_adapter: None,
             allow_parallel: false,
+            extras: Default::default(),
         }
     }
 

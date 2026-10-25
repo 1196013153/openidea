@@ -15,7 +15,7 @@
 use super::Grammar;
 use super::lines::LineIndex;
 use crate::SymbolTag;
-use ide_core::{OutlineItem, SymbolKind};
+use ide_core::{OutlineItem, SymbolKind, Visibility};
 use std::collections::HashMap;
 use tree_sitter::{Node, Query, QueryCursor, StreamingIterator, Tree};
 
@@ -139,11 +139,16 @@ struct Raw {
     container_name: String,
     explicit_container: Option<String>,
     detail: Option<String>,
+    /// From a modifier keyword in the declaration (`pub`, `private`, ...).
+    visibility: Option<Visibility>,
+    /// Rust `impl Trait for Type`: members take the trait's visibility.
+    trait_impl: bool,
 }
 
 struct Built {
     raw: Raw,
     kind: SymbolKind,
+    visibility: Option<Visibility>,
     children: Vec<Built>,
 }
 
@@ -188,6 +193,7 @@ fn collect(g: &Grammar, q: &OutlineQuery, tree: &Tree, text: &str) -> Vec<Built>
             base = last.to_owned();
             kind = ItemKind::Symbol(SymbolKind::Method);
         }
+        let trait_impl = kind == ItemKind::Impl && trait_.is_some();
         let name = match (kind, trait_) {
             (ItemKind::Impl, Some(t)) => format!("impl {} for {base}", clean(node_text(&t, text), 120)),
             (ItemKind::Impl, None) => format!("impl {base}"),
@@ -213,6 +219,8 @@ fn collect(g: &Grammar, q: &OutlineQuery, tree: &Tree, text: &str) -> Vec<Built>
             container_name,
             explicit_container: container,
             detail: detail.map(|d| clean(node_text(&d, text), 80)).filter(|d| !d.is_empty()),
+            visibility: explicit_visibility(&node, text),
+            trait_impl,
         };
         match by_node.get(&raw.node_id) {
             Some(existing) if existing.pattern <= raw.pattern => {}
@@ -239,6 +247,7 @@ fn build_tree(g: &Grammar, raws: Vec<Raw>) -> Vec<Built> {
             push_child(&mut stack, &mut roots, done);
         }
         let parent_kind = stack.last().map(|p| p.raw.kind);
+        let parent_trait_impl = stack.last().is_some_and(|p| p.raw.trait_impl);
         let mut kind = raw.kind.symbol_kind();
         if kind == SymbolKind::Function && parent_kind.is_some_and(ItemKind::holds_methods) {
             kind = SymbolKind::Method;
@@ -250,7 +259,10 @@ fn build_tree(g: &Grammar, raws: Vec<Raw>) -> Vec<Built> {
                 kind = SymbolKind::Constructor;
             }
         }
-        stack.push(Built { raw, kind, children: Vec::new() });
+        let visibility = raw
+            .visibility
+            .or_else(|| implicit_visibility(g.spec.name, raw.kind, kind, &raw.name, parent_kind, parent_trait_impl));
+        stack.push(Built { raw, kind, visibility, children: Vec::new() });
     }
     while let Some(done) = stack.pop() {
         push_child(&mut stack, &mut roots, done);
@@ -278,6 +290,7 @@ pub(crate) fn outline(g: &Grammar, q: &OutlineQuery, tree: &Tree, text: &str) ->
             range: b.raw.range,
             selection_range: b.raw.sel,
             children: b.children.into_iter().map(convert).collect(),
+            visibility: b.visibility,
         }
     }
     collect(g, q, tree, text).into_iter().map(convert).collect()
@@ -306,6 +319,107 @@ pub(crate) fn tags(g: &Grammar, q: &OutlineQuery, tree: &Tree, text: &str) -> Ve
     let mut out = Vec::new();
     walk(collect(g, q, tree, text), None, &mut out);
     out
+}
+
+/// Visibility spelled out by a modifier child (`visibility_modifier`, `modifiers`,
+/// `accessibility_modifier`, ...) of the declaration.
+fn explicit_visibility(node: &Node, text: &str) -> Option<Visibility> {
+    let mut cursor = node.walk();
+    let mut found: Option<Visibility> = None;
+    for child in node.children(&mut cursor) {
+        if !child.kind().contains("modifier") {
+            continue;
+        }
+        let t = node_text(&child, text);
+        if child.kind() == "visibility_modifier" && t.starts_with("pub") {
+            // Rust: `pub` / `pub(crate)` / `pub(super)` / `pub(in path)`.
+            let v = if t.trim() == "pub" { Visibility::Public } else { Visibility::Package };
+            found = Some(found.map_or(v, |f| narrower(f, v)));
+            continue;
+        }
+        for word in t.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+            let v = match word {
+                "public" | "open" => Visibility::Public,
+                "protected" => Visibility::Protected,
+                "internal" | "fileprivate" => Visibility::Package,
+                "private" => Visibility::Private,
+                _ => continue,
+            };
+            found = Some(found.map_or(v, |f| narrower(f, v)));
+        }
+    }
+    found
+}
+
+/// Several keywords (C# `private protected`): the narrower one wins.
+fn narrower(a: Visibility, b: Visibility) -> Visibility {
+    let rank = |v: Visibility| match v {
+        Visibility::Public => 0,
+        Visibility::Protected => 1,
+        Visibility::Package => 2,
+        Visibility::Private => 3,
+    };
+    if rank(a) >= rank(b) { a } else { b }
+}
+
+/// The language's default when no modifier is written.
+fn implicit_visibility(
+    lang: &str,
+    item: ItemKind,
+    kind: SymbolKind,
+    name: &str,
+    parent: Option<ItemKind>,
+    parent_trait_impl: bool,
+) -> Option<Visibility> {
+    use SymbolKind as K;
+    if matches!(item, ItemKind::Impl | ItemKind::Extension | ItemKind::Heading)
+        || matches!(kind, K::EnumMember | K::Package | K::Namespace)
+    {
+        return None;
+    }
+    let in_interface = matches!(parent, Some(ItemKind::Symbol(K::Interface | K::Trait)));
+    match lang {
+        "rust" => (!in_interface && !parent_trait_impl && kind != K::Macro).then_some(Visibility::Private),
+        "java" => (!in_interface).then_some(Visibility::Package),
+        "csharp" => match parent {
+            _ if in_interface => None,
+            Some(ItemKind::Symbol(K::Class | K::Struct | K::Enum)) => Some(Visibility::Private),
+            _ => Some(Visibility::Package),
+        },
+        "go" => name.starts_with(|c: char| c.is_lowercase() || c == '_').then_some(Visibility::Package),
+        "python" => {
+            (name.starts_with('_') && !(name.starts_with("__") && name.ends_with("__"))).then_some(Visibility::Private)
+        }
+        "dart" => name.starts_with('_').then_some(Visibility::Private),
+        "typescript" | "tsx" | "javascript" => name.starts_with('#').then_some(Visibility::Private),
+        _ => None,
+    }
+}
+
+/// Copies tree-sitter visibility onto language-server symbols (which carry none),
+/// matching by name and identifier start.
+pub fn merge_visibility(target: &mut [OutlineItem], source: &[OutlineItem]) {
+    fn index(items: &[OutlineItem], out: &mut HashMap<(ide_core::Pos, String), Visibility>) {
+        for i in items {
+            if let Some(v) = i.visibility {
+                out.insert((i.selection_range.start, i.name.clone()), v);
+            }
+            index(&i.children, out);
+        }
+    }
+    fn apply(items: &mut [OutlineItem], map: &HashMap<(ide_core::Pos, String), Visibility>) {
+        for i in items {
+            if i.visibility.is_none() {
+                i.visibility = map.get(&(i.selection_range.start, i.name.clone())).copied();
+            }
+            apply(&mut i.children, map);
+        }
+    }
+    let mut map = HashMap::new();
+    index(source, &mut map);
+    if !map.is_empty() {
+        apply(target, &map);
+    }
 }
 
 /// End of `node` without trailing whitespace (C macros and others include the newline).

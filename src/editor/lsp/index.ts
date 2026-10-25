@@ -1,7 +1,7 @@
 /**
  * LSP-backed editor features: completion, diagnostics, hover / quick docs,
  * parameter info, navigation, document highlights, intentions, rename,
- * formatting, inlay hints and semantic highlighting. Everything is contributed
+ * formatting, inlay hints, inline completion and semantic highlighting. Everything is contributed
  * through `editor/api` as CodeMirror extensions plus actions; editor/core is
  * never imported.
  */
@@ -18,6 +18,7 @@ import { parameterTabKeys, signatureExtension } from "./signature";
 import { navigationExtension } from "./navigation";
 import { intentionsExtension } from "./intentions";
 import { inlayExtension } from "./inlay";
+import { inlineCompletionExtension, registerInlineCompletionActions } from "./inlineCompletion";
 import { semanticExtension } from "./semantic";
 import { usagesLensExtension } from "./codeLens";
 import { autoImportExtension } from "./autoImport";
@@ -26,6 +27,7 @@ import { registerActionsOnSave, registerFormatOnSave, registerLspActions } from 
 import { lspTheme } from "./theme";
 import { inspectionWidgetExtension } from "./inspectionWidget";
 import { unresolvedReferences } from "./fileReferences";
+import { spellingExtension } from "./spelling";
 import { DocumentationWindow, LspPopups, UsagesStatus } from "./Popups";
 import { DOCUMENTATION_WINDOW } from "./docs";
 import { prefetchMarkdown } from "./markdown";
@@ -45,10 +47,12 @@ export function lspExtensions(ctx: EditorDocContext): Extension[] {
     navigationExtension(),
     intentionsExtension(),
     inlayExtension(),
+    inlineCompletionExtension(),
     semanticExtension(),
     usagesLensExtension(),
     autoImportExtension(),
     unresolvedReferences(),
+    spellingExtension(),
   ];
 }
 
@@ -73,6 +77,7 @@ export function activate(): () => void {
       component: DocumentationWindow,
     }),
     registerLspActions(),
+    registerInlineCompletionActions(),
     registerNavigationActions(),
     registerFormatOnSave(),
     registerActionsOnSave(),

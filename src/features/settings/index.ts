@@ -16,7 +16,7 @@ import { registerActions, type Action } from "@/platform/actions";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { isPopupOpen, lazyComponent } from "@/ui";
 import { loadSettings, useProject } from "@/platform/project";
-import { registerOverlay } from "@/workbench/contributions";
+import { provideSettingsSearchIndex, registerOverlay } from "@/workbench/contributions";
 import { LazySettingsDialog, loadBuiltinPages, unloadBuiltinPages } from "./dialog/LazySettingsDialog";
 import {
   closeSettings,
@@ -28,8 +28,11 @@ import {
   useSettingsDialog,
 } from "./model/staging";
 import { zoomActions } from "./appearanceRuntime";
+import { activateFileTypes } from "./fileTypesRuntime";
 import { trackRuntimeSettings } from "./runtime";
 import { installActionProxies, installSettingsHost } from "./window/bridge";
+import { AssignShortcutOverlay, showAssignShortcut } from "./keymap/AssignShortcut";
+import { settingsSearchEntries } from "./searchIndex";
 
 export { settingsWindowParent } from "./window/bridge";
 export const SettingsWindow = lazyComponent(() => import("./window/SettingsWindow").then((m) => m.SettingsWindow));
@@ -99,6 +102,21 @@ export function activate(): () => void {
     registerOverlay({ id: "settings.dialog", component: LazySettingsDialog }),
     registerActions(zoomActions()),
     registerActions(settingsActions((page, newProjects) => void showSettings(page, newProjects))),
+    activateFileTypes(),
+    registerOverlay({ id: "settings.assignShortcut", component: AssignShortcutOverlay }),
+    registerActions([
+      {
+        // Search Everywhere's ⌥↵ on an action (arg: the action id).
+        id: "settings.assignShortcut",
+        title: "Assign Shortcut…",
+        category: "Settings",
+        hidden: true,
+        run: ({ arg }) => {
+          if (typeof arg === "string") showAssignShortcut(arg);
+        },
+      },
+    ]),
+    provideSettingsSearchIndex(settingsSearchEntries),
     isTauri() ? installSettingsHost() : () => {},
   ];
   return () => disposers.reverse().forEach((d) => d());

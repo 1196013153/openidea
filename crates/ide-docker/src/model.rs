@@ -105,6 +105,9 @@ pub struct DockerSnapshot {
     pub networks: Vec<DockerNetwork>,
     /// Lists that failed although the daemon answered (shown, not fatal).
     pub errors: Vec<String>,
+    /// Global CLI options selecting the connection's daemon (for `docker exec` in a terminal).
+    #[serde(default)]
+    pub global_args: Vec<String>,
 }
 
 /// One relevant `docker events` entry.

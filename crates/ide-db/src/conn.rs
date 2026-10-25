@@ -15,7 +15,8 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPool, PgPoolOptions, PgSslMode},
     sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions},
 };
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -184,6 +185,90 @@ fn looks_like_query(sql: &str) -> bool {
     )
 }
 
+fn file_setting(path: &str) -> Option<PathBuf> {
+    let path = path.trim();
+    (!path.is_empty()).then(|| crate::tunnel::expand(path))
+}
+
+fn is_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+}
+
+/// A MySQL `SET` value: numbers and keywords as they are, anything else quoted.
+fn mysql_value(v: &str) -> String {
+    let keyword = ["ON", "OFF", "TRUE", "FALSE", "DEFAULT"].iter().any(|k| k.eq_ignore_ascii_case(v));
+    if keyword || v.parse::<f64>().is_ok() {
+        v.to_owned()
+    } else {
+        format!("'{}'", v.replace('\\', "\\\\").replace('\'', "''"))
+    }
+}
+
+/// How the Options and Advanced tabs reach a connection.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Setup {
+    /// PostgreSQL run-time parameters (startup `options`), SQLite pragmas.
+    pub params: Vec<(String, String)>,
+    /// Run on every new connection: MySQL session settings, then the startup script.
+    pub statements: Vec<String>,
+    pub application_name: Option<String>,
+    pub charset: Option<String>,
+    pub collation: Option<String>,
+    pub statement_cache: Option<usize>,
+    pub connect_timeout: Option<Duration>,
+}
+
+impl Setup {
+    pub fn of(source: &DataSource) -> IdeResult<Self> {
+        let mut s = Setup::default();
+        let o = &source.options;
+        match source.driver {
+            DbDriver::Postgres => {
+                if source.read_only {
+                    s.params.push(("default_transaction_read_only".into(), "on".into()));
+                }
+                if !o.default_schema.trim().is_empty() {
+                    s.params.push(("search_path".into(), o.default_schema.trim().into()));
+                }
+                if !o.time_zone.trim().is_empty() {
+                    s.params.push(("TimeZone".into(), o.time_zone.trim().into()));
+                }
+            }
+            DbDriver::Mysql if source.read_only => s.statements.push("SET SESSION TRANSACTION READ ONLY".into()),
+            _ => {}
+        }
+        for p in &source.properties {
+            let value = p.value.trim();
+            let name = p.name.trim().replace('-', "_");
+            if name.is_empty() {
+                continue;
+            }
+            if !is_identifier(&name) {
+                return Err(IdeError::invalid(format!("invalid driver property name: {}", p.name.trim())));
+            }
+            let number = |what: &str| {
+                value.parse::<u64>().map_err(|_| IdeError::invalid(format!("{what} must be a whole number: {value}")))
+            };
+            match (source.driver, name.to_ascii_lowercase().as_str()) {
+                (_, "statement_cache_capacity") => s.statement_cache = Some(number(&name)? as usize),
+                (_, "connect_timeout") => s.connect_timeout = Some(Duration::from_secs(number(&name)?)),
+                (DbDriver::Postgres, "application_name") => s.application_name = Some(value.to_owned()),
+                (DbDriver::Mysql, "charset") => s.charset = Some(value.to_owned()),
+                (DbDriver::Mysql, "collation") => s.collation = Some(value.to_owned()),
+                (DbDriver::Mysql, _) => s.statements.push(format!("SET SESSION {name} = {}", mysql_value(value))),
+                _ => s.params.push((name, value.to_owned())),
+            }
+        }
+        let script = o.startup_script.trim();
+        if !script.is_empty() {
+            s.statements.extend(crate::split::split(script, source.driver).into_iter().map(|st| st.text));
+        }
+        Ok(s)
+    }
+}
+
 impl Pool {
     pub fn driver(&self) -> DbDriver {
         match self {
@@ -196,7 +281,24 @@ impl Pool {
     /// Opens a pool and one connection (so bad settings fail here).
     pub async fn connect(source: &DataSource, password: Option<&str>, root: Option<&Path>) -> IdeResult<Self> {
         const MAX: u32 = 4;
-        let timeout = Duration::from_secs(30);
+        let setup = Setup::of(source)?;
+        let timeout = setup.connect_timeout.unwrap_or(Duration::from_secs(30));
+        let init = Arc::new(setup.statements);
+        // Runs the session statements (startup script…) on every new connection.
+        macro_rules! after_connect {
+            () => {{
+                let init = init.clone();
+                move |conn, _| {
+                    let init = init.clone();
+                    Box::pin(async move {
+                        for sql in init.iter() {
+                            sqlx::raw_sql(sqlx::AssertSqlSafe(sql.clone())).execute(&mut *conn).await?;
+                        }
+                        Ok(())
+                    })
+                }
+            }};
+        }
         match source.driver {
             DbDriver::Sqlite => {
                 let file = source.file.as_deref().ok_or_else(|| IdeError::invalid("no database file"))?;
@@ -204,11 +306,18 @@ impl Pool {
                     Some(r) if file.is_relative() => r.join(file),
                     _ => file.to_path_buf(),
                 };
-                let opts =
+                let mut opts =
                     SqliteConnectOptions::new().filename(&file).create_if_missing(false).read_only(source.read_only);
+                for (k, v) in setup.params {
+                    opts = opts.pragma(k, v);
+                }
+                if let Some(n) = setup.statement_cache {
+                    opts = opts.statement_cache_capacity(n);
+                }
                 let pool = SqlitePoolOptions::new()
                     .max_connections(MAX)
                     .acquire_timeout(timeout)
+                    .after_connect(after_connect!())
                     .connect_with(opts)
                     .await
                     .map_err(db_err)?;
@@ -219,24 +328,39 @@ impl Pool {
                     .host(&source.host)
                     .port(source.port.unwrap_or(5432))
                     .username(&source.user)
-                    .application_name("OpenIDEA")
+                    .application_name(setup.application_name.as_deref().unwrap_or("OpenIDEA"))
                     .ssl_mode(match source.ssl {
                         DbSslMode::Disable => PgSslMode::Disable,
                         DbSslMode::Prefer => PgSslMode::Prefer,
                         DbSslMode::Require => PgSslMode::Require,
+                        DbSslMode::VerifyCa => PgSslMode::VerifyCa,
+                        DbSslMode::VerifyFull => PgSslMode::VerifyFull,
                     });
+                if let Some(f) = file_setting(&source.ssl_ca_file) {
+                    opts = opts.ssl_root_cert(f);
+                }
+                if let Some(f) = file_setting(&source.ssl_cert_file) {
+                    opts = opts.ssl_client_cert(f);
+                }
+                if let Some(f) = file_setting(&source.ssl_key_file) {
+                    opts = opts.ssl_client_key(f);
+                }
                 if !source.database.is_empty() {
                     opts = opts.database(&source.database);
                 }
                 if let Some(p) = password {
                     opts = opts.password(p);
                 }
-                if source.read_only {
-                    opts = opts.options([("default_transaction_read_only", "on")]);
+                if !setup.params.is_empty() {
+                    opts = opts.options(setup.params);
+                }
+                if let Some(n) = setup.statement_cache {
+                    opts = opts.statement_cache_capacity(n);
                 }
                 let pool = PgPoolOptions::new()
                     .max_connections(MAX)
                     .acquire_timeout(timeout)
+                    .after_connect(after_connect!())
                     .connect_with(opts)
                     .await
                     .map_err(db_err)?;
@@ -251,25 +375,41 @@ impl Pool {
                         DbSslMode::Disable => MySqlSslMode::Disabled,
                         DbSslMode::Prefer => MySqlSslMode::Preferred,
                         DbSslMode::Require => MySqlSslMode::Required,
+                        DbSslMode::VerifyCa => MySqlSslMode::VerifyCa,
+                        DbSslMode::VerifyFull => MySqlSslMode::VerifyIdentity,
                     });
+                if let Some(f) = file_setting(&source.ssl_ca_file) {
+                    opts = opts.ssl_ca(f);
+                }
+                if let Some(f) = file_setting(&source.ssl_cert_file) {
+                    opts = opts.ssl_client_cert(f);
+                }
+                if let Some(f) = file_setting(&source.ssl_key_file) {
+                    opts = opts.ssl_client_key(f);
+                }
                 if !source.database.is_empty() {
                     opts = opts.database(&source.database);
                 }
                 if let Some(p) = password {
                     opts = opts.password(p);
                 }
-                let read_only = source.read_only;
+                if let Some(c) = &setup.charset {
+                    opts = opts.charset(c);
+                }
+                if let Some(c) = &setup.collation {
+                    opts = opts.collation(c);
+                }
+                if let Some(n) = setup.statement_cache {
+                    opts = opts.statement_cache_capacity(n);
+                }
+                let tz = source.options.time_zone.trim();
+                if !tz.is_empty() {
+                    opts = opts.timezone(Some(tz.to_owned()));
+                }
                 let pool = MySqlPoolOptions::new()
                     .max_connections(MAX)
                     .acquire_timeout(timeout)
-                    .after_connect(move |conn, _| {
-                        Box::pin(async move {
-                            if read_only {
-                                conn.execute("SET SESSION TRANSACTION READ ONLY").await?;
-                            }
-                            Ok(())
-                        })
-                    })
+                    .after_connect(after_connect!())
                     .connect_with(opts)
                     .await
                     .map_err(db_err)?;
@@ -280,6 +420,10 @@ impl Pool {
 
     pub async fn close(&self) {
         with_pool!(self, p => p.close().await)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        with_pool!(self, p => p.is_closed())
     }
 
     /// Runs `sql` (no row limit beyond `max`), for introspection.
@@ -433,4 +577,69 @@ fn statement_columns<S: sqlx::Statement>(s: &S) -> Vec<ResultColumn> {
         .iter()
         .map(|c| ResultColumn { name: c.name().to_owned(), type_name: c.type_info().name().to_owned() })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source::{DbOptions, DbProperty};
+
+    fn prop(name: &str, value: &str) -> DbProperty {
+        DbProperty { name: name.into(), value: value.into() }
+    }
+
+    #[test]
+    fn postgres_options_become_runtime_parameters() {
+        let s = DataSource {
+            driver: DbDriver::Postgres,
+            read_only: true,
+            options: DbOptions {
+                default_schema: "app, public".into(),
+                time_zone: "Europe/Paris".into(),
+                startup_script: "SET work_mem = '64MB'; select 1;".into(),
+                ..Default::default()
+            },
+            properties: vec![prop("statement_timeout", "5s"), prop("application_name", "me"), prop("", "x")],
+            ..Default::default()
+        };
+        let setup = Setup::of(&s).unwrap();
+        let names: Vec<_> = setup.params.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(names, ["default_transaction_read_only", "search_path", "TimeZone", "statement_timeout"]);
+        assert_eq!(setup.application_name.as_deref(), Some("me"));
+        assert_eq!(setup.statements, ["SET work_mem = '64MB'", "select 1"]);
+    }
+
+    #[test]
+    fn mysql_properties_become_session_variables() {
+        let s = DataSource {
+            driver: DbDriver::Mysql,
+            read_only: true,
+            properties: vec![
+                prop("sql_mode", "ANSI_QUOTES"),
+                prop("max_execution_time", "1000"),
+                prop("charset", "utf8mb4"),
+                prop("connect-timeout", "5"),
+            ],
+            ..Default::default()
+        };
+        let setup = Setup::of(&s).unwrap();
+        assert_eq!(
+            setup.statements,
+            [
+                "SET SESSION TRANSACTION READ ONLY",
+                "SET SESSION sql_mode = 'ANSI_QUOTES'",
+                "SET SESSION max_execution_time = 1000"
+            ]
+        );
+        assert_eq!(setup.charset.as_deref(), Some("utf8mb4"));
+        assert_eq!(setup.connect_timeout, Some(Duration::from_secs(5)));
+        assert!(Setup::of(&DataSource { properties: vec![prop("a; drop", "1")], ..s.clone() }).is_err());
+        assert!(Setup::of(&DataSource { properties: vec![prop("connect_timeout", "soon")], ..s }).is_err());
+    }
+
+    #[test]
+    fn sqlite_properties_become_pragmas() {
+        let s = DataSource { properties: vec![prop("cache_size", "-2000")], ..Default::default() };
+        assert_eq!(Setup::of(&s).unwrap().params, [("cache_size".to_owned(), "-2000".to_owned())]);
+    }
 }

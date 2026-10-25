@@ -411,6 +411,20 @@ fn directory_scope() {
 }
 
 #[test]
+fn pattern_scope_intersects_the_file_mask() {
+    let p = mask_project();
+    let scope = SearchScope::Pattern { pattern: "file:src//*&&!file:*Test*".into() };
+    let q = SearchQuery { scope: scope.clone(), ..query("hit") };
+    let (views, _) = run(p.path(), &q);
+    assert_eq!(paths(&views), ["src/Main.kt", "src/Util.java", "src/web/app.ts"]);
+    let q = SearchQuery { scope, include: vec!["*.ts".into()], ..query("hit") };
+    let (views, _) = run(p.path(), &q);
+    assert_eq!(paths(&views), ["src/web/app.ts"]);
+    let bad = SearchQuery { scope: SearchScope::Pattern { pattern: "a &&".into() }, ..query("hit") };
+    assert_eq!(ide_search::validate_query(&bad).unwrap_err().kind, ErrorKind::InvalidInput);
+}
+
+#[test]
 fn files_scope_searches_ignored_and_unsaved_files() {
     let p = project(&[(".gitignore", b"*.log\n"), ("a.log", b"hit\n"), ("b.txt", b"hit\n"), ("c.txt", b"hit\n")]);
     let unsaved = p.path().join("new.txt");
@@ -620,4 +634,12 @@ fn search_context_filters_comments_and_strings() {
         rows(C::ExceptCommentsAndStringLiterals),
         vec![s("a.rs", 0, &[(0, 3)]), s("a.rs", 1, &[(0, 3)]), s("b.txt", 0, &[(0, 3), (7, 10)])]
     );
+}
+
+#[test]
+fn archives_are_skipped() {
+    // A stored (uncompressed) zip entry would otherwise match before the first NUL byte.
+    let p = project(&[("lib/needle.jar", b"needle in a jar"), ("docs.zip", b"needle"), ("src/a.txt", b"needle\n")]);
+    let (views, _) = run(p.path(), &query("needle"));
+    assert_eq!(paths(&views), ["src/a.txt"]);
 }

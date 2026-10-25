@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 
 mod registry;
 mod syntax;
-pub use registry::LanguageRegistry;
+pub use registry::{FileTypes, LanguageRegistry};
 pub use syntax::{
     CSS_CLASS, CSS_ID, CSS_VARIABLE, FileReference, Literal, LiteralKind, MAX_CACHED_TREES, MAX_PARSE_BYTES,
-    ParsedTree, Syntax, SyntaxCache, SyntaxCacheStats, SyntaxHighlightKind, SyntaxHighlights, TreeError, WebReference,
-    WebReferenceKind,
+    ParsedTree, SpellingKind, SpellingRegion, Syntax, SyntaxCache, SyntaxCacheStats, SyntaxHighlightKind,
+    SyntaxHighlights, TreeError, WebReference, WebReferenceKind, merge_visibility,
 };
 
 /// Parsed form of `languages/<id>.toml`. Backend-only; the UI gets [`LanguageInfo`].
@@ -119,6 +119,18 @@ pub struct LanguageInfo {
     #[serde(default)]
     #[specta(optional)]
     pub debuggable: bool,
+    /// Names of the configured language servers (Settings › Inspections).
+    #[serde(default)]
+    #[specta(optional)]
+    pub language_servers: Vec<String>,
+    /// Exact file names and file-name patterns of the definition (Settings › File Types).
+    #[serde(default)]
+    #[specta(optional)]
+    pub filenames: Vec<String>,
+    /// First-line regex of the definition (shebangs, `<?php`).
+    #[serde(default)]
+    #[specta(optional)]
+    pub first_line: Option<String>,
 }
 
 impl From<&LanguageConfig> for LanguageInfo {
@@ -132,6 +144,9 @@ impl From<&LanguageConfig> for LanguageInfo {
             block_comment: c.block_comment.clone(),
             indent: c.indent,
             debuggable: c.debugger.is_some(),
+            language_servers: c.language_servers.iter().map(|s| s.name.clone()).collect(),
+            filenames: c.filenames.clone(),
+            first_line: c.first_line.clone(),
         }
     }
 }

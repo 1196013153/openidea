@@ -5,6 +5,7 @@ import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { ConsoleModel } from "./console";
 import { ConsoleView } from "./ConsoleView";
+import { TerminalConsole } from "./TerminalConsole";
 import { runDirectory } from "./navigate";
 import {
   acceptsInput,
@@ -14,12 +15,14 @@ import {
   failedTests,
   rerunFailed,
   rerunSession,
+  resizeTerminal,
   runSelectedTests,
   runtime,
   sendStdin,
   setPendingInput,
   stopSession,
   useRun,
+  writeTerminal,
   type RunSession,
 } from "./store";
 import { TestTreeView, formatDuration } from "./TestTreeView";
@@ -72,26 +75,36 @@ function SessionPanel({ session }: { session: RunSession }) {
           </button>
         </div>
       )}
-      <ConsoleView
-        model={testModel ?? rt.console}
-        version={version}
-        softWrap={softWrap}
-        follow={testModel ? false : follow}
-        onFollowChange={setFollow}
-        cwd={cwd}
-        onClear={() => clearConsole(session.id)}
-        input={
-          !testModel && acceptsInput(session)
-            ? {
-                pending: rt.input,
-                onChange: (text) => setPendingInput(session.id, text),
-                onSubmit: (line) => void sendStdin(session.id, line),
-                onEof: () => void closeStdin(session.id),
-              }
-            : undefined
-        }
-        aria-label={`${session.config.name} output`}
-      />
+      {rt.terminal && !testModel ? (
+        <TerminalConsole
+          output={rt.terminal}
+          cwd={cwd}
+          onData={(data) => writeTerminal(session.id, data)}
+          onResize={(cols, rows) => resizeTerminal(session.id, cols, rows)}
+          aria-label={`${session.config.name} terminal`}
+        />
+      ) : (
+        <ConsoleView
+          model={testModel ?? rt.console}
+          version={version}
+          softWrap={softWrap}
+          follow={testModel ? false : follow}
+          onFollowChange={setFollow}
+          cwd={cwd}
+          onClear={() => clearConsole(session.id)}
+          input={
+            !testModel && acceptsInput(session)
+              ? {
+                  pending: rt.input,
+                  onChange: (text) => setPendingInput(session.id, text),
+                  onSubmit: (line) => void sendStdin(session.id, line),
+                  onEof: () => void closeStdin(session.id),
+                }
+              : undefined
+          }
+          aria-label={`${session.config.name} output`}
+        />
+      )}
     </div>
   );
 
@@ -125,14 +138,18 @@ function SessionPanel({ session }: { session: RunSession }) {
           onClick={() => void stopSession(session.id)}
         />
         <div className={styles.toolbarSep} />
-        <IconButton
-          icon="arrow-down"
-          iconSize={14}
-          title="Scroll to End"
-          pressed={follow}
-          onClick={() => setFollow((v) => !v)}
-        />
-        <IconButton icon="soft-wrap" iconSize={14} title="Soft-Wrap" pressed={softWrap} onClick={toggleWrap} />
+        {!rt.terminal && (
+          <>
+            <IconButton
+              icon="arrow-down"
+              iconSize={14}
+              title="Scroll to End"
+              pressed={follow}
+              onClick={() => setFollow((v) => !v)}
+            />
+            <IconButton icon="soft-wrap" iconSize={14} title="Soft-Wrap" pressed={softWrap} onClick={toggleWrap} />
+          </>
+        )}
         <IconButton icon="trash" iconSize={14} title="Clear All" onClick={() => clearConsole(session.id)} />
         <div className={styles.toolbarSep} />
         <IconButton
@@ -230,9 +247,28 @@ export function RunView() {
   const current = currentTab(sessions, traces, active);
 
   if (!current) {
+    // IDEA's empty Run tool window: the three ways to run something.
+    const chooser = shortcutLabel("run.chooseConfig");
     return (
-      <EmptyState icon="run" title="Nothing is running">
-        <T>Run a configuration with</T> <kbd className={styles.kbd}>⌃R</kbd> <T>or pick one in the toolbar.</T>
+      <EmptyState>
+        <div className={styles.emptyHints}>
+          <T>To run your code, do one of the following:</T>
+          <ul>
+            <li>
+              <T>Click the Run icon in the editor gutter</T>
+            </li>
+            <li>
+              <T>{'Select "Run…" in the editor context menu'}</T>
+            </li>
+            <li>
+              <T>Launch a</T>{" "}
+              <button type="button" className={styles.noticeLink} onClick={() => void executeAction("run.editConfigs")}>
+                <T>run configuration</T>
+              </button>
+              {chooser && <span className={styles.chooserMuted}> ({chooser})</span>}
+            </li>
+          </ul>
+        </div>
       </EmptyState>
     );
   }

@@ -4,8 +4,8 @@
  * with counts and column types, loaded lazily. Double-click a table to open its data, a data
  * source to open its query console.
  */
-import { useEffect, useMemo, useRef } from "react";
-import type { DbTableDetails } from "@/platform/ipc";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import type { DbDatabases, DbTableDetails } from "@/platform/ipc";
 import { setContext } from "@/platform/context";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
@@ -21,7 +21,7 @@ import {
   type TreeHandle,
   T,
 } from "@/ui";
-import { databaseKey, driverIcon, splitTarget, targetOf } from "./model";
+import { colorVar, databaseKey, shownNames, sourceIcon, splitTarget, targetOf } from "./model";
 import { nodeTarget, type DbNode as Node, type Group } from "./nodes";
 import {
   connect,
@@ -105,9 +105,20 @@ export function DatabaseView() {
     return d?.status === "ok" ? d.value : null;
   };
 
+  const sourceOf = (target: string) => st.sources.find((s) => s.id === splitTarget(target).id);
+  /** The Schemas tab's choice. */
+  const shownSchemas = (target: string, names: string[]) => {
+    const i = sourceOf(target)?.introspection;
+    return shownNames(names, i?.allSchemas, i?.schemas);
+  };
+  const shownDatabases = (id: string, v: DbDatabases) => {
+    const i = sourceOf(id)?.introspection;
+    return shownNames(v.names, i?.allDatabases, i?.databases, v.current);
+  };
+
   const schemasOf = (key: string, id: string) =>
     status(key, st.schemas[id], (v) =>
-      v.map((schema) => ({ kind: "schema", key: `${id}/${schema}`, id, schema }) as Node),
+      shownSchemas(id, v).map((schema) => ({ kind: "schema", key: `${id}/${schema}`, id, schema }) as Node),
     );
 
   const children = (n: Node): readonly Node[] | undefined => {
@@ -116,7 +127,7 @@ export function DatabaseView() {
         const id = n.source.id ?? "";
         if (listsDatabases(n.source))
           return status(n.key, st.databases[id], (v) =>
-            v.names.map((name) => ({
+            shownDatabases(id, v).map((name) => ({
               kind: "database",
               key: databaseKey(id, name),
               id: targetOf(id, name, v.current),
@@ -226,14 +237,14 @@ export function DatabaseView() {
         const id = n.source.id ?? "";
         if (listsDatabases(n.source)) {
           const d = st.databases[id];
-          return d?.status === "ok" ? String(d.value.names.length) : undefined;
+          return d?.status === "ok" ? String(shownDatabases(id, d.value).length) : undefined;
         }
         const s = st.schemas[id];
-        return s?.status === "ok" ? String(s.value.length) : undefined;
+        return s?.status === "ok" ? String(shownSchemas(id, s.value).length) : undefined;
       }
       case "database": {
         const s = st.schemas[n.id];
-        return s?.status === "ok" ? String(s.value.length) : undefined;
+        return s?.status === "ok" ? String(shownSchemas(n.id, s.value).length) : undefined;
       }
       case "folder":
         return String(
@@ -259,7 +270,7 @@ export function DatabaseView() {
   const icon = (n: Node): string | undefined => {
     switch (n.kind) {
       case "source":
-        return driverIcon(n.source.driver);
+        return sourceIcon(n.source);
       case "database":
         return "database";
       case "schema":
@@ -334,8 +345,15 @@ export function DatabaseView() {
                   ? styles.keyLabel
                   : styles.nodeLabel;
             const live = n.kind === "source" && [...st.connected].some((t) => splitTarget(t).id === n.source.id);
+            const target = nodeTarget(n);
+            // IDEA tints every row of a coloured data source.
+            const tint = colorVar(target ? sourceOf(target)?.color : null);
             return (
-              <span className={styles.nodeRow}>
+              <span
+                className={tint ? `${styles.nodeRow} ${styles.tinted}` : styles.nodeRow}
+                style={tint ? ({ "--db-tint": tint } as CSSProperties) : undefined}
+                title={n.kind === "source" && n.source.comment ? n.source.comment : undefined}
+              >
                 {i && (
                   <span className={styles.nodeIcon}>
                     <Icon name={i} size={16} />

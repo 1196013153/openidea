@@ -35,7 +35,7 @@ export function activate(): () => void {
       headerActions: BuildHeaderActions,
       useBadge: useErrorBadge,
     }),
-    registerTitleItem({ id: "build.project", align: "right", priority: -1, component: BuildTitleItem }),
+    registerTitleItem({ id: "build.project", title: "Build Project", align: "right", priority: -1, component: BuildTitleItem }),
     registerActions([
       {
         id: "build.buildProject",
@@ -45,7 +45,8 @@ export function activate(): () => void {
         icon: "build-project",
         when: WHEN,
         keywords: ["compile", "make", "mvn", "gradle", "cargo", "tsc", "go build"],
-        run: () => void startBuild("build"),
+        // Awaitable: Run's "Build" before launch task waits for the result.
+        run: async () => void (await startBuild("build")),
       },
       {
         id: "build.buildModule",

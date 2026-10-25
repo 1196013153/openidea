@@ -1,15 +1,18 @@
-/** TODO tool window: "Project" and "Current File" tabs, grouped by file. */
-import { useCallback, useMemo, useRef, useState } from "react";
+/** TODO tool window: "Project", "Current File", "Scope Based" and "Changes" tabs, grouped by file. */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import clsx from "clsx";
-import { useEditorRegistry } from "@/editor/api";
+import { openEditorPaths, useEditorRegistry } from "@/editor/api";
+import { executeAction } from "@/platform/actions";
 import { basename, relativeDir, useProject } from "@/platform/project";
-import { editorService, useOccurrenceNavigator } from "@/workbench/contributions";
+import { EDIT_SCOPES_ACTION, useCustomScopeList } from "@/platform/search";
+import { editorService, useLocalChanges, useOccurrenceNavigator } from "@/workbench/contributions";
 import {
   EmptyState,
   Icon,
   IconButton,
   Menu,
+  Select,
   SourcePreview,
   SplitGroup,
   SplitHandle,
@@ -24,18 +27,46 @@ import {
   T,
 } from "@/ui";
 import { previewText } from "./ipc";
-import { activePatterns, countItems, groupTodos, mergeLive, type TodoGroup, type TodoItem } from "./model";
-import { scanProject, updateTodoSettings, useTodoSettings, useTodos } from "./store";
+import {
+  BUILTIN_TODO_SCOPES,
+  activePatterns,
+  changedPaths,
+  countItems,
+  groupTodos,
+  mergeLive,
+  todoSearchScope,
+  type TodoGroup,
+  type TodoItem,
+  type TodoScope,
+} from "./model";
+import { scanProject, scanScope, updateTodoSettings, useTodoSettings, useTodos } from "./store";
 import styles from "./TodoView.module.css";
 
-type Tab = "project" | "file";
+type Tab = "project" | "file" | "scope" | "changes";
+
+const SCOPE_KEY = "openidea.todo.scope.v1";
+
+function loadScope(): TodoScope {
+  try {
+    const v = globalThis.localStorage?.getItem(SCOPE_KEY);
+    if (v && (BUILTIN_TODO_SCOPES.some((s) => s.value === v) || v.startsWith("custom:"))) return v as TodoScope;
+  } catch {
+    /* storage unavailable */
+  }
+  return "projectFiles";
+}
 
 interface ViewState {
   tab: Tab;
   /** Hidden keywords (filter). */
   hidden: string[];
   collapsed: Set<string>;
+  /** The Scope Based tab's scope. */
+  scope: TodoScope;
+  /** The Changes tab's change list (null: the active one). */
+  changelist: string | null;
   setTab(tab: Tab): void;
+  setScope(scope: TodoScope): void;
   toggleKeyword(k: string): void;
   showAll(): void;
 }
@@ -44,7 +75,17 @@ export const useTodoView = create<ViewState>((set) => ({
   tab: "project",
   hidden: [],
   collapsed: new Set(),
+  scope: loadScope(),
+  changelist: null,
   setTab: (tab) => set({ tab }),
+  setScope: (scope) => {
+    set({ scope });
+    try {
+      globalThis.localStorage?.setItem(SCOPE_KEY, scope);
+    } catch {
+      /* storage unavailable */
+    }
+  },
   toggleKeyword: (k) =>
     set((s) => ({ hidden: s.hidden.includes(k) ? s.hidden.filter((h) => h !== k) : [...s.hidden, k] })),
   showAll: () => set({ hidden: [] }),
@@ -106,21 +147,112 @@ function keywordFilter(hidden: readonly string[], all: readonly string[]): Set<s
   return hidden.length ? new Set(all.filter((k) => !hidden.includes(k))) : null;
 }
 
+/** Files of the chosen change list (the VCS change lists; empty without VCS). */
+function useChangedPaths(): Set<string> {
+  const lists = useLocalChanges((s) => s.lists);
+  const listId = useTodoView((s) => s.changelist);
+  return useMemo(() => changedPaths(lists, listId), [lists, listId]);
+}
+
 /** Groups for a tab (exported for the badge and tests). */
 export function useTodoGroups(tab: Tab): TodoGroup[] {
   const scanned = useTodos((s) => s.scanned);
+  const scoped = useTodos((s) => s.scoped);
   const live = useTodos((s) => s.live);
   const hidden = useTodoView((s) => s.hidden);
   const patterns = useTodoSettings((s) => s.patterns);
   const current = useEditorRegistry((s) => s.active?.ctx.path ?? null);
+  const changed = useChangedPaths();
   return useMemo(() => {
-    const merged = mergeLive(scanned, live);
     const keywords = keywordFilter(
       hidden,
       patterns.map((p) => p.keyword.trim()),
     );
+    if (tab === "scope") {
+      // Open editors' unsaved text, for the files the scope scan found.
+      const inScope = new Map([...live].filter(([path]) => scoped.has(path)));
+      return groupTodos(mergeLive(scoped, inScope), { keywords });
+    }
+    const merged = mergeLive(scanned, live);
+    if (tab === "changes") return groupTodos(merged, { keywords, paths: changed });
     return groupTodos(merged, tab === "file" ? { keywords, path: current } : { keywords });
-  }, [scanned, live, hidden, patterns, tab, current]);
+  }, [scanned, scoped, live, hidden, patterns, tab, current, changed]);
+}
+
+/** The Scope Based tab's scope as the backend scope, with a key that changes when it does. */
+function useScopeQuery() {
+  const scope = useTodoView((s) => s.scope);
+  const custom = useCustomScopeList();
+  // Open tabs change with the active editor (or its count): re-read them then.
+  const openKey = useEditorRegistry((s) => (scope === "openFiles" ? `${s.editors.size}:${s.active?.ctx.path ?? ""}` : ""));
+  return useMemo(() => {
+    const search = todoSearchScope(scope, custom, scope === "openFiles" ? openEditorPaths() : []);
+    return { search, key: JSON.stringify(search) };
+  }, [scope, custom, openKey]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Rescans the chosen scope when it changes, and (debounced) when the project index does. */
+function useScopeScan(active: boolean) {
+  const { search, key } = useScopeQuery();
+  const scanned = useTodos((s) => s.scanned);
+  const scopedKey = useTodos((s) => s.scopedKey);
+  const fresh = scopedKey === key;
+  useEffect(() => {
+    if (!active) return;
+    if (!fresh) {
+      void scanScope(key, search);
+      return;
+    }
+    const t = setTimeout(() => void scanScope(key, search), 800);
+    return () => clearTimeout(t);
+    // `fresh` only gates the first scan of a scope; later ones follow the project index.
+  }, [active, key, scanned]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** IDEA's "Changelist:" chooser above the Changes tab (when there is more than one list). */
+function ChangelistBar() {
+  const lists = useLocalChanges((s) => s.lists);
+  const chosen = useTodoView((s) => s.changelist);
+  if (lists.length < 2) return null;
+  const value = lists.find((l) => l.id === chosen)?.id ?? lists.find((l) => l.active)?.id ?? lists[0]!.id;
+  return (
+    <div className={styles.scopeBar}>
+      <span className={styles.muted}>
+        <T>Changelist:</T>
+      </span>
+      <Select<string>
+        aria-label="Changelist"
+        className={styles.scopeSelect}
+        value={value}
+        options={lists.map((l) => ({ value: l.id, label: l.name, detail: `${l.files.length} file${l.files.length === 1 ? "" : "s"}` }))}
+        onChange={(id) => useTodoView.setState({ changelist: id })}
+      />
+    </div>
+  );
+}
+
+function ScopeBar() {
+  const scope = useTodoView((s) => s.scope);
+  const setScope = useTodoView((s) => s.setScope);
+  const custom = useCustomScopeList();
+  const options = [
+    ...BUILTIN_TODO_SCOPES,
+    ...custom.map((c) => ({ value: `custom:${c.name}` as TodoScope, label: c.name, detail: c.pattern })),
+  ];
+  return (
+    <div className={styles.scopeBar}>
+      <span className={styles.muted}>
+        <T>Scope:</T>
+      </span>
+      <Select<TodoScope> aria-label="Scope" className={styles.scopeSelect} value={scope} options={options} onChange={setScope} />
+      <IconButton
+        icon="more-horizontal"
+        size="small"
+        title="Edit Scopes…"
+        onClick={() => void executeAction(EDIT_SCOPES_ACTION, scope.startsWith("custom:") ? { select: scope.slice(7) } : undefined)}
+      />
+    </div>
+  );
 }
 
 export function useTodoBadge(): number | null {
@@ -193,13 +325,14 @@ export function TodoHeaderActions() {
   );
 }
 
-/** Scope tabs in the tool window header: "Project" / "Current File". */
+/** Scope tabs in the tool window header: "Project" / "Current File" / "Scope Based" / "Changes". */
 export function TodoTabs() {
   const tab = useTodoView((s) => s.tab);
   const setTab = useTodoView((s) => s.setTab);
   const current = useEditorRegistry((s) => s.active?.ctx.path ?? null);
   const projectCount = countItems(useTodoGroups("project"));
   const fileCount = countItems(useTodoGroups("file"));
+  const changesCount = countItems(useTodoGroups("changes"));
   return (
     <Tabs
       variant="compact"
@@ -225,6 +358,13 @@ export function TodoTabs() {
           text: "Current File",
           trailing: fileCount ? <span className={styles.tabCount}>{fileCount}</span> : undefined,
         },
+        { id: "scope", label: "Scope Based" },
+        {
+          id: "changes",
+          label: "Changes",
+          tooltip: "TODO items in files of a changelist",
+          trailing: changesCount ? <span className={styles.tabCount}>{changesCount}</span> : undefined,
+        },
       ]}
     />
   );
@@ -235,8 +375,10 @@ export function TodoView() {
   const collapsed = useTodoView((s) => s.collapsed);
   const root = useProject((s) => s.project?.root ?? "");
   const current = useEditorRegistry((s) => s.active?.ctx.path ?? null);
-  const { scanning, error, limitHit, scannedOnce } = useTodos();
+  const { scanning, error, limitHit, scannedOnce, scopedScanning, scopedKey } = useTodos();
   const groups = useTodoGroups(tab);
+  useScopeScan(tab === "scope");
+  const scopeKey = useScopeQuery().key;
   const showPreview = useTodoViewOptions((o) => o.preview);
   const tree = useRef<TreeHandle>(null);
   const [lead, setLead] = useState<Node | null>(null);
@@ -289,6 +431,16 @@ export function TodoView() {
   const empty =
     tab === "file" && !current ? (
       <EmptyState icon="todo" title="No file is open" />
+    ) : tab === "scope" ? (
+      scopedScanning || scopedKey !== scopeKey ? (
+        <div className={styles.loading}>
+          <Spinner size={14} /> <T>Scanning for TODO items…</T>
+        </div>
+      ) : (
+        <EmptyState icon="todo" title="No TODO items found in this scope" />
+      )
+    ) : tab === "changes" ? (
+      <EmptyState icon="todo" title="No TODO items in changed files" />
     ) : error && tab === "project" ? (
       <EmptyState icon="todo" title="TODO items unavailable">
         {error}
@@ -308,6 +460,8 @@ export function TodoView() {
           <T>Too many matches; showing the first 10 000.</T>
         </div>
       )}
+      {tab === "scope" && <ScopeBar />}
+      {tab === "changes" && <ChangelistBar />}
       <div className={styles.body}>
         <SplitGroup orientation="horizontal" id="todo-preview-split">
           <SplitPanel id="items" minSize={160} className={styles.panel}>

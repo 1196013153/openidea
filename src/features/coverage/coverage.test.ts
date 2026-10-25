@@ -3,7 +3,7 @@ import { EditorState } from "@codemirror/state";
 import type { CoverageSuite, FileCoverage, RunConfig } from "@/platform/ipc";
 import { coverageMarkers } from "./gutter";
 import { coverageBadges, coverageSupports, coverageTree, formatPercent, lineState, sortTree } from "./model";
-import { MAX_SUITES, addSuite, closeSuite, resetCoverage, setCoverageVisible, shownFileCoverage, useCoverage } from "./store";
+import { MAX_SUITES, addSuite, closeSuite, reportEntries, resetCoverage, setCoverageVisible, shownFileCoverage, useCoverage } from "./store";
 
 function cfg(command: string, args: string[], extra: Partial<RunConfig> = {}): RunConfig {
   return { id: "c", name: "c", kind: "shell", command, args, cwd: null, env: {}, detected: true, isTest: false, debugAdapter: null, ...extra };
@@ -113,6 +113,26 @@ describe("gutter and suites", () => {
     expect(shownFileCoverage(`/p/${MAX_SUITES + 1}.rs`)).toBeNull();
     closeSuite(s.suites[0]!.id);
     expect(useCoverage.getState().activeId).toBe(s.suites[1]!.id);
+    resetCoverage();
+  });
+
+  it("replaces a re-imported report and lists remembered imports in Manage Coverage Reports", () => {
+    addSuite("tests", suite([file("/p/a.rs", 1, 2)]));
+    const first = addSuite("lcov.info", suite([file("/p/a.rs", 1, 2)]), "/ci/lcov.info");
+    const again = addSuite("lcov.info", suite([file("/p/a.rs", 2, 2)]), "/ci/lcov.info");
+    const { suites } = useCoverage.getState();
+    expect(suites.map((s) => s.id)).toEqual([again.id, suites[1]!.id]);
+    expect(suites.some((s) => s.id === first.id)).toBe(false);
+    expect(shownFileCoverage("/p/a.rs")?.linesCovered).toBe(2);
+    const entries = reportEntries(suites, [
+      { path: "/ci/lcov.info", name: "lcov.info", importedAt: 1 },
+      { path: "/ci/jacoco.xml", name: "jacoco.xml", importedAt: 2 },
+    ]);
+    expect(entries.map((e) => [e.name, e.detail, !!e.suite])).toEqual([
+      ["lcov.info", "/ci/lcov.info", true],
+      ["tests", "t", true],
+      ["jacoco.xml", "/ci/jacoco.xml", false],
+    ]);
     resetCoverage();
   });
 });

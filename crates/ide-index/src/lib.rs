@@ -67,14 +67,17 @@ pub struct IndexStatus {
 pub struct ProjectIndex {
     shared: Arc<Shared>,
     worker: Mutex<Option<JoinHandle<()>>>,
+    root: PathBuf,
 }
 
 impl ProjectIndex {
     /// Opens (or creates) the persistent index at `cache_dir` and starts a
     /// background full scan that skips files whose content hash is unchanged.
+    /// `content_roots` are folders outside `root` indexed with it (not persisted).
     pub fn open(
         root: &Path,
         cache_dir: &Path,
+        content_roots: Vec<PathBuf>,
         excludes: Vec<String>,
         languages: Arc<LanguageRegistry>,
         syntax: Arc<Syntax>,
@@ -85,7 +88,7 @@ impl ProjectIndex {
             return Err(ide_core::IdeError::not_found(format!("{} is not a directory", root.display())));
         }
         let store = store::Store::open(cache_dir, &root, &syntax.fingerprint());
-        let filter = filter::PathFilter::new(&root, &excludes);
+        let filter = filter::PathFilter::new(&root, &content_roots, &excludes);
         let shared = Arc::new(Shared::new(filter, languages, syntax, sink, store));
         let worker = {
             let shared = shared.clone();
@@ -94,7 +97,25 @@ impl ProjectIndex {
                 .spawn(move || shared.run())
                 .map_err(|e| ide_core::IdeError::internal(format!("cannot start indexer: {e}")))?
         };
-        Ok(Arc::new(Self { shared, worker: Mutex::new(Some(worker)) }))
+        Ok(Arc::new(Self { shared, worker: Mutex::new(Some(worker)), root }))
+    }
+
+    /// Changes what is indexed besides the root (content roots) and the exclude
+    /// globs, rescanning in the background (unchanged files are not re-read).
+    /// Returns whether anything changed.
+    pub fn set_scope(&self, content_roots: Vec<PathBuf>, excludes: Vec<String>) -> bool {
+        if self.shared.filter().same_config(&content_roots, &excludes) {
+            return false;
+        }
+        self.shared.set_filter(filter::PathFilter::new(&self.root, &content_roots, &excludes));
+        self.shared.enqueue(Job::Rescan);
+        true
+    }
+
+    /// File types changed (the registry the index shares was updated): re-parses
+    /// the files whose language under `before` differs from the current one.
+    pub fn languages_changed(&self, before: Arc<LanguageRegistry>) {
+        self.shared.enqueue(Job::Reparse(before));
     }
 
     pub fn status(&self) -> IndexStatus {
@@ -202,14 +223,15 @@ impl ProjectIndex {
     }
 
     pub fn root(&self) -> &Path {
-        self.shared.filter.root()
+        &self.root
     }
 
-    /// Absolute path inside the root, or `None` for paths outside the project / excluded.
+    /// Absolute path inside the root (or a content root), or `None` for paths outside the project.
     fn normalize(&self, path: &Path) -> Option<PathBuf> {
-        let root = self.shared.filter.root();
+        let filter = self.shared.filter();
+        let root = &self.root;
         let path = if path.is_absolute() { path.to_owned() } else { root.join(path) };
-        let path = if path.starts_with(root) {
+        let path = if filter.contains(&path) {
             path
         } else {
             // Watchers / the UI may report non-canonical spellings (`/tmp` vs `/private/tmp`).
@@ -221,7 +243,7 @@ impl ProjectIndex {
                 }
             }
         };
-        (path.starts_with(root) && path != root).then_some(path)
+        (filter.contains(&path) && filter.rel(&path).is_some()).then_some(path)
     }
 }
 

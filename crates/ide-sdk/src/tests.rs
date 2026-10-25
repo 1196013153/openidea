@@ -47,6 +47,7 @@ fn run(kind: &str, command: &str, args: &[&str]) -> RunConfig {
         is_test: false,
         debug_adapter: None,
         allow_parallel: false,
+        extras: Default::default(),
     }
 }
 
@@ -289,4 +290,174 @@ fn custom_tool_path_replaces_the_command() {
     let mut cfg = server("zls");
     configure_server(&mut cfg, tmp.path(), tmp.path(), &s);
     assert_eq!(cfg.command, "zls");
+}
+
+#[test]
+fn python_library_paths_are_parsed_and_deduplicated() {
+    let tmp = tempfile::tempdir().unwrap();
+    let stdlib = tmp.path().join("lib/python3.12");
+    let site = stdlib.join("site-packages");
+    std::fs::create_dir_all(&site).unwrap();
+    let json = serde_json::to_string(&[Some(&stdlib), Some(&stdlib), Some(&site), None]).unwrap();
+    let paths = crate::libraries::parse_python_paths(&format!("warning: something\n{json}"));
+    assert_eq!(paths.len(), 3);
+    let roots = crate::libraries::library_roots([paths, vec![tmp.path().join("gone")]].concat());
+    assert_eq!(roots.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["python3.12", "site-packages"]);
+    assert!(crate::libraries::parse_python_paths("not json").is_empty());
+}
+
+#[test]
+fn no_libraries_without_an_interpreter() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(crate::libraries::project_libraries(tmp.path(), &Settings::default(), &[]).is_empty());
+}
+
+#[test]
+fn node_libraries_list_direct_dependencies_and_core_typings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::write(
+        root.join("package.json"),
+        r#"{"dependencies":{"react":"^18","@scope/ui":"1"},"devDependencies":{"vitest":"2","react":"^18"}}"#,
+    )
+    .unwrap();
+    for dir in ["react", "@scope/ui", "@types/node", "transitive"] {
+        std::fs::create_dir_all(root.join("node_modules").join(dir)).unwrap();
+    }
+    let groups = crate::libraries::node_libraries(root, None);
+    let summary: Vec<(&str, &str, Vec<&str>)> = groups
+        .iter()
+        .map(|g| (g.name.as_str(), g.kind.as_str(), g.roots.iter().map(|r| r.name.as_str()).collect()))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("Node.js Core", "nodeCore", vec!["@types/node"]),
+            ("node_modules", "nodeModules", vec!["@scope/ui", "react"])
+        ]
+    );
+    assert_eq!(crate::libraries::package_dependencies("{"), Vec::<String>::new());
+}
+
+#[test]
+fn cargo_metadata_lists_registry_packages_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let serde = tmp.path().join("registry/src/index/serde-1.0.200");
+    let json = serde_json::json!({ "packages": [
+        { "name": "app", "version": "0.1.0", "source": null, "manifest_path": tmp.path().join("Cargo.toml") },
+        { "name": "serde", "version": "1.0.200", "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "manifest_path": serde.join("Cargo.toml") },
+    ]});
+    assert_eq!(crate::libraries::parse_cargo_metadata(&json.to_string()), [("serde 1.0.200".to_owned(), serde)]);
+    assert!(crate::libraries::parse_cargo_metadata("error: no Cargo.toml").is_empty());
+}
+
+#[test]
+fn go_modules_skip_the_main_module_and_missing_downloads() {
+    let out = r#"{"Path":"example.com/app","Main":true,"Dir":"/p"}
+{"Path":"golang.org/x/text","Version":"v0.14.0","Dir":"/gopath/pkg/mod/golang.org/x/text@v0.14.0"}
+{"Path":"example.com/missing","Version":"v1.0.0","Error":{"Err":"module lookup disabled"}}"#;
+    assert_eq!(
+        crate::libraries::parse_go_modules(out),
+        [(
+            "golang.org/x/text@v0.14.0".to_owned(),
+            std::path::PathBuf::from("/gopath/pkg/mod/golang.org/x/text@v0.14.0")
+        )]
+    );
+}
+
+#[test]
+fn jdk_library_is_the_jdk_home() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("temurin-21.jdk/Contents/Home");
+    std::fs::create_dir_all(&home).unwrap();
+    assert_eq!(crate::libraries::jdk_name(&home).as_deref(), Some("temurin-21"));
+    assert_eq!(crate::libraries::jdk_name(&tmp.path().join("jdk-17")).as_deref(), Some("jdk-17"));
+    let group = crate::libraries::jdk_library(&crate::java::Jdk { major: 21, home: home.clone() }).unwrap();
+    assert_eq!((group.name.as_str(), group.kind.as_str()), ("temurin-21", "jdk"));
+    assert_eq!(group.roots[0].path, ide_core::IpcPath::from(home.clone()));
+    assert_eq!(group.roots.len(), 1, "no sources archive");
+
+    std::fs::create_dir_all(home.join("lib")).unwrap();
+    std::fs::write(home.join("lib/src.zip"), "").unwrap();
+    let group = crate::libraries::jdk_library(&crate::java::Jdk { major: 21, home: home.clone() }).unwrap();
+    assert_eq!(group.roots[1].name, "src.zip");
+    assert_eq!(group.roots[1].path, ide_core::IpcPath::from(ide_vfs::archive_root(&home.join("lib/src.zip"))));
+}
+
+#[test]
+fn build_dependencies_resolve_to_local_jars() {
+    use crate::libraries::{BuildDependency, dependency_libraries};
+    let tmp = tempfile::tempdir().unwrap();
+    let (m2, gradle) = (tmp.path().join("m2"), tmp.path().join("gradle"));
+    let touch = |p: std::path::PathBuf| {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, "").unwrap();
+        p
+    };
+    touch(m2.join("com/google/guava/guava/33.0/guava-33.0.jar"));
+    let guava_src = touch(m2.join("com/google/guava/guava/33.0/guava-33.0-sources.jar"));
+    let junit = touch(m2.join("junit/junit/4.13/junit-4.13.jar"));
+    let files = gradle.join("caches/modules-2/files-2.1/org.slf4j/slf4j-api/2.0.9");
+    touch(files.join("a1b2/slf4j-api-2.0.9.jar"));
+    let slf4j_src = touch(files.join("c3d4/slf4j-api-2.0.9-sources.jar"));
+    let dep = |gradle: bool, g: &str, a: &str, v: &str| BuildDependency {
+        gradle,
+        group: g.into(),
+        artifact: a.into(),
+        version: v.into(),
+    };
+    let deps = [
+        dep(false, "junit", "junit", "4.13"),
+        dep(false, "com.google.guava", "guava", "33.0"),
+        dep(false, "com.google.guava", "guava", "33.0"),
+        dep(true, "org.slf4j", "slf4j-api", "2.0.9"),
+        dep(false, "missing", "nope", "1.0"),
+        dep(false, "..", "evil", "1"),
+    ];
+    let groups = dependency_libraries(&deps, Some(&m2), Some(&gradle));
+    let shown: Vec<(&str, &str, &str)> =
+        groups.iter().map(|g| (g.name.as_str(), g.kind.as_str(), g.roots[0].name.as_str())).collect();
+    assert_eq!(
+        shown,
+        [
+            ("Maven: com.google.guava:guava:33.0", "maven", "guava-33.0-sources.jar"),
+            ("Maven: junit:junit:4.13", "maven", "junit-4.13.jar"),
+            ("Gradle: org.slf4j:slf4j-api:2.0.9", "gradle", "slf4j-api-2.0.9-sources.jar"),
+        ]
+    );
+    assert_eq!(groups[0].roots[0].path, ide_core::IpcPath::from(ide_vfs::archive_root(&guava_src)));
+    assert_eq!(groups[1].roots[0].path, ide_core::IpcPath::from(ide_vfs::archive_root(&junit)));
+    assert_eq!(groups[2].roots[0].path, ide_core::IpcPath::from(ide_vfs::archive_root(&slf4j_src)));
+    // A Gradle build also finds jars installed in the Maven local repository (`mavenLocal()`).
+    let groups = dependency_libraries(&[dep(true, "junit", "junit", "4.13")], Some(&m2), Some(&gradle));
+    assert_eq!(groups[0].name, "Gradle: junit:junit:4.13");
+}
+
+#[test]
+fn library_detection_is_cached_until_a_manifest_changes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let manifest = tmp.path().join("package.json");
+    std::fs::write(&manifest, "{}").unwrap();
+    let runs = std::cell::Cell::new(0);
+    let detect = || {
+        runs.set(runs.get() + 1);
+        Vec::new()
+    };
+    let files = [manifest.clone()];
+    crate::libraries::cached(tmp.path(), "test", "a".into(), &files, detect);
+    crate::libraries::cached(tmp.path(), "test", "a".into(), &files, detect);
+    assert_eq!(runs.get(), 1);
+    std::fs::write(&manifest, r#"{"dependencies":{}}"#).unwrap();
+    crate::libraries::cached(tmp.path(), "test", "a".into(), &files, detect);
+    assert_eq!(runs.get(), 2);
+    crate::libraries::cached(tmp.path(), "test", "b".into(), &files, detect);
+    assert_eq!(runs.get(), 3);
+}
+
+#[test]
+fn no_ecosystem_libraries_without_manifests() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/react")).unwrap();
+    assert!(crate::libraries::project_libraries(tmp.path(), &Settings::default(), &[]).is_empty());
 }

@@ -40,7 +40,14 @@ pub async fn search_start(
     let cancel = state.begin_request(request);
     let documents = project.documents.clone();
     let root = project.root.clone();
-    let languages = state.languages.clone();
+    // The whole project also covers the Project Structure content roots.
+    let content_roots = match query.scope {
+        ide_search::SearchScope::Project | ide_search::SearchScope::FileSet { set: ProjectFileSet::All } => {
+            project.content_roots()
+        }
+        _ => Vec::new(),
+    };
+    let languages = project.languages.clone();
     let syntax = state.syntax();
     let events = on_event.clone();
     let summary = tauri::async_runtime::spawn_blocking(move || {
@@ -55,17 +62,29 @@ pub async fn search_start(
             let found = syntax.literals(&language, text)?;
             Some(found.into_iter().map(literal_range).collect())
         };
-        ide_search::search_in_context(
-            &root,
-            &query,
-            Some(&filter),
-            Some(&literals),
-            &|p| documents.text_of(p),
-            &cancel,
-            &|file| {
-                let _ = events.send(SearchEvent::File { file });
-            },
-        )
+        let mut total = ide_search::SearchSummary::default();
+        for dir in std::iter::once(&root).chain(&content_roots) {
+            let s = ide_search::search_in_context(
+                dir,
+                &query,
+                Some(&filter),
+                Some(&literals),
+                &|p| documents.text_of(p),
+                &cancel,
+                &|file| {
+                    let _ = events.send(SearchEvent::File { file });
+                },
+            )?;
+            total.files += s.files;
+            total.matches += s.matches;
+            total.elapsed_ms += s.elapsed_ms;
+            total.limit_hit |= s.limit_hit;
+            total.cancelled |= s.cancelled;
+            if total.limit_hit || total.cancelled {
+                break;
+            }
+        }
+        Ok::<_, ide_core::IdeError>(total)
     })
     .await
     .map_err(|e| ide_core::IdeError::internal(e.to_string()))?;

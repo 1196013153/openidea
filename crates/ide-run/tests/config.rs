@@ -17,6 +17,7 @@ fn sample() -> Vec<RunConfig> {
             is_test: false,
             debug_adapter: Some("codelldb".into()),
             allow_parallel: true,
+            extras: Default::default(),
         },
         RunConfig {
             id: "user:tests".into(),
@@ -30,6 +31,7 @@ fn sample() -> Vec<RunConfig> {
             is_test: true,
             debug_adapter: None,
             allow_parallel: false,
+            extras: Default::default(),
         },
     ]
 }
@@ -111,4 +113,59 @@ fn invalid_file_is_reported() {
     let err = load_user_configs(dir.path()).unwrap_err();
     assert_eq!(err.kind, ide_core::error::ErrorKind::InvalidInput);
     assert!(err.message.contains("run.toml"));
+}
+
+#[test]
+fn extras_round_trip_and_local_file() {
+    use ide_run::{BeforeLaunchTask, load_templates, save_templates};
+    let dir = tempfile::tempdir().unwrap();
+    let mut shared = sample().remove(0);
+    shared.extras.folder = Some("Servers".into());
+    shared.extras.params = BTreeMap::from([("mode".into(), "command".into())]);
+    shared.extras.include_system_env = false;
+    shared.extras.env_files = vec![".env".into(), "local.env".into()];
+    shared.extras.stdin_file = Some("in.txt".into());
+    shared.extras.output_file = Some("out.log".into());
+    shared.extras.before_launch = vec![
+        BeforeLaunchTask { kind: "build".into(), target: String::new() },
+        BeforeLaunchTask { kind: "run".into(), target: "user:migrate".into() },
+    ];
+    shared.extras.show_on_stderr = true;
+    shared.extras.open_tool_window = Some(false);
+    shared.extras.focus_tool_window = true;
+    shared.extras.emulate_terminal = true;
+    shared.extras.stop_command = Some("docker stop server".into());
+    let mut local = sample().remove(1);
+    local.extras.local = true;
+    let mut compound = sample().remove(1);
+    compound.id = "user:all".into();
+    compound.name = "All".into();
+    compound.kind = "compound".into();
+    compound.command = String::new();
+    compound.extras.compound = vec!["user:server".into(), "user:tests".into()];
+    let configs = vec![shared, compound, local];
+    save_user_configs(dir.path(), &configs).unwrap();
+    assert_eq!(load_user_configs(dir.path()).unwrap(), configs);
+
+    let project = fs::read_to_string(user_configs_path(dir.path())).unwrap();
+    assert!(!project.contains("\"user:tests\"\n"), "{project}");
+    let private = fs::read_to_string(dir.path().join(".openidea/run.local.toml")).unwrap();
+    assert!(private.contains("id = \"user:tests\""), "{private}");
+    let ignore = fs::read_to_string(dir.path().join(".openidea/.gitignore")).unwrap();
+    assert!(ignore.lines().any(|l| l == "/run.local.toml"), "{ignore}");
+
+    // Making it a project file moves it back.
+    let mut moved = configs.clone();
+    moved[2].extras.local = false;
+    save_user_configs(dir.path(), &moved).unwrap();
+    assert_eq!(load_user_configs(dir.path()).unwrap(), moved);
+    assert!(!fs::read_to_string(dir.path().join(".openidea/run.local.toml")).unwrap().contains("user:tests"));
+
+    // Templates share run.toml without disturbing configurations.
+    let mut template = sample().remove(1);
+    template.id = "template:npm".into();
+    template.kind = "npm".into();
+    save_templates(dir.path(), std::slice::from_ref(&template)).unwrap();
+    assert_eq!(load_templates(dir.path()).unwrap(), vec![template]);
+    assert_eq!(load_user_configs(dir.path()).unwrap(), moved);
 }

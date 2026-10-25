@@ -3,7 +3,65 @@ import { registerAction } from "@/platform/actions";
 import { _resetI18nForTests, setLocale } from "@/platform/i18n";
 import { useKeymap } from "@/platform/keymap";
 import { resetDistractionFree, setDistractionFree } from "@/workbench/distractionFree";
-import { buildMenuConfig, menuShortcut, routeMenuEvent } from "../menuBridge";
+import { registerToolWindow } from "@/workbench/contributions";
+import { _reloadLayouts, saveLayout } from "@/workbench/toolwindows/layouts";
+import { setContext } from "@/platform/context";
+import {
+  buildMenuConfig,
+  disabledMenuActions,
+  dynamicMenuItems,
+  menuActionIds,
+  menuShortcut,
+  routeMenuEvent,
+} from "../menuBridge";
+
+describe("menu state from the frontend", () => {
+  it("lists registered tool windows by title and saved layouts", () => {
+    localStorage.clear();
+    _reloadLayouts();
+    const offs = [
+      registerToolWindow({ id: "zeta", title: "Terminal", icon: "terminal", anchor: "bottom", component: () => null }),
+      registerToolWindow({ id: "alpha", title: "Problems", icon: "problems", anchor: "bottom", component: () => null }),
+    ];
+    saveLayout("Review");
+    const dyn = dynamicMenuItems();
+    expect(dyn.toolWindows!.map((i) => [i.action, i.label])).toEqual([
+      ["toolwindow.alpha", "Problems"],
+      ["toolwindow.zeta", "Terminal"],
+    ]);
+    expect(dyn.toolWindowLayouts).toEqual([{ action: "layout.restore", arg: "Review", label: "Review" }]);
+    expect(buildMenuConfig("macos").dynamic).toEqual(dyn);
+    offs.forEach((d) => d());
+    localStorage.clear();
+    _reloadLayouts();
+  });
+
+  it("disables the registered actions that cannot run now", () => {
+    const offs = [
+      registerAction({ id: "test.menu.always", title: "A", run: () => {} }),
+      registerAction({ id: "test.menu.whenEditor", title: "B", when: "testMenuEditor", run: () => {} }),
+    ];
+    const ids = menuActionIds([
+      {
+        kind: "submenu",
+        id: "x",
+        label: "X",
+        children: [
+          { kind: "action", id: "test.menu.whenEditor", label: "B", hint: null, arg: null },
+          { kind: "action", id: "test.menu.always", label: "A", hint: null, arg: null },
+        ],
+      },
+      { kind: "action", id: "not.registered", label: "C", hint: null, arg: null },
+    ]);
+    expect([...ids].sort()).toEqual(["not.registered", "test.menu.always", "test.menu.whenEditor"]);
+    // Unregistered ids stay enabled: the action may register later (lazy features).
+    expect(disabledMenuActions(ids)).toEqual(["test.menu.whenEditor"]);
+    setContext("testMenuEditor", true);
+    expect(disabledMenuActions(ids)).toEqual([]);
+    setContext("testMenuEditor", false);
+    offs.forEach((d) => d());
+  });
+});
 
 afterEach(() => {
   _resetI18nForTests();

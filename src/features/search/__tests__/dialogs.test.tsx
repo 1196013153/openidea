@@ -4,7 +4,8 @@ import { registerAction } from "@/platform/actions";
 import type { SeDeps } from "../everywhere/controller";
 
 const fakeDeps = (): SeDeps => ({
-  findFiles: async (q) => (q ? [{ path: "/p/src/OrderController.kt", relPath: "src/OrderController.kt", score: 1, indices: [4, 5, 6] }] : []),
+  findFiles: async (q) =>
+    q ? [{ path: "/p/src/OrderController.kt", relPath: "src/OrderController.kt", score: 1, indices: [4, 5, 6] }] : [],
   findSymbols: async () => [],
   searchText: async () => {},
   cancel: () => {},
@@ -17,7 +18,13 @@ const fakeDeps = (): SeDeps => ({
   now: () => 0,
 });
 
-vi.mock("../everywhere/deps", () => ({ ipcDeps: () => fakeDeps() }));
+vi.mock("../everywhere/deps", () => ({
+  ipcDeps: () => fakeDeps(),
+  loadLanguages: async () => [
+    { id: "kotlin", name: "Kotlin", extensions: ["kt"] },
+    { id: "markdown", name: "Markdown", extensions: ["md"] },
+  ],
+}));
 vi.mock("../find/windowStore", async (orig) => ({
   ...(await orig<typeof import("../find/windowStore")>()),
   ipcFindDeps: () => ({
@@ -142,6 +149,45 @@ describe("Search Everywhere dialog", () => {
     expect(useSearchEverywhere.getState().includeNonProject).toBe(true);
   });
 
+  it("labels the Actions tab's checkbox and assigns a shortcut with ⌥↵", async () => {
+    const assign = vi.fn();
+    const disposers = [
+      registerAction({ id: "test.pizza", title: "Order Pizza", category: "Test", run: () => {} }),
+      registerAction({ id: "settings.assignShortcut", title: "Assign", hidden: true, run: ({ arg }) => assign(arg) }),
+    ];
+    render(<SearchEverywhereOverlay />);
+    act(() => showSearchEverywhere("actions", { query: "order pizza" }));
+    await tick();
+    expect(screen.getByLabelText("Include disabled actions")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Include non-project items")).toBeNull();
+    fireEvent.keyDown(screen.getByLabelText("Search query"), { key: "Enter", altKey: true });
+    await tick();
+    expect(assign).toHaveBeenCalledWith("test.pizza");
+    expect(useSearchEverywhere.getState().open).toBe(false);
+    disposers.forEach((d) => d());
+  });
+
+  it("filters Files by file type from the funnel, remembering the choice", async () => {
+    render(<SearchEverywhereOverlay />);
+    act(() => showSearchEverywhere("files", { query: "order" }));
+    await tick();
+    expect(document.getElementById("se-results")!.textContent).toContain("OrderController");
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    await tick();
+    fireEvent.click(screen.getByLabelText("Kotlin"));
+    await tick();
+    expect(useSearchEverywhere.getState().filters.files.languages).toEqual(["kotlin"]);
+    expect(JSON.parse(localStorage.getItem("openidea.search.everywhereFilters.v1")!).files.languages).toEqual([
+      "kotlin",
+    ]);
+    expect(document.getElementById("se-results")!.textContent).not.toContain("OrderController");
+    act(() =>
+      useSearchEverywhere.setState({
+        filters: { ...useSearchEverywhere.getState().filters, files: { languages: [] } },
+      }),
+    );
+  });
+
   it("searches everywhere when nothing is found in the project", async () => {
     render(<SearchEverywhereOverlay />);
     act(() => showSearchEverywhere("symbols", { query: "zzz" }));
@@ -160,7 +206,7 @@ describe("Find in Files dialog", () => {
     await act(() => new Promise((r) => setTimeout(r, 250)));
     expect(screen.getByText("1 match in 1 file")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Replace with"), { target: { value: "item" } });
-    expect(screen.getByText("item")).toBeInTheDocument();
+    expect(screen.getByText("item", { ignore: "script, style, textarea" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Replace All" })).toBeEnabled();
   });
 });

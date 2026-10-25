@@ -16,7 +16,9 @@ import type {
   SymbolMatch,
   WorkspaceSymbol,
 } from "@/platform/ipc";
+import type { SettingsSearchEntry } from "@/workbench/contributions";
 import { parseLocationQuery } from "../common/query";
+import { passesFilter, type ResolvedFilter } from "./filters";
 import {
   ALL_TAB_LIMIT,
   RECENT_LIMIT,
@@ -24,6 +26,8 @@ import {
   actionItem,
   fileItem,
   matchActions,
+  matchSettings,
+  mergeActionResults,
   mergeSymbols,
   sectionsFor,
   textItems,
@@ -46,6 +50,8 @@ export interface SeDeps {
   isEnabled(a: Action): boolean;
   recentFiles(): Promise<string[]>;
   recentActions(): readonly string[];
+  /** Settings pages / options listed with actions ("Settings: …"). */
+  settings?(): Promise<SettingsSearchEntry[]>;
   root(): string | null;
   now(): number;
   /** Whether `path` is in a root-based named scope ("Project Test Files" …). */
@@ -58,6 +64,10 @@ export interface SeRequest {
   includeNonProject: boolean;
   /** "Project Production Files" / "Project Test Files"; unset or `all` = every project file. */
   fileSet?: ProjectFileSet | null;
+  /** The tab's funnel filter (file types, languages, kinds, file mask). */
+  filter?: ResolvedFilter | null;
+  /** Actions: list disabled ones too (unset = include them). */
+  includeDisabled?: boolean;
   /** Per-section extra rows requested via "Show more". */
   extra: Partial<Record<SectionId, number>>;
 }
@@ -117,7 +127,15 @@ export class SeController {
     }
     for (const id of wanted) {
       const limit = sectionLimit(req.tab, id, req.extra[id] ?? 0);
-      const sig = JSON.stringify([req.query, req.tab, req.includeNonProject, req.fileSet ?? "all", limit]);
+      const sig = JSON.stringify([
+        req.query,
+        req.tab,
+        req.includeNonProject,
+        req.fileSet ?? "all",
+        req.filter ?? null,
+        req.includeDisabled ?? null,
+        limit,
+      ]);
       if (this.signatures.get(id) === sig && this.sections.has(id)) continue;
       this.signatures.set(id, sig);
       this.cancelSection(id);
@@ -213,7 +231,12 @@ export class SeController {
           break;
         }
         case "files": {
-          const keep = this.scopeFilter(req);
+          const scope = this.scopeFilter(req);
+          const filter = req.filter;
+          const keep =
+            scope || filter
+              ? (path: string) => (!scope || scope(path)) && (!filter || passesFilter(filter, path))
+              : null;
           // Over-fetch so a narrowed scope still fills the section.
           const fetched = await this.deps.findFiles(text, keep ? limit * 4 + 1 : limit + 1);
           const matches = keep ? fetched.filter((m) => keep(m.path)) : fetched;
@@ -234,8 +257,17 @@ export class SeController {
           const hits = matchActions(this.deps.actions(), text, {
             isEnabled: (a) => this.deps.isEnabled(a),
             recent: this.deps.recentActions(),
+            includeDisabled: req.includeDisabled,
           });
-          this.set(id, gen, hits.slice(0, limit), hits.length > limit, false);
+          if (!this.deps.settings || !text) {
+            this.set(id, gen, hits.slice(0, limit), hits.length > limit, false);
+            break;
+          }
+          // Actions answer at once; settings follow when their index has loaded.
+          this.set(id, gen, hits.slice(0, limit), hits.length > limit, true);
+          const settings = matchSettings(await this.deps.settings().catch(() => []), text);
+          const all = mergeActionResults(hits, settings);
+          this.set(id, gen, all.slice(0, limit), all.length > limit, false);
           break;
         }
         case "text":
@@ -257,17 +289,27 @@ export class SeController {
       excludeTypes: !typesOnly && req.tab === "all",
       limit,
     };
-    // Over-fetch in the All tab: types are filtered out of Symbols there.
-    const fetch = opts.excludeTypes ? limit * 2 + 1 : limit + 1;
+    const filter = req.filter;
+    // Over-fetch in the All tab (types are filtered out of Symbols there) and under a filter.
+    const fetch = filter ? limit * 4 + 1 : opts.excludeTypes ? limit * 2 + 1 : limit + 1;
     let index: SymbolMatch[] = [];
     let lsp: WorkspaceSymbol[] = [];
     let indexDone = false;
     let lspDone = !this.deps.workspaceSymbols;
     const keep = this.scopeFilter(req);
     const publish = () => {
-      const merged = mergeSymbols(index, lsp, text, opts);
-      const items = keep ? merged.items.filter((i) => keep(i.path)) : merged.items;
-      this.set(id, gen, items, merged.hasMore || index.length >= fetch, !(indexDone && lspDone));
+      const merged = mergeSymbols(index, lsp, text, { ...opts, limit: filter ? fetch : limit });
+      const passed = merged.items.filter(
+        (i) => (!keep || keep(i.path)) && (!filter || passesFilter(filter, i.path, i.symbolKind)),
+      );
+      const items = filter ? passed.slice(0, limit) : passed;
+      this.set(
+        id,
+        gen,
+        items,
+        merged.hasMore || index.length >= fetch || passed.length > items.length,
+        !(indexDone && lspDone),
+      );
     };
     const lspPromise = this.deps.workspaceSymbols
       ? this.deps
@@ -314,7 +356,7 @@ export class SeController {
       isRegex: false,
       caseSensitive: false,
       wholeWord: false,
-      include: [],
+      include: req?.filter?.mask ? [req.filter.mask] : [],
       exclude: [],
       scope: req?.fileSet && req.fileSet !== "all" ? { kind: "fileSet", set: req.fileSet } : { kind: "project" },
       maxMatches: limit + 1,

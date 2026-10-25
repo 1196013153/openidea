@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { dropIndex, revealHorizontally, TabStripRegistry, Tabs, type TabStripHandle } from "./Tabs";
+import { dropIndex, revealHorizontally, revealVertically, TabStripRegistry, Tabs, type TabStripHandle } from "./Tabs";
 
 describe("dropIndex", () => {
   it("finds the insertion index from tab midpoints", () => {
@@ -41,6 +41,18 @@ describe("revealHorizontally", () => {
   });
 });
 
+describe("revealVertically", () => {
+  it("scrolls a column of tabs just enough to show the tab", () => {
+    const el = (top: number, bottom: number, scrollTop = 0) =>
+      ({ scrollTop, getBoundingClientRect: () => ({ top, bottom }) }) as unknown as HTMLElement;
+    const scroller = el(0, 300, 50);
+    revealVertically(scroller, el(290, 314));
+    expect(scroller.scrollTop).toBe(64);
+    revealVertically(scroller, el(-20, 4));
+    expect(scroller.scrollTop).toBe(44);
+  });
+});
+
 describe("Tabs interactions", () => {
   const items = [
     { id: "a", label: "A" },
@@ -75,5 +87,31 @@ describe("Tabs interactions", () => {
     expect(handles[0]!.closeSelected()).toBe(false);
     unmount();
     expect(handles).toHaveLength(0);
+  });
+
+  it("a vertical strip moves with ↑/↓, shows actions above the tabs and has no overflow dropdown", () => {
+    const onSelect = vi.fn();
+    render(
+      <Tabs
+        items={items}
+        activeId="a"
+        onSelect={onSelect}
+        orientation="vertical"
+        aria-label="Vertical"
+        trailing={<button type="button">Actions</button>}
+      />,
+    );
+    const list = screen.getByRole("tablist", { name: "Vertical" });
+    expect(list.getAttribute("aria-orientation")).toBe("vertical");
+    const [first] = screen.getAllByRole("tab");
+    fireEvent.keyDown(first!, { key: "ArrowDown" });
+    expect(onSelect).toHaveBeenLastCalledWith("b");
+    fireEvent.keyDown(first!, { key: "ArrowUp" });
+    expect(onSelect).toHaveBeenLastCalledWith("c");
+    fireEvent.keyDown(first!, { key: "ArrowRight" });
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    const actions = screen.getByRole("button", { name: "Actions" });
+    expect(actions.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show Hidden Tabs" })).toBeNull();
   });
 });

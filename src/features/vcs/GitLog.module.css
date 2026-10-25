@@ -139,6 +139,10 @@
   cursor: default;
   font-size: var(--fs-ui);
 }
+/* View Options › Highlight › Current Branch (before .row:hover / .selected so they win). */
+.currentBranch {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
 .row:hover {
   background: var(--bg-tree-hover);
 }
@@ -169,6 +173,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.colHash {
+  flex: none;
+  width: 72px;
+  overflow: hidden;
+}
+.mine {
+  font-weight: 600;
+  color: var(--fg);
+}
+.mergeSubject {
+  color: var(--fg-subtle);
+}
 .muted {
   color: var(--fg-subtle);
 }
@@ -196,6 +212,9 @@
   max-width: 50%;
   overflow: hidden;
   margin-left: auto;
+}
+.refsLeft {
+  margin-left: 0;
 }
 .ref {
   display: inline-flex;

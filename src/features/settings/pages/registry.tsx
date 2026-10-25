@@ -36,6 +36,12 @@ export function pageLabels(id: string): string[] {
   }
 }
 
+/** Labels of a built-in page's options (each is a Search Everywhere entry). */
+export function optionLabels(id: string): string[] {
+  const spec = specs.get(id);
+  return (spec?.sections ?? []).flatMap((s) => s.options.map((o) => o.label)).filter((l) => !!l.trim());
+}
+
 function toContribution(spec: PageSpec): SettingsPageContribution {
   const component = spec.component ?? (() => <OptionsPage spec={spec} />);
   return { id: spec.id, title: spec.title, group: spec.group, order: spec.order, keywords: spec.keywords, component };

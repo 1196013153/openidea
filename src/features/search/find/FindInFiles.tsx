@@ -1,10 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import clsx from "clsx";
 import { openEditorPaths, useEditorRegistry } from "@/editor/api";
+import { executeAction } from "@/platform/actions";
 import { setContext } from "@/platform/context";
 import { useTxTemplate } from "@/platform/i18n";
 import { call, commands, type SearchScope } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
+import { useProjectModules } from "@/platform/projectRoots";
+import { EDIT_SCOPES_ACTION, useCustomScopeList } from "@/platform/search";
 import {
   Button,
   Checkbox,
@@ -47,19 +50,22 @@ import {
 import { SINGLE_FIRST, isRowSelected, selectRow, selectedRows, type RowSelection } from "./rowSelection";
 import { FindSession, IDLE, matchRows, type FindState, type MatchRow } from "./session";
 import {
-  FILE_SET_SCOPES,
   SEARCH_CONTEXTS,
   buildQuery,
+  customScopeName,
+  customScopeValue,
   describeQuery,
   findHistory,
   hideFindPopup,
   recentMasks,
   rememberFindString,
   rememberMask,
+  resolveFindScope,
   setFindPopupCommandHandler,
   setFindPopupPinned,
   useFindPopup,
   type FindOptions,
+  type BuiltinScope,
   type FindPopupCommand,
   type NamedScope,
   type ScopeTab,
@@ -78,23 +84,18 @@ export function FindInFilesOverlay() {
 
 const SCOPE_TABS: Array<{ id: ScopeTab; label: string }> = [
   { id: "project", label: "In Project" },
+  { id: "module", label: "Module" },
   { id: "directory", label: "Directory" },
   { id: "scope", label: "Scope" },
 ];
 
-const NAMED_SCOPES: Array<{ value: NamedScope; label: string }> = [
+const NAMED_SCOPES: Array<{ value: BuiltinScope; label: string }> = [
   { value: "projectFiles", label: "Project Files" },
   { value: "productionFiles", label: "Project Production Files" },
   { value: "testFiles", label: "Project Test Files" },
   { value: "openFiles", label: "Open Files" },
   { value: "recentFiles", label: "Recently Viewed Files" },
 ];
-
-function resolveDirectory(dir: string, root: string | null): string {
-  const d = dir.trim().replace(/\/+$/, "");
-  if (!d || d.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(d)) return d;
-  return root ? `${root}/${d}` : d;
-}
 
 function displayDirectory(dir: string, root: string | null): string {
   if (root && dir === root) return "";
@@ -106,6 +107,8 @@ function FindInFilesDialog() {
   const txt = useTxTemplate();
   const root = useProject((p) => p.project?.root ?? null);
   const editors = useEditorRegistry((r) => r.editors);
+  const modules = useProjectModules();
+  const customScopes = useCustomScopeList();
   const [state, setState] = useState<FindState>(IDLE);
   const [session] = useState(() => new FindSession(ipcFindDeps(), setState));
   const [sel, setSel] = useState<RowSelection>(SINGLE_FIRST);
@@ -149,21 +152,18 @@ function FindInFilesDialog() {
     );
   }, [s.scopeTab, s.namedScope, recentPaths]);
 
-  const scope: SearchScope = useMemo(() => {
-    if (s.scopeTab === "directory" && s.directory.trim())
-      return { kind: "directory", path: resolveDirectory(s.directory, root) };
-    const fileSet = FILE_SET_SCOPES[s.namedScope];
-    if (s.scopeTab === "scope" && fileSet) return { kind: "fileSet", set: fileSet };
-    if (s.scopeTab === "scope") {
-      const paths =
-        s.namedScope === "openFiles"
-          ? // Every open tab, not just the visible editors; `editors` only re-triggers this memo.
-            [...new Set([...openEditorPaths(), ...[...editors].map((e) => e.ctx.path)])]
-          : (recentPaths ?? []);
-      return { kind: "files", paths };
-    }
-    return { kind: "project" };
-  }, [s.scopeTab, s.directory, s.namedScope, root, editors, recentPaths]);
+  const scope: SearchScope = useMemo(
+    () =>
+      resolveFindScope(s, {
+        root,
+        // Every open tab, not just the visible editors; `editors` only re-triggers this memo.
+        openPaths: () => [...new Set([...openEditorPaths(), ...[...editors].map((e) => e.ctx.path)])],
+        recentPaths,
+      }),
+    // `customScopes`: an edited scope pattern re-runs the search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [s.scopeTab, s.module, s.directory, s.namedScope, root, editors, recentPaths, customScopes],
+  );
 
   const options: FindOptions = {
     pattern: s.pattern,
@@ -175,6 +175,7 @@ function FindInFilesDialog() {
     maskEnabled: s.maskEnabled,
     mask: s.mask,
     scopeTab: s.scopeTab,
+    module: s.module,
     directory: s.directory,
     namedScope: s.namedScope,
     context: s.context,
@@ -385,7 +386,8 @@ function FindInFilesDialog() {
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    const inField = target.tagName === "INPUT" && target.closest("[data-find-field]");
+    const inField =
+      (target.tagName === "INPUT" || target.tagName === "TEXTAREA") && target.closest("[data-find-field]");
     if (e.key === "Enter" && e.altKey && e.shiftKey && !e.metaKey && !e.ctrlKey) {
       // ⇧⌥↵: Replace All.
       e.preventDefault();
@@ -406,6 +408,8 @@ function FindInFilesDialog() {
       return;
     }
     if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key) || e.altKey) return;
+    // Inside a multi-line query the arrows move the caret between its lines.
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && (target as HTMLTextAreaElement).value?.includes("\n")) return;
     const next = listNavigate(e.key, { items: rows, active, pageSize: 9 });
     if (next === null) return;
     e.preventDefault();
@@ -524,6 +528,8 @@ function FindInFilesDialog() {
               aria-label="Text to find"
               invalid={state.status === "invalid"}
               className={styles.field}
+              multiline
+              onHistory={() => setHistoryMenu("find")}
               toggles={[
                 {
                   id: "case",
@@ -562,6 +568,8 @@ function FindInFilesDialog() {
                 placeholder="Replace with"
                 aria-label="Replace with"
                 className={styles.field}
+                multiline
+                onHistory={() => setHistoryMenu("replace")}
                 toggles={[
                   {
                     id: "preserveCase",
@@ -603,13 +611,53 @@ function FindInFilesDialog() {
                 onChange={(e) => set({ directory: e.target.value })}
               />
             )}
-            {s.scopeTab === "scope" && (
-              <Select<NamedScope>
-                value={s.namedScope}
-                options={NAMED_SCOPES}
-                onChange={(v) => set({ namedScope: v })}
-                aria-label="Named scope"
+            {s.scopeTab === "module" && (
+              <Select<string>
+                value={s.module}
+                options={modules.map((m) => ({
+                  value: m.path,
+                  label: m.name || m.path || "Project",
+                  icon: "module",
+                  detail: m.path || undefined,
+                }))}
+                onChange={(v) => set({ module: v })}
+                aria-label="Module"
               />
+            )}
+            {s.scopeTab === "scope" && (
+              <>
+                <Select<NamedScope>
+                  value={
+                    customScopeName(s.namedScope) !== null &&
+                    !customScopes.some((c) => customScopeValue(c.name) === s.namedScope)
+                      ? "projectFiles"
+                      : s.namedScope
+                  }
+                  options={[
+                    ...NAMED_SCOPES,
+                    ...(customScopes.length
+                      ? [
+                          { value: "custom:" as NamedScope, label: "Custom Scopes", disabled: true },
+                          ...customScopes.map((c) => ({
+                            value: customScopeValue(c.name),
+                            label: c.name,
+                            detail: c.pattern,
+                          })),
+                        ]
+                      : []),
+                  ]}
+                  onChange={(v) => set({ namedScope: v })}
+                  aria-label="Named scope"
+                />
+                <IconButton
+                  icon="more-horizontal"
+                  title="Edit Scopes…"
+                  onClick={() => {
+                    const name = customScopeName(s.namedScope);
+                    void executeAction(EDIT_SCOPES_ACTION, name ? { select: name } : undefined);
+                  }}
+                />
+              </>
             )}
           </div>
         </div>

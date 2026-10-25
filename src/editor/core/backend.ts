@@ -52,6 +52,8 @@ export interface DocBackend {
   onDirty(handler: (e: { doc: DocId; dirty: boolean }) => void): () => void;
   /** Files changed on disk (used to refresh nothing but closed-file state). */
   onFsChanged?(handler: (e: { removed: string[] }) => void): () => void;
+  /** An open document's language changed (Settings › File Types, Override File Type). */
+  onLanguage?(handler: (e: { doc: DocId; language: string }) => void): () => void;
 }
 
 export const ipcBackend: DocBackend = {
@@ -71,6 +73,7 @@ export const ipcBackend: DocBackend = {
   onPatched: (h) => onIdeEvent("docPatched", (e) => h(e)),
   onDirty: (h) => onIdeEvent("docDirty", (e) => h(e)),
   onFsChanged: (h) => onIdeEvent("fsChanged", (e) => h(e)),
+  onLanguage: (h) => onIdeEvent("docLanguage", (e) => h(e)),
 };
 
 // ---------------------------------------------------------------------------

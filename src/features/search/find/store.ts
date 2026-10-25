@@ -1,12 +1,20 @@
 import { create } from "zustand";
 import type { ProjectFileSet, SearchContext, SearchQuery, SearchScope } from "@/platform/ipc";
+import { SEARCH_CONTEXTS, customScopes, findCustomScope, rememberSearch, searchHistory } from "@/platform/search";
 import { loadJson, saveJson } from "../common/open";
 
-export type ScopeTab = "project" | "directory" | "scope";
-export type NamedScope = "projectFiles" | "productionFiles" | "testFiles" | "openFiles" | "recentFiles";
+export { SEARCH_CONTEXTS };
+
+export type ScopeTab = "project" | "module" | "directory" | "scope";
+export type BuiltinScope = "projectFiles" | "productionFiles" | "testFiles" | "openFiles" | "recentFiles";
+/** A built-in named scope or a user-defined one (`custom:<name>`, see `@/platform/search`). */
+export type NamedScope = BuiltinScope | `custom:${string}`;
+
+export const customScopeValue = (name: string): NamedScope => `custom:${name}`;
+export const customScopeName = (v: NamedScope): string | null => (v.startsWith("custom:") ? v.slice(7) : null);
 
 /** IDEA's root-based named scopes, searched by the backend over the project's source / test roots. */
-export const FILE_SET_SCOPES: Partial<Record<NamedScope, ProjectFileSet>> = {
+export const FILE_SET_SCOPES: Partial<Record<BuiltinScope, ProjectFileSet>> = {
   projectFiles: "all",
   productionFiles: "production",
   testFiles: "test",
@@ -29,6 +37,8 @@ export interface FindOptions {
   maskEnabled: boolean;
   mask: string;
   scopeTab: ScopeTab;
+  /** Module tab: project-relative folder of the module (`""`: the project's root module). */
+  module: string;
   directory: string;
   namedScope: NamedScope;
   /** IDEA's search context filter (funnel menu): anywhere, only / except comments and string literals. */
@@ -58,6 +68,7 @@ export const useFindPopup = create<FindPopupState>(() => ({
   maskEnabled: false,
   mask: "",
   scopeTab: "project",
+  module: "",
   directory: "",
   namedScope: "projectFiles",
   context: "any",
@@ -68,15 +79,6 @@ export function setFindPopupPinned(pinned: boolean) {
   useFindPopup.setState({ pinned });
   saveJson(PINNED_KEY, pinned);
 }
-
-export const SEARCH_CONTEXTS: ReadonlyArray<{ value: SearchContext; label: string }> = [
-  { value: "any", label: "Anywhere" },
-  { value: "inComments", label: "In Comments" },
-  { value: "inStringLiterals", label: "In String Literals" },
-  { value: "exceptComments", label: "Except Comments" },
-  { value: "exceptStringLiterals", label: "Except String Literals" },
-  { value: "exceptCommentsAndStringLiterals", label: "Except Comments and String Literals" },
-];
 
 /**
  * Keys the popup handles that are also global shortcuts (⌘G / ⇧⌘G, F4 / ⌘↓, ⌥↓):
@@ -145,19 +147,9 @@ export function rememberMask(mask: string) {
   saveJson(MASKS_KEY, [m, ...recent.filter((x) => x !== m)].slice(0, 10));
 }
 
-const HISTORY_KEYS = { find: "openidea.search.findHistory.v1", replace: "openidea.search.replaceHistory.v1" };
-const MAX_HISTORY = 20;
-
-/** Recent search (or replace) strings of the Find in Files popup, newest first (⌥↓). */
-export function findHistory(kind: "find" | "replace"): string[] {
-  const v = loadJson<unknown>(HISTORY_KEYS[kind], []);
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-}
-
-export function rememberFindString(kind: "find" | "replace", text: string) {
-  if (!text.trim()) return;
-  saveJson(HISTORY_KEYS[kind], [text, ...findHistory(kind).filter((x) => x !== text)].slice(0, MAX_HISTORY));
-}
+/** Recent search (or replace) strings, newest first (⌥↓); shared with the editor's find bar. */
+export const findHistory = searchHistory;
+export const rememberFindString = rememberSearch;
 
 export function buildQuery(o: FindOptions, scope: SearchScope, maxMatches: number): SearchQuery {
   const q: SearchQuery = {
@@ -174,15 +166,57 @@ export function buildQuery(o: FindOptions, scope: SearchScope, maxMatches: numbe
   return q;
 }
 
+export interface ScopeInputs {
+  root: string | null;
+  /** Files of the open editors (Open Files). */
+  openPaths: () => string[];
+  /** Recently viewed files, once loaded. */
+  recentPaths: string[] | null;
+}
+
+export function resolveDirectory(dir: string, root: string | null): string {
+  const d = dir.trim().replace(/\/+$/, "");
+  if (!d || d.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(d)) return d;
+  return root ? `${root}/${d}` : d;
+}
+
+/** The backend scope of the popup's scope tabs. */
+export function resolveFindScope(o: FindOptions, inputs: ScopeInputs): SearchScope {
+  const { root } = inputs;
+  if (o.scopeTab === "directory" && o.directory.trim())
+    return { kind: "directory", path: resolveDirectory(o.directory, root) };
+  if (o.scopeTab === "module")
+    return o.module && root ? { kind: "directory", path: `${root}/${o.module}` } : { kind: "project" };
+  if (o.scopeTab !== "scope") return { kind: "project" };
+  const custom = customScopeName(o.namedScope);
+  if (custom !== null) {
+    const scope = findCustomScope(custom);
+    return scope ? { kind: "pattern", pattern: scope.pattern } : { kind: "project" };
+  }
+  const fileSet = FILE_SET_SCOPES[o.namedScope as BuiltinScope];
+  if (fileSet) return { kind: "fileSet", set: fileSet };
+  return { kind: "files", paths: o.namedScope === "openFiles" ? inputs.openPaths() : (inputs.recentPaths ?? []) };
+}
+
 export function describeQuery(q: SearchQuery, root: string | null): string {
-  const where =
-    q.scope.kind === "project"
-      ? "Project"
-      : q.scope.kind === "directory"
-        ? `Directory ${root && q.scope.path.startsWith(root + "/") ? q.scope.path.slice(root.length + 1) : q.scope.path}`
-        : q.scope.kind === "fileSet"
-          ? FILE_SET_LABELS[q.scope.set]
-          : `${q.scope.paths.length} files`;
+  const rel = (p: string) => (root && p.startsWith(root + "/") ? p.slice(root.length + 1) : p);
+  const where = (() => {
+    switch (q.scope.kind) {
+      case "project":
+        return "Project";
+      case "directory":
+        return `Directory ${rel(q.scope.path)}`;
+      case "fileSet":
+        return FILE_SET_LABELS[q.scope.set];
+      case "files":
+        return `${q.scope.paths.length} files`;
+      case "pattern": {
+        const pattern = q.scope.pattern;
+        const named = customScopes().find((s) => s.pattern === pattern);
+        return named ? `Scope '${named.name}'` : `Scope ${pattern}`;
+      }
+    }
+  })();
   const context = q.context && q.context !== "any" ? SEARCH_CONTEXTS.find((c) => c.value === q.context)?.label : null;
   return `'${q.pattern}' in ${where}${q.include.length ? ` (${q.include.join(", ")})` : ""}${context ? `, ${context.toLowerCase()}` : ""}`;
 }

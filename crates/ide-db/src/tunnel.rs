@@ -200,7 +200,7 @@ fn home() -> Option<PathBuf> {
 }
 
 /// `~/x` → `$HOME/x`.
-fn expand(path: &str) -> PathBuf {
+pub(crate) fn expand(path: &str) -> PathBuf {
     match (path.strip_prefix("~/"), home()) {
         (Some(rest), Some(h)) => h.join(rest),
         _ => PathBuf::from(path),

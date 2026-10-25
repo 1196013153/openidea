@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { FILE_SET_SCOPES, buildQuery, describeQuery, findHistory, rememberFindString, useFindPopup } from "../find/store";
+import { useCustomScopes } from "@/platform/search";
+import {
+  FILE_SET_SCOPES,
+  buildQuery,
+  customScopeValue,
+  describeQuery,
+  findHistory,
+  rememberFindString,
+  resolveFindScope,
+  useFindPopup,
+  type NamedScope,
+} from "../find/store";
+import { scopesProblem } from "../find/ScopesDialog";
 import { selectRow, selectedRows, type RowSelection } from "../find/rowSelection";
 
 describe("Find in Files named scopes", () => {
@@ -12,6 +24,43 @@ describe("Find in Files named scopes", () => {
     expect(describeQuery({ ...q, pattern: "x", scope: { kind: "fileSet", set: "production" } }, "/p")).toBe(
       "'x' in Project Production Files",
     );
+  });
+});
+
+describe("Find in Files module and custom scopes", () => {
+  const inputs = { root: "/p", openPaths: () => ["/p/a.ts"], recentPaths: null };
+  const base = useFindPopup.getState();
+
+  it("a module searches its folder, the root module the project", () => {
+    expect(resolveFindScope({ ...base, scopeTab: "module", module: "web" }, inputs)).toEqual({
+      kind: "directory",
+      path: "/p/web",
+    });
+    expect(resolveFindScope({ ...base, scopeTab: "module", module: "" }, inputs)).toEqual({ kind: "project" });
+  });
+
+  it("named scopes resolve to file sets, files and custom patterns", () => {
+    useCustomScopes.setState({ root: null, scopes: [{ name: "No tests", pattern: "!file:*test*" }] });
+    const scope = (namedScope: NamedScope) => resolveFindScope({ ...base, scopeTab: "scope", namedScope }, inputs);
+    expect(scope("productionFiles")).toEqual({ kind: "fileSet", set: "production" });
+    expect(scope("openFiles")).toEqual({ kind: "files", paths: ["/p/a.ts"] });
+    expect(scope(customScopeValue("No tests"))).toEqual({ kind: "pattern", pattern: "!file:*test*" });
+    expect(scope(customScopeValue("gone"))).toEqual({ kind: "project" });
+    const q = buildQuery({ ...base, pattern: "x" }, scope(customScopeValue("No tests")), 0);
+    expect(describeQuery(q, "/p")).toBe("'x' in Scope 'No tests'");
+    useCustomScopes.setState({ root: null, scopes: [] });
+  });
+
+  it("the scope editor needs unique names and a pattern", () => {
+    expect(scopesProblem([{ name: "a", pattern: "*.ts" }])).toBeNull();
+    expect(scopesProblem([{ name: " ", pattern: "*.ts" }])).toBe("Every scope needs a name");
+    expect(
+      scopesProblem([
+        { name: "a", pattern: "*.ts" },
+        { name: "a ", pattern: "*.rs" },
+      ]),
+    ).toBe("Duplicate scope name 'a'");
+    expect(scopesProblem([{ name: "a", pattern: "" }])).toBe("Scope 'a' has no pattern");
   });
 });
 

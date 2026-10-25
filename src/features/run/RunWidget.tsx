@@ -7,7 +7,7 @@ import { useTx } from "@/platform/i18n";
 import { shortcutLabel } from "@/platform/keymap";
 import { runExecutors, useRunExecutors } from "@/workbench/contributions";
 import { configIcon } from "./configs";
-import { rerunSession, stopSession, useRun } from "./store";
+import { CURRENT_FILE, rerunSession, sessionsOf, startRun, stopSession, useRun } from "./store";
 import styles from "./Run.module.css";
 
 /** Title bar: configuration chooser, Run / Debug, and Rerun / Stop while running. */
@@ -18,8 +18,11 @@ export function RunWidget() {
   const sessions = useRun((s) => s.sessions);
   const chooserOpen = useRun((s) => s.chooserOpen);
   const selected = configs.find((c) => c.id === selectedId);
+  const currentFile = selectedId === CURRENT_FILE;
   const running = sessions.filter((s) => s.status === "running" || s.status === "starting");
-  const runningSelected = running.find((s) => s.config.id === selectedId) ?? null;
+  // A compound is running while any of its configurations is; Stop stops them all.
+  const compoundRunning = selected?.kind === "compound" ? sessionsOf(selected, running) : [];
+  const runningSelected = compoundRunning[0] ?? running.find((s) => s.config.id === selectedId) ?? null;
   const target = runningSelected ?? running[running.length - 1] ?? null;
   // Debug sessions belong to the debugger feature; like IDEA the widget offers their Rerun / Stop.
   const debugging = useContextKeys((c) => !!c.debugSessionActive);
@@ -55,11 +58,7 @@ export function RunWidget() {
         aria-haspopup="listbox"
         aria-expanded={chooserOpen}
         data-run-chooser=""
-        onClick={() =>
-          void (selected || configs.length
-            ? executeAction("run.chooseConfig", "select")
-            : executeAction("run.editConfigs"))
-        }
+        onClick={() => void executeAction("run.chooseConfig", "select")}
       >
         {selected && (
           // IDEA: the configuration's type icon, with a status dot on its top-right corner while active.
@@ -71,7 +70,7 @@ export function RunWidget() {
           </span>
         )}
         <span className={styles.widgetName}>
-          {selected?.name ?? tx(configs.length ? "Select Configuration" : "Add Configuration…")}
+          {selected?.name ?? tx(currentFile ? "Current File" : "Select Configuration")}
         </span>
         <Icon name="chevron-down" size={14} className={styles.widgetChevron} />
       </BarButton>
@@ -83,18 +82,30 @@ export function RunWidget() {
               size="large"
               iconSize={16}
               className={clsx(styles.widgetButton, styles.widgetFilled, styles.widgetFilledRun)}
-              title={`Rerun '${target.config.name}'`}
+              title={`Rerun '${compoundRunning.length && selected ? selected.name : target.config.name}'`}
               shortcut={shortcutLabel("run.run")}
-              onClick={() => rerunSession(target.id)}
+              onClick={() => (compoundRunning.length && selected ? void startRun(selected) : rerunSession(target.id))}
             />
             <IconButton
               icon="stop-filled"
               size="large"
               iconSize={16}
               className={clsx(styles.widgetButton, styles.widgetFilled, styles.widgetFilledStop)}
-              title={running.length > 1 ? `Stop (${running.length} running)` : `Stop '${target.config.name}'`}
+              title={
+                compoundRunning.length && selected
+                  ? `Stop '${selected.name}'`
+                  : running.length > 1
+                    ? `Stop (${running.length} running)`
+                    : `Stop '${target.config.name}'`
+              }
               shortcut={shortcutLabel("run.stop")}
-              onClick={() => (running.length > 1 ? void executeAction("run.stop") : void stopSession(target.id))}
+              onClick={() =>
+                compoundRunning.length
+                  ? compoundRunning.forEach((s) => void stopSession(s.id))
+                  : running.length > 1
+                    ? void executeAction("run.stop")
+                    : void stopSession(target.id)
+              }
             />
           </>
         ) : debugging ? (
@@ -138,9 +149,9 @@ export function RunWidget() {
               size="large"
               iconSize={18}
               className={clsx(styles.widgetButton, styles.widgetRun)}
-              title={selected ? `Run '${selected.name}'` : "Run"}
+              title={selected ? `Run '${selected.name}'` : currentFile ? "Run Current File" : "Run"}
               shortcut={shortcutLabel("run.run")}
-              disabled={!selected}
+              disabled={!selected && !currentFile}
               onClick={() => void executeAction("run.run")}
             />
             <IconButton
@@ -148,9 +159,9 @@ export function RunWidget() {
               size="large"
               iconSize={18}
               className={styles.widgetButton}
-              title={selected ? `Debug '${selected.name}'` : "Debug"}
+              title={selected ? `Debug '${selected.name}'` : currentFile ? "Debug Current File" : "Debug"}
               shortcut={shortcutLabel("run.debug")}
-              disabled={!selected}
+              disabled={!selected && !currentFile}
               onClick={() => void executeAction("run.debug")}
             />
           </>

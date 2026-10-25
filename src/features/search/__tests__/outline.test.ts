@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { OutlineItem } from "@/platform/ipc";
-import { allKeys, filterOutline, keyOutline, parentKeys, sortOutline, symbolPathAt, visibleCount } from "../structure/outline";
+import {
+  allKeys,
+  applyViewFilter,
+  filterOutline,
+  hasFields,
+  hasVisibility,
+  keyOutline,
+  outlinePathAt,
+  parentKeys,
+  sortOutline,
+  symbolPathAt,
+  visibleCount,
+} from "../structure/outline";
 
 const item = (name: string, kind: OutlineItem["kind"], from: number, to: number, children: OutlineItem[] = []): OutlineItem => ({
   name,
@@ -15,6 +27,44 @@ const outline = [
   item("OrderController", "class", 0, 20, [item("list", "method", 2, 6), item("create", "method", 8, 12), item("list", "method", 14, 16)]),
   item("helper", "function", 22, 25),
 ];
+
+describe("structure view options", () => {
+  const vis = (i: OutlineItem, visibility: OutlineItem["visibility"]): OutlineItem => ({ ...i, visibility });
+  const cls = item("Repo", "class", 0, 30, [
+    vis(item("cache", "field", 1, 1), "private"),
+    vis(item("find", "method", 2, 5), "public"),
+    vis(item("load", "method", 6, 9), "private"),
+    vis(item("check", "method", 10, 12), "protected"),
+    item("size", "property", 13, 13),
+    item("all", "method", 14, 16),
+  ]);
+  const names = (nodes: ReturnType<typeof keyOutline>) => nodes[0]!.children.map((n) => n.item.name);
+
+  it("hides fields and non-public symbols", () => {
+    const nodes = keyOutline([cls]);
+    expect(names(applyViewFilter(nodes, { fields: false, nonPublic: true }))).toEqual(["find", "load", "check", "all"]);
+    expect(names(applyViewFilter(nodes, { fields: true, nonPublic: false }))).toEqual(["find", "size", "all"]);
+    expect(applyViewFilter(nodes, { fields: true, nonPublic: true })).toBe(nodes);
+  });
+
+  it("sorts by visibility, then by name when alphabetical", () => {
+    const nodes = keyOutline([cls]);
+    expect(names(sortOutline(nodes, false, true))).toEqual(["find", "size", "all", "check", "cache", "load"]);
+    expect(names(sortOutline(nodes, true, true))).toEqual(["all", "find", "size", "check", "cache", "load"]);
+  });
+
+  it("offers options only when the outline has the data", () => {
+    expect(hasVisibility([cls])).toBe(true);
+    expect(hasVisibility(outline)).toBe(false);
+    expect(hasFields([cls])).toBe(true);
+    expect(hasFields(outline)).toBe(false);
+  });
+
+  it("finds the symbols around a position", () => {
+    expect(outlinePathAt(outline, { line: 9, col: 0 }).map((i) => i.name)).toEqual(["OrderController", "create"]);
+    expect(outlinePathAt(outline, { line: 40, col: 0 })).toEqual([]);
+  });
+});
 
 describe("outline helpers", () => {
   const nodes = keyOutline(outline);

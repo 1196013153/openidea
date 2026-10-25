@@ -86,6 +86,9 @@ export const EDITOR_EXTRA_DEFAULTS = {
     caseSensitivity: "first",
     autoPopup: true,
     insertOnSpecialKeys: false,
+    autoInsertSingle: true,
+    sortAlphabetically: false,
+    insertParentheses: true,
     showDocumentation: false,
     documentationDelay: 500,
     parameterInfo: true,
@@ -96,9 +99,16 @@ export const EDITOR_EXTRA_DEFAULTS = {
   tabs: {
     placement: "top",
     multipleRows: false,
+    oneRowOverflow: "scroll",
+    pinnedSeparateRow: false,
+    showFileIcon: true,
     showExtension: true,
+    showDirectoryForNonUnique: true,
     markModified: false,
+    showFullPathOnHover: true,
     showCloseButton: true,
+    closeButtonPosition: "right",
+    sortAlphabetically: false,
     previewTab: true,
     openAtEnd: false,
     tabLimit: 30,
@@ -125,7 +135,8 @@ export const EDITOR_EXTRA_DEFAULTS = {
     nextErrorErrorsOnly: true,
     stickyLinesMax: 5,
   },
-  inlay: { types: true, parameters: true, other: true, disabledLanguages: [] as string[], codeVisionUsages: true },
+  inlay: { types: true, parameters: true, other: true, disabledLanguages: [] as string[], codeVisionUsages: true, codeVisionAuthor: true },
+  inlineCompletion: { enabled: true, onlyOnPause: false, pauseMs: 500, disabledLanguages: [] as string[] },
   gutterIconsDisabled: [] as string[],
   showGutterIcons: true,
   codeStyle: {
@@ -135,6 +146,13 @@ export const EDITOR_EXTRA_DEFAULTS = {
     detectIndents: true,
     editorconfig: true,
     languages: {} as Record<string, LanguageCodeStyle>,
+    /** Formatter › Do not format: globs Reformat Code skips. */
+    doNotFormat: [] as string[],
+    /** Formatter › Turn formatter on/off with markers in code comments. */
+    formatterTagsEnabled: false,
+    formatterOffTag: "@formatter:off",
+    formatterOnTag: "@formatter:on",
+    formatterTagsRegexp: false,
   },
   encodings: { global: "utf-8", project: "utf-8", properties: "iso-8859-1", utf8Bom: "never" },
 };
@@ -171,14 +189,33 @@ export function validateEditorExtras(raw: unknown): EditorExtras {
   return coerceLike(raw, EDITOR_EXTRA_DEFAULTS);
 }
 
-let cache: { raw: unknown; value: EditorExtras } | null = null;
+let cache: { raw: unknown; powerSave: boolean; value: EditorExtras } | null = null;
+
+/** File › Power Save Mode (`general.powerSaveMode`). */
+export function isPowerSaveMode(settings: unknown = useProject.getState().settings): boolean {
+  const general = settings && typeof settings === "object" ? (settings as Obj).general : undefined;
+  return isObj(general) && general.powerSaveMode === true;
+}
+
+/** Power Save Mode turns off the editor's automatic popups and background highlighting. */
+export function powerSaveExtras(p: EditorExtras): EditorExtras {
+  return {
+    ...p,
+    completion: { ...p.completion, autoPopup: false, parameterInfo: false, showDocumentation: false },
+    codeEditing: { ...p.codeEditing, quickDocOnHover: false, highlightUsages: false },
+    inlay: { ...p.inlay, codeVisionUsages: false },
+    inlineCompletion: { ...p.inlineCompletion, enabled: false },
+  };
+}
 
 /** Effective Editor-group settings (validated, memoised per settings object). */
 export function editorPrefs(settings: unknown = useProject.getState().settings): EditorExtras {
   const raw = settings && typeof settings === "object" ? (settings as Obj).editor : undefined;
-  if (cache && cache.raw === raw) return cache.value;
-  const value = validateEditorExtras(raw);
-  cache = { raw, value };
+  const powerSave = isPowerSaveMode(settings);
+  if (cache && cache.raw === raw && cache.powerSave === powerSave) return cache.value;
+  const valid = validateEditorExtras(raw);
+  const value = powerSave ? powerSaveExtras(valid) : valid;
+  cache = { raw, powerSave, value };
   return value;
 }
 

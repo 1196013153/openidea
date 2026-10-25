@@ -434,6 +434,101 @@ pub fn lsp_completion_item(text: &DocText, enc: Encoding, item: &CompletionItem)
     }
 }
 
+// ---------------------------------------------------------------- inline completion
+
+/// `InlineCompletionList | InlineCompletionItem[] | null` → items (malformed ones skipped).
+pub fn inline_completion_items(conv: &Conv, path: &Path, v: Value, server: ServerId) -> Vec<InlineCompletionItem> {
+    let items = match v {
+        Value::Array(a) => a,
+        Value::Object(mut o) => match o.remove("items") {
+            Some(Value::Array(a)) => a,
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    items
+        .into_iter()
+        .filter_map(|it| {
+            let insert_text = match it.get("insertText")? {
+                Value::String(s) => s.clone(),
+                Value::Object(o) if o.get("kind").and_then(Value::as_str) == Some("snippet") => {
+                    snippet_text(o.get("value")?.as_str()?)
+                }
+                _ => return None,
+            };
+            let range = it
+                .get("range")
+                .and_then(|r| serde_json::from_value::<lsp::Range>(r.clone()).ok())
+                .map(|r| conv.range(path, r));
+            let filter_text = it.get("filterText").and_then(Value::as_str).map(str::to_owned);
+            let cmd = it.get("command").and_then(|c| serde_json::from_value::<lsp::Command>(c.clone()).ok());
+            Some(InlineCompletionItem { insert_text, range, filter_text, command: cmd.map(command), server })
+        })
+        .filter(|i| !i.insert_text.is_empty())
+        .collect()
+}
+
+/// The text a snippet inserts with every placeholder at its default:
+/// `foo(${1:a}, $2)$0` → `foo(a, )`; a choice takes its first option.
+pub fn snippet_text(snippet: &str) -> String {
+    fn parse(chars: &[char], i: &mut usize, out: &mut String, nested: bool) {
+        while let Some(&ch) = chars.get(*i) {
+            let next = chars.get(*i + 1).copied();
+            match ch {
+                '\\' if next.is_some() => {
+                    out.extend(next);
+                    *i += 2;
+                }
+                '}' if nested => {
+                    *i += 1;
+                    return;
+                }
+                '$' if next.is_some_and(|c| c.is_ascii_digit()) => {
+                    *i += 1;
+                    while chars.get(*i).is_some_and(char::is_ascii_digit) {
+                        *i += 1;
+                    }
+                }
+                '$' if next == Some('{') => {
+                    *i += 2;
+                    while chars.get(*i).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_') {
+                        *i += 1;
+                    }
+                    match chars.get(*i) {
+                        Some(':') => {
+                            *i += 1;
+                            parse(chars, i, out, true);
+                        }
+                        Some('|') => {
+                            *i += 1;
+                            let mut first = true;
+                            while let Some(&c) = chars.get(*i).filter(|c| **c != '|') {
+                                first &= c != ',';
+                                if first {
+                                    out.push(c);
+                                }
+                                *i += 1;
+                            }
+                            *i = (*i + 2).min(chars.len());
+                        }
+                        // `${1}`, or a variable without a default.
+                        Some('}') => *i += 1,
+                        _ => {}
+                    }
+                }
+                _ => {
+                    out.push(ch);
+                    *i += 1;
+                }
+            }
+        }
+    }
+    let chars: Vec<char> = snippet.chars().collect();
+    let mut out = String::new();
+    parse(&chars, &mut 0, &mut out, false);
+    out
+}
+
 // ---------------------------------------------------------------- commands & actions
 
 pub fn command(c: lsp::Command) -> Command {
@@ -614,6 +709,7 @@ pub fn document_symbols(conv: &Conv, path: &Path, r: lsp::DocumentSymbolResponse
                         range,
                         selection_range: range,
                         children: Vec::new(),
+                        visibility: None,
                     }
                 })
                 .collect();
@@ -632,6 +728,7 @@ fn document_symbol(conv: &Conv, path: &Path, s: lsp::DocumentSymbol) -> OutlineI
         range: conv.range(path, s.range),
         selection_range: conv.range(path, s.selection_range),
         children: s.children.unwrap_or_default().into_iter().map(|c| document_symbol(conv, path, c)).collect(),
+        visibility: None,
     }
 }
 
@@ -879,6 +976,7 @@ pub fn diagnostic(conv: &Conv, path: &Path, d: lsp::Diagnostic, server_name: &st
         }),
         unnecessary: tags.contains(&lsp::DiagnosticTag::UNNECESSARY),
         deprecated: tags.contains(&lsp::DiagnosticTag::DEPRECATED),
+        server: Some(server_name.to_owned()),
     }
 }
 
@@ -891,6 +989,25 @@ pub fn ranges_overlap(a: lsp::Range, b: lsp::Range) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn snippet_text_takes_placeholder_defaults() {
+        assert_eq!(snippet_text("foo(${1:a}, $2)$0"), "foo(a, )");
+        assert_eq!(snippet_text("${1:outer ${2:inner}} \\$x ${3|one,two|}${TM_FILENAME}"), "outer inner $x one");
+        assert_eq!(snippet_text("plain"), "plain");
+    }
+
+    #[test]
+    fn inline_completion_shapes() {
+        let conv = Conv::utf16();
+        let path = Path::new("/a.rs");
+        let list = inline_completion_items(&conv, path, json!([{ "insertText": "x" }]), ServerId(1));
+        assert_eq!(list.len(), 1);
+        assert!(inline_completion_items(&conv, path, Value::Null, ServerId(1)).is_empty());
+        assert!(
+            inline_completion_items(&conv, path, json!({ "items": [{ "label": "no text" }] }), ServerId(1)).is_empty()
+        );
+    }
 
     fn p(l: u32, c: u32) -> Pos {
         Pos::new(l, c)

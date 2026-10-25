@@ -12,7 +12,7 @@ use ide_core::{IdeError, IdeEvent, IdeResult, SharedSink};
 use notify_debouncer_full::notify::event::{ModifyKind, RenameMode};
 use notify_debouncer_full::notify::{self, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use notify_debouncer_full::{DebounceEventResult, DebouncedEvent, Debouncer, NoCache, new_debouncer_opt};
-use parking_lot::{Condvar, Mutex};
+use parking_lot::{Condvar, Mutex, RwLock};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,7 +47,10 @@ type OnChange = Box<dyn Fn(&FsBatch) + Send + Sync>;
 /// no callback runs after `drop` returns.
 pub struct Watcher {
     inner: Inner,
+    excludes: SharedExcludes,
 }
+
+type SharedExcludes = Arc<RwLock<ExcludeMatcher>>;
 
 enum Inner {
     Recursive(#[allow(dead_code)] Debouncer<RecommendedWatcher, NoCache>),
@@ -68,6 +71,7 @@ impl Watcher {
     ) -> IdeResult<Self> {
         let root = dunce::canonicalize(root)?;
         let filter = EventFilter::new(root.clone(), &excludes);
+        let shared = filter.excludes.clone();
         let emit = move |batch: &FsBatch| {
             sink.emit(IdeEvent::FsChanged {
                 created: batch.created.iter().map(Into::into).collect(),
@@ -76,10 +80,18 @@ impl Watcher {
             });
             on_change(batch);
         };
-        match mode {
+        let inner = match mode {
             WatchMode::Recursive => Self::start_recursive(root, filter, emit),
             WatchMode::PerDirectory => Self::start_per_directory(root, filter, emit),
-        }
+        }?;
+        Ok(Self { inner, excludes: shared })
+    }
+
+    /// Replaces the exclude globs (Settings › Project Structure / File Types
+    /// changed): later events below newly excluded folders are dropped. In
+    /// per-directory mode, folders no longer excluded are watched once they change.
+    pub fn set_excludes(&self, excludes: &[String]) {
+        *self.excludes.write() = ExcludeMatcher::new(excludes);
     }
 
     /// Number of OS-level watches (1 in recursive mode).
@@ -94,7 +106,7 @@ impl Watcher {
         root: PathBuf,
         filter: EventFilter,
         emit: impl Fn(&FsBatch) + Send + 'static,
-    ) -> IdeResult<Self> {
+    ) -> IdeResult<Inner> {
         // No file-id cache: building it walks and stats the whole tree before `watch` returns,
         // which made opening large projects block for seconds. Renames arrive as remove + create.
         let handler = move |result: DebounceEventResult| match result {
@@ -116,14 +128,14 @@ impl Watcher {
         debouncer
             .watch(&root, RecursiveMode::Recursive)
             .map_err(|e| io_error(format!("cannot watch {}: {e}", root.display())))?;
-        Ok(Self { inner: Inner::Recursive(debouncer) })
+        Ok(Inner::Recursive(debouncer))
     }
 
     fn start_per_directory(
         root: PathBuf,
         filter: EventFilter,
         emit: impl Fn(&FsBatch) + Send + 'static,
-    ) -> IdeResult<Self> {
+    ) -> IdeResult<Inner> {
         let state = Arc::new(DirState {
             filter,
             watcher: Mutex::new(None),
@@ -160,7 +172,7 @@ impl Watcher {
                 .spawn(move || state.run(emit))
                 .map_err(|e| io_error(format!("cannot start file watcher: {e}")))?
         };
-        Ok(Self { inner: Inner::PerDirectory { state, thread: Some(thread) } })
+        Ok(Inner::PerDirectory { state, thread: Some(thread) })
     }
 }
 
@@ -359,13 +371,17 @@ fn merge(prev: Option<Change>, next: Change) -> Change {
 
 pub(crate) struct EventFilter {
     root: PathBuf,
-    excludes: ExcludeMatcher,
+    excludes: SharedExcludes,
     gitignore: GitignoreStack,
 }
 
 impl EventFilter {
     pub fn new(root: PathBuf, excludes: &[String]) -> Self {
-        Self { gitignore: GitignoreStack::new(&root), excludes: ExcludeMatcher::new(excludes), root }
+        Self {
+            gitignore: GitignoreStack::new(&root),
+            excludes: Arc::new(RwLock::new(ExcludeMatcher::new(excludes))),
+            root,
+        }
     }
 
     /// `Some(true)` for interesting VCS metadata, `Some(false)` for other `.git`
@@ -405,13 +421,15 @@ impl EventFilter {
                 _ => false,
             };
         }
-        !self.excludes.is_excluded(rel) && !self.gitignore.is_ignored(dir, true)
+        !self.excludes.read().is_excluded(rel) && !self.gitignore.is_ignored(dir, true)
     }
 
     /// Whether a path found by scanning a new directory would be reported.
     fn is_reported(&self, path: &Path, is_dir: bool) -> bool {
         let Ok(rel) = path.strip_prefix(&self.root) else { return false };
-        Self::git_internal(rel).is_none() && !self.excludes.is_excluded(rel) && !self.gitignore.is_ignored(path, is_dir)
+        Self::git_internal(rel).is_none()
+            && !self.excludes.read().is_excluded(rel)
+            && !self.gitignore.is_ignored(path, is_dir)
     }
 
     fn classify(&self, path: &Path, change: Change, out: &mut BTreeMap<PathBuf, Change>) {
@@ -507,7 +525,7 @@ impl EventFilter {
                 (c, _) => c,
             };
             if let Ok(rel) = path.strip_prefix(&self.root) {
-                if self.excludes.is_excluded(rel) {
+                if self.excludes.read().is_excluded(rel) {
                     continue;
                 }
                 let is_dir = meta.as_ref().is_some_and(|m| m.is_dir());
@@ -654,6 +672,9 @@ mod tests {
         assert!(w(".git") && w(".git/refs") && w(".git/refs/heads") && w(".git/info"));
         assert!(!w(".git/objects") && !w(".git/objects/ab") && !w(".git/logs"));
         assert!(!filter.should_watch_dir(Path::new("/elsewhere")));
+        // Excludes are replaced in place (Watcher::set_excludes).
+        *filter.excludes.write() = ExcludeMatcher::new(&["gen".into()]);
+        assert!(w("node_modules") && !w("src/gen"));
     }
 
     fn watcher_state(w: &Watcher) -> &DirState {

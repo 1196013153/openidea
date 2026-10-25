@@ -108,3 +108,42 @@
 .link:hover {
   color: var(--link-hover);
 }
+.links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Manage Coverage Reports */
+.reports {
+  height: 260px;
+  margin: 12px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.reportRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+}
+.reportDetail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-subtle);
+}
+.reportTime {
+  flex: none;
+  font-size: var(--fs-small);
+  color: var(--fg-muted);
+}
+.reportsEmpty {
+  padding: 12px;
+  color: var(--fg-muted);
+}

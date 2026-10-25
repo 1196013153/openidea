@@ -73,6 +73,12 @@ export const intellijWindows: Record<string, string[]> = {
 
   // Code
   "code.completion": ["Ctrl+Space"],
+  "editor.inlineCompletion.trigger": ["Alt+\\"],
+  "editor.inlineCompletion.accept": ["Tab"],
+  "editor.inlineCompletion.acceptWord": ["Ctrl+Right"],
+  "editor.inlineCompletion.dismiss": ["Escape"],
+  "editor.inlineCompletion.next": ["Alt+]"],
+  "editor.inlineCompletion.previous": ["Alt+["],
   "code.parameterInfo": ["Ctrl+P"],
   "code.quickDocumentation": ["Ctrl+Q"],
   "code.quickDefinition": ["Ctrl+Shift+I"],
@@ -158,6 +164,7 @@ export const intellijWindows: Record<string, string[]> = {
 
   // Project view (when: projectViewFocus)
   "project.newFile": ["Alt+Insert"],
+  "project.newInThisDirectory": ["Ctrl+Alt+Insert"],
   "project.rename": ["Shift+F6"],
   "project.move": ["F6"],
   "project.delete": ["Delete"],
@@ -209,6 +216,7 @@ export const intellijWindows: Record<string, string[]> = {
   "run.stop": ["Ctrl+F2"],
   // Rerun in the Run / Debug tool window only (when / keyWhen); Ctrl+F5 stays with the editor elsewhere.
   "run.rerun": ["Ctrl+F5"],
+  "coverage.manageReports": ["Ctrl+Alt+F6"],
   "debug.rerun": ["Ctrl+F5"],
   // Rerun in the Find / Find Usages tool windows only (when).
   "find.rerun": ["Ctrl+F5"],
@@ -248,9 +256,14 @@ export const intellijWindows: Record<string, string[]> = {
   "vcs.branches": ["Ctrl+Shift+`"],
   "vcs.annotate": [],
   "vcs.localHistory": [],
+  "localHistory.recentChanges": ["Alt+Shift+C"],
+  // Run Anything (⌃⌃) and View › Quick Switch Scheme… (⌃`)
+  "runAnything.show": ["Ctrl Ctrl"],
+  "view.quickSwitchScheme": ["Ctrl+`"],
   "vcs.changelist.move": ["Alt+Shift+M"],
   "vcs.changelist.edit": ["F2", "Shift+F6"],
   "vcs.log.copyRevision": ["Ctrl+Alt+Shift+C"],
+  "vcs.log.goToRef": ["Ctrl+F"],
   // View › Appearance › Zoom IDE
   "view.zoomIn": ["Alt+Shift+="],
   "view.zoomOut": ["Alt+Shift+-"],
@@ -286,6 +299,7 @@ export const intellijWindows: Record<string, string[]> = {
   "db.openConsole": ["Ctrl+Shift+Q"],
   "db.newDataSource": [],
   "db.new": ["Alt+Insert"],
+  "services.addService": ["Alt+Insert"],
   "db.properties": ["Shift+Enter"],
   "db.refresh": ["Ctrl+F5"],
   "db.disconnect": ["Ctrl+F2"],
@@ -309,7 +323,8 @@ export const intellijWindows: Record<string, string[]> = {
   "db.collapseAll": [],
   // Terminal (keyWhen: terminalFocus); after VCS Update / Go to Test so it wins there.
   "terminal.new": ["Ctrl+Shift+T"],
-  // Last: later bindings win, so Alt+Insert is Generate in the editor and New in tool windows.
+  // Last: later bindings win, so Alt+Insert is Generate in editors with Generate actions (keyWhen)
+  // and New elsewhere (the project view, other editors: the New popup for the file).
   "code.generate": ["Alt+Insert"],
   // Find in Files popup (findPopupOpen): after the editor's Find Next, Jump to Source and
   // selection keys, so these win while the popup is open.
@@ -317,4 +332,7 @@ export const intellijWindows: Record<string, string[]> = {
   "find.popup.previousResult": ["Shift+F3", "Ctrl+Shift+L"],
   "find.popup.openResult": ["F4"],
   "find.popup.recentSearches": ["Alt+Down"],
+  // Search fields (find bar, Find in Files): last, so they win over editor keys while one is focused.
+  "find.field.newLine": ["Ctrl+Shift+Enter"],
+  "find.field.recentSearches": ["Alt+Down"],
 };

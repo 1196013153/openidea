@@ -20,7 +20,8 @@ import {
 } from "./changelistsUi";
 import { useChangelists } from "./changelists";
 import { useCommit } from "./commitStore";
-import { goToChild, goToParent, selectedCommits, useGitLog } from "./logStore";
+import { goToChild, goToParent, goToRef, selectedCommits, useGitLog } from "./logStore";
+import { chooseRevision } from "./RevisionChooser";
 import {
   cherryPick,
   controlOperation,
@@ -206,6 +207,26 @@ export function registerHistoryActions(): () => void {
       when: VCS,
       keywords: ["git reset"],
       run: () => showResetDialog(),
+    },
+
+    // --- Git Log toolbar ---
+    {
+      id: "vcs.log.goToRef",
+      title: "Go to Hash/Branch/Tag",
+      category: "Git Log",
+      icon: "search",
+      when: VCS,
+      keyWhen: IN_GIT_LOG,
+      keywords: ["find commit", "jump"],
+      run: async () => {
+        toolWindowService().show("git", true);
+        const rev = await chooseRevision("Go to Hash/Branch/Tag", {
+          tags: true,
+          placeholder: "Enter hash or branch/tag name",
+        });
+        if (rev && !(await goToRef(rev)))
+          notifications().notify({ group: "vcs", level: "warning", title: `'${rev}' was not found in the log` });
+      },
     },
 
     // --- Git Log commit context menu ---

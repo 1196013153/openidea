@@ -1,5 +1,6 @@
 /** Run configuration helpers: grouping, overriding, validation and argument parsing. */
 import type { RunConfig } from "@/platform/ipc";
+import { useRunConfigTypes } from "@/workbench/contributions";
 
 const KIND_LABELS: Record<string, string> = {
   npm: "npm",
@@ -14,6 +15,8 @@ const KIND_LABELS: Record<string, string> = {
   make: "Make",
   just: "Just",
   shell: "Shell Script",
+  program: "Program",
+  compound: "Compound",
   application: "Application",
   "spring-boot": "Spring Boot",
   node: "Node.js",
@@ -37,12 +40,20 @@ const KIND_LABELS: Record<string, string> = {
 export const KIND_OPTIONS = Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }));
 
 export function kindLabel(kind: string): string {
-  return KIND_LABELS[kind] ?? (kind ? kind[0]!.toUpperCase() + kind.slice(1) : "Other");
+  return (
+    useRunConfigTypes.getState().types.get(kind)?.label ??
+    KIND_LABELS[kind] ??
+    (kind ? kind[0]!.toUpperCase() + kind.slice(1) : "Other")
+  );
 }
 
 export function configIcon(config: Pick<RunConfig, "kind" | "isTest">): string {
   if (config.isTest) return "check";
   switch (config.kind) {
+    case "compound":
+      return "gutter-run-all";
+    case "program":
+      return "file-binary";
     case "spring-boot":
       return "spring-boot";
     case "npm":
@@ -98,7 +109,7 @@ export function configIcon(config: Pick<RunConfig, "kind" | "isTest">): string {
     case "pytest":
       return "file-python";
     default:
-      return "terminal";
+      return useRunConfigTypes.getState().types.get(config.kind)?.icon ?? "terminal";
   }
 }
 
@@ -168,7 +179,7 @@ function sortedEnv(env: RunConfig["env"]) {
 }
 
 let counter = 0;
-function uid(): string {
+export function uid(): string {
   const rnd =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID().slice(0, 8)
@@ -202,23 +213,34 @@ export function newConfig(configs: readonly RunConfig[]): RunConfig {
 
 export function duplicateConfig(config: RunConfig, configs: readonly RunConfig[]): RunConfig {
   return {
-    ...config,
-    env: { ...config.env },
-    args: [...config.args],
+    ...structuredClone(config),
     id: uid(),
     name: uniqueName(`${config.name} (copy)`, configs),
     detected: false,
   };
 }
 
-export type ConfigErrors = Partial<Record<"name" | "command" | "env" | "cwd", string>>;
+/** Field errors: `name`, `command`, `env`, `cwd`, `compound`, `beforeLaunch` or a type param key. */
+export type ConfigErrors = Partial<Record<string, string>>;
 
 export function validateConfig(config: RunConfig, all: readonly RunConfig[] = []): ConfigErrors {
   const errors: ConfigErrors = {};
   if (!config.name.trim()) errors.name = "Name is required";
   else if (all.some((c) => c.id !== config.id && c.name.trim() === config.name.trim()))
     errors.name = "Another configuration has this name";
-  if (!config.command.trim()) errors.command = "Command is required";
+  if (config.kind === "compound") {
+    const children = config.compound ?? [];
+    if (!children.length) errors.compound = "Add at least one configuration";
+    else if (compoundCycle(config, all)) errors.compound = "A compound configuration can't include itself";
+    else if (children.some((id) => !all.some((c) => c.id === id)))
+      errors.compound = "Some configurations no longer exist";
+  } else if (!config.command.trim()) errors.command = "Command is required";
+  for (const t of config.beforeLaunch ?? []) {
+    if (t.kind === "run" && (t.target === config.id || !all.some((c) => c.id === t.target)))
+      errors.beforeLaunch = "A before launch task runs a missing configuration or this one";
+    else if (t.kind !== "build" && t.kind !== "run" && !(t.target ?? "").trim())
+      errors.beforeLaunch = "A before launch task is incomplete";
+  }
   for (const key of Object.keys(config.env)) {
     if (!key.trim()) {
       errors.env = "Environment variable names can't be empty";
@@ -275,4 +297,81 @@ export function formatArgs(args: readonly string[]): string {
 /** Display command line, e.g. `pnpm run dev`. */
 export function commandLine(config: Pick<RunConfig, "command" | "args">): string {
   return [config.command, formatArgs(config.args)].filter(Boolean).join(" ");
+}
+
+/** Whether compound `config` reaches itself through its children. */
+export function compoundCycle(config: RunConfig, all: readonly RunConfig[]): boolean {
+  const byId = new Map(all.map((c) => [c.id, c]));
+  byId.set(config.id, config);
+  const seen = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return (byId.get(id)?.compound ?? []).some((child) => child === config.id || visit(child));
+  };
+  return visit(config.id);
+}
+
+/** The configurations a compound starts (nested compounds flattened, each once). */
+export function compoundChildren(config: RunConfig, all: readonly RunConfig[]): RunConfig[] {
+  const out: RunConfig[] = [];
+  const seen = new Set<string>([config.id]);
+  const walk = (ids: readonly string[]) => {
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const c = all.find((x) => x.id === id);
+      if (!c) continue;
+      if (c.kind === "compound") walk(c.compound ?? []);
+      else out.push(c);
+    }
+  };
+  walk(config.compound ?? []);
+  return out;
+}
+
+/** IDEA's one-line environment field: `A=1;B=2` (`;` and `\` in values escaped). */
+export function formatEnv(env: RunConfig["env"]): string {
+  return Object.entries(env)
+    .map(([k, v]) => `${k}=${v.replace(/[\\;]/g, (c) => `\\${c}`)}`)
+    .join(";");
+}
+
+/**
+ * Parses `A=1;B=2`, or one `NAME=value` per line as pasted from a shell or a
+ * `.env` file (`export` prefixes, comments and surrounding quotes dropped).
+ */
+export function parseEnv(text: string): Array<{ key: string; value: string }> {
+  const multiline = /\r?\n/.test(text.trim());
+  const entries: string[] = [];
+  if (multiline) entries.push(...text.split(/\r?\n/));
+  else {
+    let cur = "";
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]!;
+      if (ch === "\\" && (text[i + 1] === ";" || text[i + 1] === "\\")) cur += text[++i];
+      else if (ch === ";") {
+        entries.push(cur);
+        cur = "";
+      } else cur += ch;
+    }
+    entries.push(cur);
+  }
+  const out: Array<{ key: string; value: string }> = [];
+  for (const raw of entries) {
+    let line = multiline ? raw.trim() : raw.trimStart();
+    if (!line || (multiline && line.startsWith("#"))) continue;
+    if (multiline) line = line.replace(/^export\s+/, "");
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1);
+    if (multiline) {
+      value = value.trim();
+      const q = value[0];
+      if ((q === '"' || q === "'") && value.length > 1 && value.endsWith(q)) value = value.slice(1, -1);
+    }
+    out.push({ key, value });
+  }
+  return out;
 }

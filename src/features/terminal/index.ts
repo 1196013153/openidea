@@ -6,7 +6,7 @@ import { registerActions } from "@/platform/actions";
 import { onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { onWorkflowSettingsChange } from "@/platform/workflowSettings";
-import { registerToolWindow, toolWindowService } from "@/workbench/contributions";
+import { provideEmbeddedTerminal, registerToolWindow, toolWindowService } from "@/workbench/contributions";
 import { lazyComponent } from "@/ui";
 import { installTerminalKeys } from "./keys";
 import { loadTerminalRuntime, terminalRuntime } from "./loader";
@@ -191,10 +191,16 @@ export function activate(): () => void {
   ];
 
   if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
-    const observer = new MutationObserver(() => terminalRuntime()?.applyThemeToAll());
+    const observer = new MutationObserver(() => {
+      terminalRuntime()?.applyThemeToAll();
+      terminalRuntime()?.applyThemeToEmbedded();
+    });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
     disposers.push(() => observer.disconnect());
   }
+
+  provideEmbeddedTerminal(async (host, options) => (await loadTerminalRuntime()).createEmbeddedTerminal(host, options));
+  disposers.push(() => provideEmbeddedTerminal(undefined));
 
   return () => {
     disposers.reverse().forEach((d) => d());

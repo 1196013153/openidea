@@ -60,9 +60,26 @@ fn read_all(mut pipe: impl Read + Send + 'static) -> std::thread::JoinHandle<Str
 
 /// Runs `cmd` to completion. Fails when it outlives `timeout` or `cancel` fires;
 /// a non-zero exit is reported in [`Output::success`], not as an error.
-pub(crate) fn run(mut cmd: Command, timeout: Duration, cancel: Option<&CancellationToken>) -> IdeResult<Output> {
+pub(crate) fn run(cmd: Command, timeout: Duration, cancel: Option<&CancellationToken>) -> IdeResult<Output> {
+    run_with_input(cmd, timeout, cancel, None)
+}
+
+/// [`run`] with `input` written to the child's stdin (e.g. `--password-stdin`).
+pub(crate) fn run_with_input(
+    mut cmd: Command,
+    timeout: Duration,
+    cancel: Option<&CancellationToken>,
+    input: Option<&str>,
+) -> IdeResult<Output> {
     prepare(&mut cmd);
+    if input.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
     let mut child = spawn(&mut cmd)?;
+    if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+        // Dropping `stdin` afterwards closes it, so the CLI sees EOF.
+        let _ = std::io::Write::write_all(&mut stdin, text.as_bytes());
+    }
     let out = child.stdout.take().map(read_all);
     let err = child.stderr.take().map(read_all);
     let deadline = Instant::now() + timeout;

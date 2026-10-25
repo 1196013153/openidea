@@ -4061,6 +4061,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "tempfile",
  "tracing",
  "which",
 ]
@@ -4248,6 +4249,7 @@ dependencies = [
  "ide-core",
  "libc",
  "parking_lot",
+ "portable-pty",
  "serde",
  "serde_json",
  "specta",
@@ -4266,6 +4268,7 @@ dependencies = [
  "ide-core",
  "ide-language",
  "ide-run",
+ "ide-vfs",
  "serde",
  "serde_json",
  "specta",
@@ -4285,12 +4288,25 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ide-core",
+ "ide-vfs",
  "ignore",
  "insta",
  "memchr",
  "serde",
  "specta",
  "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "ide-spell"
+version = "0.1.13"
+dependencies = [
+ "ide-core",
+ "parking_lot",
+ "serde",
+ "specta",
+ "spellbook",
  "tracing",
 ]
 
@@ -4389,6 +4405,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "trash",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -4426,6 +4443,7 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "toml_edit 0.25.17+spec-1.1.0",
  "tracing",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -5854,6 +5872,7 @@ dependencies = [
  "ide-run",
  "ide-sdk",
  "ide-search",
+ "ide-spell",
  "ide-syntax",
  "ide-terminal",
  "ide-text",
@@ -7717,6 +7736,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29b1fc02b446f7244a92924fe68c0555921209f1d342990cd1539e9138e69502"
 dependencies = [
  "specta",
+]
+
+[[package]]
+name = "spellbook"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
+dependencies = [
+ "foldhash",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]

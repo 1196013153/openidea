@@ -1,7 +1,7 @@
 /**
- * Tab strip with the design's accent underline. Roving focus (←/→, Home/End),
- * closable tabs (button, middle click, Delete), horizontal wheel scrolling and
- * an overflow dropdown listing every tab when they don't fit.
+ * Tab strip with the design's accent underline. Roving focus (←/→ or ↑/↓ when
+ * vertical, Home/End), closable tabs (button, middle click, Delete), wheel
+ * scrolling and an overflow dropdown listing every tab when they don't fit.
  */
 import {
   createContext,
@@ -10,6 +10,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -35,6 +36,8 @@ export interface TabItem {
   modified?: boolean;
   /** CSS colour for the label (VCS status etc.), e.g. `var(--vcs-modified)`. */
   color?: string;
+  /** CSS colour the tab background is tinted with (IDEA's data source / file colours). */
+  tint?: string;
   italic?: boolean;
   tooltip?: string;
   /** Trailing content (counts, badges). */
@@ -91,6 +94,12 @@ export interface TabsProps {
   panelIdPrefix?: string;
   /** Enables drag & drop reordering (and moving between strips of the same type). */
   dnd?: TabsDnd;
+  /** Tabs that don't fit: `scroll` the strip (default), `squeeze` them, or `wrap` into rows. */
+  layout?: "scroll" | "squeeze" | "wrap";
+  /** Side of the label the close button sits on. */
+  closePosition?: "right" | "left";
+  /** `vertical`: a column of tabs (editor tabs placed left / right); always scrolls, `layout` is ignored. */
+  orientation?: "horizontal" | "vertical";
 }
 
 export function Tabs({
@@ -106,8 +115,12 @@ export function Tabs({
   className,
   panelIdPrefix,
   dnd,
+  layout = "scroll",
+  closePosition = "right",
+  orientation = "horizontal",
   ...aria
 }: TabsProps) {
+  const vertical = orientation === "vertical";
   const scrollRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const [overflow, setOverflow] = useState(false);
@@ -136,12 +149,12 @@ export function Tabs({
   );
 
   const accepts = (e: DragEvent) => !!dnd && [...e.dataTransfer.types].includes(dnd.type);
-  const indexAt = (x: number) =>
+  const indexAt = (e: DragEvent) =>
     dropIndex(
-      x,
+      vertical ? e.clientY : e.clientX,
       items.map((it) => {
         const r = tabRefs.current.get(it.id)?.parentElement?.getBoundingClientRect();
-        return { left: r?.left ?? 0, width: r?.width ?? 0 };
+        return vertical ? { left: r?.top ?? 0, width: r?.height ?? 0 } : { left: r?.left ?? 0, width: r?.width ?? 0 };
       }),
     );
   const dropHandlers = dnd
@@ -150,7 +163,7 @@ export function Tabs({
           if (!accepts(e)) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
-          const i = indexAt(e.clientX);
+          const i = indexAt(e);
           if (i !== drop) setDrop(i);
         },
         onDragLeave: (e: DragEvent<HTMLDivElement>) => {
@@ -160,7 +173,7 @@ export function Tabs({
           if (!accepts(e)) return;
           e.preventDefault();
           const payload = e.dataTransfer.getData(dnd.type);
-          const i = indexAt(e.clientX);
+          const i = indexAt(e);
           setDrop(null);
           if (payload) dnd.onDrop(payload, i);
         },
@@ -170,20 +183,21 @@ export function Tabs({
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => setOverflow(el.scrollWidth > el.clientWidth + 1);
+    // A vertical strip shows its scrollbar instead of the overflow dropdown.
+    const measure = () => setOverflow(!vertical && el.scrollWidth > el.clientWidth + 1);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [items.length]);
+  }, [items.length, vertical]);
 
   useEffect(() => {
     // The whole tab (label + close button) into view, without scrolling any outer container.
     const tab = activeId ? tabRefs.current.get(activeId)?.parentElement : null;
     const scroller = scrollRef.current;
-    if (tab && scroller) revealHorizontally(scroller, tab);
-  }, [activeId]);
+    if (tab && scroller) (vertical ? revealVertically : revealHorizontally)(scroller, tab);
+  }, [activeId, vertical]);
 
   const focusTab = (index: number) => {
     const item = items[(index + items.length) % items.length];
@@ -195,10 +209,10 @@ export function Tabs({
   const onKeyDown = (e: KeyboardEvent, index: number, item: TabItem) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     switch (e.key) {
-      case "ArrowRight":
+      case vertical ? "ArrowDown" : "ArrowRight":
         focusTab(index + 1);
         break;
-      case "ArrowLeft":
+      case vertical ? "ArrowUp" : "ArrowLeft":
         focusTab(index - 1);
         break;
       case "Home":
@@ -227,15 +241,26 @@ export function Tabs({
   }));
 
   return (
-    <div className={clsx(styles.strip, styles[variant], className)} {...dropHandlers}>
+    <div
+      className={clsx(
+        styles.strip,
+        styles[variant],
+        vertical ? styles.vertical : layout !== "scroll" && styles[layout],
+        closePosition === "left" && styles.closeLeft,
+        className,
+      )}
+      {...dropHandlers}
+    >
+      {vertical && trailing && <div className={styles.trailing}>{trailing}</div>}
       <div
         ref={scrollRef}
         role="tablist"
-        aria-label={aria["aria-label"]}
+        aria-label={tx(aria["aria-label"])}
+        aria-orientation={vertical ? "vertical" : undefined}
         className={styles.scroller}
         onWheel={(e) => {
           const el = scrollRef.current;
-          if (el && Math.abs(e.deltaY) > Math.abs(e.deltaX)) el.scrollLeft += e.deltaY;
+          if (el && !vertical && Math.abs(e.deltaY) > Math.abs(e.deltaX)) el.scrollLeft += e.deltaY;
         }}
       >
         {items.map((item, index) => {
@@ -251,7 +276,9 @@ export function Tabs({
                 dragging === item.id && styles.dragging,
                 drop === index && styles.dropBefore,
                 drop === items.length && index === items.length - 1 && styles.dropAfter,
+                item.tint && styles.tinted,
               )}
+              style={item.tint ? ({ "--tab-tint": item.tint } as CSSProperties) : undefined}
               draggable={!!dnd}
               onDragStart={
                 dnd
@@ -339,7 +366,7 @@ export function Tabs({
           />
         </>
       )}
-      {trailing && <div className={styles.trailing}>{trailing}</div>}
+      {!vertical && trailing && <div className={styles.trailing}>{trailing}</div>}
     </div>
   );
 }
@@ -350,4 +377,12 @@ export function revealHorizontally(scroller: HTMLElement, child: HTMLElement) {
   const c = child.getBoundingClientRect();
   if (c.left < s.left) scroller.scrollLeft -= s.left - c.left;
   else if (c.right > s.right) scroller.scrollLeft += Math.min(c.right - s.right, c.left - s.left);
+}
+
+/** Scrolls `scroller` vertically just enough to show all of `child`. */
+export function revealVertically(scroller: HTMLElement, child: HTMLElement) {
+  const s = scroller.getBoundingClientRect();
+  const c = child.getBoundingClientRect();
+  if (c.top < s.top) scroller.scrollTop -= s.top - c.top;
+  else if (c.bottom > s.bottom) scroller.scrollTop += Math.min(c.bottom - s.bottom, c.top - s.top);
 }

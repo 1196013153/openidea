@@ -189,7 +189,7 @@ pub async fn analysis_locate_duplicates(
 ) -> IdeResult<DuplicatesReport> {
     let project = state.project(window.label())?;
     let cancel = state.begin_request(request);
-    let languages = state.languages.clone();
+    let languages = project.languages.clone();
     let syntax = state.syntax();
     let result = blocking(move || {
         let files = files_in_scope(&project, &scope, &cancel)?;
@@ -256,7 +256,7 @@ pub async fn structural_search(
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
     let cancel = state.begin_request(request);
-    let languages = state.languages.clone();
+    let languages = project.languages.clone();
     let syntax = state.syntax();
     let events = on_event.clone();
     let result = blocking(move || {

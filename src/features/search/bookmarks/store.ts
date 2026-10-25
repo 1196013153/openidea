@@ -1,6 +1,8 @@
 /**
- * Line bookmarks (F3), persisted per project in localStorage. A bookmark may
- * carry a mnemonic (0-9 / A-Z, unique: ⌥F3, ⌃⇧digit) and a description.
+ * Bookmarks, persisted per project in localStorage: line bookmarks (F3) and
+ * file / folder bookmarks, kept in named bookmark lists (one is the default
+ * that new bookmarks go to). A line bookmark may carry a mnemonic (0-9 / A-Z,
+ * unique: ⌥F3, ⌃⇧digit) and a description.
  */
 import { create } from "zustand";
 import { loadJson, saveJson } from "../common/open";
@@ -16,6 +18,21 @@ export interface Bookmark {
   mnemonic?: string;
   /** User text shown instead of the line (F3 on a selection, Rename). */
   description?: string;
+  /** Id of its bookmark list; unset until stored (then the default list). */
+  list?: string;
+}
+
+/** A bookmarked file or folder (project view / editor tab). */
+export interface PathBookmark {
+  path: string;
+  dir: boolean;
+  list: string;
+  created: number;
+}
+
+export interface BookmarkList {
+  id: string;
+  name: string;
 }
 
 export const MNEMONICS = [..."1234567890", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
@@ -25,6 +42,9 @@ export function isMnemonic(c: unknown): c is string {
 }
 
 const KEY_PREFIX = "openidea.bookmarks.v1:";
+/** Lists and file / folder bookmarks; line bookmarks stay under `KEY_PREFIX` (readable by older versions). */
+const LISTS_PREFIX = "openidea.bookmarkLists.v1:";
+export const DEFAULT_LIST_ID = "default";
 
 // --- pure helpers -----------------------------------------------------------
 
@@ -133,6 +153,7 @@ export function setFileLines(
     seen.add(l.line);
     const prev = old[i];
     const b: Bookmark = { path, line: l.line, text: clip(l.text), created: prev?.created ?? Date.now() };
+    if (prev?.list) b.list = prev.list;
     if (prev?.mnemonic) b.mnemonic = prev.mnemonic;
     if (prev?.description) b.description = prev.description;
     moved.push(b);
@@ -172,30 +193,183 @@ function sanitize(raw: unknown): Bookmark[] {
       const out: Bookmark = { path: b.path, line: Math.max(0, b.line), text: String(b.text ?? ""), created: Number(b.created) || 0 };
       if (isMnemonic(b.mnemonic)) out.mnemonic = b.mnemonic;
       if (typeof b.description === "string" && b.description.trim()) out.description = b.description;
+      if (typeof b.list === "string" && b.list) out.list = b.list;
       return out;
     }),
   );
 }
 
-// --- store ------------------------------------------------------------------
+// --- lists -------------------------------------------------------------------
 
-interface BookmarksState {
-  scope: string | null;
+/** Everything persisted for a project. */
+export interface BookmarkData {
   items: Bookmark[];
+  paths: PathBookmark[];
+  lists: BookmarkList[];
+  defaultList: string;
 }
 
-export const useBookmarks = create<BookmarksState>(() => ({ scope: null, items: [] }));
+export function pathBookmarkAt(paths: readonly PathBookmark[], path: string): PathBookmark | undefined {
+  return paths.find((b) => b.path === path);
+}
+
+/** Adds `targets` to the default list, or removes them all when every one is bookmarked already. */
+export function togglePathBookmarks(
+  data: BookmarkData,
+  targets: ReadonlyArray<{ path: string; dir: boolean }>,
+  now = Date.now(),
+): BookmarkData {
+  if (!targets.length) return data;
+  const all = targets.every((t) => pathBookmarkAt(data.paths, t.path));
+  const set = new Set(targets.map((t) => t.path));
+  if (all) return { ...data, paths: data.paths.filter((b) => !set.has(b.path)) };
+  const added = targets
+    .filter((t) => !pathBookmarkAt(data.paths, t.path))
+    .map((t) => ({ path: t.path, dir: t.dir, list: data.defaultList, created: now }));
+  return { ...data, paths: sortPaths([...data.paths, ...added]) };
+}
+
+function sortPaths(list: readonly PathBookmark[]): PathBookmark[] {
+  return [...list].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function newListId(lists: readonly BookmarkList[]): string {
+  for (let i = lists.length + 1; ; i++) if (!lists.some((l) => l.id === `list${i}`)) return `list${i}`;
+}
+
+/** Error text for a proposed list name, or null when valid. */
+export function validateListName(lists: readonly BookmarkList[], name: string, ownId?: string): string | null {
+  const n = name.trim();
+  if (!n) return "Name cannot be empty";
+  return lists.some((l) => l.id !== ownId && l.name === n) ? `A list named '${n}' already exists` : null;
+}
+
+export function createList(data: BookmarkData, name: string): { data: BookmarkData; id: string } {
+  const id = newListId(data.lists);
+  return { id, data: { ...data, lists: [...data.lists, { id, name: name.trim() }] } };
+}
+
+export function renameList(data: BookmarkData, id: string, name: string): BookmarkData {
+  return { ...data, lists: data.lists.map((l) => (l.id === id ? { ...l, name: name.trim() } : l)) };
+}
+
+export function setDefaultList(data: BookmarkData, id: string): BookmarkData {
+  return data.lists.some((l) => l.id === id) ? { ...data, defaultList: id } : data;
+}
+
+/** Deletes a list with its bookmarks; the default moves to the first remaining list (a fresh one when none). */
+export function deleteList(data: BookmarkData, id: string, fallbackName: string): BookmarkData {
+  const lists = data.lists.filter((l) => l.id !== id);
+  const next: BookmarkData = {
+    items: data.items.filter((b) => b.list !== id),
+    paths: data.paths.filter((b) => b.list !== id),
+    lists: lists.length ? lists : [{ id: DEFAULT_LIST_ID, name: fallbackName }],
+    defaultList: data.defaultList,
+  };
+  if (!next.lists.some((l) => l.id === next.defaultList)) next.defaultList = next.lists[0]!.id;
+  return next;
+}
+
+/** Identifies a bookmark for moving: a line (`path` + `line`) or a file / folder (`path`). */
+export type BookmarkRef = { path: string; line?: number };
+
+export function moveBookmarks(data: BookmarkData, refs: readonly BookmarkRef[], to: string): BookmarkData {
+  if (!data.lists.some((l) => l.id === to)) return data;
+  const lines = new Set(refs.filter((r) => r.line !== undefined).map((r) => `${r.path}\u0000${r.line}`));
+  const paths = new Set(refs.filter((r) => r.line === undefined).map((r) => r.path));
+  return {
+    ...data,
+    items: data.items.map((b) => (lines.has(`${b.path}\u0000${b.line}`) ? { ...b, list: to } : b)),
+    paths: data.paths.map((b) => (paths.has(b.path) ? { ...b, list: to } : b)),
+  };
+}
+
+export function renamePathBookmarks(list: readonly PathBookmark[], from: string, to: string | null): PathBookmark[] {
+  const out: PathBookmark[] = [];
+  for (const b of list) {
+    if (b.path === from || b.path.startsWith(from + "/")) {
+      if (to !== null) out.push({ ...b, path: to + b.path.slice(from.length) });
+    } else out.push(b);
+  }
+  return sortPaths(out);
+}
+
+function sanitizeData(raw: unknown, items: Bookmark[], projectName: string): BookmarkData {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const lists: BookmarkList[] = [];
+  for (const l of Array.isArray(o.lists) ? o.lists : []) {
+    const id = (l as BookmarkList | null)?.id;
+    const name = (l as BookmarkList | null)?.name;
+    if (typeof id === "string" && id && typeof name === "string" && !lists.some((x) => x.id === id))
+      lists.push({ id, name: name.trim() || id });
+  }
+  if (!lists.length) lists.push({ id: DEFAULT_LIST_ID, name: projectName });
+  const ids = new Set(lists.map((l) => l.id));
+  const defaultList = typeof o.defaultList === "string" && ids.has(o.defaultList) ? o.defaultList : lists[0]!.id;
+  const paths = (Array.isArray(o.paths) ? o.paths : [])
+    .filter((b): b is PathBookmark => !!b && typeof b === "object" && typeof (b as PathBookmark).path === "string")
+    .map((b) => ({
+      path: b.path,
+      dir: b.dir === true,
+      list: typeof b.list === "string" && ids.has(b.list) ? b.list : defaultList,
+      created: Number(b.created) || 0,
+    }));
+  return {
+    // Bookmarks saved before lists existed belong to the default list.
+    items: items.map((b) => (b.list && ids.has(b.list) ? b : { ...b, list: defaultList })),
+    paths: sortPaths(paths),
+    lists,
+    defaultList,
+  };
+}
+
+// --- store ------------------------------------------------------------------
+
+interface BookmarksState extends BookmarkData {
+  scope: string | null;
+}
+
+const projectName = (scope: string) => scope.slice(scope.lastIndexOf("/") + 1) || scope;
+
+const EMPTY: BookmarkData = {
+  items: [],
+  paths: [],
+  lists: [{ id: DEFAULT_LIST_ID, name: "Bookmarks" }],
+  defaultList: DEFAULT_LIST_ID,
+};
+
+export const useBookmarks = create<BookmarksState>(() => ({ scope: null, ...EMPTY }));
 
 export function loadBookmarks(scope: string | null) {
-  useBookmarks.setState({ scope, items: scope ? sanitize(loadJson<unknown>(KEY_PREFIX + scope, [])) : [] });
+  if (!scope) return useBookmarks.setState({ scope, ...EMPTY });
+  const items = sanitize(loadJson<unknown>(KEY_PREFIX + scope, []));
+  useBookmarks.setState({
+    scope,
+    ...sanitizeData(loadJson<unknown>(LISTS_PREFIX + scope, null), items, projectName(scope)),
+  });
+}
+
+/** Changes lists / file bookmarks (and line bookmarks); new line bookmarks go to the default list. */
+export function updateBookmarkData(fn: (data: BookmarkData) => BookmarkData) {
+  const { scope, items, paths, lists, defaultList } = useBookmarks.getState();
+  const prev: BookmarkData = { items, paths, lists, defaultList };
+  const next = fn(prev);
+  if (next === prev) return;
+  const filled = next.items.some((b) => !b.list)
+    ? next.items.map((b) => (b.list ? b : { ...b, list: next.defaultList }))
+    : next.items;
+  useBookmarks.setState({ ...next, items: filled });
+  if (!scope) return;
+  if (filled !== items) saveJson(KEY_PREFIX + scope, filled);
+  if (next.paths !== paths || next.lists !== lists || next.defaultList !== defaultList)
+    saveJson(LISTS_PREFIX + scope, { lists: next.lists, defaultList: next.defaultList, paths: next.paths });
 }
 
 export function updateBookmarks(fn: (list: readonly Bookmark[]) => Bookmark[]) {
-  const { scope, items } = useBookmarks.getState();
-  const next = fn(items);
-  if (next === items) return;
-  useBookmarks.setState({ items: next });
-  if (scope) saveJson(KEY_PREFIX + scope, next);
+  updateBookmarkData((data) => {
+    const items = fn(data.items);
+    return items === data.items ? data : { ...data, items };
+  });
 }
 
 // --- popups -----------------------------------------------------------------
@@ -216,6 +390,13 @@ interface BookmarkPopupsState {
   list: boolean;
   /** Edit Description dialog (F2 in the Bookmarks view / popup). */
   editing: { path: string; line: number } | null;
+  /** New / rename bookmark list dialog; `then` receives the new list's id. */
+  naming: { listId?: string; then?: (id: string) => void } | null;
 }
 
-export const useBookmarkPopups = create<BookmarkPopupsState>(() => ({ chooser: null, list: false, editing: null }));
+export const useBookmarkPopups = create<BookmarkPopupsState>(() => ({
+  chooser: null,
+  list: false,
+  editing: null,
+  naming: null,
+}));

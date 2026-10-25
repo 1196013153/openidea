@@ -7,9 +7,10 @@ import { registerActions } from "@/platform/actions";
 import { setContext } from "@/platform/context";
 import { onIdeEvent, type BuildModel, type BuildTool } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { registerOverlay, registerToolWindow } from "@/workbench/contributions";
+import { registerOverlay, registerRunAnythingProvider, registerToolWindow } from "@/workbench/contributions";
 import { GradleView, MavenView } from "./BuildToolView";
 import { ExecutePopupHost } from "./ExecutePopup";
+import { buildToolsRunAnything } from "./runAnything";
 import { expandableKeys, gradleChildren, gradleRoots, mavenChildren, mavenRoots } from "./model";
 import {
   cancelSync,
@@ -83,6 +84,7 @@ export function activate(): () => void {
   };
   const disposers: Array<() => void> = [
     registerOverlay({ id: "build-tools.execute", component: ExecutePopupHost }),
+    registerRunAnythingProvider(buildToolsRunAnything),
     useBuild.subscribe((s, prev) => {
       if (s.model !== prev.model || s.root !== prev.root) apply(s.root ? s.model : null, registered);
     }),

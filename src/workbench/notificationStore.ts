@@ -1,7 +1,7 @@
 /** Notification center: balloons + history, backing `NotificationService`. */
 import type { ReactNode } from "react";
 import { create } from "zustand";
-import { onIdeEvent } from "@/platform/ipc";
+import { call, commands, onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import type { NotificationService } from "./contributions";
 
@@ -51,6 +51,25 @@ export function notificationPrefs(group: string): NotificationPrefs {
   const g = n?.groups?.[group];
   const display = g?.display === "sticky" || g?.display === "none" ? g.display : "balloon";
   return { balloons: n?.balloons !== false, sound: n?.sound === true, display, log: g?.log !== false };
+}
+
+/** Errors always show; other notifications offer "Don't Show Again" for their group. */
+export function canSuppress(n: Pick<IdeNotification, "level" | "group">): boolean {
+  return n.level !== "error" && notificationPrefs(n.group).display !== "none";
+}
+
+/**
+ * "Don't Show Again": the group's balloons are turned off (Settings ›
+ * Notifications › "No popup"); its notifications are still logged.
+ */
+export async function suppressGroup(group: string): Promise<void> {
+  const groups = { ...(useProject.getState().settings?.notifications?.groups ?? {}) };
+  groups[group] = { ...(groups[group] ?? {}), display: "none", log: groups[group]?.log ?? true };
+  const settings = await call(commands.settingsSet("global", "notifications.groups", JSON.stringify(groups)));
+  useProject.setState({ settings });
+  useNotifications.setState((s) => ({
+    items: s.items.flatMap((x) => (x.group !== group || !x.balloon ? [x] : x.logged ? [{ ...x, balloon: false }] : [])),
+  }));
 }
 
 function groupOf(n: { group?: string; key?: string }): string {

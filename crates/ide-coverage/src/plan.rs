@@ -288,6 +288,7 @@ mod tests {
             is_test: true,
             debug_adapter: None,
             allow_parallel: false,
+            extras: Default::default(),
         }
     }
 

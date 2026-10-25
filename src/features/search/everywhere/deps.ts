@@ -1,7 +1,8 @@
 import { allActions, type Action } from "@/platform/actions";
 import { evaluateWhen, type ContextKeys } from "@/platform/context";
-import { call, commands, nextRequestId } from "@/platform/ipc";
+import { call, commands, nextRequestId, type LanguageInfo } from "@/platform/ipc";
 import { inFileSet } from "@/platform/projectRoots";
+import { searchableSettings } from "@/workbench/contributions";
 import { projectRoot } from "../common/open";
 import { cancelRequest, streamSearch } from "../common/textSearch";
 import type { SeDeps } from "./controller";
@@ -28,8 +29,19 @@ export function ipcDeps(ctx: ContextKeys): SeDeps {
     },
     recentFiles: async () => (await call(commands.recentFiles())).map(String),
     recentActions,
+    settings: searchableSettings,
     root: projectRoot,
     now: () => performance.now(),
     inFileSet: (set, path) => inFileSet(set, path),
   };
+}
+
+let languages: Promise<LanguageInfo[]> | null = null;
+
+/** The backend's language list (file types of the Files / Symbols filters), loaded once. */
+export function loadLanguages(): Promise<LanguageInfo[]> {
+  return (languages ??= commands.languages().catch(() => {
+    languages = null;
+    return [];
+  }));
 }

@@ -5,10 +5,16 @@
  * (`ide-http`).
  */
 import { activeEditor, registerEditorContribution, registerLanguageMode } from "@/editor/api";
-import { registerActions } from "@/platform/actions";
+import { executeAction, getAction, registerActions } from "@/platform/actions";
 import { call, commands, emitLocalIdeEvent, IpcError, isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { editorService, notifications, registerServiceView, showServiceView } from "@/workbench/contributions";
+import {
+  editorService,
+  notifications,
+  registerMenuGroup,
+  registerServiceView,
+  showServiceView,
+} from "@/workbench/contributions";
 import { HTTP_LANGUAGE, httpEditorExtension, refreshRequests, requestAtCaret } from "./editor";
 import { HttpClientHeaderActions, HttpClientView } from "./HttpClientView";
 import { httpLanguageDescription } from "./language";
@@ -44,11 +50,31 @@ async function runAtCaret() {
   await runRequest(filePath(e.ctx.path, e.ctx.virtual), e.view.state.doc.toString(), r.index);
 }
 
-/** New HTTP Request: a scratch `requests[_n].http` with an example request. */
-async function newRequest() {
+/** New › HTTP Request in `directory`: the name prompt of the file templates (features/templates), with the example body. */
+function newRequestArg(directory: string) {
+  return {
+    directory,
+    template: {
+      id: "http-request",
+      name: "HTTP Request",
+      icon: "file-http",
+      extension: "http",
+      nameStyle: "asis",
+      kinds: [{ id: "request", label: "HTTP Request", body: NEW_REQUEST_TEMPLATE }],
+    },
+  };
+}
+
+function directoryArg(arg: unknown): string | null {
+  const dir = (arg as { directory?: unknown } | undefined)?.directory;
+  return typeof dir === "string" && dir ? dir : null;
+}
+
+/** New HTTP Request: `requests[_n].http` in `directory`, else a scratch, with an example request. */
+async function newRequest(directory?: string) {
   try {
     const { appDataDir } = await import("@tauri-apps/api/path");
-    const dir = `${(await appDataDir()).replace(/\/+$/, "")}/scratches`;
+    const dir = directory ?? `${(await appDataDir()).replace(/\/+$/, "")}/scratches`;
     try {
       await call(commands.fsCreateDir(dir));
     } catch (e) {
@@ -88,6 +114,13 @@ export function activate(): () => void {
       component: HttpClientView,
       headerActions: HttpClientHeaderActions,
     }),
+    registerMenuGroup({
+      id: "http.new",
+      menus: ["new"],
+      order: 20,
+      items: (_menu, { paths: [directory] }) =>
+        directory ? [{ kind: "action", action: "http.newRequest", arg: { directory }, label: "HTTP Request" }] : [],
+    }),
     registerActions([
       {
         id: "http.runRequest",
@@ -115,7 +148,13 @@ export function activate(): () => void {
         icon: "file-http",
         keywords: ["http client", "rest", "scratch", "curl"],
         when: "projectOpen",
-        run: () => (isTauri() ? newRequest() : undefined),
+        // `{ directory }` (New › HTTP Request): ask for the name there, like IDEA.
+        run: async ({ arg }) => {
+          const directory = directoryArg(arg);
+          if (directory && getAction("templates.newFromTemplate"))
+            await executeAction("templates.newFromTemplate", newRequestArg(directory));
+          else if (isTauri()) await newRequest(directory ?? undefined);
+        },
       },
       {
         id: "http.showToolWindow",

@@ -584,6 +584,7 @@ pub fn diagnostics(messages: &[BuildMessage]) -> BTreeMap<PathBuf, Vec<Diagnosti
             code: m.code.clone(),
             unnecessary: false,
             deprecated: false,
+            server: Some(DIAGNOSTICS_SOURCE.to_owned()),
         });
     }
     out

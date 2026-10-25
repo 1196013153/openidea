@@ -17,6 +17,12 @@ import { confirmRerun, confirmTerminate } from "./dialogs";
 import { createTestParser, frameworkFor, TestResults, withTestReporting, type TestEvent, type TestOutputParser } from "./testing";
 import { recordTestStates } from "./testing/states";
 import { failedTestPaths, leafTestPaths, rerunFailedConfig, testsConfig } from "./testing/rerun";
+import { compoundChildren } from "./configs";
+import { TerminalOutput } from "./terminalOutput";
+import { typeFor } from "./types";
+
+/** The permanent "Current File" pseudo-configuration of the chooser (runs the active file's context). */
+export const CURRENT_FILE = "current-file";
 
 export type SessionStatus = "starting" | "running" | "finished" | "failed";
 
@@ -33,6 +39,8 @@ export interface RunSession {
   stopped?: boolean;
   /** The unfiltered configuration when this run was started by "Rerun Failed Tests". */
   baseConfig?: RunConfig;
+  /** "Emulate terminal in output console": the output is a terminal. */
+  terminal?: boolean;
 }
 
 interface SessionRuntime {
@@ -49,6 +57,10 @@ interface SessionRuntime {
   onExit?: (exitCode: number | null, stopped: boolean) => void;
   /** User input typed into the console, not yet sent (IDEA: Enter sends the line). */
   input: string;
+  /** Output of a run that emulates a terminal (instead of `console`). */
+  terminal: TerminalOutput | null;
+  /** Last size the terminal console reported (sent once the process has an id). */
+  terminalSize: { cols: number; rows: number } | null;
 }
 
 interface RunState {
@@ -137,7 +149,10 @@ export async function loadConfigs(): Promise<void> {
     const temps = readTemporary(root).filter((t) => !saved.some((c) => c.id === t.id));
     const configs = [...saved, ...temps];
     const stored = useRun.getState().selectedId ?? readSelected(root);
-    const selectedId = configs.some((c) => c.id === stored) ? stored : (defaultSelection(saved)?.id ?? null);
+    const selectedId =
+      stored === CURRENT_FILE || configs.some((c) => c.id === stored)
+        ? stored
+        : (defaultSelection(saved)?.id ?? CURRENT_FILE);
     useRun.setState({ configs, temporary: temps.map((t) => t.id), loaded: true, loadError: null, selectedId });
   } catch (e) {
     useRun.setState({ loaded: true, loadError: e instanceof Error ? e.message : String(e) });
@@ -160,6 +175,11 @@ export function selectConfig(id: string | null) {
   useRun.setState({ selectedId: id });
   const root = useProject.getState().project?.root;
   if (root) writeSelected(root, id);
+}
+
+/** Whether the chooser's "Current File" is selected. */
+export function currentFileSelected(): boolean {
+  return useRun.getState().selectedId === CURRENT_FILE;
 }
 
 export function selectedConfig(): RunConfig | undefined {
@@ -298,6 +318,10 @@ function flush(sessionId: string) {
 function enqueue(sessionId: string, chunk: OutputChunk) {
   const rt = runtimes.get(sessionId);
   if (!rt) return;
+  if (rt.terminal) {
+    rt.terminal.append(chunk);
+    return;
+  }
   rt.queue.push(chunk);
   if (rt.flushHandle === null) rt.flushHandle = requestAnimationFrame(() => flush(sessionId));
 }
@@ -335,8 +359,39 @@ function newRuntime(config: RunConfig): SessionRuntime {
     generation: 0,
     lineListeners: [],
     input: "",
+    terminal: null,
+    terminalSize: null,
   };
   return runtime;
+}
+
+/** Runs a configuration's before launch tasks; false aborts the launch. Installed by the feature. */
+export type BeforeLaunchRunner = (config: RunConfig, chain: readonly string[]) => Promise<boolean>;
+let beforeLaunch: BeforeLaunchRunner | null = null;
+
+export function setBeforeLaunchRunner(runner: BeforeLaunchRunner | null) {
+  beforeLaunch = runner;
+}
+
+/** Runs `config`'s before launch tasks (none: true). `chain` holds the configurations already launching. */
+export async function prepareLaunch(config: RunConfig, chain: readonly string[] = []): Promise<boolean> {
+  if (!config.beforeLaunch?.length || !beforeLaunch) return true;
+  return beforeLaunch(config, [...chain, config.id]);
+}
+
+/** Starts every configuration of a compound (after the compound's own before launch tasks). */
+export async function startCompound(config: RunConfig, chain: readonly string[] = []): Promise<RunSession[]> {
+  if (!(await prepareLaunch(config, chain))) return [];
+  const children = compoundChildren(config, useRun.getState().configs);
+  const sessions = await Promise.all(children.map((c) => startRun(c, undefined, undefined, { chain: [...chain, config.id] })));
+  return sessions.filter((s): s is RunSession => !!s);
+}
+
+/** Sessions of `config`: its own, or for a compound those of its configurations. */
+export function sessionsOf(config: RunConfig, sessions = useRun.getState().sessions): RunSession[] {
+  if (config.kind !== "compound") return sessions.filter((s) => s.config.id === config.id);
+  const ids = new Set(compoundChildren(config, useRun.getState().configs).map((c) => c.id));
+  return sessions.filter((s) => ids.has(s.config.id));
 }
 
 /** Starts `config`, reusing the tab of a finished (or the given) session for the same config. */
@@ -346,14 +401,23 @@ export async function startRun(
   baseConfig?: RunConfig,
   options: {
     show?: boolean;
-    /** Launch this instead of `config` (e.g. with a debug agent); the tab still shows `config`. */
+    /** Launch this instead of `config` (e.g. with a debug agent); the tab still shows `config`. Skips before launch tasks. */
     launch?: RunConfig;
     /** Every output line of this run. */
     onLine?: (text: string) => void;
     /** The process exited. */
     onExit?: (exitCode: number | null, stopped: boolean) => void;
+    /** Before launch tasks already ran (or must not run). */
+    prepared?: boolean;
+    /** Configurations whose launch led to this one (before launch tasks, compounds): breaks cycles. */
+    chain?: readonly string[];
   } = {},
 ): Promise<RunSession | null> {
+  if (config.kind === "compound") {
+    await startCompound(config, options.chain);
+    return null;
+  }
+  if (!options.launch && !options.prepared && !(await prepareLaunch(config, options.chain))) return null;
   const state = useRun.getState();
   const busy = (s: RunSession) => s.status === "running" || s.status === "starting";
   let session = reuse ? state.sessions.find((s) => s.id === reuse) : undefined;
@@ -419,7 +483,8 @@ export async function startRun(
   if (options.onLine) rt.lineListeners.push(options.onLine);
   rt.onExit = options.onExit;
   try {
-    if (options.show ?? workflowSettings().run.showOnStart) toolWindowService().show("run");
+    if (config.focusToolWindow) toolWindowService().show("run", true);
+    else if (options.show ?? config.openToolWindow ?? workflowSettings().run.showOnStart) toolWindowService().show("run");
   } catch {
     /* no workbench (tests) */
   }
@@ -433,7 +498,10 @@ export async function startRun(
 
   const channel = new Channel<OutputChunk>();
   channel.onmessage = (chunk) => {
-    if (runtimes.get(sessionId)?.generation === generation) enqueue(sessionId, chunk);
+    if (runtimes.get(sessionId)?.generation !== generation) return;
+    enqueue(sessionId, chunk);
+    if ((chunk.kind === "stdout" && config.showOnStdout) || (chunk.kind === "stderr" && config.showOnStderr))
+      revealSession(sessionId);
   };
   try {
     let launch = options.launch ?? config;
@@ -446,11 +514,22 @@ export async function startRun(
       }
       launch = resolved;
     }
+    const prepare = typeFor(launch.kind)?.prepareLaunch;
+    if (prepare) {
+      launch = await prepare(launch);
+      if (runtimes.get(sessionId)?.generation !== generation) return getSession(sessionId) ?? null;
+    }
+    // Debug launches read the agent's output lines: never through a terminal.
+    if ((options.launch || launch.isTest) && launch.emulateTerminal) launch = { ...launch, emulateTerminal: false };
+    if (launch.emulateTerminal) rt.terminal = new TerminalOutput();
+    patchSession(sessionId, { terminal: !!launch.emulateTerminal });
     const info = await call(commands.runStart(launch.isTest ? withTestReporting(launch) : launch, channel));
     if (runtimes.get(sessionId)?.generation !== generation) return getSession(sessionId) ?? null;
+    if (info.pty && rt.terminalSize) void commands.runResize(info.id, rt.terminalSize.cols, rt.terminalSize.rows);
     // The process may already have exited (fast commands) before we got its id.
     const exited = pendingExits.get(info.id);
-    patchSession(sessionId, { runId: info.id, status: "running" });
+    // "Redirect input from": stdin is the file, the console takes no input.
+    patchSession(sessionId, { runId: info.id, status: "running", stdinClosed: !!launch.stdinFile });
     if (exited !== undefined) {
       pendingExits.delete(info.id);
       finishSession(sessionId, exited);
@@ -463,6 +542,16 @@ export async function startRun(
     notifications().notify({ group: "run", level: "error", title: `Error running '${config.name}'`, body: message });
   }
   return getSession(sessionId) ?? null;
+}
+
+/** "Show console when a message is printed to stdout / stderr". */
+function revealSession(sessionId: string) {
+  try {
+    if (useRun.getState().activeSession !== sessionId) useRun.setState({ activeSession: sessionId });
+    if (!toolWindowService().isVisible("run")) toolWindowService().show("run");
+  } catch {
+    /* no workbench (tests) */
+  }
 }
 
 const pathSeparator = () => (typeof navigator !== "undefined" && /win/i.test(navigator.platform) ? ";" : ":");
@@ -684,6 +773,23 @@ export async function sendStdin(sessionId: string, text: string): Promise<void> 
   }
 }
 
+/** Keystrokes typed into a console that emulates a terminal, sent as they are. */
+export function writeTerminal(sessionId: string, data: string) {
+  const session = getSession(sessionId);
+  if (!session || session.runId === null || session.status !== "running") return;
+  void call(commands.runStdin(session.runId, data)).catch(() => undefined);
+}
+
+/** The terminal console's size in cells; the process's terminal follows it. */
+export function resizeTerminal(sessionId: string, cols: number, rows: number) {
+  const rt = runtimes.get(sessionId);
+  if (!rt || cols < 1 || rows < 1) return;
+  rt.terminalSize = { cols, rows };
+  const session = getSession(sessionId);
+  if (session?.runId != null && session.status === "running" && isTauri())
+    void call(commands.runResize(session.runId, cols, rows)).catch(() => undefined);
+}
+
 export async function closeStdin(sessionId: string): Promise<void> {
   const session = getSession(sessionId);
   if (!session || session.runId === null || session.status !== "running") return;
@@ -697,6 +803,7 @@ export async function closeStdin(sessionId: string): Promise<void> {
 
 export function clearConsole(sessionId: string) {
   runtimes.get(sessionId)?.console.clear();
+  runtimes.get(sessionId)?.terminal?.clear();
   bump(sessionId);
 }
 

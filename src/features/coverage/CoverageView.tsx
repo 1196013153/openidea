@@ -35,13 +35,17 @@ export function CoverageHeaderActions() {
   const visible = useCoverage((s) => s.visible);
   const hasSuite = useCoverage((s) => !!s.activeId);
   return (
-    <IconButton
-      icon={visible ? "close" : "eye"}
-      size="small"
-      title={visible ? "Hide Coverage" : "Show Coverage"}
-      disabled={!hasSuite}
-      onClick={() => setCoverageVisible(!visible)}
-    />
+    <>
+      <IconButton icon="folder-open" size="small" action="coverage.importReport" />
+      <IconButton icon="list" size="small" action="coverage.manageReports" />
+      <IconButton
+        icon={visible ? "close" : "eye"}
+        size="small"
+        title={visible ? "Hide Coverage" : "Show Coverage"}
+        disabled={!hasSuite}
+        onClick={() => setCoverageVisible(!visible)}
+      />
+    </>
   );
 }
 
@@ -87,9 +91,14 @@ export function CoverageView() {
         <span>
           <T>Run a configuration with coverage to see which lines its tests execute.</T>
         </span>
-        <button type="button" className={styles.link} onClick={() => void executeAction("run.coverage")}>
-          <T>Run with Coverage</T>
-        </button>
+        <span className={styles.links}>
+          <button type="button" className={styles.link} onClick={() => void executeAction("run.coverage")}>
+            <T>Run with Coverage</T>
+          </button>
+          <button type="button" className={styles.link} onClick={() => void executeAction("coverage.importReport")}>
+            <T>Import a report collected in CI from disk</T>
+          </button>
+        </span>
       </EmptyState>
     );
   }

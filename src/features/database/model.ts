@@ -1,5 +1,6 @@
 /** Pure helpers of the database tools: clipboard formats, edits, labels. */
-import type { DbCellValue, DbDriver, DbRowEdit, DataSource } from "@/platform/ipc";
+import type { DbCellValue, DbColor, DbProperty, DbRowEdit, DbSslMode, DataSource } from "@/platform/ipc";
+import { vendorOf, vendorOfScheme } from "./vendors";
 
 export type Cell = string | null;
 
@@ -62,14 +63,55 @@ export function fileSourceName(file: string): string {
   return base.replace(/\.[^.]+$/, "") || base;
 }
 
-/** The tree / menu icon of a driver (IDEA shows the vendor's mark). */
-export function driverIcon(driver: DbDriver | null | undefined): string {
-  return driver === "postgres" ? "db-postgres" : driver === "mysql" ? "db-mysql" : "db-sqlite";
+/** The tree / menu icon of a data source (IDEA shows the vendor's mark). */
+export function sourceIcon(s: Pick<DataSource, "vendor" | "driver">): string {
+  return vendorOf(s).icon;
 }
 
-export function sourceLabel(s: Pick<DataSource, "name" | "driver">): string {
-  const kind = s.driver === "postgres" ? "PostgreSQL" : s.driver === "mysql" ? "MySQL" : "SQLite";
-  return `${s.name} (${kind})`;
+export function sourceLabel(s: Pick<DataSource, "name" | "driver" | "vendor">): string {
+  return `${s.name} (${vendorOf(s).label})`;
+}
+
+/** The token of a data source colour (tree rows, console tab). */
+export function colorVar(color: DbColor | null | undefined): string | undefined {
+  return color ? `var(--db-color-${color})` : undefined;
+}
+
+/** `*` / `?` wildcard match of the Schemas tab (case-sensitive, like the server's names). */
+export function matchesPattern(name: string, pattern: string): boolean {
+  if (!/[*?]/.test(pattern)) return name === pattern;
+  const re = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
+  return new RegExp(`^${re}$`).test(name);
+}
+
+/**
+ * The databases / schemas the tree shows (Schemas tab): all of them, or the
+ * ones matching a chosen name or pattern; `keep` (the connected database) always stays.
+ */
+export function shownNames(names: readonly string[], all: boolean | undefined, chosen: readonly string[] | undefined, keep?: string | null): string[] {
+  if (all !== false) return [...names];
+  const picks = (chosen ?? []).map((p) => p.trim()).filter(Boolean);
+  return names.filter((n) => n === keep || picks.some((p) => matchesPattern(n, p)));
+}
+
+/**
+ * Connected targets idle for longer than their data source's Auto-disconnect
+ * (`lastUsed`: ms of the last statement / introspection; `busy`: running or holding a transaction).
+ */
+export function idleTargets(
+  connected: Iterable<string>,
+  sources: readonly DataSource[],
+  lastUsed: ReadonlyMap<string, number>,
+  busy: (target: string) => boolean,
+  now: number,
+): string[] {
+  const out: string[] = [];
+  for (const t of connected) {
+    const secs = sources.find((s) => s.id === splitTarget(t).id)?.options?.autoDisconnectSecs;
+    if (!secs || busy(t)) continue;
+    if (now - (lastUsed.get(t) ?? now) >= secs * 1000) out.push(t);
+  }
+  return out;
 }
 
 export function newSourceId(): string {
@@ -120,20 +162,36 @@ export function targetOf(id: string, database: string | null, current: string | 
 /** Key of the Database tree node of database `name` of data source `id`. */
 export const databaseKey = (id: string, name: string) => `${id}/@${name}`;
 
+const SSL_MODES: Record<string, DbSslMode> = {
+  disable: "disable",
+  disabled: "disable",
+  prefer: "prefer",
+  preferred: "prefer",
+  require: "require",
+  required: "require",
+  "verify-ca": "verifyCa",
+  verify_ca: "verifyCa",
+  "verify-full": "verifyFull",
+  verify_identity: "verifyFull",
+  "verify-identity": "verifyFull",
+};
+
 /**
- * Data Source from URL: `postgres://user:pass@host:5432/db`, `mysql://…`,
- * `mariadb://…`, the `jdbc:` forms of those, `jdbc:sqlite:path` / `sqlite:path`.
- * Null when the URL names no supported driver.
+ * Data Source from URL (and the General tab's URL field): `postgres://user:pass@host:5432/db`,
+ * `mysql://…`, `mariadb://…`, wire-compatible products (`redshift://`, `tidb://`…), the
+ * `jdbc:` forms of those, `jdbc:sqlite:path` / `sqlite:path`. SSL parameters fill the
+ * SSL tab, other parameters become driver properties. Null when the URL names no supported driver.
  */
 export function parseSourceUrl(raw: string): { source: Partial<DataSource>; password: string | null } | null {
   const url = raw.trim().replace(/^jdbc:/i, "");
-  const sqlite = /^sqlite:(?:\/\/)?(.+)$/i.exec(url);
+  const sqlite = /^sqlite3?:(?:\/\/)?(.+)$/i.exec(url);
   if (sqlite) {
     const file = sqlite[1]!.replace(/^\/([A-Za-z]:)/, "$1");
     return { source: { driver: "sqlite", file, name: fileSourceName(file) }, password: null };
   }
-  const m = /^(postgres(?:ql)?|mysql|mariadb):\/\/(?:([^:@/]*)(?::([^@/]*))?@)?([^:/?]+|\[[^\]]+\])(?::(\d+))?(?:\/([^?]*))?(?:\?(.*))?$/i.exec(url);
-  if (!m) return null;
+  const m = /^([a-z][a-z0-9]*):\/\/(?:([^:@/]*)(?::([^@/]*))?@)?([^:/?,]+|\[[^\]]+\])(?::(\d+))?(?:,[^/?]*)?(?:\/([^?]*))?(?:\?(.*))?$/i.exec(url);
+  const vendor = m ? vendorOfScheme(m[1]!) : undefined;
+  if (!m || !vendor || vendor.driver === "sqlite") return null;
   const dec = (s: string | undefined) => {
     try {
       return s ? decodeURIComponent(s) : "";
@@ -141,13 +199,45 @@ export function parseSourceUrl(raw: string): { source: Partial<DataSource>; pass
       return s ?? "";
     }
   };
-  const driver = m[1]!.toLowerCase().startsWith("postgres") ? "postgres" : "mysql";
-  const params = new URLSearchParams(m[7] ?? "");
-  const user = dec(m[2]) || params.get("user") || "";
-  const password = m[3] !== undefined ? dec(m[3]) : params.get("password");
   const port = m[5] ? parseInt(m[5], 10) : null;
-  const source: Partial<DataSource> = { driver, host: m[4]!, port, user, database: dec(m[6]) };
-  const ssl = params.get("sslmode")?.toLowerCase();
-  if (ssl === "disable" || ssl === "require" || ssl === "prefer") source.ssl = ssl;
+  if (port !== null && !(port > 0 && port < 65536)) return null;
+  let user = dec(m[2]);
+  let password = m[3] !== undefined ? dec(m[3]) : null;
+  const host = m[4]!.replace(/^\[(.*)\]$/, "$1");
+  const source: Partial<DataSource> = { driver: vendor.driver, host, port, user, database: dec(m[6]).replace(/\/$/, "") };
+  if (vendor.id !== vendor.driver) source.vendor = vendor.id;
+  const properties: DbProperty[] = [];
+  for (const [k, v] of new URLSearchParams(m[7] ?? "")) {
+    switch (k.toLowerCase()) {
+      case "user":
+        user ||= v;
+        break;
+      case "password":
+        password ??= v;
+        break;
+      case "sslmode":
+      case "ssl-mode": {
+        const mode = SSL_MODES[v.toLowerCase()];
+        if (mode) source.ssl = mode;
+        break;
+      }
+      case "sslrootcert":
+      case "ssl-ca":
+        source.sslCaFile = v;
+        break;
+      case "sslcert":
+      case "ssl-cert":
+        source.sslCertFile = v;
+        break;
+      case "sslkey":
+      case "ssl-key":
+        source.sslKeyFile = v;
+        break;
+      default:
+        properties.push({ name: k, value: v });
+    }
+  }
+  source.user = user;
+  if (properties.length) source.properties = properties;
   return { source, password };
 }

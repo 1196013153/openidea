@@ -472,7 +472,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
         }
       }}
     >
-      <div className={styles.toolbar} role="toolbar" aria-label="Diff">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Diff")}>
         <IconButton icon="arrow-up" title="Previous Difference" shortcut={shortcutLabel("diff.prevDifference")} size="small" onClick={() => step(-1)} />
         <IconButton icon="arrow-down" title="Next Difference" shortcut={shortcutLabel("diff.nextDifference")} size="small" onClick={() => step(1)} />
         <span className={styles.sep} />

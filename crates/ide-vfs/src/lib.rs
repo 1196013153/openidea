@@ -1,5 +1,6 @@
 //! File system access for the IDE. The UI never touches the disk directly.
 
+mod archive;
 mod bytes;
 mod encoding;
 mod ops;
@@ -14,6 +15,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use archive::{
+    ARCHIVE_EXTENSIONS, archive_entry_path, archive_root, is_archive_file, is_archive_path, read_archive_dir,
+    read_archive_entry, split_archive_path,
+};
 pub use bytes::{ByteRange, FileProbe, MAX_RANGE_LEN, base64, image_mime, probe, read_data_url, read_range};
 use encoding::SNIFF_LEN;
 pub use encoding::{LARGE_FILE_THRESHOLD, MAX_OPEN_SIZE, READ_ONLY_THRESHOLD, encode, write_atomic};
@@ -100,7 +105,15 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
 /// Symlinks are reported as [`EntryKind::Symlink`] but sorted (and sized) by
 /// what they point to. `excluded` reflects `excludes` (relative to the enclosing
 /// repository root, else to `dir`); `ignored` also the applicable `.gitignore`/`.ignore` files.
+///
+/// Inside an archive (`<archive>!/<entry>`, or the archive file itself) lists its entries.
 pub fn read_dir(dir: &Path, excludes: &[String]) -> IdeResult<Vec<FileEntry>> {
+    if let Some((archive, entry)) = split_archive_path(dir) {
+        return read_archive_dir(&archive, &entry);
+    }
+    if is_archive_file(dir) && fs::metadata(dir).is_ok_and(|m| m.is_file()) {
+        return read_archive_dir(dir, "");
+    }
     if !fs::metadata(dir)?.is_dir() {
         return Err(IdeError::invalid(format!("{} is not a directory", dir.display())));
     }

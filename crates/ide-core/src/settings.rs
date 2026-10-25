@@ -6,6 +6,7 @@ use specta::Type;
 use std::collections::BTreeMap;
 
 pub use crate::editor_settings::*;
+pub use crate::inspection_settings::*;
 pub use crate::workflow_settings::*;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
@@ -40,6 +41,10 @@ pub struct Settings {
     /// Language servers / debug adapters at a user-chosen location, by the
     /// command the language definition launches (`elixir-ls`, `codelldb`).
     pub tools: BTreeMap<String, ToolSettings>,
+    /// Editor › Inspections profiles.
+    pub inspections: InspectionSettings,
+    /// Editor › Natural Languages › Spelling.
+    pub spelling: SpellingSettings,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -77,6 +82,8 @@ impl Default for Settings {
             actions_on_save: ActionsOnSaveSettings::default(),
             external_tools: Vec::new(),
             tools: BTreeMap::new(),
+            inspections: InspectionSettings::default(),
+            spelling: SpellingSettings::default(),
         }
     }
 }
@@ -109,6 +116,11 @@ pub struct GeneralSettings {
     pub save_on_idle: bool,
     pub idle_seconds: u32,
     pub date_format: DateFormatSettings,
+    /// File › Power Save Mode: no automatic popups (completion, parameter info,
+    /// quick documentation) or background highlighting (usages, code vision).
+    pub power_save_mode: bool,
+    /// File › Rename Project… (project layer): the name shown for the project; empty = its folder name.
+    pub project_name: String,
 }
 
 impl Default for GeneralSettings {
@@ -121,6 +133,8 @@ impl Default for GeneralSettings {
             save_on_idle: false,
             idle_seconds: 15,
             date_format: DateFormatSettings::default(),
+            power_save_mode: false,
+            project_name: String::new(),
         }
     }
 }
@@ -210,6 +224,20 @@ pub struct AppearanceSettings {
     /// Status bar widgets shown (`true`) or hidden (`false`) by the user
     /// (status bar context menu); widgets not listed use their default.
     pub status_bar_widgets: BTreeMap<String, bool>,
+    /// Customize Main Toolbar; `None` = the default toolbar.
+    pub main_toolbar: Option<MainToolbarSettings>,
+}
+
+/// Main toolbar entries per side, in order: title widget ids (`project`,
+/// `vcs.branch`…) or `action:<id>`. Widgets in neither list nor `hidden`
+/// (registered later) keep their default place.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MainToolbarSettings {
+    pub left: Vec<String>,
+    pub right: Vec<String>,
+    /// Widgets the user removed.
+    pub hidden: Vec<String>,
 }
 
 impl Default for AppearanceSettings {
@@ -239,6 +267,7 @@ impl Default for AppearanceSettings {
             show_tool_window_names: true,
             widescreen_tool_windows: false,
             status_bar_widgets: BTreeMap::new(),
+            main_toolbar: None,
         }
     }
 }
@@ -273,6 +302,7 @@ pub struct EditorSettings {
     pub smart_keys: SmartKeysSettings,
     pub code_editing: CodeEditingSettings,
     pub inlay: InlayHintsSettings,
+    pub inline_completion: InlineCompletionSettings,
     /// Gutter icon groups turned off (`run`, `breakpoints`, `bookmarks`, `vcs`, `blame`).
     pub gutter_icons_disabled: Vec<String>,
     pub show_gutter_icons: bool,
@@ -307,6 +337,7 @@ impl Default for EditorSettings {
             smart_keys: SmartKeysSettings::default(),
             code_editing: CodeEditingSettings::default(),
             inlay: InlayHintsSettings::default(),
+            inline_completion: InlineCompletionSettings::default(),
             gutter_icons_disabled: Vec::new(),
             show_gutter_icons: true,
             code_style: CodeStyleSettings::default(),
@@ -329,6 +360,22 @@ pub struct FileSettings {
     pub local_history_days: u32,
     /// Upper bound for a project's Local History in MB; the oldest revisions go first.
     pub local_history_max_mb: u32,
+    /// File Types › Recognized File Types: the user's changes, by language id.
+    pub file_types: BTreeMap<String, FileTypeAssociation>,
+    /// Override File Type: file (project-relative and `/`-separated, or absolute) → language id.
+    pub file_type_overrides: BTreeMap<String, String>,
+}
+
+/// One language's file name and hashbang patterns on top of its definition.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FileTypeAssociation {
+    /// Added file name patterns: `*.foo`, `Jenkinsfile`, `Dockerfile.*` (`*` and `?` wildcards).
+    pub patterns: Vec<String>,
+    /// Patterns of the definition (`*.ext`, file names) the user removed.
+    pub removed_patterns: Vec<String>,
+    /// Interpreters run by a `#!` first line, e.g. `node` for `#!/usr/bin/env node`.
+    pub hashbangs: Vec<String>,
 }
 
 impl Default for FileSettings {
@@ -341,6 +388,8 @@ impl Default for FileSettings {
             ensure_final_newline: true,
             local_history_days: 5,
             local_history_max_mb: 512,
+            file_types: BTreeMap::new(),
+            file_type_overrides: BTreeMap::new(),
         }
     }
 }
@@ -471,6 +520,17 @@ pub struct ProjectStructureSettings {
     pub excluded: Vec<String>,
     /// Auto-detected roots (from `pom.xml`, `build.gradle`, `Cargo.toml`, …) the user unmarked.
     pub unmarked: Vec<String>,
+    /// Content roots besides the project folder (absolute paths), shown and searched with it.
+    pub content_roots: Vec<String>,
+    /// "Exclude files": `;`-separated name patterns (`*.log;tmp*`) excluded at any depth.
+    pub exclude_files: String,
+}
+
+impl ProjectStructureSettings {
+    /// The "Exclude files" name patterns.
+    pub fn exclude_file_patterns(&self) -> Vec<String> {
+        self.exclude_files.split(';').map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned).collect()
+    }
 }
 
 impl Settings {
@@ -486,10 +546,12 @@ impl Settings {
         out
     }
 
-    /// `files.exclude` plus `files.ignoredNames` (a bare name matches at any depth).
+    /// `files.exclude`, `files.ignoredNames` and the Project Structure "Exclude files"
+    /// patterns (a bare name matches at any depth).
     pub fn file_excludes(&self) -> Vec<String> {
         let mut out = self.files.exclude.clone();
         out.extend(self.files.ignored_names.iter().filter(|n| !n.trim().is_empty()).cloned());
+        out.extend(self.project_structure.exclude_file_patterns().into_iter().filter(|p| !p.contains('/')));
         out
     }
 
@@ -523,5 +585,16 @@ mod tests {
         assert_eq!((k.name.as_str(), k.parent.as_str()), ("Mine", "vscode-macos"));
         assert!(k.overrides["file.save"].is_empty());
         assert_eq!(serde_json::to_value(Settings::default()).unwrap()["customKeymaps"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn exclude_files_patterns_join_the_file_excludes() {
+        let s: Settings = serde_json::from_str(
+            r#"{"files":{"exclude":[],"ignoredNames":[]},"projectStructure":{"excludeFiles":" *.log ; tmp*;;"}}"#,
+        )
+        .unwrap();
+        assert_eq!(s.project_structure.exclude_file_patterns(), vec!["*.log", "tmp*"]);
+        assert_eq!(s.file_excludes(), vec!["*.log", "tmp*"]);
+        assert!(Settings::default().files.file_types.is_empty());
     }
 }

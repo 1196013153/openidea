@@ -3,11 +3,12 @@ import { create } from "zustand";
 import type { Branch, BranchInfo, Commit } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { workflowSettings } from "@/platform/workflowSettings";
-import { computeGraph, emptyGraphState, type GraphRow, type GraphState } from "./graph";
+import { collapseLinear, computeGraph, emptyGraphState, type GraphRow, type GraphState } from "./graph";
+import { logOptions, setLogOptions, type LogOptions } from "./logOptions";
 import { clearConsole, errorMessage } from "./ops";
 import { currentRepo, repoOf, selectRepo, useVcs } from "./store";
 
-/** Date filter: commits made after / before the given times (epoch ms); applied client-side. */
+/** Date filter: commits made (committer time) after / before the given times (epoch ms). */
 export interface LogDateFilter {
   after: number | null;
   before: number | null;
@@ -48,6 +49,8 @@ interface LogState {
   tab: "log" | "console";
   /** Bumped to ask the list to scroll the selection into view. */
   revealTick: number;
+  /** The current user (`user.email`, else `user.name`), for View Options › Highlight › My Commits. */
+  user: string | null;
   generation: number;
 }
 
@@ -118,6 +121,7 @@ const initialLog = (): Omit<LogState, "generation"> => ({
   outgoing: null,
   tab: "log",
   revealTick: 0,
+  user: null,
 });
 
 export const useGitLog = create<LogState>(() => ({ ...initialLog(), generation: 0 }));
@@ -165,6 +169,7 @@ export function reloadLog(): Promise<void> {
   }));
   loadPromise = null;
   void loadOutgoing();
+  void currentUser().then((user) => useGitLog.setState({ user }));
   return loadMore();
 }
 
@@ -216,6 +221,7 @@ export function loadMore(): Promise<void> {
         if (useGitLog.getState().generation === gen) useGitLog.setState({ done: true });
         return;
       }
+      const o = logOptions();
       const page = await call(
         commands.vcsLog(currentRepo(), {
           branch: null,
@@ -229,6 +235,12 @@ export function loadMore(): Promise<void> {
           range: null,
           skip: s.commits.length,
           limit: Math.min(PAGE, cap - s.commits.length),
+          order: o.sort,
+          firstParent: o.firstParent,
+          noMerges: o.noMerges,
+          // The date filter runs in the backend so the graph stays connected.
+          sinceMs: f.date?.after ?? null,
+          untilMs: f.date?.before ?? null,
         }),
       );
       const cur = useGitLog.getState();
@@ -336,4 +348,57 @@ export function goToChild(c: Commit) {
   for (let i = index - 1; i >= 0; i--) {
     if (commits[i]!.parents.includes(c.id)) return selectCommit(commits[i]!.id, true);
   }
+}
+
+/** Graph / View Options change; options that change the query reload the log. */
+export function updateLogOptions(patch: Partial<LogOptions>) {
+  if (setLogOptions(patch)) void reloadLog();
+}
+
+/** Highlight › My Commits: authored by the current user. */
+export function isMine(c: Commit, user: string | null): boolean {
+  if (!user) return false;
+  const u = user.toLowerCase();
+  return c.email.toLowerCase() === u || c.author.toLowerCase() === u;
+}
+
+/**
+ * Go to Hash/Branch/Tag: selects the commit `rev` names, paging the log until it is
+ * loaded (and clearing the filters when they hide it). False when there is no such commit.
+ */
+export async function goToRef(rev: string): Promise<boolean> {
+  const target = rev.trim();
+  if (!target) return false;
+  let id: string | undefined;
+  try {
+    const [hit] = await call(
+      commands.vcsLog(currentRepo(), {
+        branch: target,
+        path: null,
+        author: null,
+        text: null,
+        range: null,
+        skip: 0,
+        limit: 1,
+      }),
+    );
+    id = hit?.id;
+  } catch {
+    id = undefined;
+  }
+  if (!id) return false;
+  useGitLog.setState({ tab: "log" });
+  const find = () => useGitLog.getState().commits.some((c) => c.id === id);
+  if (!useGitLog.getState().commits.length) await reloadLog();
+  for (let i = 0; i < MAX_SEARCH_PAGES && !find() && !useGitLog.getState().done; i++) await loadMore();
+  if (!find()) await revealCommit(id);
+  if (!find()) return false;
+  // A commit inside a collapsed linear branch: expand them (IDEA does the same).
+  if (logOptions().collapseLinear) {
+    const head = useVcs.getState().branch?.headCommit;
+    const shown = collapseLinear(useGitLog.getState().commits, new Set(head ? [head] : [])).commits;
+    if (!shown.some((c) => c.id === id)) setLogOptions({ collapseLinear: false });
+  }
+  selectCommit(id, true);
+  return true;
 }

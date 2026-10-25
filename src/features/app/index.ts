@@ -11,6 +11,8 @@ import { buildInfo } from "./host";
 import { KeymapReferenceOverlay } from "./KeymapReference";
 import { installLocaleSync, registerLocalizedActions } from "./locale";
 import { installMenuBridge } from "./menuBridge";
+import { NewProjectOverlay } from "./NewProject";
+import { projectActions, registerPowerSaveBanner } from "./projectActions";
 import { installWindowTitle } from "./title";
 import { installLaunchHandling, windowActions } from "./windows";
 
@@ -24,6 +26,9 @@ export function activate(): () => void {
     registerOverlay({ id: "app.about", component: AboutOverlay }),
     registerOverlay({ id: "app.keymapReference", component: KeymapReferenceOverlay }),
     registerOverlay({ id: "app.invalidateCaches", component: InvalidateCachesOverlay }),
+    registerOverlay({ id: "app.newProject", component: NewProjectOverlay }),
+    registerLocalizedActions(projectActions),
+    registerPowerSaveBanner(),
     registerInvalidateCachesActions(),
     installMenuBridge(),
     installWindowTitle(),

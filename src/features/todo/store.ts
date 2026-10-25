@@ -5,7 +5,7 @@
 import { Channel } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { call, cancelRequestSafe, commands, isTauri, nextRequestId, onIdeEvent } from "./ipc";
-import type { RequestId, SearchEvent, SearchQuery } from "@/platform/ipc";
+import type { RequestId, SearchEvent, SearchQuery, SearchScope } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { onEditorEvent } from "@/editor/api";
 import { buildTodoQuery, DEFAULT_TODO_SETTINGS, itemsFromMatches, type TodoItem, type TodoSettings } from "./model";
@@ -51,6 +51,10 @@ interface TodoState {
   error: string | null;
   limitHit: boolean;
   scannedOnce: boolean;
+  /** Results of the "Scope Based" tab's scan, for the scope `scopedKey`. */
+  scoped: Map<string, TodoItem[]>;
+  scopedKey: string | null;
+  scopedScanning: boolean;
 }
 
 export const useTodos = create<TodoState>(() => ({
@@ -60,6 +64,9 @@ export const useTodos = create<TodoState>(() => ({
   error: null,
   limitHit: false,
   scannedOnce: false,
+  scoped: new Map(),
+  scopedKey: null,
+  scopedScanning: false,
 }));
 
 export function setLiveTodos(path: string, items: TodoItem[] | null) {
@@ -71,11 +78,18 @@ export function setLiveTodos(path: string, items: TodoItem[] | null) {
   });
 }
 
-let inflight: RequestId | null = null;
+/** The running scan of a consumer (the project index, the Scope Based tab). */
+interface Slot {
+  id: RequestId | null;
+}
+
+const projectSlot: Slot = { id: null };
+const scopeSlot: Slot = { id: null };
 
 function run(
   query: SearchQuery,
   onFile: (path: string, items: TodoItem[]) => void,
+  slot: Slot = projectSlot,
 ): Promise<{ limitHit: boolean } | null> {
   const settings = useTodoSettings.getState();
   return new Promise((resolve, reject) => {
@@ -84,14 +98,14 @@ function run(
     const finish = (v: { limitHit: boolean } | null) => {
       if (settled) return;
       settled = true;
-      if (inflight === id) inflight = null;
+      if (slot.id === id) slot.id = null;
       resolve(v);
     };
-    if (inflight !== null) cancelRequestSafe(inflight);
-    inflight = id;
+    if (slot.id !== null) cancelRequestSafe(slot.id);
+    slot.id = id;
     const channel = new Channel<SearchEvent>();
     channel.onmessage = (ev) => {
-      if (settled || inflight !== id) return;
+      if (settled || slot.id !== id) return;
       if (ev.type === "file") onFile(ev.file.path, itemsFromMatches(ev.file, settings));
       else finish(ev.summary.cancelled ? null : { limitHit: ev.summary.limitHit });
     };
@@ -100,7 +114,7 @@ function run(
       (e) => {
         if (settled) return;
         settled = true;
-        if (inflight === id) inflight = null;
+        if (slot.id === id) slot.id = null;
         reject(e);
       },
     );
@@ -157,7 +171,7 @@ export async function scanProject(): Promise<void> {
 /** Rescans a few files (after saves / external changes). */
 export async function rescanFiles(paths: string[], removed: string[] = []): Promise<void> {
   if (!isTauri()) return;
-  if (inflight !== null) {
+  if (projectSlot.id !== null) {
     // Wait for the running scan instead of cancelling it.
     queueRefresh(paths, removed, 1000);
     return;
@@ -198,6 +212,37 @@ function dropPaths(paths: string[]) {
   });
 }
 
+let scopeSeq = 0;
+
+/**
+ * Scans `scope` for the Scope Based tab (null: nothing to scan). `key` names the
+ * scope, so the view can tell whether the results are for the chosen one.
+ */
+export async function scanScope(key: string, scope: SearchScope | null): Promise<void> {
+  const seq = ++scopeSeq;
+  const query = scope && isTauri() ? buildTodoQuery(useTodoSettings.getState(), scope) : null;
+  if (!query) {
+    if (scopeSlot.id !== null) cancelRequestSafe(scopeSlot.id);
+    useTodos.setState({ scoped: new Map(), scopedKey: key, scopedScanning: false });
+    return;
+  }
+  useTodos.setState((s) => ({ scopedScanning: true, scoped: s.scopedKey === key ? s.scoped : new Map(), scopedKey: key }));
+  const found = new Map<string, TodoItem[]>();
+  try {
+    const r = await run(
+      query,
+      (path, items) => {
+        if (items.length) found.set(path, items);
+      },
+      scopeSlot,
+    );
+    if (seq !== scopeSeq || !r) return;
+    useTodos.setState({ scoped: found, scopedScanning: false });
+  } catch {
+    if (seq === scopeSeq) useTodos.setState({ scoped: new Map(), scopedScanning: false });
+  }
+}
+
 // --- incremental refresh -------------------------------------------------------
 
 const pending = new Set<string>();
@@ -236,7 +281,7 @@ export function installTodoIndex(): () => void {
     const r = s.project?.root ?? null;
     if (r === root) return;
     root = r;
-    useTodos.setState({ scanned: new Map(), live: new Map(), scannedOnce: false, error: null });
+    useTodos.setState({ scanned: new Map(), live: new Map(), scannedOnce: false, error: null, scoped: new Map(), scopedKey: null });
     if (r) start();
   });
   let settings = useTodoSettings.getState();
@@ -262,7 +307,8 @@ export function installTodoIndex(): () => void {
   return () => {
     if (startTimer) clearTimeout(startTimer);
     if (timer) clearTimeout(timer);
-    if (inflight !== null) cancelRequestSafe(inflight);
+    if (projectSlot.id !== null) cancelRequestSafe(projectSlot.id);
+    if (scopeSlot.id !== null) cancelRequestSafe(scopeSlot.id);
     unsubProject();
     unsubSettings();
     unsubFs();

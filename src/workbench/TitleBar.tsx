@@ -1,17 +1,30 @@
 import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { useActions } from "@/platform/actions";
-import { call, commands, isTauri } from "@/platform/ipc";
-import { PRESET_TITLES, shortcutLabel, useKeymap } from "@/platform/keymap";
+import { shortcutLabel, useKeymap } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import { BarButton, Icon, IconButton, Menu, type MenuItem, T } from "@/ui";
+import { BarButton, Icon, IconButton, Menu, type MenuItem, showContextMenu, T } from "@/ui";
 import { useContributions, useWorkbenchSlots, type TitleItemContribution } from "./contributions";
 import { ErrorBoundary, Slot } from "./ErrorBoundary";
 import { MainMenu } from "./MainMenu";
+import {
+  editableToolbar,
+  entryAction,
+  isActionEntry,
+  PROJECT_WIDGET,
+  resolveToolbar,
+  saveToolbar,
+  SEARCH_ENTRY,
+  toggleWidget,
+  useMainToolbarSettings,
+  VCS_WIDGET,
+  widgetTitle,
+} from "./mainToolbar";
 import { WindowControls } from "./WindowControls";
 import { usePlatform } from "@/platform/platformInfo";
 import { projectInitials } from "./projectColor";
-import { currentThemeId, setTheme, THEME_CHOICES, useThemeOverride } from "./theme";
+import { keymapItems, themeItems, VIEW_MODE_ITEMS } from "./quickSwitch";
+import { currentThemeId, useThemeOverride } from "./theme";
 import styles from "./TitleBar.module.css";
 
 export function orderTitleItems(items: Iterable<TitleItemContribution>) {
@@ -106,56 +119,81 @@ function VcsFallback() {
   );
 }
 
-async function selectKeymap(id: string) {
-  if (!isTauri()) return;
-  try {
-    useProject.setState({ settings: await call(commands.settingsSet("global", "keymap", JSON.stringify(id))) });
-  } catch (e) {
-    console.warn("cannot switch keymap", e);
-  }
+/**
+ * Customize Main Toolbar ›: a checkbox per widget (and added action), then the
+ * dialog and Restore Default. Also the title bar's context menu.
+ */
+export function customizeToolbarItems(
+  shown: { left: string[]; right: string[] },
+  hidden: readonly string[],
+  items: ReadonlyMap<string, TitleItemContribution>,
+  toggle: (id: string) => void,
+  reset: () => void,
+): MenuItem[] {
+  const entries = [...shown.left, ...shown.right, ...hidden.filter((id) => !isActionEntry(id))];
+  return [
+    ...entries.map<MenuItem>((id) => ({
+      id: `toolbar.${id}`,
+      label: widgetTitle(id, items),
+      checked: !hidden.includes(id),
+      run: () => toggle(id),
+    })),
+    { kind: "separator" },
+    { kind: "action", action: "toolbar.customize", label: "Customize Toolbar…" },
+    { id: "toolbar.reset", label: "Restore Default Toolbar", run: reset },
+  ];
 }
 
-/** IDEA's main toolbar gear: Settings, Plugins, quick Theme / Keymap switches, Check for Updates. */
-export function gearMenuItems(themeId: string, keymapId: string, customKeymaps: string[]): MenuItem[] {
+/** IDEA's main toolbar gear: Run Anything, Settings, Plugins, quick switches, toolbar customization, updates. */
+export function gearMenuItems(
+  themeId: string,
+  keymapId: string,
+  customKeymaps: string[],
+  customize: MenuItem[] = [{ kind: "action", action: "toolbar.customize", label: "Customize Toolbar…" }],
+): MenuItem[] {
   return [
+    { kind: "action", action: "runAnything.show" },
+    { kind: "separator" },
     { kind: "action", action: "file.settings" },
     { kind: "action", action: "plugins.settings" },
     { kind: "separator" },
     {
       id: "gear.theme",
       label: "Theme",
-      submenu: [
-        ...THEME_CHOICES.map<MenuItem>((c) => ({
-          id: `theme.${c.id}`,
-          label: c.label,
-          checked: c.id === themeId,
-          run: () => void setTheme(c.id),
-        })),
-        { kind: "separator" },
-        { kind: "action", action: "settings.appearance" },
-      ],
+      submenu: [...themeItems(themeId), { kind: "separator" }, { kind: "action", action: "settings.appearance" }],
     },
     {
       id: "gear.keymap",
       label: "Keymap",
       submenu: [
-        ...[...Object.keys(PRESET_TITLES), ...customKeymaps].map<MenuItem>((id) => ({
-          id: `keymap.${id}`,
-          label: PRESET_TITLES[id] ?? id,
-          verbatim: !PRESET_TITLES[id],
-          checked: id === keymapId,
-          run: () => void selectKeymap(id),
-        })),
+        ...keymapItems(keymapId, customKeymaps),
         { kind: "separator" },
         { kind: "action", action: "settings.keymap", label: "Configure Keymap…" },
       ],
     },
+    { id: "gear.viewMode", label: "View Mode", submenu: VIEW_MODE_ITEMS },
+    { kind: "separator" },
+    { id: "gear.customizeToolbar", label: "Customize Main Toolbar", submenu: customize },
     { kind: "separator" },
     { kind: "action", action: "app.checkForUpdates" },
   ];
 }
 
-function GearButton() {
+/** Toolbar entries and the customization menu, from the saved layout. */
+function useToolbar() {
+  const map = useContributions((s) => s.titleItems);
+  const saved = useMainToolbarSettings();
+  const shown = useMemo(() => resolveToolbar(saved, map.values()), [saved, map]);
+  const toggle = (id: string) => {
+    const layout = editableToolbar(saved, map.values());
+    const side = map.get(id)?.align ?? (id === SEARCH_ENTRY ? "right" : "left");
+    void saveToolbar(toggleWidget(layout, id, side));
+  };
+  const menu = customizeToolbarItems(shown, saved?.hidden ?? [], map, toggle, () => void saveToolbar(null));
+  return { map, shown, menu };
+}
+
+function GearButton({ customize }: { customize: MenuItem[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const settings = useProject((s) => s.settings);
@@ -167,6 +205,7 @@ function GearButton() {
     currentThemeId(),
     typeof settings?.keymap === "string" ? settings.keymap : preset,
     customs && typeof customs === "object" ? Object.keys(customs) : [],
+    customize,
   );
   return (
     <>
@@ -191,6 +230,30 @@ function GearButton() {
   );
 }
 
+/** One main toolbar entry: a built-in widget, a contributed one or an added action. */
+function ToolbarEntry({ id, items }: { id: string; items: ReadonlyMap<string, TitleItemContribution> }) {
+  const actions = useActions((s) => s.actions);
+  if (id === PROJECT_WIDGET) return <ProjectButton />;
+  const item = items.get(id);
+  if (item) return <TitleItem item={item} />;
+  if (id === VCS_WIDGET) return <VcsFallback />;
+  if (!isActionEntry(id)) return null;
+  const action = actions.get(entryAction(id));
+  if (!action) return null;
+  return (
+    <div className={styles.tools}>
+      <IconButton
+        icon={action.icon ?? "run"}
+        action={action.id}
+        title={action.title}
+        shortcut={shortcutLabel(action.id) ?? (action.id === "navigate.searchEverywhere" ? "⇧⇧" : undefined)}
+        iconSize={18}
+        className={styles.tool}
+      />
+    </div>
+  );
+}
+
 /**
  * 40px main toolbar. macOS: native traffic lights overlay its left edge.
  * Windows: the window is frameless, so the bar carries IDEA's main menu (☰) and
@@ -209,8 +272,7 @@ export function TitleBar({
 }) {
   const overlay = usePlatform((s) => s.overlayTitleBar);
   const frameless = usePlatform((s) => s.framelessTitleBar);
-  const map = useContributions((s) => s.titleItems);
-  const { left, right } = useMemo(() => orderTitleItems(map.values()), [map]);
+  const { map, shown, menu } = useToolbar();
   const [menuExpanded, setMenuExpanded] = useState(false);
   const className = clsx(styles.bar, overlay && styles.overlay, frameless && styles.frameless);
   if (bare)
@@ -224,36 +286,30 @@ export function TitleBar({
         )}
       </header>
     );
+  const entry = (id: string) => <ToolbarEntry key={id} id={id} items={map} />;
   return (
-    <header className={clsx(className, minimal && styles.minimal)} data-tauri-drag-region>
+    <header
+      className={clsx(className, minimal && styles.minimal)}
+      data-tauri-drag-region
+      onContextMenu={(e) => {
+        if (minimal || e.defaultPrevented) return;
+        e.preventDefault();
+        showContextMenu(e, menu);
+      }}
+    >
       {frameless && !minimal && <MainMenu onExpandedChange={setMenuExpanded} />}
       {title && (
         <span className={styles.windowTitle} data-tauri-drag-region>
           {typeof title === "string" ? <T>{title}</T> : title}
         </span>
       )}
-      {!minimal && !menuExpanded && (
-        <>
-          <ProjectButton />
-          {left.length > 0 ? left.map((i) => <TitleItem key={i.id} item={i} />) : <VcsFallback />}
-        </>
-      )}
+      {!minimal && !menuExpanded && shown.left.map(entry)}
       <div className={styles.drag} data-tauri-drag-region />
       {!minimal && (
         <>
-          {right.map((i) => (
-            <TitleItem key={i.id} item={i} />
-          ))}
+          {shown.right.map(entry)}
           <div className={styles.tools}>
-            <IconButton
-              icon="search"
-              action="navigate.searchEverywhere"
-              title="Search Everywhere"
-              shortcut={shortcutLabel("navigate.searchEverywhere") ?? "⇧⇧"}
-              iconSize={18}
-              className={styles.tool}
-            />
-            <GearButton />
+            <GearButton customize={menu} />
           </div>
         </>
       )}

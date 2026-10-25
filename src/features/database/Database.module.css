@@ -245,6 +245,13 @@
   gap: 6px;
   min-width: 0;
 }
+.tinted {
+  flex: 1;
+  margin: 0 -4px;
+  padding: 0 4px;
+  border-radius: var(--radius-control, 4px);
+  background: color-mix(in srgb, var(--db-tint) var(--tint-strength), transparent);
+}
 .nodeLabel {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -333,6 +340,128 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+/* Data source dialog. */
+.formSection {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-strong);
+}
+.formSection::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.formWide {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.portInput {
+  width: 80px;
+}
+.secondsInput {
+  width: 72px;
+}
+.narrowSelect {
+  min-width: 140px;
+}
+.segmented {
+  display: inline-flex;
+  justify-self: start;
+  border-radius: var(--radius-control, 4px);
+  box-shadow: inset 0 0 0 1px var(--border-button);
+}
+.segmented button {
+  height: var(--h-field, 28px);
+  padding: 0 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--bg-tab-selected);
+  box-shadow: inset 0 0 0 1px var(--border-tab-selected);
+  color: var(--fg-strong);
+}
+.segmented button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.textArea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control, 4px);
+  background: var(--bg-input);
+  color: var(--fg-editor, var(--fg-strong));
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.5;
+}
+.textArea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.linkButton {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+.linkButton:hover {
+  text-decoration: underline;
+}
+.colorValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.colorSwatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.namePicker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nameList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 22px;
+}
+.propertyTable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.propertyHead,
+.propertyRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 24px;
+  align-items: center;
+  gap: 6px;
+}
+.propertyHead {
+  color: var(--fg-secondary);
+  font-size: var(--fs-small);
 }
 .testResult {
   grid-column: 1 / -1;

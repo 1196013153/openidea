@@ -1,18 +1,23 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import type { RunConfig } from "@/platform/ipc";
-import { Button, Checkbox, Dialog, Icon, IconButton, Input, Select, type SelectOption, T } from "@/ui";
-import { notifications } from "@/workbench/contributions";
+import { executeAction } from "@/platform/actions";
+import { call, commands, isTauri, type RunConfig } from "@/platform/ipc";
+import { Button, Dialog, Icon, IconButton, Input, T } from "@/ui";
 import {
-  KIND_OPTIONS,
+  notifications,
+  useRunConfigTypes,
+  runConfigTypes,
+  type RunConfigTypeContribution,
+} from "@/workbench/contributions";
+import { AddConfigPopup } from "./AddConfigPopup";
+import { ConfigForm, Field } from "./ConfigForm";
+import {
   commandLine,
   configIcon,
   duplicateConfig,
-  formatArgs,
   groupConfigs,
   hasErrors,
-  newConfig,
-  parseArgs,
+  kindLabel,
   removeConfig,
   upsertConfig,
   userConfigs,
@@ -20,42 +25,10 @@ import {
   type ConfigErrors,
 } from "./configs";
 import { saveUserConfigs, selectConfig, useRun } from "./store";
+import { blankTemplate, COMPOUND, missingParams, newConfigOfType, templateId, typeFor } from "./types";
 import styles from "./Run.module.css";
 
-/**
- * Debug adapters with a real launch template (`debugger/launch.ts`, `debugger/java.ts`),
- * verified against small programs. Others (netcoredbg, dart, php-debug, …) only got
- * generic launch arguments and are left out until they have one; a configuration that
- * already names one keeps it.
- */
-const ADAPTERS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: "java-debug", label: "java-debug (Java)" },
-  { id: "debugpy", label: "debugpy (Python)" },
-  { id: "js-debug", label: "js-debug (Node.js / TypeScript)" },
-  { id: "delve", label: "Delve (Go)" },
-  { id: "codelldb", label: "CodeLLDB (Rust, C, C++)" },
-  { id: "lldb-dap", label: "lldb-dap (C, C++, Swift)" },
-];
-
-interface EnvRow {
-  key: string;
-  value: string;
-}
-
-const envRows = (env: RunConfig["env"]): EnvRow[] => Object.entries(env).map(([key, value]) => ({ key, value }));
-
-/** Env map from table rows; blank rows are ignored. */
-export function envFromRows(rows: readonly EnvRow[]): { env: RunConfig["env"]; error?: string } {
-  const env: RunConfig["env"] = {};
-  for (const r of rows) {
-    const key = r.key.trim();
-    if (!key && !r.value) continue;
-    if (!key) return { env, error: "Environment variable names can't be empty" };
-    if (key in env) return { env, error: `Duplicate environment variable: ${key}` };
-    env[key] = r.value;
-  }
-  return { env };
-}
+export { envFromRows } from "./EnvDialog";
 
 export function EditConfigsOverlay() {
   const open = useRun((s) => s.editorOpen);
@@ -63,81 +36,236 @@ export function EditConfigsOverlay() {
   return <EditConfigsDialog />;
 }
 
+type Selection =
+  { type: "config"; id: string } | { type: "folder"; kind: string; name: string } | { type: "template"; kind: string };
+
+export type TreeRow =
+  | { type: "group"; key: string; kind: string; label: string; icon: string }
+  | { type: "folder"; key: string; kind: string; name: string }
+  | { type: "config"; key: string; config: RunConfig; depth: 1 | 2 };
+
+/** Sidebar rows: type groups, their folders (first), then loose configurations; collapsed nodes hide their children. */
+export function treeRows(
+  configs: readonly RunConfig[],
+  extraFolders: ReadonlyArray<{ kind: string; name: string }> = [],
+  collapsed: ReadonlySet<string> = new Set(),
+): TreeRow[] {
+  const rows: TreeRow[] = [];
+  const groups = groupConfigs(configs);
+  for (const f of extraFolders)
+    if (!groups.some((g) => g.kind === f.kind)) groups.push({ kind: f.kind, label: kindLabel(f.kind), configs: [] });
+  for (const g of groups) {
+    const groupKey = `g:${g.kind}`;
+    rows.push({
+      type: "group",
+      key: groupKey,
+      kind: g.kind,
+      label: g.label,
+      icon: configIcon({ kind: g.kind, isTest: false }),
+    });
+    if (collapsed.has(groupKey)) continue;
+    const folders: string[] = [];
+    for (const c of g.configs) if (c.folder && !folders.includes(c.folder)) folders.push(c.folder);
+    for (const f of extraFolders) if (f.kind === g.kind && !folders.includes(f.name)) folders.push(f.name);
+    for (const name of folders) {
+      const folderKey = `f:${g.kind}:${name}`;
+      rows.push({ type: "folder", key: folderKey, kind: g.kind, name });
+      if (collapsed.has(folderKey)) continue;
+      for (const c of g.configs)
+        if (c.folder === name) rows.push({ type: "config", key: `c:${c.id}`, config: c, depth: 2 });
+    }
+    for (const c of g.configs) if (!c.folder) rows.push({ type: "config", key: `c:${c.id}`, config: c, depth: 1 });
+  }
+  return rows;
+}
+
+/** Moves `id` before / after its neighbour among the configurations of the same type and folder. */
+export function moveConfig(configs: readonly RunConfig[], id: string, delta: -1 | 1): RunConfig[] {
+  const current = configs.find((c) => c.id === id);
+  if (!current) return [...configs];
+  const siblings = configs.filter((c) => c.kind === current.kind && (c.folder ?? "") === (current.folder ?? ""));
+  const at = siblings.indexOf(current);
+  const other = siblings[at + delta];
+  if (!other) return [...configs];
+  const out = [...configs];
+  const i = out.indexOf(current);
+  const j = out.indexOf(other);
+  [out[i], out[j]] = [out[j]!, out[i]!];
+  return out;
+}
+
+function uniqueFolder(
+  kind: string,
+  configs: readonly RunConfig[],
+  extra: ReadonlyArray<{ kind: string; name: string }>,
+): string {
+  const taken = new Set([
+    ...configs.filter((c) => c.kind === kind).map((c) => c.folder),
+    ...extra.filter((f) => f.kind === kind).map((f) => f.name),
+  ]);
+  if (!taken.has("New Folder")) return "New Folder";
+  for (let i = 2; ; i++) if (!taken.has(`New Folder (${i})`)) return `New Folder (${i})`;
+}
+
+const isMac = () => typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+
 function EditConfigsDialog() {
   const initialConfigs = useRun((s) => s.configs);
+  const temporary = useRun((s) => s.temporary);
   const target = useRun((s) => s.editTarget ?? s.selectedId);
-  const [draft, setDraft] = useState<RunConfig[]>(() => initialConfigs.map((c) => ({ ...c })));
-  const [selected, setSelected] = useState<string | null>(() =>
-    initialConfigs.some((c) => c.id === target) ? target : (initialConfigs[0]?.id ?? null),
-  );
-  const [argsText, setArgsText] = useState<Record<string, string>>({});
-  const [envText, setEnvText] = useState<Record<string, EnvRow[]>>({});
+  const types = useRunConfigTypes((s) => s.types);
+  const [draft, setDraft] = useState<RunConfig[]>(() => initialConfigs.map((c) => structuredClone(c)));
+  const [selection, setSelection] = useState<Selection | null>(() => {
+    const id = initialConfigs.some((c) => c.id === target) ? target : initialConfigs[0]?.id;
+    return id ? { type: "config", id } : null;
+  });
+  const [mode, setMode] = useState<"configs" | "templates">("configs");
+  const [templates, setTemplates] = useState<RunConfig[] | null>(() => (isTauri() ? null : []));
+  const [templatesDirty, setTemplatesDirty] = useState(false);
+  const [extraFolders, setExtraFolders] = useState<Array<{ kind: string; name: string }>>([]);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   // "Modify Run Configuration…": the would-be configuration is saved on OK even when unedited.
   const [dirty, setDirty] = useState(() => useRun.getState().editDirty);
   const [saving, setSaving] = useState(false);
+  const [adding, setAdding] = useState<{ x: number; y: number } | null>(null);
+  const [modifyRequest, setModifyRequest] = useState(0);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const dragged = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let live = true;
+    call(commands.runTemplates())
+      .then((t) => live && setTemplates(t))
+      .catch(() => live && setTemplates([]));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const close = () => useRun.setState({ editorOpen: false, editTarget: null });
-  const current = draft.find((c) => c.id === selected) ?? null;
+  const current = selection?.type === "config" ? (draft.find((c) => c.id === selection.id) ?? null) : null;
+  const templateFor = (kind: string): RunConfig | null => {
+    const t = typeFor(kind);
+    return templates?.find((x) => x.kind === kind) ?? (t ? blankTemplate(t) : null);
+  };
+  const currentTemplate = selection?.type === "template" ? templateFor(selection.kind) : null;
 
   const errorsById = useMemo(() => {
     const out: Record<string, ConfigErrors> = {};
     for (const c of draft) {
       if (c.detected) continue;
-      const e = validateConfig(c, draft);
-      const rows = envText[c.id];
-      const envError = rows ? envFromRows(rows).error : undefined;
-      if (envError) e.env = envError;
+      const e: ConfigErrors = { ...validateConfig(c, draft), ...missingParams(c) };
+      if (Object.keys(missingParams(c)).length) delete e.command;
       if (hasErrors(e)) out[c.id] = e;
     }
     return out;
-  }, [draft, envText]);
+  }, [draft]);
   const invalid = Object.keys(errorsById).length > 0;
   const errors = (current && errorsById[current.id]) ?? {};
 
-  const update = (patch: Partial<RunConfig>) => {
-    if (!current) return;
-    setDraft((d) => upsertConfig(d, { ...current, ...patch }));
+  const replace = (next: RunConfig) => {
+    setDraft((d) => upsertConfig(d, next));
     setDirty(true);
   };
 
-  const add = () => {
-    const c = newConfig(draft);
+  const add = (type: RunConfigTypeContribution) => {
+    const folder = selection?.type === "folder" && selection.kind === type.id ? selection.name : null;
+    const c = newConfigOfType(type, draft, templateFor(type.id), folder);
     setDraft((d) => [...d, c]);
-    setSelected(c.id);
+    setSelection({ type: "config", id: c.id });
+    setMode("configs");
     setDirty(true);
+  };
+
+  const openAdd = (anchor?: HTMLElement | null) => {
+    const r = (anchor ?? addRef.current)?.getBoundingClientRect();
+    setAdding(r ? { x: r.left, y: r.bottom + 2 } : { x: window.innerWidth / 2 - 120, y: 120 });
   };
 
   const duplicate = () => {
     if (!current) return;
     const c = duplicateConfig(current, draft);
     setDraft((d) => [...d, c]);
-    setSelected(c.id);
+    setSelection({ type: "config", id: c.id });
     setDirty(true);
   };
 
   const remove = () => {
+    if (selection?.type === "folder") {
+      // Removing a folder keeps its configurations (they move up a level), as in IDEA.
+      setDraft((d) =>
+        d.map((c) =>
+          c.kind === selection.kind && c.folder === selection.name ? { ...c, folder: null, detected: false } : c,
+        ),
+      );
+      setExtraFolders((f) => f.filter((x) => !(x.kind === selection.kind && x.name === selection.name)));
+      setSelection(null);
+      setDirty(true);
+      return;
+    }
     if (!current || current.detected) return;
     const index = draft.findIndex((c) => c.id === current.id);
     const next = removeConfig(draft, current.id);
     setDraft(next);
-    setSelected(next[Math.min(index, next.length - 1)]?.id ?? null);
+    const neighbour = next[Math.min(index, next.length - 1)];
+    setSelection(neighbour ? { type: "config", id: neighbour.id } : null);
     setDirty(true);
   };
 
-  const save = async (andClose: boolean) => {
+  const newFolder = () => {
+    const kind = current?.kind ?? (selection?.type === "folder" ? selection.kind : null);
+    if (!kind) return;
+    const name = uniqueFolder(kind, draft, extraFolders);
+    setExtraFolders((f) => [...f, { kind, name }]);
+    // IDEA moves the selected configuration into the new folder.
+    if (current) replace({ ...current, folder: name });
+    setSelection({ type: "folder", kind, name });
+  };
+
+  const renameFolder = (kind: string, from: string, to: string) => {
+    setDraft((d) =>
+      d.map((c) => (c.kind === kind && c.folder === from ? { ...c, folder: to || null, detected: false } : c)),
+    );
+    setExtraFolders((f) => f.map((x) => (x.kind === kind && x.name === from ? { kind, name: to } : x)));
+    setSelection({ type: "folder", kind, name: to });
+    setDirty(true);
+  };
+
+  const move = (delta: -1 | 1) => {
+    if (!current) return;
+    setDraft((d) => moveConfig(d, current.id, delta));
+    setDirty(true);
+  };
+
+  const updateTemplate = (next: RunConfig) => {
+    setTemplates((list) => [
+      ...(list ?? []).filter((t) => t.kind !== next.kind),
+      { ...next, id: templateId(next.kind), detected: false },
+    ]);
+    setTemplatesDirty(true);
+  };
+
+  const save = async (andClose: boolean): Promise<boolean> => {
     if (invalid) {
       const firstBad = Object.keys(errorsById)[0];
-      if (firstBad) setSelected(firstBad);
-      return;
+      if (firstBad) {
+        setMode("configs");
+        setSelection({ type: "config", id: firstBad });
+      }
+      return false;
     }
     setSaving(true);
     try {
       if (dirty) await saveUserConfigs(userConfigs(draft));
+      if (templatesDirty && templates) await call(commands.runSaveTemplates(templates));
       setDirty(false);
+      setTemplatesDirty(false);
       if (andClose) {
-        if (selected) selectConfig(selected);
+        if (current) selectConfig(current.id);
         close();
       }
+      return true;
     } catch (e) {
       notifications().notify({
         group: "run",
@@ -145,249 +273,354 @@ function EditConfigsDialog() {
         title: "Cannot save run configurations",
         body: e instanceof Error ? e.message : String(e),
       });
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const groups = groupConfigs(draft);
-  const isOverride = current && !current.detected && !current.id.startsWith("user:");
-
-  const kindOptions: SelectOption[] = KIND_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
-  if (current && !kindOptions.some((o) => o.value === current.kind))
-    kindOptions.push({ value: current.kind, label: current.kind });
-
-  const adapterOptions: SelectOption[] = [
-    { value: "", label: "None" },
-    ...ADAPTERS.map((a) => ({ value: a.id, label: a.label })),
-  ];
-  if (current?.debugAdapter && !ADAPTERS.some((a) => a.id === current.debugAdapter))
-    adapterOptions.push({ value: current.debugAdapter, label: `${current.debugAdapter} (no launch template)` });
-
-  const rows = current ? (envText[current.id] ?? envRows(current.env)) : [];
-  const setRows = (next: EnvRow[]) => {
-    if (!current) return;
-    setEnvText((m) => ({ ...m, [current.id]: next }));
-    const { env, error } = envFromRows(next);
-    if (!error) update({ env });
-    else setDirty(true);
+  /** The dialog's Run / Debug: apply, close and launch the selected configuration. */
+  const launch = async (debug: boolean) => {
+    if (!current || !(await save(true))) return;
+    void executeAction(debug ? "run.debugConfig" : "run.runConfig", current.id);
   };
+
+  const rows = treeRows(draft, extraFolders, collapsed);
+  const toggle = (key: string) =>
+    setCollapsed((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const onDrop = (e: DragEvent, kind: string, folder: string | null) => {
+    const id = dragged.current;
+    dragged.current = null;
+    const c = draft.find((x) => x.id === id);
+    if (!c || c.kind !== kind) return;
+    e.preventDefault();
+    replace({ ...c, folder });
+  };
+
+  // IDEA: ⌘N / Alt+Insert adds a configuration, ⌥M opens "Modify options".
+  const onKeyDown = (e: KeyboardEvent) => {
+    const add =
+      (e.code === "KeyN" && (isMac() ? e.metaKey || e.ctrlKey : e.ctrlKey)) || (e.altKey && e.key === "Insert");
+    if (add && mode === "configs") {
+      e.preventDefault();
+      openAdd();
+      return;
+    }
+    if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyM" && (current || currentTemplate)) {
+      e.preventDefault();
+      setModifyRequest((n) => n + 1);
+    }
+  };
+
+  const templateTypes = runConfigTypes(types).filter((t) => t.id !== COMPOUND);
+  const canRemove = selection?.type === "folder" || (!!current && !current.detected);
 
   return (
     <Dialog
       open
       onClose={close}
       title="Run/Debug Configurations"
-      width={820}
+      width={860}
       className={styles.editDialog}
       footerStart={
-        invalid && (
-          <span className={styles.footerError}>
-            <Icon name="error" size={13} /> <T>Fix the highlighted fields</T>
-          </span>
-        )
+        <span className={styles.footerRun}>
+          <Button
+            icon="run"
+            disabled={!current || saving || invalid || mode !== "configs"}
+            onClick={() => void launch(false)}
+          >
+            <T>Run</T>
+          </Button>
+          <Button
+            icon="debug"
+            disabled={!current || saving || invalid || mode !== "configs"}
+            onClick={() => void launch(true)}
+          >
+            <T>Debug</T>
+          </Button>
+          {invalid && (
+            <span className={styles.footerError}>
+              <Icon name="error" size={13} /> <T>Fix the highlighted fields</T>
+            </span>
+          )}
+        </span>
       }
       buttons={[
         { label: "OK", role: "default", disabled: saving || invalid, onClick: () => void save(true) },
         { label: "Cancel", role: "cancel" },
-        { label: "Apply", disabled: !dirty || saving || invalid, onClick: () => void save(false) },
+        { label: "Apply", disabled: !(dirty || templatesDirty) || saving || invalid, onClick: () => void save(false) },
       ]}
     >
-      <div className={styles.editBody}>
+      <div className={styles.editBody} onKeyDown={onKeyDown}>
         <div className={styles.editSidebar}>
-          <div className={styles.editToolbar} role="toolbar" aria-label="Configurations">
-            <IconButton icon="plus" size="small" iconSize={14} title="Add New Configuration" onClick={add} />
-            <IconButton
-              icon="minus"
-              size="small"
-              iconSize={14}
-              title={isOverride ? "Remove Override (restore detected)" : "Remove Configuration"}
-              disabled={!current || current.detected}
-              onClick={remove}
-            />
-            <IconButton
-              icon="copy"
-              size="small"
-              iconSize={13}
-              title="Copy Configuration"
-              disabled={!current}
-              onClick={duplicate}
-            />
-          </div>
-          <div className={styles.editList} role="listbox" aria-label="Run configurations">
-            {groups.map((g) => (
-              <div key={g.kind} role="group" aria-label={g.label}>
-                <div className={styles.editGroup}>{g.label}</div>
-                {g.configs.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="option"
-                    aria-selected={c.id === selected}
-                    className={clsx(styles.editItem, c.id === selected && styles.editItemSelected)}
-                    onClick={() => setSelected(c.id)}
-                    title={commandLine(c)}
-                  >
-                    <Icon name={configIcon(c)} size={13} className={styles.chooserIcon} />
-                    <span className={styles.chooserName}>{c.name || "Unnamed"}</span>
-                    {errorsById[c.id] && <Icon name="error" size={12} className={styles.failed} label="Invalid" />}
-                    {!c.detected && <span className={styles.chooserMuted}>user</span>}
-                  </button>
-                ))}
-              </div>
-            ))}
-            {draft.length === 0 && (
-              <div className={styles.testEmpty}>
-                <T>No configurations. Click + to add one.</T>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className={styles.editForm}>
-          {current ? (
+          {mode === "configs" ? (
             <>
-              {current.detected && (
-                <div className={styles.notice}>
-                  <T>Detected from the project. Changes are saved as a user configuration that overrides it.</T>
-                </div>
-              )}
-              <Field label="Name" error={errors.name}>
-                <Input
-                  value={current.name}
-                  invalid={!!errors.name}
-                  aria-label="Name"
-                  onChange={(e) => update({ name: e.target.value })}
+              <div className={styles.editToolbar} role="toolbar" aria-label="Configurations">
+                <IconButton
+                  ref={addRef}
+                  icon="plus"
+                  size="small"
+                  iconSize={14}
+                  title="Add New Configuration"
+                  onClick={() => openAdd()}
                 />
-              </Field>
-              <Field label="Kind">
-                <Select
-                  value={current.kind}
-                  options={kindOptions}
-                  onChange={(kind) => update({ kind })}
-                  aria-label="Kind"
+                <IconButton
+                  icon="minus"
+                  size="small"
+                  iconSize={14}
+                  title={
+                    selection?.type === "folder"
+                      ? "Remove Folder"
+                      : current && !current.detected && !current.id.startsWith("user:")
+                        ? "Remove Override (restore detected)"
+                        : "Remove Configuration"
+                  }
+                  disabled={!canRemove}
+                  onClick={remove}
                 />
-              </Field>
-              <Field label="Command" error={errors.command}>
-                <Input
-                  mono
-                  value={current.command}
-                  invalid={!!errors.command}
-                  aria-label="Command"
-                  placeholder="e.g. ./gradlew or cargo"
-                  onChange={(e) => update({ command: e.target.value })}
+                <IconButton
+                  icon="copy"
+                  size="small"
+                  iconSize={13}
+                  title="Copy Configuration"
+                  disabled={!current}
+                  onClick={duplicate}
                 />
-              </Field>
-              <Field label="Arguments">
-                <Input
-                  mono
-                  aria-label="Arguments"
-                  value={argsText[current.id] ?? formatArgs(current.args)}
-                  placeholder="Space separated; quote with ' or &quot;"
-                  onChange={(e) => {
-                    const text = e.target.value;
-                    setArgsText((m) => ({ ...m, [current.id]: text }));
-                    update({ args: parseArgs(text) });
-                  }}
+                <IconButton
+                  icon="folder"
+                  size="small"
+                  iconSize={13}
+                  title="Create New Folder"
+                  disabled={!current && selection?.type !== "folder"}
+                  onClick={newFolder}
                 />
-              </Field>
-              <Field label="Working directory" error={errors.cwd}>
-                <Input
-                  mono
-                  aria-label="Working directory"
-                  value={current.cwd ?? ""}
-                  placeholder="Project root"
-                  onChange={(e) => update({ cwd: e.target.value.trim() ? e.target.value : null })}
+                <IconButton
+                  icon="arrow-up"
+                  size="small"
+                  iconSize={13}
+                  title="Move Up"
+                  disabled={!current}
+                  onClick={() => move(-1)}
                 />
-              </Field>
-              <Field label="Environment" error={errors.env} top>
-                <div className={styles.envTable} role="table" aria-label="Environment variables">
-                  {rows.map((r, i) => (
-                    <div key={i} className={styles.envRow} role="row">
-                      <Input
-                        mono
-                        aria-label={`Variable ${i + 1} name`}
-                        value={r.key}
-                        placeholder="NAME"
-                        onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))}
-                      />
-                      <Input
-                        mono
-                        aria-label={`Variable ${i + 1} value`}
-                        value={r.value}
-                        placeholder="value"
-                        onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
-                      />
-                      <IconButton
-                        icon="minus"
-                        size="small"
-                        iconSize={12}
-                        title="Remove variable"
-                        onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                      />
-                    </div>
-                  ))}
-                  <Button
-                    size="small"
-                    variant="ghost"
-                    icon="plus"
-                    onClick={() => setRows([...rows, { key: "", value: "" }])}
-                  >
-                    <T>Add variable</T>
-                  </Button>
-                </div>
-              </Field>
-              <Field label="">
-                <Checkbox
-                  checked={current.isTest}
-                  onChange={(isTest) => update({ isTest })}
-                  label="Show results in the test runner"
+                <IconButton
+                  icon="arrow-down"
+                  size="small"
+                  iconSize={13}
+                  title="Move Down"
+                  disabled={!current}
+                  onClick={() => move(1)}
                 />
-              </Field>
-              <Field label="">
-                <Checkbox
-                  checked={!!current.allowParallel}
-                  onChange={(allowParallel) => update({ allowParallel })}
-                  label="Allow multiple instances"
-                />
-              </Field>
-              <Field label="Debug adapter">
-                <Select
-                  value={current.debugAdapter ?? ""}
-                  options={adapterOptions}
-                  onChange={(v) => update({ debugAdapter: v || null })}
-                  aria-label="Debug adapter"
-                />
-              </Field>
-              <div className={styles.editPreview}>
-                <span className={styles.chooserMuted}>
-                  <T>Command line</T>
-                </span>
-                <code>{commandLine(current) || "—"}</code>
               </div>
+              <div className={styles.editList} role="tree" aria-label="Run configurations">
+                {rows.map((r) => {
+                  if (r.type === "group")
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        role="treeitem"
+                        aria-expanded={!collapsed.has(r.key)}
+                        className={styles.editItem}
+                        style={{ paddingLeft: 6 }}
+                        onClick={() => toggle(r.key)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => onDrop(e, r.kind, null)}
+                      >
+                        <Icon name={collapsed.has(r.key) ? "chevron-right" : "chevron-down"} size={12} />
+                        <Icon name={r.icon} size={13} className={styles.chooserIcon} />
+                        <span className={clsx(styles.chooserName, styles.editGroupName)}>{r.label}</span>
+                      </button>
+                    );
+                  if (r.type === "folder") {
+                    const sel = selection?.type === "folder" && selection.kind === r.kind && selection.name === r.name;
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        role="treeitem"
+                        aria-selected={sel}
+                        aria-expanded={!collapsed.has(r.key)}
+                        className={clsx(styles.editItem, sel && styles.editItemSelected)}
+                        style={{ paddingLeft: 22 }}
+                        onClick={() => setSelection({ type: "folder", kind: r.kind, name: r.name })}
+                        onDoubleClick={() => toggle(r.key)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => onDrop(e, r.kind, r.name)}
+                      >
+                        <Icon name={collapsed.has(r.key) ? "chevron-right" : "chevron-down"} size={12} />
+                        <Icon name="folder" size={13} className={styles.chooserIcon} />
+                        <span className={styles.chooserName}>{r.name}</span>
+                      </button>
+                    );
+                  }
+                  const c = r.config;
+                  return (
+                    <button
+                      key={r.key}
+                      type="button"
+                      role="treeitem"
+                      aria-selected={current?.id === c.id}
+                      className={clsx(styles.editItem, current?.id === c.id && styles.editItemSelected)}
+                      style={{ paddingLeft: r.depth === 2 ? 50 : 34 }}
+                      onClick={() => setSelection({ type: "config", id: c.id })}
+                      title={commandLine(c)}
+                      draggable
+                      onDragStart={(e) => {
+                        dragged.current = c.id;
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                    >
+                      <Icon
+                        name={configIcon(c)}
+                        size={13}
+                        className={clsx(styles.chooserIcon, temporary.includes(c.id) && styles.chooserTemporary)}
+                      />
+                      <span className={styles.chooserName}>{c.name || <T>Unnamed</T>}</span>
+                      {errorsById[c.id] && <Icon name="error" size={12} className={styles.failed} label="Invalid" />}
+                      {!c.detected && <span className={styles.chooserMuted}>{c.local ? "local" : "user"}</span>}
+                    </button>
+                  );
+                })}
+                {draft.length === 0 && (
+                  <div className={styles.editEmpty}>
+                    <T>No run configurations added.</T>
+                    <span>
+                      <button type="button" className={styles.noticeLink} onClick={(e) => openAdd(e.currentTarget)}>
+                        <T>Add new…</T>
+                      </button>{" "}
+                      <span className={styles.chooserMuted}>{isMac() ? "⌘N" : "Alt+Insert"}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className={clsx(styles.noticeLink, styles.editFooterLink)}
+                onClick={() => {
+                  setMode("templates");
+                  const first = templateTypes[0];
+                  setSelection(first ? { type: "template", kind: first.id } : null);
+                }}
+              >
+                <T>Edit configuration templates…</T>
+              </button>
             </>
           ) : (
-            <div className={styles.testEmpty}>
-              <T>Select a configuration</T>
+            <>
+              <div className={styles.editToolbar}>
+                <span className={styles.formSectionTitle}>
+                  <T>Templates</T>
+                </span>
+              </div>
+              <div className={styles.editList} role="listbox" aria-label="Configuration templates">
+                {templateTypes.map((t) => {
+                  const sel = selection?.type === "template" && selection.kind === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="option"
+                      aria-selected={sel}
+                      className={clsx(styles.editItem, sel && styles.editItemSelected)}
+                      onClick={() => setSelection({ type: "template", kind: t.id })}
+                    >
+                      <Icon name={t.icon} size={13} className={styles.chooserIcon} />
+                      <span className={styles.chooserName}>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className={clsx(styles.noticeLink, styles.editFooterLink)}
+                onClick={() => {
+                  setMode("configs");
+                  setSelection(draft[0] ? { type: "config", id: draft[0].id } : null);
+                }}
+              >
+                <T>Back to configurations</T>
+              </button>
+            </>
+          )}
+        </div>
+        <div className={styles.editForm}>
+          {mode === "templates" ? (
+            currentTemplate ? (
+              <>
+                <div className={styles.notice}>
+                  <T>New configurations of this type start with these values.</T>
+                </div>
+                <ConfigForm
+                  key={`template:${currentTemplate.kind}`}
+                  config={currentTemplate}
+                  all={draft}
+                  type={typeFor(currentTemplate.kind)}
+                  errors={{}}
+                  template
+                  modifyRequest={modifyRequest}
+                  onChange={updateTemplate}
+                />
+              </>
+            ) : (
+              <div className={styles.editEmpty}>
+                <T>Select a configuration type</T>
+              </div>
+            )
+          ) : current ? (
+            <ConfigForm
+              key={current.id}
+              config={current}
+              all={draft}
+              type={typeFor(current.kind)}
+              errors={errors}
+              modifyRequest={modifyRequest}
+              onChange={replace}
+            />
+          ) : selection?.type === "folder" ? (
+            <FolderName
+              key={`${selection.kind}:${selection.name}`}
+              name={selection.name}
+              onRename={(to) => renameFolder(selection.kind, selection.name, to)}
+            />
+          ) : (
+            <div className={styles.editEmpty}>
+              <button type="button" className={styles.noticeLink} onClick={(e) => openAdd(e.currentTarget)}>
+                <T>Add new run configuration…</T>
+              </button>
+              <T>or select run configuration to edit</T>
             </div>
           )}
         </div>
       </div>
+      {adding && <AddConfigPopup anchor={adding} onPick={add} onClose={() => setAdding(null)} />}
     </Dialog>
   );
 }
 
-function Field({ label, error, top, children }: { label: string; error?: string; top?: boolean; children: ReactNode }) {
+/** Renames on every edit that leaves a name (an emptied field keeps the old one). */
+function FolderName({ name, onRename }: { name: string; onRename: (to: string) => void }) {
+  const [text, setText] = useState(name);
   return (
-    <div className={clsx(styles.field, top && styles.fieldTop)}>
-      <span className={styles.fieldLabel}>{label}</span>
-      <div className={styles.fieldControl}>
-        {children}
-        {error && (
-          <span className={styles.fieldError} role="alert">
-            {error}
-          </span>
-        )}
-      </div>
-    </div>
+    <Field label="Folder name" error={text.trim() ? undefined : "Name is required"}>
+      <Input
+        aria-label="Folder name"
+        value={text}
+        autoFocus
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => text.trim() && text.trim() !== name && onRename(text.trim())}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && text.trim() && text.trim() !== name) {
+            e.preventDefault();
+            onRename(text.trim());
+          }
+        }}
+      />
+    </Field>
   );
 }

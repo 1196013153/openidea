@@ -145,6 +145,21 @@ pub struct Command {
     pub arguments: Vec<serde_json::Value>,
 }
 
+/// One `textDocument/inlineCompletion` suggestion (ghost text at the caret).
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct InlineCompletionItem {
+    /// Text that replaces `range`; snippets arrive as their plain text.
+    pub insert_text: String,
+    /// Replaced range; `None` inserts at the caret.
+    pub range: Option<Range>,
+    /// What the typed text is matched against while the suggestion stays shown (default: `insert_text`).
+    pub filter_text: Option<String>,
+    /// Run after the suggestion is accepted.
+    pub command: Option<Command>,
+    pub server: ServerId,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {

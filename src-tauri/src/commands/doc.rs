@@ -102,22 +102,32 @@ pub fn doc_set_line_ending(
     state.project(window.label())?.documents.set_line_ending(doc, line_ending)
 }
 
-/// Structure view: LSP document symbols when available, tree-sitter otherwise.
+/// Structure view: LSP document symbols when available (with tree-sitter
+/// visibility), tree-sitter otherwise.
 /// Tree-sitter answers come from the per-document tree cache (incremental
 /// re-parse); large documents get no syntax structure.
 #[tauri::command]
 #[specta::specta]
 pub async fn doc_outline(window: Window, state: State<'_, AppState>, doc: DocId) -> IdeResult<Vec<OutlineItem>> {
     let project = state.project(window.label())?;
-    if let Ok(Some(items)) = project.lsp.document_symbols(doc).await {
-        return Ok(items);
-    }
+    let lsp = project.lsp.document_symbols(doc).await.ok().flatten();
     blocking(move || {
-        let snap = project.documents.text_snapshot(doc)?;
-        if snap.large {
-            return Ok(Vec::new());
-        }
-        Ok(project.syntax.outline(doc, &snap.language, snap.version, &snap.text))
+        let snap = match project.documents.text_snapshot(doc) {
+            Ok(snap) => snap,
+            Err(e) => return lsp.ok_or(e),
+        };
+        let syntax = || project.syntax.outline(doc, &snap.language, snap.version, &snap.text);
+        Ok(match lsp {
+            // Server symbols carry no visibility; borrow it from the syntax tree.
+            Some(mut items) => {
+                if !snap.large {
+                    ide_language::merge_visibility(&mut items, &syntax());
+                }
+                items
+            }
+            None if snap.large => Vec::new(),
+            None => syntax(),
+        })
     })
     .await
 }

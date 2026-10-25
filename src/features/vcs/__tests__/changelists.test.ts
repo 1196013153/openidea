@@ -7,6 +7,7 @@ import {
   editList,
   initialChangelists,
   listOf,
+  localChangelists,
   moveFiles,
   removeList,
   setActiveList,
@@ -39,6 +40,15 @@ const shape = (nodes: ChangeNode[], depth = 0): string[] =>
   nodes.flatMap((n) => [`${"  ".repeat(depth)}${n.label}`, ...shape(n.children ?? [], depth + 1)]);
 
 describe("change list model", () => {
+  it("publishes each list with its files (unversioned left out, deletions marked)", () => {
+    const { state, feature } = twoLists();
+    const lists = localChangelists([...status, fs("gone.ts", null, "deleted"), fs("c.ts", "conflicted", null)], "/r", state);
+    expect(lists.map((l) => [l.id, l.active, l.files])).toEqual([
+      ["default", true, [{ path: "/r/src/a.ts" }, { path: "/r/README.md" }, { path: "/r/gone.ts", deleted: true }, { path: "/r/c.ts" }]],
+      [feature, false, [{ path: "/r/src/b.ts" }]],
+    ]);
+  });
+
   it("assigns new changes to the active list and forgets unchanged files", () => {
     const { state, feature } = twoLists();
     const synced = syncAssignments(state, ["src/a.ts", "src/b.ts", "README.md"])!;

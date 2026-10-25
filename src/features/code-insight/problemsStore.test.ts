@@ -6,6 +6,7 @@ import {
   countSeverities,
   fileDiagnostics,
   mergeDiagnostics,
+  profiledProblems,
   projectCounts,
   useProblems,
   worstSeverity,
@@ -67,5 +68,16 @@ describe("store + decorations", () => {
     const deco = problemDecorations(useProblems.getState().map);
     expect([...deco.keys()]).toEqual(["/p/src/a.rs"]);
     expect(deco.get("/p/src/a.rs")).toEqual({ error: true, propagate: true, tooltip: "1 error, 1 warning" });
+  });
+});
+
+describe("profiledProblems", () => {
+  it("applies the inspection profile per producer", () => {
+    let raw = mergeDiagnostics(new Map(), "/a", "ra", [d(1), d(2, "warning")]);
+    raw = mergeDiagnostics(raw, "/b", "eslint", [d(3)]);
+    const out = profiledProblems(raw, { "lsp:eslint": { enabled: false }, "lsp:ra": { severity: "weakWarning" } });
+    expect([...out.keys()]).toEqual(["/a"]);
+    expect(fileDiagnostics(out, "/a").map((x) => x.severity)).toEqual(["info", "info"]);
+    expect(fileDiagnostics(profiledProblems(raw, {}), "/b")).toHaveLength(1);
   });
 });

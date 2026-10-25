@@ -15,6 +15,13 @@ import { rangeToOffsets } from "./positions";
 import { lspDoc } from "./lsp";
 import { showHint } from "./hint";
 import { editorPrefs } from "@/platform/editorSettings";
+import {
+  applyProfile,
+  inspectionProfile,
+  isTypoStyled,
+  noteDiagnosticCodes,
+  subscribeInspectionProfile,
+} from "@/platform/inspections";
 
 type Listener = () => void;
 
@@ -29,13 +36,17 @@ export function setFileDiagnostics(path: string, source: string, items: Diagnost
   } else {
     if (!sources) byPath.set(path, (sources = new Map()));
     sources.set(source, items.map((d) => ({ ...d, source: d.source ?? source })));
+    noteDiagnosticCodes(source, items);
   }
   listeners.get(path)?.forEach((l) => l());
 }
 
+/** Diagnostics of `path` under the inspection profile in effect. */
 export function diagnosticsFor(path: string): Diagnostic[] {
   const sources = byPath.get(path);
-  return sources ? [...sources.values()].flat() : [];
+  if (!sources) return [];
+  const profile = inspectionProfile();
+  return [...sources].flatMap(([source, items]) => applyProfile(profile, source, items));
 }
 
 export function subscribeDiagnostics(path: string, l: Listener): () => void {
@@ -49,7 +60,13 @@ export function subscribeDiagnostics(path: string, l: Listener): () => void {
 }
 
 export function installDiagnosticsEvents(): () => void {
-  return onIdeEvent("diagnostics", (e) => setFileDiagnostics(e.path, e.source, e.items));
+  const off = onIdeEvent("diagnostics", (e) => setFileDiagnostics(e.path, e.source, e.items));
+  // Another inspection profile (or edits to it) re-filters every open file.
+  const offProfile = subscribeInspectionProfile(() => listeners.forEach((set) => set.forEach((l) => l())));
+  return () => {
+    off();
+    offProfile();
+  };
 }
 
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2, hint: 3 };
@@ -63,7 +80,11 @@ export function toLintDiagnostics(doc: Text, items: readonly Diagnostic[]): Lint
       if (to < line.to) to++;
       else if (from > line.from) from--;
     }
-    const classes = [d.unnecessary && "cm-lsp-unnecessary", d.deprecated && "cm-lsp-deprecated"].filter(Boolean);
+    const classes = [
+      d.unnecessary && "cm-lsp-unnecessary",
+      d.deprecated && "cm-lsp-deprecated",
+      isTypoStyled(d) && "cm-lsp-typo",
+    ].filter(Boolean);
     return {
       from,
       to,
@@ -87,7 +108,7 @@ export function diagnosticMarks(diags: readonly LintDiagnostic[]): ScrollbarMark
   const out: ScrollbarMark[] = [];
   for (const d of diags) {
     const color = MARK_COLOR[d.severity];
-    if (!color || d.markClass?.includes("cm-lsp-unnecessary")) continue;
+    if (!color || d.markClass?.includes("cm-lsp-unnecessary") || d.markClass?.includes("cm-lsp-typo")) continue;
     out.push({ from: d.from, to: d.to, color, tooltip: d.message, priority: 3 - SEVERITY_RANK[d.severity] });
   }
   return out;
@@ -136,7 +157,7 @@ const diagnosticsSync = ViewPlugin.fromClass(
 );
 
 // Effects follow the IDEA schemes: errors wavy red; warnings wavy yellow (dark) or
-// a yellow background (light, via --editor-warning-*); weak warnings dotted.
+// a yellow background (light, via --editor-warning-*); weak warnings dotted; typos wavy green.
 const lintTheme = EditorView.theme({
   ".cm-lintRange": { backgroundImage: "none", paddingBottom: "0" },
   ".cm-lintRange-error": {
@@ -156,6 +177,12 @@ const lintTheme = EditorView.theme({
     textUnderlineOffset: "3px",
   },
   ".cm-lintRange-hint": { textDecoration: "none" },
+  // Typo level: IDEA's green wavy underline.
+  ".cm-lintRange.cm-lsp-typo": {
+    textDecoration: "underline wavy color-mix(in srgb, var(--success) 85%, transparent)",
+    textDecorationSkipInk: "none",
+    textUnderlineOffset: "3px",
+  },
   ".cm-lintRange.cm-lsp-unnecessary": {
     textDecoration: "none",
     backgroundColor: "transparent",

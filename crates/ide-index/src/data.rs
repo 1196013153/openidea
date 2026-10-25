@@ -181,10 +181,10 @@ impl IndexData {
         Some(old)
     }
 
-    /// Removes every file at or below `dir`; returns their relative paths.
-    pub(crate) fn remove_tree(&mut self, dir: &Path) -> Vec<String> {
+    /// Removes every file at or below `dir`; returns their paths.
+    pub(crate) fn remove_tree(&mut self, dir: &Path) -> Vec<PathBuf> {
         let doomed: Vec<PathBuf> = self.by_path.keys().filter(|p| p.starts_with(dir)).cloned().collect();
-        doomed.iter().filter_map(|p| self.remove(p)).map(|e| e.rel.into_string()).collect()
+        doomed.into_iter().filter(|p| self.remove(p).is_some()).collect()
     }
 
     /// Releases spare capacity (after large deletions).
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!((d.file_count, d.symbol_count), (1, 5));
         d.insert(entry("d.rs", 0));
         assert_eq!(d.files.len(), 2, "slot reused");
-        assert_eq!(d.remove_tree(Path::new("/r/a")), vec!["a/b.rs".to_owned()]);
+        assert_eq!(d.remove_tree(Path::new("/r/a")), vec![PathBuf::from("/r/a/b.rs")]);
         assert_eq!((d.file_count, d.symbol_count), (1, 0));
         let e = d.get(Path::new("/r/d.rs")).unwrap();
         assert_eq!((e.name(), e.dir()), ("d.rs", ""));

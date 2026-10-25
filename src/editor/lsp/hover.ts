@@ -230,20 +230,23 @@ async function definitionTarget(loc: Location, fallbackLanguage: string | null):
   };
 }
 
-/** ⌥Space: the definition's source in a popup, without leaving the editor; ← / → switch between several. */
-export async function quickDefinition(view: EditorView) {
+/**
+ * ⌥Space: the definition's source in a popup, without leaving the editor; ← / → switch between several.
+ * View › Quick Type Definition: the same for the symbol's type (`typeDefinition`).
+ */
+export async function quickDefinition(view: EditorView, kind: "definition" | "typeDefinition" = "definition") {
   const doc = docOf(view);
   if (!doc) return;
   const pos = view.state.selection.main.head;
   try {
-    const found = await lspRequest(() => commands.lspGoto(doc.doc, offsetToPos(view.state.doc, pos), "definition"));
+    const found = await lspRequest(() => commands.lspGoto(doc.doc, offsetToPos(view.state.doc, pos), kind));
     const seen = new Set<string>();
     const locations = found.filter((l) => {
       const key = `${l.path}:${l.range.start.line}:${l.range.start.col}`;
       return !seen.has(key) && !!seen.add(key);
     });
     if (!locations.length) {
-      showHint(view, "No definition found");
+      showHint(view, kind === "typeDefinition" ? "No type definition found" : "No definition found");
       return;
     }
     const targets = (await Promise.all(locations.slice(0, MAX_TARGETS).map((l) => definitionTarget(l, doc.uiMode)))).filter(

@@ -1,6 +1,15 @@
 import { shortcutLabel } from "@/platform/keymap";
 import { IconButton, type MenuItem } from "@/ui";
-import { setViewOption, useProjectTree, type ViewOptions } from "./store";
+import { VIEW_MODES, setViewMode, setViewOption, useProjectTree, type ViewOptions } from "./store";
+
+/** The title's "Project ▾" pane switcher (IDEA: Project / Project Files / Open Files / …). */
+export function useProjectTitleMenu(): { label: string; items: MenuItem[] } {
+  const mode = useProjectTree((s) => s.mode);
+  return {
+    label: VIEW_MODES.find(([id]) => id === mode)?.[1] ?? "Project",
+    items: VIEW_MODES.map(([id, label]) => ({ id, label, checked: id === mode, run: () => setViewMode(id) })),
+  };
+}
 
 export const OPTION_LABELS: Array<[keyof ViewOptions, string]> = [
   ["showHidden", "Show Hidden Files"],

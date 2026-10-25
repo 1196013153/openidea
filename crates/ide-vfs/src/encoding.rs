@@ -94,7 +94,34 @@ pub(crate) fn decode(bytes: &[u8]) -> (String, &'static Encoding, bool, bool) {
     (text.into_owned(), enc, false, false)
 }
 
+/// Bytes of a file inside an archive (size-checked) and the archive's mtime.
+fn archive_bytes(path: &Path) -> IdeResult<Option<(Vec<u8>, f64)>> {
+    let Some((archive, entry)) = crate::split_archive_path(path) else { return Ok(None) };
+    let (size, _) = crate::archive::entry_size(&archive, &entry)?;
+    if size > MAX_OPEN_SIZE {
+        return Err(IdeError::invalid(format!(
+            "{} is too large to open ({} MiB)",
+            path.display(),
+            size / (1024 * 1024)
+        )));
+    }
+    crate::read_archive_entry(&archive, &entry).map(Some)
+}
+
 pub(crate) fn load_text(path: &Path) -> IdeResult<LoadedText> {
+    if let Some((bytes, mtime_ms)) = archive_bytes(path)? {
+        let len = bytes.len() as u64;
+        let (text, enc, has_bom, binary) = decode_owned(bytes);
+        return Ok(LoadedText {
+            text,
+            encoding: encoding_label(enc),
+            has_bom,
+            binary,
+            large: len > LARGE_FILE_THRESHOLD,
+            too_large: len > READ_ONLY_THRESHOLD,
+            mtime_ms,
+        });
+    }
     let meta = fs::metadata(path)?;
     if meta.is_dir() {
         return Err(IdeError::invalid(format!("{} is a directory", path.display())));
@@ -126,7 +153,10 @@ pub(crate) fn load_text_as(path: &Path, encoding: &str) -> IdeResult<LoadedText>
     let enc = Encoding::for_label(encoding.trim().as_bytes())
         .ok_or_else(|| IdeError::invalid(format!("unknown encoding {encoding:?}")))?;
     let mut loaded = load_text(path)?;
-    let bytes = fs::read(path)?;
+    let bytes = match archive_bytes(path)? {
+        Some((bytes, _)) => bytes,
+        None => fs::read(path)?,
+    };
     let (body, has_bom) = match Encoding::for_bom(&bytes) {
         Some((bom_enc, len)) if bom_enc == enc => (&bytes[len..], true),
         _ => (&bytes[..], false),

@@ -113,3 +113,7 @@
   padding: 4px 12px;
   color: var(--fg-faint);
 }
+/* Show Inherited: supertype members, greyed. */
+.inherited .name {
+  color: var(--fg-muted);
+}

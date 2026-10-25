@@ -39,6 +39,10 @@ export interface PageSpec {
   projectScope?: boolean;
   /** Scope shown first with a project open (toolchains belong to the project, like IDEA's project SDK). */
   defaultScope?: "global" | "project";
+  /** Pages sharing one scope choice (Code Style and its language pages: the scheme). */
+  scopeGroup?: string;
+  /** The page picks its scope itself (Code Style's Scheme): no Global / This project switch. */
+  ownScopeSwitch?: boolean;
   sections?: SectionSpec[];
   /** Rendered below the sections (previews). */
   footer?: ComponentType;

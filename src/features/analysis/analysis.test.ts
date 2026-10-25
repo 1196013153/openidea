@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Diagnostic, StructuralFile } from "@/platform/ipc";
+import { useCustomScopes } from "@/platform/search";
 import { fragmentLines } from "./duplicates";
 import { groupInspection, kindOf } from "./inspect";
 import { buildInspectionNodes } from "./InspectionView";
@@ -149,6 +150,13 @@ describe("analysis scopes and fragments", () => {
     expect(await resolveScope({ kind: "directory", directory: "" })).toBe("Choose a directory");
     expect(await resolveScope({ kind: "file", directory: "" })).toBe("No file is open");
     expect(await resolveScope({ kind: "changed", directory: "" })).toBe("There are no uncommitted files");
+    expect(await resolveScope({ kind: "custom", directory: "" })).toBe("Choose a scope");
+    useCustomScopes.setState({ root: null, scopes: [{ name: "Src", pattern: "file:src//*" }] });
+    expect(await resolveScope({ kind: "custom", directory: "", custom: "Src" })).toEqual({
+      kind: "pattern",
+      pattern: "file:src//*",
+    });
+    useCustomScopes.setState({ root: null, scopes: [] });
   });
 
   it("numbers fragment lines from the fragment's first line", () => {

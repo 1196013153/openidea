@@ -28,6 +28,33 @@ pub fn sdk_python_effective(window: Window, state: State<'_, AppState>) -> IdeRe
     Ok(ide_sdk::apply::python_interpreter(&project.root, &project.settings.effective()).map(Into::into))
 }
 
+/// SDK / library source folders shown under "External Libraries" in the Project view,
+/// with the Maven / Gradle dependency jars of the build model.
+#[tauri::command]
+#[specta::specta]
+pub async fn sdk_project_libraries(
+    window: Window,
+    state: State<'_, AppState>,
+) -> IdeResult<Vec<ide_sdk::libraries::LibraryGroup>> {
+    let project = state.project(window.label())?;
+    let (root, cache, settings) = (project.root.clone(), project.build_cache_dir(), project.settings.effective());
+    tauri::async_runtime::spawn_blocking(move || {
+        let model = crate::commands::build::load(&root, &cache, &settings);
+        let deps: Vec<ide_sdk::libraries::BuildDependency> = ide_build::dependency_coordinates(&root, &model)
+            .into_iter()
+            .map(|c| ide_sdk::libraries::BuildDependency {
+                gradle: c.gradle,
+                group: c.group_id,
+                artifact: c.artifact_id,
+                version: c.version,
+            })
+            .collect();
+        ide_sdk::libraries::project_libraries(&root, &settings, &deps)
+    })
+    .await
+    .map_err(join_err)
+}
+
 /// Executables found for "run this file", and where single files are compiled to.
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]

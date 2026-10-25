@@ -4,9 +4,10 @@ import { emitLocalIdeEvent } from "@/platform/ipc";
 import { registerStatusItem, registerToolWindow, type StatusItemContribution } from "./contributions";
 import { orderStatusItems, StatusBar, TaskStatus } from "./StatusBar";
 import { orderTitleItems } from "./TitleBar";
-import { Balloons, NOTIFICATIONS_TOOL_WINDOW, NotificationsToolWindow } from "./Notifications";
+import { Balloons, NOTIFICATIONS_TOOL_WINDOW, notificationActions, NotificationsToolWindow } from "./Notifications";
 import {
   BALLOON_TIMEOUT,
+  canSuppress,
   clearNotifications,
   installNotifyEvents,
   STICKY_BALLOON_TIMEOUT,
@@ -314,5 +315,25 @@ describe("workbench shell", () => {
     unmount();
     dispose();
     useProject.setState({ project: null });
+  });
+});
+
+describe("Don't Show Again", () => {
+  it("is offered for non-error notifications of groups still shown as balloons", async () => {
+    const { useProject } = await import("@/platform/project");
+    const base = { id: 1, time: 0, read: false, balloon: true, sticky: false, logged: true, title: "x" } as const;
+    const own = [{ label: "Open", run: () => {} }];
+    expect(notificationActions({ ...base, level: "info", group: "vcs", actions: own }).map((a) => a.label)).toEqual([
+      "Open",
+      "Don't Show Again",
+    ]);
+    expect(notificationActions({ ...base, level: "error", group: "vcs" })).toEqual([]);
+    useProject.setState({ settings: { notifications: { groups: { vcs: { display: "none" } } } } as never });
+    try {
+      expect(canSuppress({ level: "warning", group: "vcs" })).toBe(false);
+      expect(canSuppress({ level: "warning", group: "run" })).toBe(true);
+    } finally {
+      useProject.setState({ settings: null });
+    }
   });
 });

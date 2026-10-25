@@ -6,7 +6,7 @@ import { relativePath, useProject } from "@/platform/project";
 import { notifications } from "@/workbench/contributions";
 import { Dialog, Icon, Input, List, listNavigate } from "@/ui";
 import { createFromTemplate, packageFor } from "./create";
-import { planFile, type FileTemplate } from "./model";
+import { planFile, withKind, type FileTemplate } from "./model";
 import { useFileTemplates } from "./store";
 import styles from "./NewFileDialog.module.css";
 
@@ -17,6 +17,8 @@ interface Request {
   name?: string;
   /** Preselected kind id. */
   kindId?: string;
+  /** An ad-hoc template contributed by another feature (New › HTTP Request). */
+  template?: FileTemplate;
 }
 
 const useNewFile = create<{ request: Request | null; seq: number }>(() => ({ request: null, seq: 0 }));
@@ -34,10 +36,16 @@ export function NewFileDialogHost() {
   const [picked, setPicked] = useState<{ seq: number; id: string } | null>(null);
   if (!request) return null;
   const id = request.templateId ?? (picked?.seq === seq ? picked.id : undefined);
-  const template = id ? templates.find((t) => t.id === id) : undefined;
+  const template = request.template ?? (id ? templates.find((t) => t.id === id) : undefined);
   if (template)
     return (
-      <NameStep key={`${seq}:${template.id}`} template={template} directory={request.directory} initialName={request.name} initialKind={request.kindId} />
+      <NameStep
+        key={`${seq}:${template.id}`}
+        template={template}
+        directory={request.directory}
+        initialName={request.name ?? template.defaultName}
+        initialKind={request.kindId}
+      />
     );
   return (
     <TemplateStep
@@ -114,7 +122,8 @@ function NameStep({
   const [busy, setBusy] = useState(false);
   const [pkg, setPkg] = useState("");
   const root = useProject((s) => s.project?.root ?? "");
-  const plan = name.trim() ? planFile(template, directory, name) : null;
+  const effective = withKind(template, template.kinds[kind]);
+  const plan = name.trim() ? planFile(effective, directory, name) : null;
 
   useEffect(() => {
     if (!template.packageStyle) return;
@@ -186,7 +195,7 @@ function NameStep({
           data-autofocus
           value={name}
           invalid={!!error}
-          placeholder={template.extension ? `Name (.${template.extension})` : "File name with extension"}
+          placeholder={effective.extension ? `Name (.${effective.extension})` : "File name with extension"}
           aria-label="Name"
           onChange={(e) => {
             setName(e.target.value);

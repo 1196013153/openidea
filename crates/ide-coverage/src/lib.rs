@@ -16,10 +16,12 @@
 //! Lines in the model are 0-based, like every IPC coordinate.
 
 mod goprofile;
+mod import;
 mod jacoco;
 mod lcov;
 mod plan;
 
+pub use import::import;
 pub use plan::prepare;
 
 use ide_core::{IdeError, IdeResult, IpcPath};

@@ -217,19 +217,45 @@
 .tabsHidden {
   display: none;
 }
-.tabsMultiRow {
-  height: auto;
-  min-height: var(--h-header);
+.tabRows {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
-.tabsMultiRow > [role="tablist"] {
-  flex: 1;
-  flex-wrap: wrap;
-  overflow: visible;
-  row-gap: 2px;
-  padding: 3px 0;
+.tabsBottom > .tabs,
+.tabsBottom > .tabRows {
+  order: 1;
 }
-.tabsMultiRow > [role="tablist"] > * {
-  height: calc(var(--h-header) - 6px);
+.tabsBottom .tabs {
+  border-bottom: none;
+  border-top: 1px solid var(--border-editor-tabs, var(--border));
+}
+/* Tabs on the left / right of the editor (a column). */
+.tabsVertical {
+  flex-direction: row;
+}
+.tabsVertical > .tabs,
+.tabsVertical > .tabRows {
+  width: max-content;
+  min-width: 140px;
+  max-width: 260px;
+  border-bottom: none;
+  border-right: 1px solid var(--border-editor-tabs, var(--border));
+}
+.tabsVertical .tabRows > .tabs {
+  min-height: 0;
+  border-bottom: none;
+}
+.tabsVertical .tabRows > .tabs + .tabs {
+  flex: 1 1 auto;
+  border-top: 1px solid var(--border-editor-tabs, var(--border));
+}
+.tabsRight > .tabs,
+.tabsRight > .tabRows {
+  order: 1;
+  border-right: none;
+  border-left: 1px solid var(--border-editor-tabs, var(--border));
 }
 
 /* Breadcrumbs inside the editor (top or bottom of the text) */
@@ -250,4 +276,19 @@
 }
 .codeCrumbsBottom {
   border-top: 1px solid var(--border-editor-tabs, var(--border));
+}
+
+/* Contributed editor banners (registerEditorBanner): text, then right-aligned links. */
+.bannerLink {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+.bannerLink:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
 }

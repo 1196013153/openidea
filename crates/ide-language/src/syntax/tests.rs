@@ -1,6 +1,6 @@
 use super::*;
 use crate::FoldKind;
-use ide_core::{OutlineItem, Pos, SymbolKind};
+use ide_core::{OutlineItem, Pos, SymbolKind, Visibility};
 
 fn syntax() -> &'static Syntax {
     static S: OnceLock<Syntax> = OnceLock::new();
@@ -1186,4 +1186,110 @@ fn literals_are_outermost_comments_and_strings() {
         ]
     );
     assert!(syntax().literals(&lang("plaintext"), "// x").is_none());
+}
+
+/// `name: visibility` for every outline item, depth-first.
+fn visibilities(id: &str, src: &str) -> Vec<(String, Option<Visibility>)> {
+    fn go(items: &[OutlineItem], out: &mut Vec<(String, Option<Visibility>)>) {
+        for i in items {
+            out.push((i.name.clone(), i.visibility));
+            go(&i.children, out);
+        }
+    }
+    let mut out = Vec::new();
+    go(&syntax().outline(&lang(id), src), &mut out);
+    out
+}
+
+fn vis_of(list: &[(String, Option<Visibility>)], name: &str) -> Option<Visibility> {
+    list.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("no {name} in {list:?}")).1
+}
+
+#[test]
+fn outline_visibility_rust() {
+    let src = "pub struct S { a: i32, pub b: i32, pub(crate) c: i32 }\n\
+               trait T { fn req(&self); }\n\
+               impl T for S { fn req(&self) {} }\n\
+               impl S { pub fn new() {} fn helper() {} }\n\
+               fn main() {}\n";
+    let v = visibilities("rust", src);
+    assert_eq!(vis_of(&v, "S"), Some(Visibility::Public));
+    assert_eq!(vis_of(&v, "a"), Some(Visibility::Private));
+    assert_eq!(vis_of(&v, "b"), Some(Visibility::Public));
+    assert_eq!(vis_of(&v, "c"), Some(Visibility::Package));
+    assert_eq!(vis_of(&v, "new"), Some(Visibility::Public));
+    assert_eq!(vis_of(&v, "helper"), Some(Visibility::Private));
+    assert_eq!(vis_of(&v, "main"), Some(Visibility::Private));
+    assert_eq!(vis_of(&v, "impl T for S"), None);
+    // Trait members and trait impl members follow the trait.
+    assert!(v.iter().filter(|(n, _)| n == "req").all(|(_, vis)| vis.is_none()));
+}
+
+#[test]
+fn outline_visibility_java_ts_python() {
+    let java = "public class A {\n  private int x;\n  protected void p() {}\n  void pkg() {}\n  public A() {}\n}\ninterface I { void m(); }\n";
+    let v = visibilities("java", java);
+    assert_eq!(vis_of(&v, "x"), Some(Visibility::Private));
+    assert_eq!(vis_of(&v, "p"), Some(Visibility::Protected));
+    assert_eq!(vis_of(&v, "pkg"), Some(Visibility::Package));
+    assert_eq!(vis_of(&v, "A"), Some(Visibility::Public));
+    assert_eq!(vis_of(&v, "m"), None);
+
+    let ts = "class C {\n  private a = 1;\n  protected b(): void {}\n  c(): void {}\n  #d = 2;\n}\n";
+    let v = visibilities("typescript", ts);
+    assert_eq!(vis_of(&v, "a"), Some(Visibility::Private));
+    assert_eq!(vis_of(&v, "b"), Some(Visibility::Protected));
+    assert_eq!(vis_of(&v, "c"), None);
+    assert_eq!(vis_of(&v, "#d"), Some(Visibility::Private));
+
+    let py = "class K:\n    def _hidden(self): pass\n    def __init__(self): pass\n    def shown(self): pass\n";
+    let v = visibilities("python", py);
+    assert_eq!(vis_of(&v, "_hidden"), Some(Visibility::Private));
+    assert_eq!(vis_of(&v, "__init__"), None);
+    assert_eq!(vis_of(&v, "shown"), None);
+}
+
+#[test]
+fn merge_visibility_matches_by_name_and_position() {
+    fn clear(items: &mut [OutlineItem]) {
+        for i in items {
+            i.visibility = None;
+            clear(&mut i.children);
+        }
+    }
+    let src = "struct S { a: i32 }\nfn f() {}\n";
+    let ts = syntax().outline(&lang("rust"), src);
+    let mut lsp = ts.clone();
+    clear(&mut lsp);
+    lsp[1].name = "renamed".into();
+    crate::merge_visibility(&mut lsp, &ts);
+    assert_eq!(lsp[0].visibility, Some(Visibility::Private));
+    assert_eq!(lsp[0].children[0].visibility, Some(Visibility::Private));
+    assert_eq!(lsp[1].visibility, None);
+}
+
+#[test]
+fn spelling_regions_cover_declared_names_only() {
+    let src = "// note\nfn parse_input(raw_text: &str) -> Value { let mut counter = helper(raw_text); \"hi\" }\n";
+    let found: Vec<(&str, SpellingKind)> =
+        syntax().spelling_regions(&lang("rust"), src).unwrap().iter().map(|r| (&src[r.start..r.end], r.kind)).collect();
+    assert_eq!(
+        found,
+        vec![
+            ("// note", SpellingKind::Comment),
+            ("parse_input", SpellingKind::Name),
+            ("raw_text", SpellingKind::Name),
+            ("counter", SpellingKind::Name),
+            ("\"hi\"", SpellingKind::String),
+        ]
+    );
+    let py = "def load_config(path, retries=3):\n    \"\"\"Doc.\"\"\"\n    total = 0\n";
+    let names: Vec<&str> = syntax()
+        .spelling_regions(&lang("python"), py)
+        .unwrap()
+        .iter()
+        .filter(|r| r.kind == SpellingKind::Name)
+        .map(|r| &py[r.start..r.end])
+        .collect();
+    assert_eq!(names, ["load_config", "path", "retries", "total"]);
 }

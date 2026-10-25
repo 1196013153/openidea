@@ -2,8 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { setSearchQuery } from "@codemirror/search";
+import { StreamLanguage } from "@codemirror/language";
+import { literalKindAt } from "./literals";
 import {
   countMatches,
+  excludeCurrent,
+  findExcluded,
+  isExcluded,
+  toggleFindExcluded,
   findExtension,
   findNext,
   findPrevious,
@@ -82,5 +88,72 @@ describe("find in selection", () => {
     expect(mapScope({ from: 2, to: 5 }, ins(2))).toEqual({ from: 4, to: 7 });
     expect(mapScope({ from: 2, to: 5 }, ins(5))).toEqual({ from: 2, to: 5 });
     expect(mapScope({ from: 2, to: 5 }, s.changes({ from: 2, to: 5 }))).toBeNull();
+  });
+});
+
+describe("search context, exclude and preserve case", () => {
+  const lang = StreamLanguage.define<null>({
+    token(stream) {
+      if (stream.match("//")) {
+        stream.skipToEnd();
+        return "comment";
+      }
+      if (stream.match(/^"[^"]*"/)) return "string";
+      stream.next();
+      return null;
+    },
+  });
+  const code = 'foo("foo") // foo\nfoo';
+  const base = { search: "", caseSensitive: false, wholeWord: false, regexp: false, replace: "" };
+  function makeCode(o: Partial<FindOptions>) {
+    const view = new EditorView({
+      state: EditorState.create({ doc: code, extensions: [lang, findExtension()] }),
+      parent: document.body,
+    });
+    views.push(view);
+    view.dispatch({ effects: setSearchQuery.of(makeQuery({ ...base, search: "foo", ...o })) });
+    return view;
+  }
+  const starts = (v: EditorView) => countMatches(v.state).starts;
+
+  it("filters matches by comment / string literal", () => {
+    expect(starts(makeCode({}))).toEqual([0, 5, 14, 18]);
+    expect(starts(makeCode({ context: "inComments" }))).toEqual([14]);
+    expect(starts(makeCode({ context: "inStringLiterals" }))).toEqual([5]);
+    expect(starts(makeCode({ context: "exceptComments" }))).toEqual([0, 5, 18]);
+    expect(starts(makeCode({ context: "exceptCommentsAndStringLiterals" }))).toEqual([0, 18]);
+    expect(literalKindAt(makeCode({}).state, 14)).toBe("comment");
+  });
+
+  it("excluded matches are skipped by next and replace all, until the query changes", () => {
+    const v = makeCode({ replace: "bar" });
+    findNext(v);
+    expect(sel(v)).toEqual([0, 3]);
+    excludeCurrent(v);
+    expect(sel(v)).toEqual([5, 8]);
+    expect(isExcluded(v.state, 0, 3)).toBe(true);
+    expect(countMatches(v.state).total).toBe(3);
+    replaceAll(v, false);
+    expect(v.state.doc.toString()).toBe('foo("bar") // bar\nbar');
+    v.dispatch({ effects: setSearchQuery.of(makeQuery({ ...base, search: "o" })) });
+    expect(v.state.field(findExcluded)).toEqual([]);
+  });
+
+  it("excluding an excluded match includes it again", () => {
+    const v = makeCode({});
+    v.dispatch({ effects: toggleFindExcluded.of({ from: 0, to: 3 }), selection: { anchor: 0, head: 3 } });
+    excludeCurrent(v);
+    expect(isExcluded(v.state, 0, 3)).toBe(false);
+  });
+
+  it("preserve case keeps each occurrence's case", () => {
+    const v = make("foo Foo FOO", { search: "foo", replace: "bar" });
+    replaceAll(v, true);
+    expect(v.state.doc.toString()).toBe("bar Bar BAR");
+    const w = make("Foo foo", { search: "foo", replace: "bar" });
+    findNext(w);
+    replaceNext(w, true);
+    expect(w.state.doc.toString()).toBe("Bar foo");
+    expect(sel(w)).toEqual([4, 7]);
   });
 });

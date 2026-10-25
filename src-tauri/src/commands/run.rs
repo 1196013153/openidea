@@ -26,6 +26,28 @@ pub fn run_save_configs(window: Window, state: State<'_, AppState>, configs: Vec
     ide_run::save_user_configs(&root, &configs)
 }
 
+/// Configuration templates: per-type defaults applied to new configurations.
+#[tauri::command]
+#[specta::specta]
+pub fn run_templates(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<RunConfig>> {
+    let root = state.project(window.label())?.root.clone();
+    ide_run::load_templates(&root)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn run_save_templates(window: Window, state: State<'_, AppState>, templates: Vec<RunConfig>) -> IdeResult<()> {
+    let root = state.project(window.label())?.root.clone();
+    ide_run::save_templates(&root, &templates)
+}
+
+/// The environment runs inherit when "Include system environment variables" is on.
+#[tauri::command]
+#[specta::specta]
+pub fn run_system_env() -> std::collections::BTreeMap<String, String> {
+    ide_run::system_env()
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn run_start(
@@ -67,6 +89,13 @@ pub fn run_stop(window: Window, state: State<'_, AppState>, id: RunId) -> IdeRes
 #[specta::specta]
 pub fn run_stdin(state: State<'_, AppState>, id: RunId, data: String) -> IdeResult<()> {
     state.processes.write_stdin(id, &data)
+}
+
+/// Terminal size of a run started with "Emulate terminal in output console".
+#[tauri::command]
+#[specta::specta]
+pub fn run_resize(state: State<'_, AppState>, id: RunId, cols: u16, rows: u16) -> IdeResult<()> {
+    state.processes.resize(id, cols, rows)
 }
 
 #[tauri::command]

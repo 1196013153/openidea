@@ -15,4 +15,5 @@ export {
   useTerminals,
 } from "./store";
 export { TerminalTabs, TerminalView } from "./TerminalView";
+export { applyThemeToEmbedded, createEmbeddedTerminal } from "./embedded";
 export { closeTerminalFind, openTerminalFind, useTerminalFind } from "./FindBar";

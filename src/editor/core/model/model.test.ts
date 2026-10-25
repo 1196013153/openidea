@@ -15,6 +15,7 @@ import {
   paneIds,
   promoteTab,
   reopenClosed,
+  sortTabs,
   splitPane,
   tabOptions,
   togglePin,
@@ -180,6 +181,15 @@ describe("tab model", () => {
     expect(active(s)).toBe("a");
     s = cycleTab(s, -1);
     expect(active(s)).toBe("c");
+  });
+
+  it("sorts tabs alphabetically, pinned ones first", () => {
+    let s = initialTabsState();
+    for (const p of ["c", "B", "a", "d"]) s = open(s, p);
+    s = togglePin(s, s.activePane, s.panes[s.activePane]!.tabs.find((t) => t.input.path === "d")!.id);
+    s = sortTabs(s, s.activePane, (t) => t.input.path!);
+    expect(labels(s)).toEqual(["d^", "a", "B", "c"]);
+    expect(sortTabs(s, s.activePane, (t) => t.input.path!)).toBe(s);
   });
 });
 

@@ -69,12 +69,31 @@ pub async fn open_project(window: Window, path: PathBuf) -> IdeResult<ProjectInf
 }
 
 fn project_info(project: &crate::state::Project) -> ProjectInfo {
+    let settings = project.settings.effective();
+    let custom = settings.general.project_name.trim();
     ProjectInfo {
-        name: project.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        name: if custom.is_empty() {
+            project.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        } else {
+            custom.to_owned()
+        },
         is_git: !project.repos.read().is_empty(),
-        settings: project.settings.effective(),
+        settings,
         root: project.root.clone().into(),
     }
+}
+
+/// File › Rename Project…: the project's display name (title bar, recent
+/// projects); an empty `name` restores the folder name. Stored in the project's settings.
+#[tauri::command]
+#[specta::specta]
+pub fn project_rename(window: Window, state: State<'_, AppState>, name: String) -> IdeResult<ProjectInfo> {
+    let project = state.project(window.label())?;
+    let name = name.trim();
+    let value = if name.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(name.to_owned()) };
+    project.settings.set(SettingsScope::Project, "general.projectName", value)?;
+    state.recent.rename(&project.root, (!name.is_empty()).then_some(name))?;
+    Ok(project_info(&project))
 }
 
 #[tauri::command]
@@ -156,6 +175,15 @@ pub fn settings_set(
                 .set_file_defaults(ide_workspace::FileDefaults::from_settings(&effective, Some(&project.root)));
         }
     }
+    // File type associations re-detect open documents (off the command thread).
+    if key == "files" || key.starts_with("files.fileType") {
+        let affected = if project_scope { current.iter().cloned().collect() } else { state.projects() };
+        tauri::async_runtime::spawn_blocking(move || {
+            for project in affected {
+                project.apply_file_types(&project.settings.effective());
+            }
+        });
+    }
     // A new interpreter / toolchain / server executable restarts the language servers it affects.
     if ["languages", "tools"].iter().any(|k| key == *k || key.starts_with(&format!("{k}."))) {
         let affected = if project_scope { current.iter().cloned().collect() } else { state.projects() };
@@ -165,6 +193,16 @@ pub fn settings_set(
         }
     }
     let roots_changed = key == "projectStructure" || key.starts_with("projectStructure.");
+    // Content roots and excludes (files.exclude, ignored names, excluded folders) reach the
+    // index and the watchers without reopening the project (the rescan runs in the background).
+    if roots_changed || key == "files" || key.starts_with("files.") {
+        let affected = if project_scope { current.iter().cloned().collect() } else { state.projects() };
+        tauri::async_runtime::spawn_blocking(move || {
+            for project in affected {
+                project.refresh_index_scope();
+            }
+        });
+    }
     // A project value concerns only that project's window (and its settings window).
     let event = ide_core::IdeEvent::SettingsChanged { key };
     if project_scope {
@@ -180,6 +218,48 @@ pub fn settings_set(
         state.sink.emit(event);
     }
     Ok(settings)
+}
+
+/// File › Manage IDE Settings › Export Settings…: the global settings plus the
+/// frontend's IDE-level `storage` (live / file templates, macros) to `path`.
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_export(
+    state: State<'_, AppState>,
+    path: PathBuf,
+    storage: std::collections::BTreeMap<String, String>,
+) -> IdeResult<()> {
+    state.global_settings.export_bundle(&path, storage)
+}
+
+#[derive(Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsImport {
+    /// Effective settings of the calling window after the import.
+    pub settings: Settings,
+    /// IDE state the frontend keeps (written back to its storage).
+    pub storage: std::collections::BTreeMap<String, String>,
+}
+
+/// Import Settings…: replaces the global settings with the file's; every window re-reads them.
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_import(window: Window, state: State<'_, AppState>, path: PathBuf) -> IdeResult<SettingsImport> {
+    let (_, storage) = state.global_settings.import_bundle(&path)?;
+    for project in state.projects() {
+        let effective = project.settings.reload();
+        project
+            .documents
+            .set_file_defaults(ide_workspace::FileDefaults::from_settings(&effective, Some(&project.root)));
+        let lsp = project.lsp.clone();
+        tauri::async_runtime::spawn(async move { lsp.reconfigure().await });
+    }
+    state.sink.emit(ide_core::IdeEvent::SettingsChanged { key: String::new() });
+    let settings = match state.project(window.label()) {
+        Ok(p) => p.settings.effective(),
+        Err(_) => state.global_settings.effective(),
+    };
+    Ok(SettingsImport { settings, storage })
 }
 
 /// Effective source / test / resource / excluded roots of the window's project:

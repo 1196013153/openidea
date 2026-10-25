@@ -9,6 +9,7 @@ pub mod error;
 pub mod event;
 pub mod ids;
 pub mod ignored;
+pub mod inspection_settings;
 pub mod ipc_path;
 pub mod process;
 pub mod project_dir;

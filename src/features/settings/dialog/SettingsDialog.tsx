@@ -66,7 +66,7 @@ function ScopeSwitch({ pageId, scope }: { pageId: string; scope: Scope }) {
     ["project", "This project"],
   ];
   return (
-    <div className={styles.scope} role="radiogroup" aria-label="Settings scope">
+    <div className={styles.scope} role="radiogroup" aria-label={tx("Settings scope")}>
       {options.map(([value, label]) => (
         <button
           key={value}
@@ -103,7 +103,8 @@ function PageHost({
   const newProjects = useSettingsDialog((s) => s.newProjects);
   const spec = page ? builtinSpec(page.id) : undefined;
   const projectScope = !!spec?.projectScope && hasProject && !newProjects;
-  const chosen = useSettingsDialog((s) => s.scopes[pageId]) ?? spec?.defaultScope;
+  const scopeKey = spec?.scopeGroup ?? pageId;
+  const chosen = useSettingsDialog((s) => s.scopes[scopeKey]) ?? spec?.defaultScope;
   const scope: Scope = projectScope && chosen === "project" ? "project" : "global";
   // Where a project value is the norm, say what the global one is for.
   const globalNote = newProjects || (projectScope && scope === "global" && spec?.defaultScope === "project");
@@ -113,7 +114,7 @@ function PageHost({
   return (
     <PageContext.Provider value={ctx}>
       <div className={styles.pageHeader}>
-        <div className={styles.crumbs} aria-label="Breadcrumb">
+        <div className={styles.crumbs} aria-label={tx("Breadcrumb")}>
           {crumbs.map((c, i) => (
             <span key={i} className={styles.crumb}>
               {i > 0 && <Icon name="chevron-right" size={12} className={styles.crumbSep} />}
@@ -128,7 +129,7 @@ function PageHost({
             <T>Reset</T>
           </button>
         )}
-        {projectScope && <ScopeSwitch pageId={pageId} scope={scope} />}
+        {projectScope && !spec?.ownScopeSwitch && <ScopeSwitch pageId={scopeKey} scope={scope} />}
         <span className={styles.history}>
           <IconButton icon="arrow-left" title="Back" size="small" disabled={!history.back} onClick={history.back} />
           <IconButton

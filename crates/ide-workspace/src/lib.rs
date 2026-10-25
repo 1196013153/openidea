@@ -14,7 +14,7 @@ pub mod roots;
 pub mod settings;
 pub mod text_refs;
 
-pub use documents::{DocumentInfo, Documents, TextSnapshot};
+pub use documents::{DetectLanguage, DocumentInfo, Documents, TextSnapshot};
 pub use editorconfig::{EditorConfig, EditorConfigProps};
 pub use file_defaults::FileDefaults;
 pub use file_moves::{FileMove, FileMoves, UndoOutcome};

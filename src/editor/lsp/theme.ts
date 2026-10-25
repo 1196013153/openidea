@@ -152,7 +152,19 @@ export const lspTheme = EditorView.theme({
     fontFamily: "var(--font-ui)",
     fontSize: "var(--fs-small)",
     whiteSpace: "nowrap",
+    gap: "12px",
+    justifyContent: "space-between",
   },
+  ".cm-lsp-completion-sort": {
+    padding: "0",
+    border: "none",
+    background: "none",
+    color: "var(--fg-subtle)",
+    font: "inherit",
+    cursor: "pointer",
+  },
+  ".cm-lsp-completion-sort:hover": { color: "var(--fg)" },
+  '.cm-lsp-completion-sort[aria-pressed="true"]': { color: "var(--link)" },
   ".cm-tooltip.cm-completionInfo": {
     ...tooltipSurface,
     padding: "8px 12px",
@@ -310,6 +322,8 @@ export const lspTheme = EditorView.theme({
   },
   // A part naming a declaration (⌘-click navigates there).
   ".cm-lsp-inlay-part:hover": { textDecoration: "underline", textUnderlineOffset: "2px" },
+  // Inline completion: the suggestion as gray text at the caret.
+  ".cm-inline-ghost": { color: "var(--fg-subtle)", whiteSpace: "pre" },
   ".cm-lsp-inlay-pl": { marginLeft: "4px" },
   ".cm-lsp-inlay-pr": { marginRight: "4px" },
 

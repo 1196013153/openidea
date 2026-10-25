@@ -42,7 +42,7 @@ import type { LayoutNode, SplitEdge, Tab } from "../model/tabs";
 import { disambiguateTitles } from "../model/tabTitles";
 import { TextEditorHost } from "./TextEditorHost";
 import { FindBar } from "./FindBar";
-import { Banner, VirtualBanner } from "./Banner";
+import { EditorBanners, VirtualBanner } from "./Banner";
 import { CodeBreadcrumbs } from "./StatusItems";
 import styles from "./EditorArea.module.css";
 
@@ -147,12 +147,13 @@ function PaneView({ paneId }: { paneId: string }) {
   const paths = tabs.map((t) => t.input.path ?? "");
   const dirty = useDocMeta(useShallow((s) => paths.map((p) => !!s[p]?.dirty)));
   const colors = useFileDecorations(useShallow(() => paths.map((p) => (p ? (getFileDecoration(p)?.color ?? "") : ""))));
+  const tints = useFileDecorations(useShallow(() => paths.map((p) => (p ? (getFileDecoration(p)?.tint ?? "") : ""))));
 
   const hints = useTitleHints();
   const [dropZone, setDropZone] = useState<DropZone | null>(null);
   const tabPrefs = useEditorPrefs().tabs;
   const distractionFree = useDistractionFree((s) => s.active);
-  const { showExtension, markModified, showCloseButton } = tabPrefs;
+  const { showExtension, markModified, showCloseButton, showFileIcon, showDirectoryForNonUnique, showFullPathOnHover } = tabPrefs;
 
   const items: TabItem[] = useMemo(() => {
     const names = tabs.map((t) => tabTitle(t.input, kinds));
@@ -160,8 +161,9 @@ function PaneView({ paneId }: { paneId: string }) {
       const full = names[i]!;
       const dot = full.lastIndexOf(".");
       const name = t.input.kind === "file" && !showExtension && dot > 0 ? full.slice(0, dot) : full;
-      const dupe =
-        t.input.kind === "file" && t.input.path
+      const dupe = !showDirectoryForNonUnique
+        ? null
+        : t.input.kind === "file" && t.input.path
           ? (hints.get(t.input.path) ?? null)
           : names.filter((n) => n === name).length > 1 && t.input.path
             ? basename(dirname(t.input.path))
@@ -175,28 +177,47 @@ function PaneView({ paneId }: { paneId: string }) {
           </>
         ),
         text: dupe ? `${name} — ${dupe}` : name,
-        icon: tabIcon(t.input, kinds),
+        icon: showFileIcon ? tabIcon(t.input, kinds) : undefined,
         italic: t.preview,
         modified: dirty[i],
         closable: showCloseButton,
         color: colors[i] || undefined,
-        tooltip: virtualTooltip(t.input) ?? t.input.path ?? name,
+        tint: tints[i] || undefined,
+        tooltip: virtualTooltip(t.input) ?? (showFullPathOnHover ? (t.input.path ?? name) : undefined),
         trailing: t.pinned ? <Icon name="pin" size={11} className={styles.pin} label="Pinned" /> : undefined,
       };
     });
-  }, [tabs, kinds, dirty, colors, hints, showExtension, markModified, showCloseButton]);
+  }, [
+    tabs,
+    kinds,
+    dirty,
+    colors,
+    tints,
+    hints,
+    showExtension,
+    markModified,
+    showCloseButton,
+    showFileIcon,
+    showDirectoryForNonUnique,
+    showFullPathOnHover,
+  ]);
 
-  const dnd: TabsDnd = useMemo(
-    () => ({
+  const pinnedCount = tabs.filter((t) => t.pinned).length;
+  // Settings › Editor Tabs › Tab placement Left / Right: a vertical, scrolling column.
+  const vertical = tabPrefs.placement === "left" || tabPrefs.placement === "right";
+  const pinnedRow =
+    tabPrefs.pinnedSeparateRow && (vertical || !tabPrefs.multipleRows) && pinnedCount > 0 && pinnedCount < tabs.length;
+  const dnd = useMemo(() => {
+    const strip = (offset: number): TabsDnd => ({
       type: EDITOR_TAB_MIME,
       payload: (tabId) => JSON.stringify({ paneId, tabId }),
       onDrop: (raw, index) => {
         const p = parseTabPayload(raw);
-        if (p) ctrl.moveTab(p.paneId, p.tabId, paneId, index);
+        if (p) ctrl.moveTab(p.paneId, p.tabId, paneId, index + offset);
       },
-    }),
-    [ctrl, paneId],
-  );
+    });
+    return { all: strip(0), rest: strip(pinnedCount) };
+  }, [ctrl, paneId, pinnedCount]);
 
   if (!pane) return null;
   const active = pane.tabs.find((t) => t.id === pane.active) ?? null;
@@ -236,42 +257,65 @@ function PaneView({ paneId }: { paneId: string }) {
     },
   };
 
+  const hidden = tabPrefs.placement === "none" || distractionFree;
+  const strip = (stripItems: TabItem[], stripDnd: TabsDnd, trailing: ReactNode) => (
+    <Tabs
+      className={clsx(styles.tabs, !pinnedRow && hidden && styles.tabsHidden)}
+      variant="editor"
+      orientation={vertical ? "vertical" : "horizontal"}
+      aria-label="Editor tabs"
+      items={stripItems}
+      activeId={pane.active}
+      panelIdPrefix={`editor-${paneId}`}
+      dnd={stripDnd}
+      layout={tabPrefs.multipleRows ? "wrap" : tabPrefs.oneRowOverflow === "squeeze" ? "squeeze" : "scroll"}
+      closePosition={tabPrefs.closeButtonPosition === "left" ? "left" : "right"}
+      onSelect={(id) => ctrl.activate(paneId, id)}
+      onClose={(id) => ctrl.closeTab(paneId, id)}
+      onCloseOthers={(id) => ctrl.closeOthers(paneId, id)}
+      onDoubleClick={(id) => {
+        // IDEA: a preview tab becomes a regular one; any other tab maximizes the editor.
+        if (pane.tabs.find((t) => t.id === id)?.preview) ctrl.keepTab(paneId, id);
+        else void executeAction("toolwindow.hideAll");
+      }}
+      onContextMenu={(id, e) => {
+        const tab = pane.tabs.find((t) => t.id === id);
+        if (!tab) return;
+        e.preventDefault();
+        // Contributed groups (Run '…') may read a background tab's file first (bounded wait).
+        const at = { x: e.clientX, y: e.clientY };
+        const path = tab.input.kind === "file" ? tab.input.path : undefined;
+        if (!path) return showContextMenu(at, ctrl.tabMenu(paneId, tab));
+        void prepareMenuGroups("editorTab", { paths: [path] }).then(() => showContextMenu(at, ctrl.tabMenu(paneId, tab)));
+      }}
+      trailing={trailing}
+    />
+  );
+  const actions = active ? <EditorTabActions paneId={paneId} tab={active} /> : undefined;
+
   return (
     <section
-      className={clsx(styles.pane, multiPane && !isActivePane && styles.inactivePane)}
+      className={clsx(
+        styles.pane,
+        multiPane && !isActivePane && styles.inactivePane,
+        tabPrefs.placement === "bottom" && styles.tabsBottom,
+        vertical && styles.tabsVertical,
+        tabPrefs.placement === "right" && styles.tabsRight,
+      )}
       data-pane-id={paneId}
       aria-label="Editor"
       onFocus={onFocus}
       onBlur={onBlur}
     >
-      <Tabs
-        className={clsx(styles.tabs, (tabPrefs.placement === "none" || distractionFree) && styles.tabsHidden, tabPrefs.multipleRows && styles.tabsMultiRow)}
-        variant="editor"
-        aria-label="Editor tabs"
-        items={items}
-        activeId={pane.active}
-        panelIdPrefix={`editor-${paneId}`}
-        dnd={dnd}
-        onSelect={(id) => ctrl.activate(paneId, id)}
-        onClose={(id) => ctrl.closeTab(paneId, id)}
-        onCloseOthers={(id) => ctrl.closeOthers(paneId, id)}
-        onDoubleClick={(id) => {
-          // IDEA: a preview tab becomes a regular one; any other tab maximizes the editor.
-          if (pane.tabs.find((t) => t.id === id)?.preview) ctrl.keepTab(paneId, id);
-          else void executeAction("toolwindow.hideAll");
-        }}
-        onContextMenu={(id, e) => {
-          const tab = pane.tabs.find((t) => t.id === id);
-          if (!tab) return;
-          e.preventDefault();
-          // Contributed groups (Run '…') may read a background tab's file first (bounded wait).
-          const at = { x: e.clientX, y: e.clientY };
-          const path = tab.input.kind === "file" ? tab.input.path : undefined;
-          if (!path) return showContextMenu(at, ctrl.tabMenu(paneId, tab));
-          void prepareMenuGroups("editorTab", { paths: [path] }).then(() => showContextMenu(at, ctrl.tabMenu(paneId, tab)));
-        }}
-        trailing={active ? <EditorTabActions paneId={paneId} tab={active} /> : undefined}
-      />
+      {pinnedRow ? (
+        // Settings › Editor Tabs › Show pinned tabs in a separate row.
+        <div className={clsx(styles.tabRows, hidden && styles.tabsHidden)}>
+          {strip(items.slice(0, pinnedCount), dnd.all, vertical ? actions : undefined)}
+          {strip(items.slice(pinnedCount), dnd.rest, vertical ? undefined : actions)}
+        </div>
+      ) : (
+        strip(items, dnd.all, actions)
+      )}
       <div
         className={styles.content}
         role="tabpanel"
@@ -303,7 +347,11 @@ function PaneContent({ paneId, tab }: { paneId: string; tab: Tab }) {
     const host = <TextEditorHost key={tab.id} tabId={tab.id} />;
     return (
       <>
-        {virtual ? <VirtualBanner decompiled={virtual.decompiled} description={virtual.description} /> : <Banner path={tab.input.path} />}
+        {virtual ? (
+          <VirtualBanner decompiled={virtual.decompiled} description={virtual.description} />
+        ) : (
+          <EditorBanners path={tab.input.path} />
+        )}
         <FindBar paneId={paneId} />
         {crumbs && <CodeBreadcrumbs path={tab.input.path!} tabId={tab.id} position="top" />}
         {wrapper ? (

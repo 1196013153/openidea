@@ -14,6 +14,14 @@ import {
   type InspectSummary,
   type RequestId,
 } from "@/platform/ipc";
+import {
+  activeProfileId,
+  applyProfileMixed,
+  noteDiagnosticCodes,
+  producerOf,
+  profileOverrides,
+  type ProfileId,
+} from "@/platform/inspections";
 import { notifications, toolWindowService } from "@/workbench/contributions";
 import { describeScope, resolveScope, type ScopeChoice } from "./scope";
 
@@ -99,6 +107,8 @@ interface InspectState {
   error: string | null;
   /** Scope of the last run (Rerun). */
   last: ScopeChoice | null;
+  /** Inspection profile of the last run. */
+  profile: ProfileId | null;
   /** Problems excluded from the results (⌫), by `problemId`. */
   excluded: ReadonlySet<string>;
 }
@@ -112,6 +122,7 @@ const initialInspection = (): InspectState => ({
   scopeLabel: null,
   error: null,
   last: null,
+  profile: null,
   excluded: new Set(),
 });
 
@@ -144,7 +155,8 @@ export function resetInspection() {
   useInspection.setState(initialInspection());
 }
 
-export async function runInspection(choice: ScopeChoice): Promise<void> {
+/** Inspect Code over `choice` with `profileId` (default: the profile in effect). */
+export async function runInspection(choice: ScopeChoice, profileId: ProfileId = activeProfileId()): Promise<void> {
   const scope = await resolveScope(choice);
   if (typeof scope === "string") {
     notifications().notify({ group: "analysis", level: "warning", title: "Inspect Code", body: scope });
@@ -162,8 +174,10 @@ export async function runInspection(choice: ScopeChoice): Promise<void> {
     error: null,
     scopeLabel: describeScope(choice, scope),
     last: choice,
+    profile: profileId,
     excluded: new Set(),
   });
+  const profile = profileOverrides(profileId);
   toolWindowService().show("inspection");
   if (!isTauri()) {
     useInspection.setState({ running: false, error: "Inspect Code needs the desktop app" });
@@ -182,15 +196,23 @@ export async function runInspection(choice: ScopeChoice): Promise<void> {
       case "started":
         useInspection.setState({ total: ev.total });
         break;
-      case "file":
-        if (ev.file.diagnostics.length) found.set(ev.file.path, ev.file);
+      case "file": {
+        const diagnostics = applyProfileMixed(profile, ev.file.diagnostics);
+        for (const d of ev.file.diagnostics) if (d.code) noteDiagnosticCodes(producerOf(d), [d]);
+        if (diagnostics.length) found.set(ev.file.path, { ...ev.file, diagnostics });
         useInspection.setState({ done: ev.done });
         flush ??= setTimeout(publish, 150);
         break;
+      }
       case "done":
         if (flush) clearTimeout(flush);
         inflight = null;
-        useInspection.setState({ running: false, files: new Map(found), summary: ev.summary });
+        useInspection.setState({
+          running: false,
+          files: new Map(found),
+          // Problems the profile kept, not all the servers reported.
+          summary: { ...ev.summary, problems: [...found.values()].reduce((n, f) => n + f.diagnostics.length, 0) },
+        });
         break;
     }
   };
@@ -205,6 +227,6 @@ export async function runInspection(choice: ScopeChoice): Promise<void> {
 }
 
 export function rerunInspection() {
-  const last = useInspection.getState().last;
-  if (last) void runInspection(last);
+  const { last, profile } = useInspection.getState();
+  if (last) void runInspection(last, profile ?? undefined);
 }

@@ -285,6 +285,74 @@ pub fn script_java_version(text: &str) -> Option<u32> {
     None
 }
 
+/// Configurations whose dependencies are libraries (`testFixturesImplementation` ends in one).
+const DEPENDENCY_CONFIGURATIONS: &[&str] = &[
+    "implementation",
+    "api",
+    "compileOnly",
+    "runtimeOnly",
+    "compileOnlyApi",
+    "annotationProcessor",
+    "kapt",
+    "ksp",
+    "compile",
+    "runtime",
+    "testCompile",
+    "testRuntime",
+    "developmentOnly",
+];
+
+fn is_dependency_configuration(name: &str) -> bool {
+    DEPENDENCY_CONFIGURATIONS.iter().any(|c| {
+        name == *c || {
+            let mut cap = c.chars();
+            let first = cap.next().map(|f| f.to_ascii_uppercase()).into_iter();
+            let capitalised: String = first.chain(cap).collect();
+            name.len() > c.len() && name.ends_with(&capitalised)
+        }
+    })
+}
+
+/// `(group, artifact, version)` of the external dependencies a build script declares:
+/// `implementation 'g:a:v'`, `api("g:a:v:classifier@jar")`, and the map notation
+/// `implementation group: 'g', name: 'a', version: 'v'` (Groovy) / `group = "g", …` (Kotlin).
+/// Versions with interpolations, ranges and catalog aliases (`libs.x`) are skipped.
+pub fn script_dependencies(text: &str) -> Vec<(String, String, String)> {
+    let text = strip_comments(text);
+    let mut out = Vec::new();
+    for line in text.lines().flat_map(|l| l.split(['{', ';'])) {
+        let line = line.trim_start();
+        let name: String = line.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if name.is_empty() || !is_dependency_configuration(&name) {
+            continue;
+        }
+        let rest = &line[name.len()..];
+        let lits = literals(rest);
+        let map_value = |key: &str| -> Option<String> {
+            let i = rest.find(key)?;
+            let after = rest[i + key.len()..].trim_start().strip_prefix([':', '='])?;
+            literals(after).into_iter().next()
+        };
+        let coordinate = match (map_value("group"), map_value("name"), map_value("version")) {
+            (Some(g), Some(a), Some(v)) => Some((g, a, v)),
+            _ => lits.first().and_then(|l| {
+                let l = l.split('@').next().unwrap_or(l);
+                let mut parts = l.split(':');
+                Some((parts.next()?.to_owned(), parts.next()?.to_owned(), parts.next()?.to_owned()))
+            }),
+        };
+        if let Some((g, a, v)) = coordinate {
+            let plain = |s: &str| {
+                !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'))
+            };
+            if plain(&g) && plain(&a) && plain(&v) && !v.contains('+') {
+                out.push((g, a, v));
+            }
+        }
+    }
+    out
+}
+
 /// Every settings and build script of the model (for change detection).
 pub fn build_files(root: &Path, model: &GradleModel) -> Vec<PathBuf> {
     let dir = root.join(&model.dir);
@@ -333,6 +401,38 @@ pub fn parse_tasks(output: &str) -> Vec<(String, GradleTask)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn script_dependencies_read_string_and_map_notations() {
+        let script = r#"
+plugins { id 'java' }
+dependencies {
+    implementation 'com.google.guava:guava:33.0.0-jre'
+    api("org.slf4j:slf4j-api:2.0.9")
+    testImplementation "junit:junit:4.13.2@jar"
+    // implementation 'commented:out:1.0'
+    compileOnly group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
+    runtimeOnly(group = "com.h2database", name = "h2", version = "2.2.224")
+    implementation "org.x:dyn:${ver}"
+    implementation 'org.x:range:1.+'
+    implementation libs.okhttp
+    implementation project(':core')
+    classpath 'not:a:library'
+}
+"#;
+        let deps = script_dependencies(script);
+        let names: Vec<String> = deps.iter().map(|(g, a, v)| format!("{g}:{a}:{v}")).collect();
+        assert_eq!(
+            names,
+            [
+                "com.google.guava:guava:33.0.0-jre",
+                "org.slf4j:slf4j-api:2.0.9",
+                "junit:junit:4.13.2",
+                "org.projectlombok:lombok:1.18.30",
+                "com.h2database:h2:2.2.224",
+            ]
+        );
+    }
+
     use super::*;
 
     #[test]

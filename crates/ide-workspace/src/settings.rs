@@ -2,6 +2,7 @@ use ide_core::settings::Settings;
 use ide_core::{IdeError, IdeResult, project_dir};
 use parking_lot::RwLock;
 use serde_json::Value as Json;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml_edit::{DocumentMut, Item, Table, TableLike};
 
@@ -230,6 +231,52 @@ impl SettingsStore {
         *self.effective.write() = settings.clone();
         settings
     }
+
+    /// File › Manage IDE Settings › Export Settings…: the global layer plus
+    /// frontend-held IDE state (`storage`: keymaps' companions such as live
+    /// templates, macros) as one JSON file.
+    pub fn export_bundle(&self, path: &Path, storage: BTreeMap<String, String>) -> IdeResult<()> {
+        let settings = match std::fs::read_to_string(&self.global_file) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e.into()),
+        };
+        let bundle = SettingsBundle { format: BUNDLE_FORMAT.into(), version: BUNDLE_VERSION, settings, storage };
+        let json = serde_json::to_vec_pretty(&bundle).map_err(|e| IdeError::internal(e.to_string()))?;
+        ide_vfs::write_atomic(path, &json)?;
+        Ok(())
+    }
+
+    /// Import Settings…: replaces the global layer with the bundle's (validated
+    /// first) and returns the new effective settings and the bundle's `storage`.
+    pub fn import_bundle(&self, path: &Path) -> IdeResult<(Settings, BTreeMap<String, String>)> {
+        let bytes = std::fs::read(path)?;
+        let bundle: SettingsBundle = serde_json::from_slice(&bytes)
+            .map_err(|e| IdeError::invalid(format!("not an OpenIDEA settings file: {e}")))?;
+        if bundle.format != BUNDLE_FORMAT || bundle.version > BUNDLE_VERSION {
+            return Err(IdeError::invalid("not an OpenIDEA settings file, or one from a newer version"));
+        }
+        let layer = parse_layer(&bundle.settings).map_err(|e| IdeError::invalid(format!("invalid settings: {e}")))?;
+        try_merge(&mut defaults_json(), layer).map_err(|e| IdeError::invalid(format!("invalid settings: {e}")))?;
+        if let Some(dir) = self.global_file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        ide_vfs::write_atomic(&self.global_file, bundle.settings.as_bytes())?;
+        Ok((self.reload(), bundle.storage))
+    }
+}
+
+const BUNDLE_FORMAT: &str = "openidea-settings";
+const BUNDLE_VERSION: u32 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SettingsBundle {
+    format: String,
+    version: u32,
+    /// The global `settings.toml`, verbatim (comments included).
+    settings: String,
+    #[serde(default)]
+    storage: BTreeMap<String, String>,
 }
 
 #[cfg(test)]
@@ -319,5 +366,69 @@ mod tests {
 
         let reloaded = SettingsStore::load(&cfg, Some(&proj)).effective();
         assert_eq!(reloaded, store.effective());
+    }
+
+    #[test]
+    fn inspection_profiles_live_in_their_layers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = tmp.path().join("cfg");
+        let proj = tmp.path().join("proj");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let store = SettingsStore::load(&cfg, Some(&proj));
+        store.set(SettingsScope::Global, "inspections.default", json!({"lsp:ruff:F401": {"enabled": false}})).unwrap();
+        store.set(SettingsScope::Project, "inspections.project", json!({"lsp:ruff": {"severity": "typo"}})).unwrap();
+        let s = store.set(SettingsScope::Project, "inspections.profile", json!("project")).unwrap();
+        assert_eq!(s.inspections.profile, "project");
+        assert_eq!(s.inspections.default["lsp:ruff:F401"].enabled, Some(false));
+        assert_eq!(s.inspections.project["lsp:ruff"].severity, Some(ide_core::settings::InspectionLevel::Typo));
+        assert!(store.set(SettingsScope::Project, "inspections.project", json!({"x": {"severity": "loud"}})).is_err());
+        let global = std::fs::read_to_string(cfg.join("settings.toml")).unwrap();
+        assert!(!global.contains("profile"), "{global}");
+    }
+
+    #[test]
+    fn settings_bundle_round_trips_and_rejects_invalid_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        let source = SettingsStore::load(&a, None);
+        source.set(SettingsScope::Global, "editor.fontSize", json!(17)).unwrap();
+        source.set(SettingsScope::Global, "general.powerSaveMode", json!(true)).unwrap();
+        let file = tmp.path().join("settings.json");
+        let storage = BTreeMap::from([("openidea.macros.v1".to_owned(), "[]".to_owned())]);
+        source.export_bundle(&file, storage.clone()).unwrap();
+
+        let target = SettingsStore::load(&b, None);
+        let (settings, imported) = target.import_bundle(&file).unwrap();
+        assert_eq!(settings.editor.font_size, 17.0);
+        assert!(settings.general.power_save_mode);
+        assert_eq!(imported, storage);
+        assert_eq!(target.effective(), source.effective());
+
+        let bad = tmp.path().join("bad.json");
+        std::fs::write(&bad, r#"{"format":"openidea-settings","version":1,"settings":"[editor]\nfontSize = \"x\"\n"}"#)
+            .unwrap();
+        assert!(target.import_bundle(&bad).is_err());
+        std::fs::write(&bad, r#"{"format":"other","version":1,"settings":""}"#).unwrap();
+        assert!(target.import_bundle(&bad).is_err());
+        assert_eq!(target.effective().editor.font_size, 17.0);
+    }
+
+    #[test]
+    fn main_toolbar_can_be_set_and_reset() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = SettingsStore::load(tmp.path(), None);
+        let s = store
+            .set(
+                SettingsScope::Global,
+                "appearance.mainToolbar",
+                json!({"left": ["project"], "right": [], "hidden": ["vcs.branch"]}),
+            )
+            .unwrap();
+        let toolbar = s.appearance.main_toolbar.unwrap();
+        assert_eq!(toolbar.left, ["project"]);
+        assert_eq!(toolbar.hidden, ["vcs.branch"]);
+        let s = store.set(SettingsScope::Global, "appearance.mainToolbar", Json::Null).unwrap();
+        assert_eq!(s.appearance.main_toolbar, None);
     }
 }

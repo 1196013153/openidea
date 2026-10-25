@@ -6,6 +6,7 @@
 import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { EditorView, keymap, showTooltip, type Tooltip } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
+import { txTemplate } from "@/platform/i18n";
 
 interface Hint {
   pos: number;
@@ -33,7 +34,7 @@ const hintField = StateField.define<Hint | null>({
               const dom = document.createElement("div");
               dom.className = `cm-lsp-hint cm-lsp-hint-${h.tone}`;
               dom.setAttribute("role", "status");
-              if (typeof h.content === "string") dom.textContent = h.content;
+              if (typeof h.content === "string") dom.textContent = txTemplate(h.content);
               else dom.appendChild(h.content());
               return { dom };
             },

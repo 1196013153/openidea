@@ -11,6 +11,7 @@ import type { DocId, DocumentInfo, EditorSettings, FileSettings, LineEnding, Out
 import {
   _emitEditorEvent,
   _saveParticipants,
+  isLibraryPath,
   mirroredChange,
   remoteChange,
   useEditorRegistry,
@@ -44,7 +45,7 @@ import {
 import { setMethodLines, softWrapActive } from "../cm/prefs";
 import type { EditorSlot } from "./slot";
 
-export type Banner = "binary" | "tooLarge" | "readOnly" | null;
+export type Banner = "binary" | "tooLarge" | "readOnly" | "library" | null;
 
 /** A view attached to a document outside the tab system (see `attachment.ts`). */
 export interface DocAttachmentTarget {
@@ -73,7 +74,9 @@ export const useOutline = create<Record<string, OutlineItem[]>>(() => ({}));
 const REFRESH_DELAY = 450;
 function bannerFor(info: DocumentInfo): Banner {
   // Virtual documents (library classes) get their own notice from the editor area.
-  if (!info.readOnly || info.uri) return null;
+  if (info.uri) return null;
+  if (isLibraryPath(info.path)) return "library";
+  if (!info.readOnly) return null;
   if (!info.text.length) return "binary";
   // The backend makes files above its size limit read-only and flags them `large`.
   if (info.large) return "tooLarge";
@@ -181,6 +184,8 @@ export class DocModel {
   editorconfig: EditorConfigProps | null = null;
   desc: LanguageDescription | null;
   language: LanguageSupport | null;
+  /** Too large for language support (no CodeMirror language, backend highlighting only). */
+  private large: boolean;
   lastFocused: EditorSlot | null = null;
   /** Bumped by every change (local or remote). */
   changeCounter = 0;
@@ -200,6 +205,7 @@ export class DocModel {
     this.editorconfig = info.editorconfig ?? null;
     // `large`: the backend skips LSP and syntax trees for it; heavy UI features follow.
     const large = !!info.large || info.text.length > HEAVY_LIMIT;
+    this.large = large;
     this.desc = large ? null : findLanguageDescription(this.info?.uiMode ?? null, info.path);
     this.language = loadedSupport(this.desc);
     this.meta = {
@@ -209,7 +215,8 @@ export class DocModel {
       uiMode: this.info?.uiMode ?? this.desc?.name ?? null,
       encoding: info.encoding,
       lineEnding: info.lineEnding,
-      readOnly: info.readOnly,
+      // Library sources (External Libraries) open read-only, like IDEA's.
+      readOnly: info.readOnly || (!this.virtual && isLibraryPath(info.path)),
       dirty: info.dirty,
       banner: bannerFor(info),
       indent: { tabSize: 4, insertSpaces: true },
@@ -322,6 +329,23 @@ export class DocModel {
     this.scheduleRefresh();
   }
 
+  /** The backend detected another language (Settings › File Types, Override File Type). */
+  setLanguage(language: string) {
+    if (this.closed || language === this.meta.language) return;
+    this.info = languageInfo(language);
+    this.desc = this.large ? null : findLanguageDescription(this.info?.uiMode ?? null, this.path);
+    this.language = loadedSupport(this.desc);
+    this.highlights = null;
+    this.setMeta({ language, uiMode: this.info?.uiMode ?? this.desc?.name ?? null });
+    for (const s of this.slots) {
+      s.reconfigure([compartments.language.reconfigure(this.language ?? [])]);
+      s.syncContributions(true);
+    }
+    this.applySettings();
+    if (this.desc && !this.language) void this.loadLanguage();
+    this.scheduleRefresh(0);
+  }
+
   async loadLanguage() {
     if (!this.desc) return;
     const support = await loadSupport(this.desc);
@@ -397,7 +421,7 @@ export class DocModel {
   setReadOnly(readOnly: boolean) {
     if (readOnly === this.meta.readOnly) return;
     const banner = this.meta.banner;
-    this.setMeta({ readOnly, banner: readOnly ? (banner ?? (this.virtual ? null : "readOnly")) : banner === "readOnly" ? null : banner });
+    this.setMeta({ readOnly, banner: readOnly ? (banner ?? (this.virtual ? null : "readOnly")) : banner === "readOnly" || banner === "library" ? null : banner });
     for (const s of this.slots) {
       s.reconfigure([
         compartments.readOnly.reconfigure(readOnlyExtension(readOnly)),
@@ -570,6 +594,7 @@ export class DocumentManager {
   start() {
     this.disposers.push(
       this.backend.onPatched((e) => this.byId.get(e.doc)?.sync.remote(e)),
+      this.backend.onLanguage?.((e) => this.byId.get(e.doc)?.setLanguage(e.language)) ?? (() => {}),
       this.backend.onDirty((e) => {
         const m = this.byId.get(e.doc);
         if (m && m.getMeta().dirty !== e.dirty) {

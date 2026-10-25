@@ -7,7 +7,7 @@ import { EditorSelection } from "@codemirror/state";
 import { create } from "zustand";
 import { setContext } from "@/platform/context";
 import { shortcutLabel } from "@/platform/keymap";
-import { useProject } from "@/platform/project";
+import { basename, useProject } from "@/platform/project";
 import { editorPrefs } from "@/platform/editorSettings";
 import {
   _emitEditorEvent,
@@ -50,6 +50,7 @@ import {
   removePane,
   reopenClosed,
   setActivePane,
+  sortTabs,
   splitPane,
   tabOptions,
   togglePin,
@@ -128,6 +129,11 @@ export function openFilePaths(s: TabsState): string[] {
         out.push(t.input.path);
       }
   return out;
+}
+
+/** Editor Tabs › Sort tabs alphabetically: by file name. */
+function tabSortKey(input: EditorInput): string {
+  return basename(input.path ?? input.key);
 }
 
 function isTextTab(tab: Tab | null | undefined): tab is Tab & { input: { path: string } } {
@@ -776,6 +782,7 @@ export class EditorController implements SlotHost {
         });
         s = r.state;
         tabId = r.tabId;
+        if (tabs.sortAlphabetically) s = sortTabs(s, paneId, (t) => tabSortKey(t.input));
         s = enforceTabLimit(
           s,
           paneId,

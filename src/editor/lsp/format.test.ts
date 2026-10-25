@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Text } from "@codemirror/state";
+import {
+  formatExcluded,
+  guardFormatChanges,
+  guardTextEdits,
+  protectedRegions,
+  type FormatGuardOptions,
+} from "@/platform/formatGuard";
 import { formattedLines } from "./format";
 
 describe("formattedLines", () => {
@@ -24,5 +31,69 @@ describe("formattedLines", () => {
         { from: lineStart(1), to: lineStart(1) + 1, insert: "f" },
       ]),
     ).toBe(3);
+  });
+});
+
+describe("formatter markers and Do not format", () => {
+  const on: FormatGuardOptions = {
+    doNotFormat: [],
+    formatterTagsEnabled: true,
+    formatterOffTag: "@formatter:off",
+    formatterOnTag: "@formatter:on",
+    formatterTagsRegexp: false,
+  };
+  const lines = ["a  =  1", "// @formatter:off", "b  =  2", "// @formatter:on", "c  =  3"];
+  const text = lines.join("\n");
+  const at = (line: number, col = 0) => lines.slice(0, line).join("\n").length + (line ? 1 : 0) + col;
+  const apply = (t: string, cs: readonly { from: number; to: number; insert: string }[]) =>
+    [...cs].sort((x, y) => y.from - x.from).reduce((s, c) => s.slice(0, c.from) + c.insert + s.slice(c.to), t);
+  const formatted = ["a = 1", "// @formatter:off", "b = 2", "// @formatter:on", "c = 3"].join("\n");
+  const expected = ["a = 1", "// @formatter:off", "b  =  2", "// @formatter:on", "c = 3"].join("\n");
+
+  it("finds the regions between markers in comments", () => {
+    expect(protectedRegions(text, on)).toEqual([{ from: at(1), to: at(3, "// @formatter:on".length) }]);
+    expect(protectedRegions(text, { ...on, formatterTagsEnabled: false })).toEqual([]);
+    expect(protectedRegions('s = "@formatter:off"\nx', on)).toEqual([]);
+    // Without an on marker the region runs to the end.
+    expect(protectedRegions("x\n# @formatter:off\ny", on)).toEqual([{ from: 2, to: 20 }]);
+    const regexp = { ...on, formatterOffTag: "fmt:\\s*off", formatterOnTag: "fmt:\\s*on", formatterTagsRegexp: true };
+    expect(protectedRegions("// fmt: off\nx\n// fmt:on", regexp)).toEqual([{ from: 0, to: 23 }]);
+  });
+
+  it("drops edits inside a region and keeps the others", () => {
+    const changes = [
+      { from: at(0, 1), to: at(0, 3), insert: " " },
+      { from: at(2, 1), to: at(2, 3), insert: " " },
+      { from: at(4, 1), to: at(4, 3), insert: " " },
+    ];
+    expect(apply(text, guardFormatChanges(text, changes, on))).toBe(
+      ["a =  1", "// @formatter:off", "b  =  2", "// @formatter:on", "c =  3"].join("\n"),
+    );
+    expect(guardFormatChanges(text, changes, { ...on, formatterTagsEnabled: false })).toEqual(changes);
+  });
+
+  it("splits a whole-file replacement around the regions", () => {
+    expect(apply(text, guardFormatChanges(text, [{ from: 0, to: text.length, insert: formatted }], on))).toBe(expected);
+    const edits = guardTextEdits(
+      text,
+      [{ range: { start: { line: 0, col: 0 }, end: { line: 4, col: 7 } }, new_text: formatted }],
+      on,
+    );
+    const asChanges = edits.map((e) => ({
+      from: at(e.range.start.line, e.range.start.col),
+      to: at(e.range.end.line, e.range.end.col),
+      insert: e.new_text,
+    }));
+    expect(apply(text, asChanges)).toBe(expected);
+  });
+
+  it("matches Do not format globs against names and project paths", () => {
+    const globs = ["*.min.js", "generated", "src/vendor/**", "docs/"];
+    expect(formatExcluded("/p/web/app.min.js", "/p", globs)).toBe(true);
+    expect(formatExcluded("/p/a/generated/x.ts", "/p", globs)).toBe(true);
+    expect(formatExcluded("/p/src/vendor/lib/x.ts", "/p", globs)).toBe(true);
+    expect(formatExcluded("/p/docs/a.md", "/p", globs)).toBe(true);
+    expect(formatExcluded("/p/src/app.js", "/p", globs)).toBe(false);
+    expect(formatExcluded("/p/other/docs.md", "/p", globs)).toBe(false);
   });
 });

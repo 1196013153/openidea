@@ -62,6 +62,20 @@ impl RecentProjects {
         self.persist(&items)
     }
 
+    /// Shows `path` as `name` (File › Rename Project…); `None` restores its folder name.
+    pub fn rename(&self, path: &Path, name: Option<&str>) -> IdeResult<()> {
+        let mut items = self.items.lock();
+        let Some(item) = items.iter_mut().find(|p| p.path == path) else { return Ok(()) };
+        let name = name.map(str::to_owned).unwrap_or_else(|| {
+            path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
+        });
+        if item.name == name {
+            return Ok(());
+        }
+        item.name = name;
+        self.persist(&items)
+    }
+
     pub fn remove(&self, path: &Path) -> IdeResult<()> {
         let mut items = self.items.lock();
         let before = items.len();
@@ -115,5 +129,18 @@ mod tests {
 
         std::fs::write(cfg.join("recent.json"), "not json").unwrap();
         assert!(RecentProjects::load(&cfg).list().is_empty());
+    }
+
+    #[test]
+    fn rename_shows_a_custom_name_until_reset() {
+        let tmp = tempfile::tempdir().unwrap();
+        let recent = RecentProjects::load(tmp.path());
+        recent.touch(Path::new("/p/app"), None).unwrap();
+        recent.rename(Path::new("/p/app"), Some("Shop Backend")).unwrap();
+        recent.rename(Path::new("/p/unknown"), Some("x")).unwrap();
+        assert_eq!(RecentProjects::load(tmp.path()).list()[0].name, "Shop Backend");
+        recent.rename(Path::new("/p/app"), None).unwrap();
+        assert_eq!(recent.list()[0].name, "app");
+        assert_eq!(recent.list().len(), 1);
     }
 }

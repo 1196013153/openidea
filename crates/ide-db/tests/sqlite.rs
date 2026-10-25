@@ -1,7 +1,7 @@
 //! Introspection, queries and table edits against a real SQLite file.
 
 use ide_core::{CancellationToken, IdeResult};
-use ide_db::{CellValue, DataSource, DbDriver, DbManager, DbRowEdit, DbTableKind, SortKey};
+use ide_db::{CellValue, DataSource, DbDriver, DbManager, DbOptions, DbProperty, DbRowEdit, DbTableKind, SortKey};
 
 async fn setup() -> (tempfile::TempDir, DbManager) {
     let tmp = tempfile::tempdir().unwrap();
@@ -244,5 +244,25 @@ async fn ddl_of_tables_and_views() -> IdeResult<()> {
     );
     assert_eq!(db.ddl("s1", "main", "named").await?, "CREATE VIEW named AS SELECT name FROM users;\n");
     assert!(db.ddl("s1", "main", "nope").await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn applies_driver_properties_and_the_startup_script_on_connect() -> IdeResult<()> {
+    let (tmp, db) = setup().await;
+    let mut s = db.sources()?.remove(0);
+    s.properties = vec![DbProperty { name: "cache_size".into(), value: "-1234".into() }];
+    s.options = DbOptions {
+        startup_script: "CREATE TEMP TABLE boot (x); INSERT INTO boot VALUES (7);".into(),
+        ..Default::default()
+    };
+    db.save_sources(vec![s.clone()]).await?;
+    let c = CancellationToken::new();
+    let r = db.execute("s1", "SELECT (SELECT x FROM boot), (SELECT cache_size FROM pragma_cache_size)", 10, &c).await?;
+    assert_eq!(r.rows, vec![vec![Some("7".into()), Some("-1234".into())]]);
+    // URL only: the file comes from the URL.
+    let url = format!("jdbc:sqlite:{}", tmp.path().join("app.db").display());
+    db.save_sources(vec![DataSource { url_only: true, url, file: None, ..s }]).await?;
+    assert_eq!(db.schemas("s1").await?, vec!["main"]);
     Ok(())
 }

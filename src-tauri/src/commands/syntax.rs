@@ -129,7 +129,7 @@ pub async fn syntax_identifiers_in_files(
     request: RequestId,
 ) -> IdeResult<Vec<FileIdentifiers>> {
     let project = state.project(window.label())?;
-    let languages = state.languages.clone();
+    let languages = project.languages.clone();
     let cancel = state.begin_request(request);
     let result = blocking(move || {
         let load = |path: &std::path::Path| {

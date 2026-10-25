@@ -1,7 +1,7 @@
 /** Menus of the Database tool window, laid out like IDEA's (New ▸, Copy/Paste ▸, SQL Scripts ▸ …). */
-import type { DbDriver } from "@/platform/ipc";
 import type { MenuItem } from "@/ui";
-import { driverIcon, fileSourceName } from "./model";
+import { fileSourceName } from "./model";
+import { VENDORS, vendorPreset } from "./vendors";
 import { nodeTarget, objectOf, tableOf, type DbNode } from "./nodes";
 import { SCRIPT_LABELS, canDrop, canRename, type ScriptKind } from "./objects";
 import { connectedTargets, openDialog, openSourceDialog, sourceById, useDatabase } from "./store";
@@ -21,18 +21,13 @@ async function sqliteFromFile() {
   if (typeof file === "string") openSourceDialog(null, { driver: "sqlite", file, name: fileSourceName(file) });
 }
 
-/** New ▸ Data Source ▸ — the drivers the backend speaks. */
+/** New ▸ Data Source ▸ — the drivers the backend speaks and wire-compatible products, A–Z like IDEA's. */
 function dataSourceItems(): MenuItem[] {
-  const preset = (label: string, driver: DbDriver): MenuItem => ({
-    label,
-    icon: driverIcon(driver),
-    run: () => openSourceDialog(null, { driver }),
-  });
   return [
     {
       label: "Data Source",
       icon: "database",
-      submenu: [preset("MariaDB", "mysql"), preset("MySQL", "mysql"), preset("PostgreSQL", "postgres"), preset("SQLite", "sqlite")],
+      submenu: VENDORS.map((v) => ({ label: v.label, icon: v.icon, run: () => openSourceDialog(null, vendorPreset(v)) })),
     },
     { label: "Data Source from File…", icon: "folder", run: () => void sqliteFromFile() },
     { label: "Data Source from URL…", icon: "external-link", run: () => openDialog({ kind: "sourceUrl" }) },

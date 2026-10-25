@@ -328,6 +328,14 @@
   --project-color-8-end: #279ccd;
   --project-color-9: #5fad65;
   --project-color-9-end: #3d968b;
+  /* Data source colours (IDEA's Color: red marks production); drawn as tints. */
+  --db-color-red: #e5534b;
+  --db-color-orange: #e08855;
+  --db-color-yellow: #d4b106;
+  --db-color-green: #5fad65;
+  --db-color-blue: #3b92b8;
+  --db-color-violet: #955ae0;
+  --tint-strength: 22%;
 }
 
 /* Windows caption buttons (frameless title bar): the system close red in every theme. */

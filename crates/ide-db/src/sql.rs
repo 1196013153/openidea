@@ -33,14 +33,26 @@ pub fn qualified(driver: DbDriver, schema: &str, table: &str) -> String {
 }
 
 /// Databases one can connect to (PostgreSQL).
-pub const DATABASES: &str = "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY datname";
+/// PostgreSQL databases one can connect to; templates only with `system`.
+pub fn databases(system: bool) -> &'static str {
+    if system {
+        "SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname"
+    } else {
+        "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY datname"
+    }
+}
 
 /// Databases of managed services that their users cannot use (hidden unless connected to).
 pub const INTERNAL_DATABASES: &[&str] = &["rdsadmin", "azure_maintenance", "azure_sys", "cloudsqladmin"];
 
-pub fn schemas(driver: DbDriver) -> &'static str {
+pub fn schemas(driver: DbDriver, system: bool) -> &'static str {
     match driver {
         DbDriver::Sqlite => "SELECT name FROM pragma_database_list WHERE name <> 'temp' ORDER BY seq",
+        DbDriver::Postgres if system => {
+            "SELECT schema_name FROM information_schema.schemata \
+             WHERE schema_name NOT LIKE 'pg\\_toast%' AND schema_name NOT LIKE 'pg\\_temp%' ORDER BY 1"
+        }
+        DbDriver::Mysql if system => "SELECT schema_name FROM information_schema.schemata ORDER BY 1",
         DbDriver::Postgres => {
             "SELECT schema_name FROM information_schema.schemata \
              WHERE schema_name NOT IN ('pg_catalog', 'information_schema') \

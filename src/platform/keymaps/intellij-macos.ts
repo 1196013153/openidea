@@ -72,6 +72,12 @@ export const intellijMacos: Record<string, string[]> = {
 
   // Code
   "code.completion": ["Ctrl+Space"],
+  "editor.inlineCompletion.trigger": ["Alt+\\"],
+  "editor.inlineCompletion.accept": ["Tab"],
+  "editor.inlineCompletion.acceptWord": ["Meta+Right"],
+  "editor.inlineCompletion.dismiss": ["Escape"],
+  "editor.inlineCompletion.next": ["Alt+]"],
+  "editor.inlineCompletion.previous": ["Alt+["],
   "code.parameterInfo": ["Meta+P"],
   "code.quickDocumentation": ["F1", "Ctrl+J"],
   "code.quickDefinition": ["Alt+Space", "Meta+Y"],
@@ -157,6 +163,7 @@ export const intellijMacos: Record<string, string[]> = {
 
   // Project view (when: projectViewFocus)
   "project.newFile": ["Meta+N"],
+  "project.newInThisDirectory": ["Ctrl+Alt+N"],
   "project.rename": ["Shift+F6"],
   "project.move": ["F6"],
   "project.delete": ["Delete", "Backspace", "Meta+Backspace"],
@@ -211,6 +218,7 @@ export const intellijMacos: Record<string, string[]> = {
   "run.stop": ["Meta+F2"],
   // Rerun in the Run / Debug tool window only (when / keyWhen); Meta+R stays with the editor elsewhere.
   "run.rerun": ["Meta+R"],
+  "coverage.manageReports": ["Meta+Alt+F6"],
   "debug.rerun": ["Meta+R"],
   // Rerun in the Find / Find Usages tool windows only (when).
   "find.rerun": ["Meta+R"],
@@ -250,10 +258,15 @@ export const intellijMacos: Record<string, string[]> = {
   "vcs.branches": [],
   "vcs.annotate": [],
   "vcs.localHistory": [],
+  "localHistory.recentChanges": ["Alt+Shift+C"],
+  // Run Anything (⌃⌃) and View › Quick Switch Scheme… (⌃`)
+  "runAnything.show": ["Ctrl Ctrl"],
+  "view.quickSwitchScheme": ["Ctrl+`"],
   // Commit tool window (change lists) and Git log; keyWhen limits them to those tool windows.
   "vcs.changelist.move": ["Meta+Shift+M"],
   "vcs.changelist.edit": ["F2", "Shift+F6"],
   "vcs.log.copyRevision": ["Meta+Alt+Shift+C"],
+  "vcs.log.goToRef": ["Meta+F"],
   // View › Appearance › Zoom IDE
   "view.zoomIn": ["Ctrl+Alt+="],
   "view.zoomOut": ["Ctrl+Alt+-"],
@@ -289,6 +302,7 @@ export const intellijMacos: Record<string, string[]> = {
   "db.openConsole": ["Meta+Shift+L"],
   "db.newDataSource": [],
   "db.new": ["Meta+N"],
+  "services.addService": ["Meta+N"],
   "db.properties": ["Shift+Enter"],
   "db.refresh": ["Meta+R"],
   "db.disconnect": ["Meta+F2"],
@@ -312,7 +326,8 @@ export const intellijMacos: Record<string, string[]> = {
   "db.collapseAll": [],
   // Terminal (keyWhen: terminalFocus); after VCS Update / Go to Test so it wins there.
   "terminal.new": ["Meta+T"],
-  // Last: later bindings win, so ⌘N is Generate in the editor and New in tool windows.
+  // Last: later bindings win, so ⌘N is Generate in editors with Generate actions (keyWhen)
+  // and New elsewhere (the project view, other editors: the New popup for the file).
   "code.generate": ["Meta+N"],
   // Find in Files popup (findPopupOpen): after the editor's Find Next, Jump to Source and
   // selection keys, so these win while the popup is open.
@@ -320,4 +335,7 @@ export const intellijMacos: Record<string, string[]> = {
   "find.popup.previousResult": ["Meta+Shift+G"],
   "find.popup.openResult": ["F4", "Meta+Down"],
   "find.popup.recentSearches": ["Alt+Down"],
+  // Search fields (find bar, Find in Files): last, so they win over editor keys while one is focused.
+  "find.field.newLine": ["Meta+Shift+Enter"],
+  "find.field.recentSearches": ["Alt+Down"],
 };

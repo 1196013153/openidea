@@ -28,6 +28,7 @@ import { fuzzyMatch } from "./match";
 import { acquirePopup } from "./popupState";
 import styles from "./Tree.module.css";
 import { T } from "./T";
+import { tx } from "@/platform/i18n";
 
 export interface TreeRowState {
   depth: number;
@@ -466,7 +467,7 @@ export function Tree<T>(props: TreeProps<T>) {
       <div
         ref={scrollRef}
         role="tree"
-        aria-label={props["aria-label"]}
+        aria-label={tx(props["aria-label"])}
         aria-multiselectable={multiSelect || undefined}
         aria-activedescendant={
           leadRow && !leadRow.loading && virtualizer.getVirtualItems().some((v) => v.index === leadIndex)

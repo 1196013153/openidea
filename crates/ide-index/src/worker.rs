@@ -24,6 +24,11 @@ pub(crate) enum Job {
     Changed(Vec<PathBuf>),
     Removed(Vec<PathBuf>),
     SaveRecent,
+    /// The roots or excludes changed: scan again (unchanged files are kept).
+    Rescan,
+    /// File types changed: re-parse the indexed files whose language under the
+    /// previous registry differs from the current one.
+    Reparse(std::sync::Arc<LanguageRegistry>),
 }
 
 #[derive(Default)]
@@ -34,7 +39,7 @@ struct Queue {
 }
 
 pub(crate) struct Shared {
-    pub filter: PathFilter,
+    filter: RwLock<std::sync::Arc<PathFilter>>,
     pub languages: std::sync::Arc<LanguageRegistry>,
     pub syntax: std::sync::Arc<Syntax>,
     pub sink: SharedSink,
@@ -60,7 +65,7 @@ impl Shared {
         store: Option<Store>,
     ) -> Self {
         Self {
-            filter,
+            filter: RwLock::new(std::sync::Arc::new(filter)),
             languages,
             syntax,
             sink,
@@ -74,6 +79,14 @@ impl Shared {
             wake: Condvar::new(),
             idle: Condvar::new(),
         }
+    }
+
+    pub(crate) fn filter(&self) -> std::sync::Arc<PathFilter> {
+        self.filter.read().clone()
+    }
+
+    pub(crate) fn set_filter(&self, filter: PathFilter) {
+        *self.filter.write() = std::sync::Arc::new(filter);
     }
 
     pub(crate) fn enqueue(&self, job: Job) {
@@ -150,7 +163,7 @@ impl Shared {
 
     fn load_persisted(&self) {
         let Some(store) = &self.store else { return };
-        let root = self.filter.root().to_owned();
+        let root = self.filter().root().to_owned();
         match store.load() {
             Ok(records) => {
                 let entries: Vec<FileEntry> =
@@ -198,26 +211,31 @@ impl Shared {
             done: false,
         });
 
-        let found = self.filter.walk(self.filter.root(), &self.cancelled);
+        let filter = self.filter();
+        let mut found = Vec::new();
+        for root in filter.roots() {
+            found.extend(filter.walk(root, &self.cancelled));
+        }
         if self.is_cancelled() {
             return self.end_scan(task);
         }
         let seen: HashSet<&Path> = found.iter().map(|f| f.path.as_path()).collect();
-        let (todo, stale): (Vec<&Found>, Vec<String>) = {
+        let (todo, stale): (Vec<&Found>, Vec<PathBuf>) = {
             let d = self.data.read();
             let todo = found
                 .iter()
                 .filter(|f| d.get(&f.path).is_none_or(|e| e.mtime != f.mtime || e.size != f.size))
                 .collect();
-            let stale = d.paths().filter(|p| !seen.contains(p.as_path())).filter_map(|p| self.filter.rel(p)).collect();
+            let stale = d.paths().filter(|p| !seen.contains(p.as_path())).cloned().collect();
             (todo, stale)
         };
         if !stale.is_empty() {
             let mut d = self.data.write();
-            for rel in &stale {
-                d.remove(&self.filter.root().join(rel));
+            for path in &stale {
+                d.remove(path);
             }
         }
+        let stale: Vec<String> = stale.iter().filter_map(|p| filter.store_key(p)).collect();
         self.persist(&[], &stale, false);
 
         let total = todo.len();
@@ -227,7 +245,7 @@ impl Shared {
             if self.is_cancelled() {
                 return self.end_scan(task);
             }
-            self.index_files(chunk.iter().copied());
+            self.index_files(chunk.iter().copied(), false);
             done += chunk.len();
             if last_progress.elapsed() >= PROGRESS_EVERY {
                 last_progress = Instant::now();
@@ -261,16 +279,18 @@ impl Shared {
     }
 
     /// Extracts records in parallel, then publishes them to memory and disk.
-    fn index_files<'a>(&self, files: impl Iterator<Item = &'a Found>) {
+    /// `force` re-parses files whose content is unchanged (their language changed).
+    fn index_files<'a>(&self, files: impl Iterator<Item = &'a Found>, force: bool) {
         let files: Vec<&Found> = files.collect();
+        let filter = self.filter();
         let extracted: Vec<(String, FileRecord, PathBuf)> = files
             .par_iter()
             .filter_map(|f| {
                 if self.is_cancelled() {
                     return None;
                 }
-                let rel = self.filter.rel(&f.path)?;
-                let prev_hash = self.data.read().get(&f.path).map(|e| e.hash);
+                let rel = filter.rel(&f.path)?;
+                let prev_hash = if force { None } else { self.data.read().get(&f.path).map(|e| e.hash) };
                 match self.extract(f, prev_hash) {
                     Extracted::Unchanged => {
                         // Same content, new mtime: keep the symbols, refresh metadata.
@@ -288,7 +308,7 @@ impl Shared {
             return;
         }
         let puts: Vec<(String, FileRecord)> =
-            extracted.iter().map(|(rel, rec, _)| (rel.clone(), rec.clone())).collect();
+            extracted.iter().filter_map(|(_, rec, path)| Some((filter.store_key(path)?, rec.clone()))).collect();
         {
             let entries: Vec<FileEntry> =
                 extracted.into_iter().map(|(rel, rec, path)| FileEntry::new(path, rel, rec)).collect();
@@ -346,13 +366,24 @@ impl Shared {
         let mut changed: Vec<PathBuf> = Vec::new();
         let mut removed: Vec<PathBuf> = Vec::new();
         let mut save_recent = false;
+        let mut rescan = false;
+        let mut reparse: Vec<std::sync::Arc<LanguageRegistry>> = Vec::new();
         for job in jobs {
             match job {
                 Job::Changed(p) => changed.extend(p),
                 Job::Removed(p) => removed.extend(p),
                 Job::SaveRecent => save_recent = true,
+                Job::Rescan => rescan = true,
+                Job::Reparse(before) => reparse.push(before),
             }
         }
+        if rescan {
+            // The scan also picks up whatever `changed` / `removed` reported.
+            self.full_scan();
+            changed.clear();
+            removed.clear();
+        }
+        let filter = self.filter();
         let mut touched = false;
 
         // Removals first; a path removed then re-created shows up in `changed` too.
@@ -363,11 +394,11 @@ impl Shared {
                 continue;
             }
             let mut d = self.data.write();
-            if let Some(e) = d.remove(&path) {
-                deletes.push(e.rel.into_string());
-            } else {
-                deletes.extend(d.remove_tree(&path));
-            }
+            let gone = match d.remove(&path) {
+                Some(_) => vec![path],
+                None => d.remove_tree(&path),
+            };
+            deletes.extend(gone.iter().filter_map(|p| filter.store_key(p)));
         }
         if !deletes.is_empty() {
             touched = true;
@@ -381,11 +412,11 @@ impl Shared {
                 continue;
             }
             let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
-            if self.filter.is_excluded(&path, meta.is_dir()) {
+            if filter.is_excluded(&path, meta.is_dir()) {
                 continue;
             }
             if meta.is_dir() {
-                files.extend(self.filter.walk(&path, &self.cancelled));
+                files.extend(filter.walk(&path, &self.cancelled));
             } else if meta.is_file() {
                 files.push(Found { mtime: mtime_of(&meta), size: meta.len(), path });
             }
@@ -403,11 +434,32 @@ impl Shared {
                 if self.is_cancelled() {
                     return;
                 }
-                self.index_files(chunk.iter());
+                self.index_files(chunk.iter(), false);
+            }
+        }
+        for before in reparse {
+            let affected: Vec<Found> = {
+                let d = self.data.read();
+                d.paths()
+                    .filter(|p| before.detect(p, None) != self.languages.detect(p, None))
+                    .filter_map(|p| {
+                        let e = d.get(p)?;
+                        Some(Found { path: p.clone(), mtime: e.mtime, size: e.size })
+                    })
+                    .collect()
+            };
+            if !affected.is_empty() {
+                touched = true;
+                for chunk in affected.chunks(CHUNK) {
+                    if self.is_cancelled() {
+                        return;
+                    }
+                    self.index_files(chunk.iter(), true);
+                }
             }
         }
         if save_recent && let Some(store) = &self.store {
-            let rels: Vec<String> = self.recent.lock().iter().filter_map(|p| self.filter.rel(p)).collect();
+            let rels: Vec<String> = self.recent.lock().iter().filter_map(|p| filter.store_key(p)).collect();
             if let Err(e) = store.save_recent(&rels) {
                 tracing::warn!("index cache: saving recent files failed: {e}");
             }

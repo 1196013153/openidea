@@ -26,13 +26,19 @@ import {
 import {
   currentModel,
   type Editing,
+  isFilteredMode,
+  isReadOnlyPath,
   loadDir,
   revealPath,
   setClipboard,
   setExpanded,
+  setViewMode,
   startEditing,
   useProjectTree,
 } from "./store";
+
+/** Nodes that may be renamed, moved or deleted (not roots, groups or library sources). */
+const mutable = (n: ProjectNode) => !n.root && !n.placeholder && !n.readOnly;
 
 const get = () => useProjectTree.getState();
 
@@ -122,7 +128,9 @@ export function openSelection() {
 // New / rename
 
 export async function beginNew(nodeKind: "file" | "dir", parent = targetFolder(), pkg?: PackageKind) {
-  if (!parent) return;
+  if (!parent || isReadOnlyPath(parent)) return;
+  // The inline editor needs the folder's listing: the filtered panes show none.
+  if (isFilteredMode(get().mode)) setViewMode("project");
   expandFolder(parent);
   await loadDir(parent);
   startEditing(pkg ? { kind: "new", parent, nodeKind: "dir", pkg } : { kind: "new", parent, nodeKind });
@@ -140,13 +148,13 @@ function newRelPath(editing: Extract<Editing, { kind: "new" }>, name: string): s
 }
 
 export function beginRename(node: ProjectNode | null = leadNode()) {
-  if (!node || node.root || node.placeholder) return;
+  if (!node || !mutable(node)) return;
   startEditing({ kind: "rename", key: node.key, path: node.path });
 }
 
 /** Rename… (⇧F6): IDEA's Rename dialog, updating references. */
 export async function openRenameDialog(node: ProjectNode | null = leadNode()) {
-  if (!node || node.root || node.placeholder) return;
+  if (!node || !mutable(node)) return;
   const parent = parentOf(node.path);
   await loadDir(parent);
   openFileRefactorDialog({
@@ -160,7 +168,7 @@ export async function openRenameDialog(node: ProjectNode | null = leadNode()) {
 
 /** Move… (F6): IDEA's Move dialog for the selection, defaulting to `target` or the current folder. */
 export function openMoveDialog(nodes: ProjectNode[] = selectedNodes(), target?: string) {
-  const movable = nodes.filter((n) => !n.root && !n.placeholder);
+  const movable = nodes.filter(mutable);
   const paths = topLevelPaths(movable);
   openMoveDialogFor(paths, target, paths.length === 1 && movable.some((n) => n.path === paths[0] && n.dir));
 }
@@ -394,7 +402,7 @@ export async function reloadFromDisk(nodes: ProjectNode[] = selectedNodes()) {
 
 export async function deleteSelection(nodes: ProjectNode[] = selectedNodes()) {
   const { root } = get();
-  const paths = topLevelPaths(nodes.filter((n) => !n.root));
+  const paths = topLevelPaths(nodes.filter(mutable));
   if (!root || !paths.length) return;
   // Invoked from the tree (or its context menu): give the tree its focus back afterwards.
   const refocus = typeof document !== "undefined" && !!document.activeElement?.closest('[role="tree"], [role="menu"]');
@@ -446,7 +454,7 @@ export async function deleteSelection(nodes: ProjectNode[] = selectedNodes()) {
 // Clipboard / move / copy
 
 export function copySelection(cut: boolean) {
-  const paths = topLevelPaths(selectedNodes().filter((n) => !n.root));
+  const paths = topLevelPaths(selectedNodes().filter((n) => (cut ? mutable(n) : !n.root && !n.group)));
   if (paths.length) setClipboard({ paths, cut });
 }
 
@@ -457,7 +465,7 @@ export function canPaste(): boolean {
 /** Paste: cut items go through the Move dialog, copied ones through the Copy dialog (IDEA). */
 export async function paste(target = targetFolder()) {
   const { clipboard } = get();
-  if (!clipboard || !target) return;
+  if (!clipboard || !target || isReadOnlyPath(target)) return;
   const isDir = (p: string) => get().listings.has(p) || currentModel().byKey.get(currentModel().keyOfPath.get(p) ?? p)?.dir === true;
   const single = clipboard.paths.length === 1 && isDir(clipboard.paths[0]!);
   if (!clipboard.cut) return openCopyDialogFor(clipboard.paths, target, single);
@@ -512,7 +520,7 @@ export async function transfer(
       errors.push(`${name}: cannot copy a folder into itself`);
       continue;
     }
-    const srcIsDir = get().listings.has(src) || currentModel().byKey.get(src)?.dir === true;
+    const srcIsDir = get().listings.has(src) || currentModel().byKey.get(currentModel().keyOfPath.get(src) ?? src)?.dir === true;
     const finalName = paths.length === 1 && newName ? newName : uniqueName(name, isTaken, srcIsDir);
     const to = joinPath(target, finalName);
     try {
@@ -562,8 +570,11 @@ async function moveInto(paths: string[], target: string): Promise<boolean> {
 
 /** Drag & drop inside the tree: the Move dialog (or a confirmed copy with ⌥). */
 export async function dropPaths(paths: string[], target: string, copy: boolean) {
+  if (isReadOnlyPath(target)) return;
   const movable = topLevelPaths(
-    paths.map((p) => currentModel().byKey.get(currentModel().keyOfPath.get(p) ?? p)).filter((n): n is ProjectNode => !!n),
+    paths
+      .map((p) => currentModel().byKey.get(currentModel().keyOfPath.get(p) ?? p))
+      .filter((n): n is ProjectNode => !!n && (copy || !n.readOnly)),
   ).filter((p) => copy || parentOf(p) !== target);
   if (!movable.length) return;
   // IDEA opens the Move refactoring dialog for drops inside the project.
@@ -578,7 +589,7 @@ export async function dropPaths(paths: string[], target: string, copy: boolean) 
 /** Files dropped from the OS: copied into `target` (never moved). */
 export async function importExternal(paths: string[], target: string) {
   const { root } = get();
-  if (!root || !paths.length) return;
+  if (!root || !paths.length || isReadOnlyPath(target)) return;
   const inside = paths.filter((p) => isSameOrInside(p, root));
   const outside = paths.filter((p) => !isSameOrInside(p, root));
   if (inside.length) await dropPaths(inside, target, false);

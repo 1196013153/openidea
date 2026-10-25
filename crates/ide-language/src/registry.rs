@@ -1,7 +1,10 @@
 use crate::LanguageConfig;
+use ide_core::settings::{FileSettings, FileTypeAssociation};
 use ide_core::{IdeError, IdeResult, LanguageId};
-use std::collections::HashMap;
-use std::path::Path;
+use parking_lot::RwLock;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Built-in definitions, embedded at compile time. Add new languages here.
 const BUILTIN: &[(&str, &str)] = &[
@@ -78,11 +81,130 @@ const BUILTIN: &[(&str, &str)] = &[
 
 pub struct LanguageRegistry {
     languages: Vec<LanguageConfig>,
+    /// Lookup tables of the definitions with the user's file types applied.
+    tables: RwLock<Arc<Tables>>,
+    file_types: RwLock<FileTypes>,
+}
+
+/// The user's file type associations (Settings › Editor › File Types) and
+/// per-file overrides (Override File Type), resolved for one project.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FileTypes {
+    /// Language id → patterns added to / removed from its definition.
+    pub associations: BTreeMap<String, FileTypeAssociation>,
+    /// Absolute path → language id.
+    pub overrides: HashMap<PathBuf, LanguageId>,
+}
+
+impl FileTypes {
+    /// From `files.fileTypes` / `files.fileTypeOverrides`; relative override paths resolve against `root`.
+    pub fn from_settings(files: &FileSettings, root: Option<&Path>) -> Self {
+        let overrides = files
+            .file_type_overrides
+            .iter()
+            .filter(|(_, lang)| !lang.trim().is_empty())
+            .filter_map(|(path, lang)| {
+                let p = Path::new(path.as_str());
+                let abs = if p.is_absolute() { p.to_path_buf() } else { root?.join(p) };
+                Some((abs, LanguageId::new(lang.trim())))
+            })
+            .collect();
+        Self { associations: files.file_types.clone(), overrides }
+    }
+}
+
+#[derive(Default)]
+struct Tables {
     by_ext: HashMap<String, usize>,
     by_name: HashMap<String, usize>,
-    /// File-name patterns containing `*`, e.g. `Dockerfile.*`, `tsconfig.*.json`.
+    /// File-name patterns with wildcards, e.g. `Dockerfile.*`, `tsconfig.*.json`; the user's first.
     name_globs: Vec<(String, usize)>,
+    /// Interpreter names of user hashbang patterns.
+    hashbangs: Vec<(String, usize)>,
     first_line: Vec<(regex_lite::Regex, usize)>,
+    overrides: HashMap<PathBuf, usize>,
+}
+
+/// How a file name pattern is looked up.
+enum Pattern<'a> {
+    /// `*.ext` (lower-cased).
+    Ext(String),
+    Name(&'a str),
+    Glob(&'a str),
+}
+
+fn classify(pattern: &str) -> Pattern<'_> {
+    let wild = |s: &str| s.contains(['*', '?']);
+    match pattern.strip_prefix("*.") {
+        Some(ext) if !ext.is_empty() && !wild(ext) => Pattern::Ext(ext.to_ascii_lowercase()),
+        _ if wild(pattern) => Pattern::Glob(pattern),
+        _ => Pattern::Name(pattern),
+    }
+}
+
+impl Tables {
+    fn build(languages: &[LanguageConfig], file_types: &FileTypes) -> Self {
+        let mut t = Tables::default();
+        let index_of = |id: &str| languages.iter().position(|l| l.id.as_str() == id);
+        let removed = |l: &LanguageConfig, pattern: &str| {
+            file_types.associations.get(l.id.as_str()).is_some_and(|a| {
+                a.removed_patterns.iter().any(|r| r.trim() == pattern || r.trim().eq_ignore_ascii_case(pattern))
+            })
+        };
+        let mut builtin_globs = Vec::new();
+        for (i, l) in languages.iter().enumerate() {
+            for ext in &l.extensions {
+                if !removed(l, &format!("*.{ext}")) {
+                    t.by_ext.insert(ext.to_ascii_lowercase(), i);
+                }
+            }
+            for name in l.filenames.iter().filter(|n| !removed(l, n)) {
+                if name.contains(['*', '?']) {
+                    builtin_globs.push((name.clone(), i));
+                } else {
+                    t.by_name.insert(name.clone(), i);
+                }
+            }
+            if let Some(pattern) = l.first_line.as_deref() {
+                match regex_lite::Regex::new(pattern) {
+                    Ok(re) => t.first_line.push((re, i)),
+                    Err(e) => tracing::warn!("language {}: invalid first-line pattern: {e}", l.id),
+                }
+            }
+        }
+        // The user's patterns win over the definitions'.
+        let mut user_globs = Vec::new();
+        for (id, assoc) in &file_types.associations {
+            let Some(i) = index_of(id) else { continue };
+            for pattern in assoc.patterns.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
+                match classify(pattern) {
+                    Pattern::Ext(ext) => {
+                        t.by_ext.insert(ext, i);
+                    }
+                    Pattern::Name(name) => {
+                        t.by_name.insert(name.to_owned(), i);
+                    }
+                    Pattern::Glob(glob) => user_globs.push((glob.to_owned(), i)),
+                }
+            }
+            for h in assoc.hashbangs.iter().map(|h| h.trim()).filter(|h| !h.is_empty()) {
+                t.hashbangs.push((h.to_owned(), i));
+            }
+        }
+        // More specific (longer) patterns first: `tsconfig.*.json` before `*.json`-like ones.
+        user_globs.sort_by_key(|(p, _): &(String, usize)| std::cmp::Reverse(p.len()));
+        builtin_globs.sort_by_key(|(p, _): &(String, usize)| std::cmp::Reverse(p.len()));
+        t.name_globs = user_globs.into_iter().chain(builtin_globs).collect();
+        t.overrides =
+            file_types.overrides.iter().filter_map(|(p, id)| Some((p.clone(), index_of(id.as_str())?))).collect();
+        t
+    }
+}
+
+/// Whether the `#!` line runs `interpreter` (`#!/usr/bin/env node`, `#!/bin/node -x` for `node`).
+fn hashbang_runs(line: &str, interpreter: &str) -> bool {
+    let Some(rest) = line.strip_prefix("#!") else { return false };
+    rest.split(|c: char| c.is_whitespace() || c == '/').any(|token| token == interpreter)
 }
 
 impl LanguageRegistry {
@@ -116,31 +238,31 @@ impl LanguageRegistry {
                 None => languages.push(cfg),
             }
         }
-        let mut by_ext = HashMap::new();
-        let mut by_name = HashMap::new();
-        let mut name_globs = Vec::new();
-        let mut first_line = Vec::new();
-        for (i, l) in languages.iter().enumerate() {
-            for ext in &l.extensions {
-                by_ext.insert(ext.to_ascii_lowercase(), i);
-            }
-            for name in &l.filenames {
-                if name.contains('*') {
-                    name_globs.push((name.clone(), i));
-                } else {
-                    by_name.insert(name.clone(), i);
-                }
-            }
-            if let Some(pattern) = l.first_line.as_deref() {
-                match regex_lite::Regex::new(pattern) {
-                    Ok(re) => first_line.push((re, i)),
-                    Err(e) => tracing::warn!("language {}: invalid first-line pattern: {e}", l.id),
-                }
-            }
+        let tables = Tables::build(&languages, &FileTypes::default());
+        Self { languages, tables: RwLock::new(Arc::new(tables)), file_types: RwLock::default() }
+    }
+
+    /// A registry with the same definitions and no user file types (one per project).
+    pub fn fork(&self) -> Self {
+        Self::from_configs(self.languages.clone())
+    }
+
+    /// A copy with the same definitions and file types (to compare detection before / after a change).
+    pub fn snapshot(&self) -> Self {
+        let copy = self.fork();
+        copy.set_file_types(self.file_types.read().clone());
+        copy
+    }
+
+    /// Applies the user's file types; returns whether they changed.
+    pub fn set_file_types(&self, file_types: FileTypes) -> bool {
+        let mut current = self.file_types.write();
+        if *current == file_types {
+            return false;
         }
-        // More specific (longer) patterns first: `tsconfig.*.json` before `*.json`-like ones.
-        name_globs.sort_by_key(|(p, _): &(String, usize)| std::cmp::Reverse(p.len()));
-        Self { languages, by_ext, by_name, name_globs, first_line }
+        *self.tables.write() = Arc::new(Tables::build(&self.languages, &file_types));
+        *current = file_types;
+        true
     }
 
     pub fn all(&self) -> Vec<LanguageConfig> {
@@ -151,48 +273,67 @@ impl LanguageRegistry {
         self.languages.iter().find(|l| &l.id == id).cloned()
     }
 
-    /// Detects by exact file name, then file-name pattern (`Dockerfile.*`), then
-    /// extension (longest compound first, e.g. `d.ts`), then first line; falls
-    /// back to plaintext.
+    /// Detects by Override File Type, exact file name, then file-name pattern
+    /// (`Dockerfile.*`), then extension (longest compound first, e.g. `d.ts`),
+    /// then hashbang / first line; falls back to plaintext. The user's patterns
+    /// win over the definitions'.
     pub fn detect(&self, path: &Path, first_line: Option<&str>) -> LanguageId {
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-        if let Some(&i) = self.by_name.get(file_name) {
+        let t = self.tables.read().clone();
+        if !t.overrides.is_empty()
+            && let Some(&i) = t.overrides.get(path)
+        {
             return self.languages[i].id.clone();
         }
-        if let Some((_, i)) = self.name_globs.iter().find(|(p, _)| wildcard_match(p, file_name)) {
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if let Some(&i) = t.by_name.get(file_name) {
+            return self.languages[i].id.clone();
+        }
+        if let Some((_, i)) = t.name_globs.iter().find(|(p, _)| wildcard_match(p, file_name)) {
             return self.languages[*i].id.clone();
         }
         let lower = file_name.to_ascii_lowercase();
         let mut rest = lower.as_str();
         while let Some(dot) = rest.find('.') {
             rest = &rest[dot + 1..];
-            if let Some(&i) = self.by_ext.get(rest) {
+            if let Some(&i) = t.by_ext.get(rest) {
                 return self.languages[i].id.clone();
             }
         }
-        if let Some(line) = first_line
-            && let Some((_, i)) = self.first_line.iter().find(|(re, _)| re.is_match(line))
-        {
-            return self.languages[*i].id.clone();
+        if let Some(line) = first_line {
+            if let Some((_, i)) = t.hashbangs.iter().find(|(h, _)| hashbang_runs(line, h)) {
+                return self.languages[*i].id.clone();
+            }
+            if let Some((_, i)) = t.first_line.iter().find(|(re, _)| re.is_match(line)) {
+                return self.languages[*i].id.clone();
+            }
         }
         LanguageId::plain_text()
     }
 }
 
-/// `*` matches any (possibly empty) run of characters; everything else is literal.
+/// `*` matches any (possibly empty) run of characters, `?` exactly one; everything else is literal.
 fn wildcard_match(pattern: &str, name: &str) -> bool {
-    let mut parts = pattern.split('*');
-    let first = parts.next().unwrap_or_default();
-    let Some(mut rest) = name.strip_prefix(first) else { return false };
-    let parts: Vec<&str> = parts.collect();
-    let Some((last, middle)) = parts.split_last() else { return rest.is_empty() };
-    for part in middle {
-        match rest.find(part) {
-            Some(i) => rest = &rest[i + part.len()..],
-            None => return false,
+    let p: Vec<char> = pattern.chars().collect();
+    let n: Vec<char> = name.chars().collect();
+    let (mut pi, mut ni) = (0, 0);
+    // Position after the last `*` and the name position it is matched up to.
+    let mut star: Option<(usize, usize)> = None;
+    while ni < n.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == n[ni]) {
+            pi += 1;
+            ni += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some((pi + 1, ni));
+            pi += 1;
+        } else if let Some((sp, sn)) = star {
+            pi = sp;
+            ni = sn + 1;
+            star = Some((sp, sn + 1));
+        } else {
+            return false;
         }
     }
-    rest.len() >= last.len() && rest.ends_with(last)
+    p[pi..].iter().all(|&c| c == '*')
 }
 
 fn parse(src: &str) -> Result<LanguageConfig, String> {
@@ -573,6 +714,60 @@ mod tests {
         assert!(wildcard_match("*.Dockerfile", "web.Dockerfile"));
         assert!(wildcard_match("a*b*c", "aXbYc"));
         assert!(!wildcard_match("a*b*c", "aXcYb"));
+        assert!(wildcard_match("file?.txt", "file1.txt"));
+        assert!(!wildcard_match("file?.txt", "file.txt"));
+        assert!(wildcard_match("*", ""));
+        assert!(wildcard_match("a**", "abc"));
+    }
+
+    fn assoc(patterns: &[&str], removed: &[&str], hashbangs: &[&str]) -> FileTypeAssociation {
+        let v = |xs: &[&str]| xs.iter().map(|s| (*s).to_owned()).collect();
+        FileTypeAssociation { patterns: v(patterns), removed_patterns: v(removed), hashbangs: v(hashbangs) }
+    }
+
+    #[test]
+    fn user_file_types_add_remove_and_win() {
+        let reg = reg();
+        let mut ft = FileTypes::default();
+        ft.associations
+            .insert("python".into(), assoc(&["*.foo", "Pipfile.lock", "build_*.cfg", "*.LOG"], &[], &["mypy"]));
+        ft.associations.insert("groovy".into(), assoc(&[], &["Jenkinsfile"], &[]));
+        ft.associations.insert("shellscript".into(), assoc(&["Jenkinsfile"], &[], &[]));
+        ft.associations.insert("rust".into(), assoc(&[], &["*.rs"], &[]));
+        assert!(reg.set_file_types(ft.clone()));
+        assert!(!reg.set_file_types(ft), "unchanged file types report no change");
+        assert_eq!(detect(&reg, "a/x.foo"), "python");
+        assert_eq!(detect(&reg, "x.FOO"), "python");
+        assert_eq!(detect(&reg, "Pipfile.lock"), "python");
+        assert_eq!(detect(&reg, "build_dev.cfg"), "python");
+        assert_eq!(detect(&reg, "setup.cfg"), "ini");
+        assert_eq!(detect(&reg, "server.log"), "python", "a user extension overrides a built-in one");
+        assert_eq!(detect(&reg, "Jenkinsfile"), "shellscript");
+        assert_eq!(detect(&reg, "main.rs"), "plaintext");
+        assert_eq!(reg.detect(Path::new("tool"), Some("#!/usr/bin/env mypy --strict")).as_str(), "python");
+        assert_eq!(reg.detect(Path::new("tool"), Some("#!/usr/bin/env mypyc")).as_str(), "plaintext");
+        reg.set_file_types(FileTypes::default());
+        assert_eq!(detect(&reg, "main.rs"), "rust");
+        assert_eq!(detect(&reg, "x.foo"), "plaintext");
+    }
+
+    #[test]
+    fn override_file_type_per_file() {
+        let reg = reg().fork();
+        let files = FileSettings {
+            file_type_overrides: [
+                ("notes.txt".to_owned(), "markdown".to_owned()),
+                ("/abs/run".to_owned(), "python".to_owned()),
+                ("bad.txt".to_owned(), "no-such-language".to_owned()),
+            ]
+            .into(),
+            ..Default::default()
+        };
+        reg.set_file_types(FileTypes::from_settings(&files, Some(Path::new("/proj"))));
+        assert_eq!(detect(&reg, "/proj/notes.txt"), "markdown");
+        assert_eq!(detect(&reg, "/other/notes.txt"), "plaintext");
+        assert_eq!(detect(&reg, "/abs/run"), "python");
+        assert_eq!(detect(&reg, "/proj/bad.txt"), "plaintext");
     }
 
     #[test]

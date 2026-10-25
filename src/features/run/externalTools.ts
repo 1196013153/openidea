@@ -109,25 +109,32 @@ export function toolRunConfig(tool: ExternalToolValid, ctx: MacroContext, prompt
   };
 }
 
-export async function runExternalTool(tool: ExternalToolValid) {
+/** The configuration running `tool` now (macros expanded, `$Prompt$` asked); null when cancelled or not possible. */
+export async function externalToolConfig(tool: ExternalToolValid): Promise<RunConfig | null> {
   const ctx = currentContext();
-  if (!ctx) return;
+  if (!ctx) return null;
   if (!tool.program.trim()) {
     notifications().notify({ level: "warning", title: `External tool '${tool.name}' has no program` });
-    return;
+    return null;
   }
   const uses = (m: string) => [tool.program, tool.arguments, tool.workingDirectory].some((t) => t.includes(m));
   let prompt = "";
   if (uses("$Prompt$")) {
     const value = await promptValue(tool.name);
-    if (value === null) return;
+    if (value === null) return null;
     prompt = value;
   }
   if (!ctx.filePath && ["$FilePath$", "$FileDir$", "$FileName$", "$FileRelativePath$"].some(uses)) {
     notifications().notify({ level: "warning", title: `'${tool.name}' needs an open file` });
-    return;
+    return null;
   }
-  const session = await startRun(toolRunConfig(tool, ctx, prompt), undefined, undefined, { show: tool.openConsole });
+  return toolRunConfig(tool, ctx, prompt);
+}
+
+export async function runExternalTool(tool: ExternalToolValid) {
+  const config = await externalToolConfig(tool);
+  if (!config) return;
+  const session = await startRun(config, undefined, undefined, { show: tool.openConsole });
   if (!session || !tool.synchronizeAfter) return;
   // "Synchronize files after execution": reload the project from disk once the tool exits.
   let done = false;

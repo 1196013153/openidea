@@ -14,7 +14,7 @@ import {
   validateConfig,
 } from "./configs";
 import { contextConfig, fileRole } from "./context";
-import { envFromRows } from "./EditConfigsDialog";
+import { envFromRows } from "./EnvDialog";
 import { defaultSelection } from "./store";
 
 const cfg = (over: Partial<RunConfig> & { id: string }): RunConfig => ({

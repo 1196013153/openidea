@@ -73,6 +73,12 @@ export const vscodeMacos: Record<string, string[]> = {
 
   // Code
   "code.completion": ["Ctrl+Space"],
+  "editor.inlineCompletion.trigger": ["Alt+\\"],
+  "editor.inlineCompletion.accept": ["Tab"],
+  "editor.inlineCompletion.acceptWord": ["Meta+Right"],
+  "editor.inlineCompletion.dismiss": ["Escape"],
+  "editor.inlineCompletion.next": ["Alt+]"],
+  "editor.inlineCompletion.previous": ["Alt+["],
   "code.parameterInfo": ["Meta+Shift+Space"],
   "code.quickDocumentation": ["Meta+K Meta+I"],
   "code.quickDefinition": ["Alt+F12"],
@@ -159,6 +165,7 @@ export const vscodeMacos: Record<string, string[]> = {
 
   // Explorer (when: projectViewFocus)
   "project.newFile": [],
+  "project.newInThisDirectory": [],
   "project.rename": ["Enter"],
   "project.move": [],
   "project.delete": ["Meta+Backspace"],
@@ -209,6 +216,7 @@ export const vscodeMacos: Record<string, string[]> = {
   "run.chooseConfig": [],
   "run.editConfigs": [],
   "run.rerun": [],
+  "coverage.manageReports": [],
   "web.openInBrowser": [],
   "debug.toggleBreakpoint": ["F9"],
   "debug.viewBreakpoints": [],
@@ -246,10 +254,14 @@ export const vscodeMacos: Record<string, string[]> = {
   "vcs.branches": [],
   "vcs.annotate": [],
   "vcs.localHistory": [],
+  "localHistory.recentChanges": [],
+  "runAnything.show": [],
+  "view.quickSwitchScheme": [],
   // Commit tool window (change lists) and Git log; keyWhen limits them to those tool windows.
   "vcs.changelist.move": [],
   "vcs.changelist.edit": [],
   "vcs.log.copyRevision": [],
+  "vcs.log.goToRef": [],
   // View › Appearance (VS Code: workbench.action.zoomIn / zoomOut / zoomReset)
   "view.zoomIn": ["Meta+="],
   "view.zoomOut": ["Meta+-"],
@@ -283,6 +295,7 @@ export const vscodeMacos: Record<string, string[]> = {
   "db.openConsole": [],
   "db.newDataSource": [],
   "db.new": [],
+  "services.addService": [],
   "db.properties": [],
   "db.refresh": [],
   "db.disconnect": [],
@@ -309,4 +322,7 @@ export const vscodeMacos: Record<string, string[]> = {
   "find.popup.previousResult": ["Meta+Shift+G"],
   "find.popup.openResult": [],
   "find.popup.recentSearches": ["Alt+Down"],
+  // Search fields (find bar, Find in Files): last, so they win over editor keys while one is focused.
+  "find.field.newLine": ["Meta+Shift+Enter"],
+  "find.field.recentSearches": ["Alt+Down"],
 };

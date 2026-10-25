@@ -17,6 +17,7 @@ import { editPreviewLines } from "./workspaceEdit";
 import { serverBackoff } from "./availability";
 import { iconNode } from "./iconMarkup";
 import { editorPrefs } from "@/platform/editorSettings";
+import { spellingIntentions } from "./spelling";
 
 const isQuickFix = (a: CodeAction) => !!a.kind && (a.kind === "quickfix" || a.kind.startsWith("quickfix."));
 
@@ -172,22 +173,29 @@ export async function intentionPreview(
 /** ⌥↵ */
 export async function showIntentions(view: EditorView) {
   try {
-    // Like IDEA, only applicable intentions are listed (servers also report disabled refactorings).
-    const actions = await fetchIntentions(view);
-    if (!actions.length) {
+    // Typo fixes come first and need no language server.
+    const local = spellingIntentions(view);
+    let actions: CodeAction[] = [];
+    try {
+      // Like IDEA, only applicable intentions are listed (servers also report disabled refactorings).
+      actions = await fetchIntentions(view);
+    } catch (e) {
+      if (!local.length) throw e;
+    }
+    if (!actions.length && !local.length) {
       showHint(view, "No intentions available");
       return;
     }
     const sorted = sortCodeActions(actions);
     const resolved = new Map<CodeAction, Promise<CodeAction>>();
-    const items = actionItems(view, sorted, resolved);
+    const items = [...local, ...actionItems(view, sorted, resolved)];
     openPopup({
       kind: "list",
       anchor: caretAnchor(view, view.state.selection.main.head),
       title: "Intentions",
       items,
       preview: (item, signal) => {
-        const action = sorted[items.indexOf(item)];
+        const action = sorted[items.indexOf(item) - local.length];
         return action ? intentionPreview(view, action, resolved, signal) : Promise.resolve(null);
       },
     });
@@ -291,18 +299,26 @@ const bulbPlugin = ViewPlugin.fromClass(
     }
     async run() {
       const doc = docOf(this.view);
-      if (!doc || doc.readOnly || serverBackoff.active(doc.doc) || !this.view.dom.isConnected) return;
+      if (!doc || doc.readOnly || !this.view.dom.isConnected) return;
       const state = this.view.state;
-      try {
-        const actions = await fetchIntentions(this.view);
-        if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
-        const line = state.doc.lineAt(state.selection.main.head).number;
-        this.view.dispatch({
-          effects: setBulb.of(actions.length ? { line, quickFix: actions.some(isQuickFix) } : null),
-        });
-      } catch (e) {
-        if (isUnavailable(e)) serverBackoff.mark(doc.doc);
+      const typoFix = spellingIntentions(this.view).length > 0;
+      const backoff = serverBackoff.active(doc.doc);
+      if (backoff && !typoFix) return;
+      let actions: CodeAction[] = [];
+      if (!backoff) {
+        try {
+          actions = await fetchIntentions(this.view);
+        } catch (e) {
+          if (isUnavailable(e)) serverBackoff.mark(doc.doc);
+          if (!typoFix) return;
+        }
       }
+      if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
+      const line = state.doc.lineAt(state.selection.main.head).number;
+      const any = actions.length > 0 || typoFix;
+      this.view.dispatch({
+        effects: setBulb.of(any ? { line, quickFix: typoFix || actions.some(isQuickFix) } : null),
+      });
     }
     destroy() {
       this.lookup.cancel();

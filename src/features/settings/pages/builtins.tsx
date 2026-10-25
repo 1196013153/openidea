@@ -2,6 +2,7 @@
 import { GlobListEditor, Row } from "../components/Form";
 import { useSetting } from "../components/context";
 import { KeymapPage, keymapSearchLabels } from "../keymap/KeymapPage";
+import { RecognizedFileTypes } from "./FileTypes";
 import type { PageSpec } from "./spec";
 
 export { APPEARANCE_GROUP } from "./behavior";
@@ -48,8 +49,19 @@ export const BUILTIN_PAGES: PageSpec[] = [
     group: EDITOR_GROUP,
     order: 29,
     projectScope: true,
-    keywords: ["ignore", "ignored", "excluded", "glob", "exclude patterns"],
+    keywords: ["ignore", "ignored", "excluded", "glob", "exclude patterns", "associate", "association", "extension"],
     sections: [
+      {
+        title: "Recognized File Types",
+        options: [
+          {
+            kind: "custom",
+            label: "File name patterns",
+            keywords: ["Hashbang patterns", "file type", "language"],
+            component: RecognizedFileTypes,
+          },
+        ],
+      },
       {
         title: "Ignored Files and Folders",
         options: [

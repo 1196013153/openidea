@@ -64,6 +64,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
     onClick,
     disabled,
     type = "button",
+    "aria-label": ariaLabel,
     ...rest
   },
   ref,
@@ -76,7 +77,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
     <button
       ref={ref}
       type={type}
-      aria-label={label}
+      aria-label={tx(ariaLabel) ?? label}
       aria-pressed={pressed}
       aria-keyshortcuts={keys}
       disabled={disabled}

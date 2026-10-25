@@ -4,6 +4,7 @@ import { call, commands } from "@/platform/ipc";
 import { notifications } from "@/workbench/contributions";
 import { promptText } from "./dialogs";
 import { errorMessage } from "./ops";
+import { showRecentChanges } from "./recentChanges";
 
 /** Local History › Put Label…: names the current state of every file in the project. */
 export async function putLabel(): Promise<boolean> {
@@ -34,6 +35,15 @@ export function registerLocalHistoryActions(): () => void {
       when: "projectOpen",
       keywords: ["local history", "label", "checkpoint"],
       run: () => void putLabel(),
+    },
+    {
+      id: "localHistory.recentChanges",
+      title: "Recent Changes",
+      category: "View",
+      icon: "history",
+      when: "projectOpen",
+      keywords: ["local history", "recent changes", "activity"],
+      run: () => void showRecentChanges(),
     },
   ]);
 }

@@ -1,7 +1,7 @@
 /**
- * Gutter ▶ icons in Dockerfiles (`FROM` → build image) and Compose files
- * (`services:` → up all / down, each service → up it). They start temporary run
- * configurations through `run.runConfig`, so output lands in the Run tool window.
+ * Gutter ▶ icons in Dockerfiles (`FROM` → run / build the image) and Compose
+ * files (`services:` → up all, each service → up it). As in IDEA they start
+ * temporary Dockerfile / Docker Compose run configurations through `run.runConfig`.
  */
 import { RangeSet, StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, GutterMarker, ViewPlugin, gutter, type ViewUpdate } from "@codemirror/view";
@@ -9,8 +9,8 @@ import type { EditorDocContext } from "@/editor/api";
 import { executeAction } from "@/platform/actions";
 import { useProject } from "@/platform/project";
 import { iconMarkup, showContextMenu, type MenuItem } from "@/ui";
-import { composeDownConfig, fileTargets, isComposeFile, isDockerfile, targetConfig, targetTitle, type DockerTarget } from "./compose";
-import { useServices } from "./store";
+import { fileTargets, isComposeFile, isDockerfile, targetTitle, type DockerTarget } from "./compose";
+import { gutterActions } from "./runTypes";
 import styles from "./Services.module.css";
 
 interface Placed {
@@ -35,16 +35,13 @@ function place(state: EditorState, path: string): Placed[] {
     .map((target) => ({ target, pos: state.doc.line(target.line + 1).from }));
 }
 
-function run(config: ReturnType<typeof targetConfig>) {
-  void executeAction("run.runConfig", { config, temporary: true });
-}
-
 function menu(target: DockerTarget, path: string): MenuItem[] {
   const root = useProject.getState().project?.root ?? null;
-  const docker = useServices.getState().snapshot?.executable ?? "docker";
-  const items: MenuItem[] = [{ label: targetTitle(target, path), icon: "run", run: () => run(targetConfig(target, path, root, docker)) }];
-  if (target.kind === "composeAll") items.push({ label: "Compose Down", icon: "stop", run: () => run(composeDownConfig(path, root, docker)) });
-  return items;
+  return gutterActions(target, path, root).map(({ title, config }, i) => ({
+    label: title,
+    icon: i === 0 ? "run" : "build-project",
+    run: () => void executeAction("run.runConfig", { config, temporary: true }),
+  }));
 }
 
 class Marker extends GutterMarker {

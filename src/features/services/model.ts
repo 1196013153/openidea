@@ -170,3 +170,28 @@ export function findNode(snap: DockerSnapshot | null, key: string | null): Servi
   };
   return walk(rootNodes());
 }
+
+// ---------------------------------------------------------------------------
+// Keys in the Services tree: every connection has its own subtree.
+
+/** A node of one connection's subtree. */
+export interface DockerTarget {
+  conn: string;
+  node: ServiceNode;
+}
+
+export const connectionKey = (conn: string) => `docker:${conn}`;
+export const registryKey = (id: string) => `docker-registry:${id}`;
+
+/** The tree key of `node` (whose key is local to its snapshot) under connection `conn`. */
+export function treeKey(conn: string, node: ServiceNode): string {
+  return node.kind === "docker" ? connectionKey(conn) : `${connectionKey(conn)}:${node.key}`;
+}
+
+/** Splits a tree key into connection id and local node key. */
+export function parseTreeKey(key: string): { conn: string; local: string } | null {
+  if (!key.startsWith("docker:")) return null;
+  const rest = key.slice("docker:".length);
+  const i = rest.indexOf(":");
+  return i < 0 ? { conn: rest, local: DOCKER_KEY } : { conn: rest.slice(0, i), local: rest.slice(i + 1) };
+}

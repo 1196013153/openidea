@@ -1,7 +1,20 @@
-import { registerAction, registerActions } from "@/platform/actions";
+import { registerAction, registerActions, type Action } from "@/platform/actions";
+import { setContext } from "@/platform/context";
 import { formatMessage, tx } from "@/platform/i18n";
 import { occurrenceNavigator, showStatusInfo, useContributions } from "../contributions";
+import { isDistractionFree, setDistractionFree } from "../distractionFree";
 import { focusEditor } from "../focus";
+import { chooseItem, promptInput } from "../inputDialogs";
+import { confirm } from "../messages";
+import {
+  deleteLayout,
+  layoutNames,
+  renameLayout,
+  restoreDefaultLayout,
+  restoreLayout,
+  saveLayout,
+  useToolWindowLayouts,
+} from "./layouts";
 import { closeSelectedContent } from "./content";
 import {
   activateToolWindow,
@@ -30,6 +43,84 @@ export function goToOccurrence(dir: 1 | -1): boolean {
     return !!step;
   }
   return false;
+}
+
+/** Window › Tool Window Layouts. */
+function layoutActions(): Action[] {
+  const exitDistractionFree = () => {
+    if (isDistractionFree()) setDistractionFree(false);
+  };
+  const pick = (title: string) =>
+    chooseItem({ title, items: layoutNames(), empty: "No saved layouts. Use Save Current Layout as… first." });
+  const free = (current?: string) => (v: string) =>
+    !v.trim() ? "Enter a layout name" : v.trim() !== current && layoutNames().includes(v.trim()) ? "A layout with this name exists" : null;
+  return [
+    {
+      id: "layout.save",
+      title: "Save Current Layout as…",
+      category: "Window",
+      keywords: ["tool window layout", "store layout"],
+      when: "projectOpen",
+      run: async () => {
+        const active = useToolWindowLayouts.getState().active;
+        const name = await promptInput({
+          title: "Save Current Layout as",
+          label: "Layout name:",
+          initial: active ?? "",
+          okLabel: "Save",
+          validate: (v) => (v.trim() ? null : "Enter a layout name"),
+        });
+        if (name) saveLayout(name);
+      },
+    },
+    {
+      id: "layout.restore",
+      title: "Restore Tool Window Layout",
+      description: "Restores the saved layout named `arg`, or asks which one.",
+      category: "Window",
+      keywords: ["tool window layout"],
+      when: "projectOpen",
+      run: async ({ arg }) => {
+        exitDistractionFree();
+        const name = typeof arg === "string" ? arg : await pick("Restore Layout");
+        if (name) restoreLayout(name);
+      },
+    },
+    {
+      id: "layout.restoreDefault",
+      title: "Restore Default Layout",
+      category: "Window",
+      keywords: ["tool window layout", "reset"],
+      when: "projectOpen",
+      run: () => {
+        exitDistractionFree();
+        restoreDefaultLayout();
+      },
+    },
+    {
+      id: "layout.rename",
+      title: "Rename Tool Window Layout…",
+      category: "Window",
+      when: "toolWindowLayoutsSaved",
+      run: async () => {
+        const from = await pick("Rename Layout");
+        if (!from) return;
+        const to = await promptInput({ title: "Rename Layout", label: "New name:", initial: from, okLabel: "Rename", validate: free(from) });
+        if (to) renameLayout(from, to);
+      },
+    },
+    {
+      id: "layout.delete",
+      title: "Delete Tool Window Layout…",
+      category: "Window",
+      when: "toolWindowLayoutsSaved",
+      run: async () => {
+        const name = await pick("Delete Layout");
+        if (name && (await confirm({ title: "Delete Layout", message: `Delete the layout '${name}'?`, ok: "Delete", icon: "warning" })))
+          deleteLayout(name);
+      },
+    },
+  ];
 }
 
 /** Registers `toolwindow.<id>` for every tool window plus the generic tool window actions. */
@@ -62,6 +153,9 @@ export function installToolWindowActions(): () => void {
   const unsubscribe = useContributions.subscribe((s, prev) => {
     if (s.toolWindows !== prev.toolWindows) sync();
   });
+  const publishLayouts = () => setContext("toolWindowLayoutsSaved", useToolWindowLayouts.getState().layouts.length > 0);
+  publishLayouts();
+  const unsubscribeLayouts = useToolWindowLayouts.subscribe(publishLayouts);
 
   const disposeStatic = registerActions([
     { id: "toolwindow.hideAll", title: "Hide All Tool Windows", category: "Window", run: hideAllToolWindows },
@@ -118,6 +212,7 @@ export function installToolWindowActions(): () => void {
       when: "projectOpen",
       run: () => void goToOccurrence(-1),
     },
+    ...layoutActions(),
     {
       id: "toolwindow.maximize",
       title: "Maximize Tool Window",
@@ -133,6 +228,7 @@ export function installToolWindowActions(): () => void {
 
   return () => {
     unsubscribe();
+    unsubscribeLayouts();
     disposeStatic();
     perWindow.forEach((e) => e.dispose());
     perWindow.clear();

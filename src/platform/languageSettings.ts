@@ -27,7 +27,14 @@ export interface ProjectStructureValid {
   excluded: string[];
   /** Auto-detected roots the user unmarked. */
   unmarked: string[];
+  /** Content roots besides the project folder (absolute paths). */
+  contentRoots: string[];
+  /** "Exclude files": `;`-separated name patterns. */
+  excludeFiles: string;
 }
+
+/** The folder lists of `ProjectStructureValid` (marks). */
+export type FolderListKey = "sourceRoots" | "testRoots" | "resourceRoots" | "testResourceRoots" | "excluded" | "unmarked";
 
 export const DEFAULT_LANGUAGES: LanguagesValid = {
   python: { interpreter: "", activateVirtualenv: true },
@@ -45,6 +52,8 @@ export const DEFAULT_PROJECT_STRUCTURE: ProjectStructureValid = {
   testResourceRoots: [],
   excluded: [],
   unmarked: [],
+  contentRoots: [],
+  excludeFiles: "",
 };
 
 type Obj = Record<string, unknown>;
@@ -122,7 +131,19 @@ export function validateProjectStructure(raw: unknown): ProjectStructureValid {
     testResourceRoots: folders(p.testResourceRoots),
     excluded: folders(p.excluded),
     unmarked: folders(p.unmarked),
+    contentRoots: Array.isArray(p.contentRoots)
+      ? [...new Set(p.contentRoots.filter((x): x is string => typeof x === "string" && !!x.trim()))]
+      : [],
+    excludeFiles: typeof p.excludeFiles === "string" ? p.excludeFiles : "",
   };
+}
+
+/** The "Exclude files" name patterns (`*.log;tmp*`). */
+export function excludeFilePatterns(excludeFiles: string): string[] {
+  return excludeFiles
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
 }
 
 /** Root kinds, as in IDEA's Project Structure (`ide-workspace::roots::RootKind`). */
@@ -130,7 +151,7 @@ export type FolderRole = "source" | "test" | "resources" | "testResources" | "ex
 
 export const FOLDER_ROLES: readonly FolderRole[] = ["source", "test", "resources", "testResources", "excluded"];
 
-const ROLE_KEYS: Record<FolderRole, Exclude<keyof ProjectStructureValid, "unmarked">> = {
+const ROLE_KEYS: Record<FolderRole, Exclude<FolderListKey, "unmarked">> = {
   source: "sourceRoots",
   test: "testRoots",
   resources: "resourceRoots",
@@ -216,6 +237,7 @@ export function markFolder(
 ): ProjectStructureValid {
   const r = storedFolder(rel);
   const next: ProjectStructureValid = {
+    ...ps,
     sourceRoots: ps.sourceRoots.filter((x) => x !== r),
     testRoots: ps.testRoots.filter((x) => x !== r),
     resourceRoots: ps.resourceRoots.filter((x) => x !== r),
@@ -253,7 +275,7 @@ export const PROJECT_STRUCTURE_KEYS = [
   "testResourceRoots",
   "excluded",
   "unmarked",
-] as const satisfies ReadonlyArray<keyof ProjectStructureValid>;
+] as const satisfies ReadonlyArray<FolderListKey>;
 
 /** Effective Project Structure of the open project (reactive). */
 export function useProjectStructure(): ProjectStructureValid {

@@ -12,6 +12,8 @@ import { activate as codeInsight } from "./code-insight";
 import { activate as vcs } from "./vcs";
 import { activate as terminal } from "./terminal";
 import { activate as run } from "./run";
+import { activate as runAnything } from "./run-anything";
+import { activate as macros } from "./macros";
 import { activate as debuggerFeature } from "./debugger";
 import { activate as coverage } from "./coverage";
 import { activate as profiler } from "./profiler";
@@ -25,6 +27,7 @@ import { activate as perf } from "./perf";
 import { activate as plugins, activateSettingsPages as pluginsPages } from "./plugins";
 import { activate as tools, activateSettingsPages as toolsPages } from "./tools";
 import { activate as scratch } from "./scratch";
+import { activate as libraries } from "./libraries";
 import { activate as viewers } from "./viewers";
 import { activate as web } from "./web";
 import { activate as analysis } from "./analysis";
@@ -45,6 +48,8 @@ const features: Array<[string, Activate]> = [
   ["vcs", vcs],
   ["terminal", terminal],
   ["run", run],
+  ["run-anything", runAnything],
+  ["macros", macros],
   ["debugger", debuggerFeature],
   ["coverage", coverage],
   ["profiler", profiler],
@@ -58,6 +63,7 @@ const features: Array<[string, Activate]> = [
   ["plugins", plugins],
   ["tools", tools],
   ["scratch", scratch],
+  ["libraries", libraries],
   ["viewers", viewers],
   ["web", web],
   ["analysis", analysis],

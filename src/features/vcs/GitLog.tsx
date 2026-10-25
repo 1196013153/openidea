@@ -32,23 +32,25 @@ import {
   T,
 } from "@/ui";
 import { commitFileDiffData, openDiff, withChain } from "./diffInput";
-import { laneColor, type GraphRow } from "./graph";
+import { collapseLinear, computeGraph, hideLongEdges, laneColor, reachableFrom, type GraphRow } from "./graph";
 import {
   extendCommitSelection,
   goToChild,
   goToParent,
+  isMine,
   loadMore,
   ME,
   dateRangeLabel,
-  inDateRange,
   refsSignature,
   reloadLog,
   selectCommit,
   selectedCommits,
   setLogFilters,
   toggleCommitSelection,
+  updateLogOptions,
   useGitLog,
 } from "./logStore";
+import { refLabels, useLogOptions, type LogOptions } from "./logOptions";
 import { KIND_COLOR, baseName, formatTime, relTo, type EffectiveKind } from "./model";
 import { clearConsole, useVcsConsole } from "./ops";
 import { currentRepo, loadBranches, useVcs } from "./store";
@@ -455,8 +457,75 @@ function FilterBar() {
       />
       <span className={styles.grow} />
       <IconButton icon="refresh" title="Refresh" size="small" onClick={() => void reloadLog()} />
+      <IconButton
+        icon="sort"
+        title="Graph Options"
+        size="small"
+        aria-haspopup="menu"
+        onClick={(e) => menuBelow(e, graphOptionsMenu(useLogOptions.getState()))}
+      />
+      <IconButton
+        icon="eye"
+        title="View Options"
+        size="small"
+        aria-haspopup="menu"
+        onClick={(e) => menuBelow(e, viewOptionsMenu(useLogOptions.getState()))}
+      />
+      <IconButton icon="search" title="Go to Hash/Branch/Tag" size="small" action="vcs.log.goToRef" />
     </div>
   );
+}
+
+const toggle = (label: string, o: LogOptions, key: keyof LogOptions): MenuItem => ({
+  label,
+  checked: !!o[key],
+  run: () => updateLogOptions({ [key]: !o[key] }),
+});
+
+/** IDEA's Git Log › Graph Options (sort, first parent / no merges, linear branches). */
+export function graphOptionsMenu(o: LogOptions): MenuItem[] {
+  return [
+    { kind: "header", label: "Sort" },
+    { label: "By Commit Date", checked: o.sort === "date", run: () => updateLogOptions({ sort: "date" }) },
+    { label: "Topologically", checked: o.sort === "topo", run: () => updateLogOptions({ sort: "topo" }) },
+    { kind: "separator" },
+    { kind: "header", label: "Options" },
+    toggle("First Parent", o, "firstParent"),
+    toggle("No Merges", o, "noMerges"),
+    { kind: "separator" },
+    { kind: "header", label: "Branch Actions" },
+    {
+      label: "Collapse Linear Branches",
+      disabled: o.collapseLinear,
+      run: () => updateLogOptions({ collapseLinear: true }),
+    },
+    {
+      label: "Expand Linear Branches",
+      disabled: !o.collapseLinear,
+      run: () => updateLogOptions({ collapseLinear: false }),
+    },
+  ];
+}
+
+/** IDEA's Git Log › View Options (what rows show and highlight). */
+export function viewOptionsMenu(o: LogOptions): MenuItem[] {
+  return [
+    { kind: "header", label: "Show" },
+    toggle("Compact References View", o, "compactRefs"),
+    toggle("Tag Names", o, "tagNames"),
+    toggle("Long Edges", o, "longEdges"),
+    toggle("Commit Timestamp", o, "commitTimestamp"),
+    toggle("References on the Left", o, "refsOnLeft"),
+    {
+      label: "Columns",
+      submenu: [toggle("Author", o, "showAuthor"), toggle("Date", o, "showDate"), toggle("Hash", o, "showHash")],
+    },
+    { kind: "separator" },
+    { kind: "header", label: "Highlight" },
+    toggle("My Commits", o, "highlightMine"),
+    toggle("Merge Commits", o, "highlightMerges"),
+    toggle("Current Branch", o, "highlightCurrentBranch"),
+  ];
 }
 
 /** IDEA's Git Log commit context menu (Git.Log.ContextMenu); `selection` = all selected commits, newest first. */
@@ -521,14 +590,28 @@ export function commitMenu(c: Commit, selection: Commit[] = [c]): MenuItem[] {
 function CommitList() {
   const all = useGitLog((s) => s.commits);
   const allRows = useGitLog((s) => s.rows);
-  const date = useGitLog((s) => s.filters.date);
-  // The date filter is applied here; the graph is hidden while it is active (rows are no longer contiguous).
-  const commits = useMemo(
-    () => (date == null ? all : all.filter((c) => inDateRange(c.timeMs ?? 0, date))),
-    [all, date],
+  const opts = useLogOptions();
+  const user = useGitLog((s) => s.user);
+  const headCommit = useVcs((s) => s.branch?.headCommit ?? null);
+  const branches = useVcs((s) => s.branches);
+  const remoteNames = useMemo(() => new Set(branches.filter((b) => b.remote).map((b) => b.name)), [branches]);
+  // Date, No Merges and First Parent are applied by the backend with parent rewriting,
+  // so the graph stays connected under them.
+  const collapsed = useMemo(
+    () => (opts.collapseLinear ? collapseLinear(all, new Set(headCommit ? [headCommit] : [])) : null),
+    [all, opts.collapseLinear, headCommit],
   );
-  const rows = date == null ? allRows : [];
-  const exhausted = date?.after != null && all.length > 0 && (all[all.length - 1]!.timeMs ?? 0) < date.after;
+  const commits = collapsed ? collapsed.commits : all;
+  const rows = useMemo(() => {
+    const laid = collapsed ? computeGraph(collapsed.graph).rows : allRows;
+    return opts.longEdges ? laid : hideLongEdges(laid);
+  }, [collapsed, allRows, opts.longEdges]);
+  const onBranch = useMemo(() => {
+    if (!opts.highlightCurrentBranch) return null;
+    const reach = reachableFrom(all, headCommit);
+    // Nothing to tell apart when only the current branch is shown.
+    return all.every((c) => reach.has(c.id)) ? null : reach;
+  }, [all, headCommit, opts.highlightCurrentBranch]);
   const loading = useGitLog((s) => s.loading);
   const done = useGitLog((s) => s.done);
   const error = useGitLog((s) => s.error);
@@ -536,9 +619,8 @@ function CommitList() {
   const selection = useGitLog((s) => s.selection);
   const selectedSet = useMemo(() => new Set(selection), [selection]);
   const revealTick = useGitLog((s) => s.revealTick);
-  const headCommit = useVcs((s) => s.branch?.headCommit ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const finished = done || exhausted;
+  const finished = done;
   const virtualizer = useVirtualizer({
     count: commits.length + (finished ? 0 : 1),
     getScrollElement: () => scrollRef.current,
@@ -633,6 +715,10 @@ function CommitList() {
                 top={v.start}
                 selected={selectedSet.has(c.id)}
                 head={c.id === headCommit}
+                mine={opts.highlightMine && isMine(c, user)}
+                onBranch={!!onBranch?.has(c.id)}
+                opts={opts}
+                remoteNames={remoteNames}
                 onPick={pick}
               />
             );
@@ -650,6 +736,10 @@ const CommitRow = memo(function CommitRow({
   top,
   selected,
   head,
+  mine,
+  onBranch,
+  opts,
+  remoteNames,
   onPick,
 }: {
   id: string;
@@ -658,14 +748,29 @@ const CommitRow = memo(function CommitRow({
   top: number;
   selected: boolean;
   head: boolean;
+  mine: boolean;
+  onBranch: boolean;
+  opts: LogOptions;
+  remoteNames: ReadonlySet<string>;
   onPick: (id: string, e: ReactMouseEvent) => void;
 }) {
+  const merge = opts.highlightMerges && c.parents.length > 1;
+  const refs = c.refs.length > 0 && (
+    <RefLabels
+      refs={c.refs}
+      compact={opts.compactRefs}
+      tagNames={opts.tagNames}
+      remoteNames={remoteNames}
+      left={opts.refsOnLeft}
+    />
+  );
+  const time = opts.commitTimestamp ? (c.commitTimeMs ?? c.timeMs) : c.timeMs;
   return (
     <div
       id={id}
       role="option"
       aria-selected={selected}
-      className={clsx(styles.row, selected && styles.selected)}
+      className={clsx(styles.row, onBranch && styles.currentBranch, selected && styles.selected)}
       style={{ transform: `translateY(${top}px)` }}
       onMouseDown={(e) => {
         if (e.shiftKey) e.preventDefault(); // no text selection on range clicks
@@ -678,15 +783,19 @@ const CommitRow = memo(function CommitRow({
     >
       <span className={styles.colSubject}>
         {graph && <GraphCell row={graph} head={head} />}
-        <span className={clsx(styles.subject, head && styles.headSubject)} title={c.message}>
+        {opts.refsOnLeft && refs}
+        <span className={clsx(styles.subject, head && styles.headSubject, merge && styles.mergeSubject)} title={c.message}>
           {c.summary}
         </span>
-        {c.refs.length > 0 && <RefLabels refs={c.refs} />}
+        {!opts.refsOnLeft && refs}
       </span>
-      <span className={clsx(styles.colAuthor, styles.muted)} title={`${c.author} <${c.email}>`}>
-        {c.author}
-      </span>
-      <span className={clsx(styles.colDate, styles.muted)}>{formatTime(c.timeMs)}</span>
+      {opts.showAuthor && (
+        <span className={clsx(styles.colAuthor, styles.muted, mine && styles.mine)} title={`${c.author} <${c.email}>`}>
+          {c.author}
+        </span>
+      )}
+      {opts.showDate && <span className={clsx(styles.colDate, styles.muted)}>{formatTime(time)}</span>}
+      {opts.showHash && <span className={clsx(styles.colHash, styles.muted, styles.hash)}>{c.shortId}</span>}
     </div>
   );
 });
@@ -707,10 +816,20 @@ export function GraphCell({ row, head }: { row: GraphRow; head?: boolean }) {
   return (
     <svg className={styles.graph} width={width} height={ROW} aria-hidden>
       {row.up.map((s, i) => (
-        <path key={`u${i}`} d={seg(x(s.from), 0, x(s.to), cy)} stroke={laneColor(s.color)} />
+        <path
+          key={`u${i}`}
+          d={seg(x(s.from), 0, x(s.to), cy) + (s.arrow ? arrowHead(x(s.from), 0, -1) : "")}
+          stroke={laneColor(s.color)}
+          strokeDasharray={s.dashed ? "2 2" : undefined}
+        />
       ))}
       {row.down.map((s, i) => (
-        <path key={`d${i}`} d={seg(x(s.from), cy, x(s.to), ROW)} stroke={laneColor(s.color)} />
+        <path
+          key={`d${i}`}
+          d={seg(x(s.from), cy, x(s.to), ROW) + (s.arrow ? arrowHead(x(s.to), ROW, 1) : "")}
+          stroke={laneColor(s.color)}
+          strokeDasharray={s.dashed ? "2 2" : undefined}
+        />
       ))}
       <circle
         cx={x(row.lane)}
@@ -724,19 +843,42 @@ export function GraphCell({ row, head }: { row: GraphRow; head?: boolean }) {
   );
 }
 
-export function RefLabels({ refs }: { refs: string[] }) {
+/** Arrow head at (`px`, `py`) pointing up (`dir` -1) or down (1): a long edge continues. */
+function arrowHead(px: number, py: number, dir: 1 | -1) {
+  const back = py - dir * 4;
+  return `M${px - 3} ${back}L${px} ${py}L${px + 3} ${back}`;
+}
+
+const REF_KIND_CLASS = {
+  head: styles.refHead,
+  local: styles.refLocal,
+  remote: styles.refRemote,
+  tag: styles.refTag,
+};
+
+const NO_REMOTES: ReadonlySet<string> = new Set();
+
+export function RefLabels({
+  refs,
+  compact = false,
+  tagNames = true,
+  remoteNames = NO_REMOTES,
+  left = false,
+}: {
+  refs: string[];
+  compact?: boolean;
+  tagNames?: boolean;
+  remoteNames?: ReadonlySet<string>;
+  left?: boolean;
+}) {
+  const labels = refLabels(refs, { compact, tagNames }, remoteNames);
   return (
-    <span className={styles.refs}>
-      {refs.map((r) => {
-        const tag = r.startsWith("tag: ");
-        const kind =
-          r === "HEAD" ? styles.refHead : tag ? styles.refTag : r.includes("/") ? styles.refRemote : styles.refLocal;
-        return (
-          <span key={r} className={clsx(styles.ref, kind)} title={r}>
-            {tag ? r.slice(5) : r}
-          </span>
-        );
-      })}
+    <span className={clsx(styles.refs, left && styles.refsLeft)}>
+      {labels.map((l) => (
+        <span key={`${l.kind}:${l.title}`} className={clsx(styles.ref, REF_KIND_CLASS[l.kind])} title={l.title}>
+          {l.text}
+        </span>
+      ))}
     </span>
   );
 }

@@ -1,5 +1,8 @@
 import type { ToolWindowContribution } from "@/workbench/contributions";
-import { basename, relDir } from "../common/open";
+import type { OutlineItem } from "@/platform/ipc";
+import { formatTimestamp } from "@/platform/dateFormat";
+import type { CodeToken } from "@/editor/lsp/markdown";
+import { basename, relDir, symbolDisplayName } from "../common/open";
 import type { RecentLocation } from "../common/locations";
 import { matchText } from "../common/rank";
 import { isVirtualUri, virtualContainer } from "@/platform/virtualDocs";
@@ -109,6 +112,50 @@ export function filterLocations(
       else if (!l.snippet.some((s) => s.toLowerCase().includes(q)) && !rel.toLowerCase().includes(q)) continue;
     }
     out.push({ ...l, rel, nameIndices });
+  }
+  return out;
+}
+
+/** IDEA's Recent Locations time: "Just now", "14 minutes ago", then the pretty timestamp ("Yesterday 22:52"). */
+export function locationTime(ms: number, now = Date.now(), format: (ms: number, now: number) => string = formatTimestamp): string {
+  if (!ms) return "";
+  const minutes = Math.floor((now - ms) / 60_000);
+  if (minutes >= 0 && minutes < 1) return "Just now";
+  if (minutes >= 1 && minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  return format(ms, now);
+}
+
+/** Breadcrumb of the symbols around a location ("OrderController > list()"). */
+export function locationBreadcrumb(path: readonly Pick<OutlineItem, "name" | "kind">[]): string {
+  return path.map((s) => symbolDisplayName(s.name, s.kind)).join(" > ");
+}
+
+export interface CodeSegment {
+  text: string;
+  /** Lezer `classHighlighter` classes, "" for plain text. */
+  cls: string;
+}
+
+/** Splits highlight tokens of `lines.join("\n")` into per-line segments. */
+export function lineSegments(lines: readonly string[], tokens: readonly CodeToken[]): CodeSegment[][] {
+  const out: CodeSegment[][] = [];
+  let start = 0;
+  let t = 0;
+  for (const line of lines) {
+    const end = start + line.length;
+    const segs: CodeSegment[] = [];
+    let pos = start;
+    while (t < tokens.length && tokens[t]!.to <= start) t++;
+    for (let i = t; i < tokens.length && tokens[i]!.from < end; i++) {
+      const from = Math.max(tokens[i]!.from, start);
+      const to = Math.min(tokens[i]!.to, end);
+      if (from > pos) segs.push({ text: line.slice(pos - start, from - start), cls: "" });
+      if (to > from) segs.push({ text: line.slice(from - start, to - start), cls: tokens[i]!.cls });
+      pos = Math.max(pos, to);
+    }
+    if (pos < end) segs.push({ text: line.slice(pos - start), cls: "" });
+    out.push(segs);
+    start = end + 1;
   }
   return out;
 }

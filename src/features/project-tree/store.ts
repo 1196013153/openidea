@@ -1,6 +1,6 @@
 /**
  * Project view state: lazily loaded listings, expansion / selection (keyed by
- * node key = path), view options, inline editing and the internal clipboard.
+ * node key: the path, namespaced below External Libraries), view options, inline editing and the internal clipboard.
  * Kept outside React so actions (keyboard, Find Action, context menu) share it.
  */
 import { create } from "zustand";
@@ -8,8 +8,16 @@ import type { FileEntry } from "@/bindings";
 import { IpcError } from "@/platform/ipc";
 import {
   DEFAULT_TREE_OPTIONS,
+  GROUP_PREFIX,
   buildModel,
+  buildPathsModel,
+  extraFolders,
+  isGroupKey,
+  isLibKey,
+  keyLike,
+  pathOfKey,
   withExtraRoots,
+  withReadOnlyFolders,
   dropListings,
   isDirEntry,
   mergeListing,
@@ -43,6 +51,20 @@ export const DEFAULT_VIEW_OPTIONS: ViewOptions = {
   previewTab: false,
 };
 
+/** IDEA's Project view panes ("Project ▾" in the tool window header). */
+export type ViewMode = "project" | "projectFiles" | "openFiles" | "changedFiles" | "scratches";
+
+export const VIEW_MODES: ReadonlyArray<[ViewMode, string]> = [
+  ["project", "Project"],
+  ["projectFiles", "Project Files"],
+  ["openFiles", "Open Files"],
+  ["changedFiles", "All Changed Files"],
+  ["scratches", "Scratches and Consoles"],
+];
+
+/** Modes listing just some files (expanded as they appear). */
+export const isFilteredMode = (mode: ViewMode) => mode === "openFiles" || mode === "changedFiles";
+
 export type Editing =
   | { kind: "new"; parent: string; nodeKind: "file" | "dir"; pkg?: PackageKind }
   | { kind: "rename"; key: string; path: string };
@@ -66,9 +88,15 @@ interface ProjectTreeState {
   revealRequest: { path: string; focus: boolean; seq: number } | null;
   /** Folder key highlighted as drop target. */
   dropTarget: string | null;
+  mode: ViewMode;
+  /** Files open in editor tabs (Open Files mode). */
+  openFiles: readonly string[];
+  /** Files with VCS changes (All Changed Files mode). */
+  changedFiles: readonly string[];
 }
 
 const OPTIONS_KEY = "openidea.projectTree.options";
+const MODE_KEY = "openidea.projectTree.mode";
 const expandedKey = (root: string) => `openidea.projectTree.expanded:${root}`;
 const MAX_PERSISTED = 3000;
 
@@ -101,7 +129,15 @@ export const useProjectTree = create<ProjectTreeState>(() => ({
   clipboard: null,
   revealRequest: null,
   dropTarget: null,
+  mode: readMode(),
+  openFiles: [],
+  changedFiles: [],
 }));
+
+function readMode(): ViewMode {
+  const m = readJson<string>(MODE_KEY);
+  return VIEW_MODES.find(([id]) => id === m)?.[0] ?? "project";
+}
 
 const get = () => useProjectTree.getState();
 const set = (patch: Partial<ProjectTreeState>) => useProjectTree.setState(patch);
@@ -115,13 +151,19 @@ let memo: {
   listings: ProjectTreeState["listings"];
   options: ViewOptions;
   editing: Editing | null;
+  mode: ViewMode;
+  files: readonly string[] | null;
   extras: ReadonlyMap<string, ProjectViewRootContribution>;
   model: TreeModel;
 } | null = null;
 
 const EMPTY_MODEL: TreeModel = { roots: [], children: new Map(), byKey: new Map(), keyOfPath: new Map() };
 
+const filesOf = (s: ProjectTreeState) =>
+  s.mode === "openFiles" ? s.openFiles : s.mode === "changedFiles" ? s.changedFiles : null;
+
 export function selectModel(s: ProjectTreeState): TreeModel {
+  const files = filesOf(s);
   if (
     memo &&
     memo.root === s.root &&
@@ -129,16 +171,30 @@ export function selectModel(s: ProjectTreeState): TreeModel {
     memo.listings === s.listings &&
     memo.options === s.options &&
     memo.editing === s.editing &&
+    memo.mode === s.mode &&
+    memo.files === files &&
     memo.extras === useProjectViewRoots.getState().roots
   )
     return memo.model;
   const placeholder: Placeholder | null =
     s.editing?.kind === "new" ? { parent: s.editing.parent, kind: s.editing.nodeKind } : null;
   const extras = useProjectViewRoots.getState().roots;
-  const model = s.root
-    ? withExtraRoots(buildModel({ path: s.root, name: s.name }, s.listings, s.options, placeholder), projectViewRoots(extras), s.listings, s.options, placeholder)
-    : EMPTY_MODEL;
-  memo = { root: s.root, name: s.name, listings: s.listings, options: s.options, editing: s.editing, extras, model };
+  const contributed = projectViewRoots(extras);
+  const project = () => buildModel({ path: s.root!, name: s.name }, s.listings, s.options, placeholder);
+  let model = EMPTY_MODEL;
+  if (s.root) {
+    if (s.mode === "projectFiles") model = project();
+    else if (s.mode === "scratches")
+      model = withExtraRoots(EMPTY_MODEL, contributed.filter((r) => r.scope === "scratches"), s.listings, s.options, placeholder);
+    else if (files)
+      model = buildPathsModel([{ path: s.root, label: s.name, icon: "" }, ...extraFolders(contributed)], files, s.options.foldersFirst);
+    else model = withExtraRoots(project(), contributed, s.listings, s.options, placeholder);
+    const libraries = extraFolders(contributed).flatMap((r) =>
+      r.readOnly && r.path !== undefined && isSameOrInside(r.path, s.root!) ? [r.path] : [],
+    );
+    model = withReadOnlyFolders(model, libraries);
+  }
+  memo = { root: s.root, name: s.name, listings: s.listings, options: s.options, editing: s.editing, mode: s.mode, files, extras, model };
   return model;
 }
 
@@ -156,14 +212,13 @@ export function initProjectTree(root: string | null, name = "") {
   generation++;
   inflight.clear();
   clearTimeout(persistTimer);
-  const persisted = root ? (readJson<string[]>(expandedKey(root)) ?? []) : [];
-  const expanded = new Set(persisted.filter((p) => root && isSameOrInside(p, root)));
-  if (root) expanded.add(root);
+  modeExpanded.clear();
+  autoExpanded.clear();
   set({
     root,
     name,
     listings: new Map(),
-    expanded,
+    expanded: initialExpanded(root, get().mode),
     selected: new Set(),
     lead: null,
     editing: null,
@@ -173,12 +228,68 @@ export function initProjectTree(root: string | null, name = "") {
   });
 }
 
+/** Expansion of the modes not shown (each pane keeps its own, like IDEA's). */
+const modeExpanded = new Map<ViewMode, ReadonlySet<string>>();
+/** Folders of a filtered mode already expanded once (collapsing them sticks). */
+const autoExpanded = new Set<string>();
+
+/** "Project" restores the persisted expansion; other panes start with their roots open. */
+function initialExpanded(root: string | null, mode: ViewMode): Set<string> {
+  if (!root || isFilteredMode(mode)) return new Set();
+  if (mode === "scratches") return new Set(projectViewRoots(useProjectViewRoots.getState().roots).flatMap((r) => (r.scope === "scratches" && r.path ? [r.path] : [])));
+  const persisted = mode === "project" ? (readJson<string[]>(expandedKey(root)) ?? []) : [];
+  const expanded = new Set(persisted.filter((p) => isSameOrInside(p, root)));
+  expanded.add(root);
+  return expanded;
+}
+
 function persistExpanded() {
+  if (get().mode !== "project") return;
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const { root, expanded } = get();
-    if (root) writeJson(expandedKey(root), [...expanded].slice(0, MAX_PERSISTED));
+    const { root, expanded, mode } = get();
+    if (root && mode === "project") writeJson(expandedKey(root), [...expanded].slice(0, MAX_PERSISTED));
   }, 300);
+}
+
+/** Switches the pane ("Project ▾"), remembered across sessions. */
+export function setViewMode(mode: ViewMode) {
+  const s = get();
+  if (s.mode === mode) return;
+  modeExpanded.set(s.mode, s.expanded);
+  autoExpanded.clear();
+  writeJson(MODE_KEY, mode);
+  set({
+    mode,
+    expanded: modeExpanded.get(mode) ?? initialExpanded(s.root, mode),
+    selected: new Set(),
+    lead: null,
+    editing: null,
+    dropTarget: null,
+  });
+}
+
+/** Open Files / All Changed Files: expands folders the first time they appear. */
+export function autoExpand(model: TreeModel) {
+  const s = get();
+  if (!isFilteredMode(s.mode)) return;
+  let next: Set<string> | null = null;
+  for (const [key, node] of model.byKey) {
+    if (!node.dir || autoExpanded.has(key)) continue;
+    autoExpanded.add(key);
+    if (!s.expanded.has(key)) (next ??= new Set(s.expanded)).add(key);
+  }
+  if (next) set({ expanded: next });
+}
+
+export function setOpenFiles(paths: readonly string[]) {
+  const prev = get().openFiles;
+  if (prev.length !== paths.length || prev.some((p, i) => p !== paths[i])) set({ openFiles: [...paths] });
+}
+
+export function setChangedFiles(paths: readonly string[]) {
+  const prev = get().changedFiles;
+  if (prev.length !== paths.length || prev.some((p, i) => p !== paths[i])) set({ changedFiles: [...paths] });
 }
 
 export function setExpanded(expanded: ReadonlySet<string>) {
@@ -209,7 +320,7 @@ function putListing(path: string, entries: readonly FileEntry[]) {
 /** Loads (or reloads) one folder. Concurrent calls for the same folder share a request. */
 export function loadDir(path: string, force = false): Promise<void> {
   const { root, listings } = get();
-  if (!root) return Promise.resolve();
+  if (!root || isGroupKey(path)) return Promise.resolve();
   if (!force && listings.has(path)) return Promise.resolve();
   const running = inflight.get(path);
   if (running) return running;
@@ -232,7 +343,7 @@ export function loadDir(path: string, force = false): Promise<void> {
       if (e instanceof IpcError && (e.kind === "notFound" || e.kind === "invalidInput")) {
         const listings = new Map(s.listings);
         dropListings(listings, [path]);
-        const expanded = new Set([...s.expanded].filter((k) => !isSameOrInside(k, path) || k === s.root));
+        const expanded = new Set([...s.expanded].filter((k) => !isSameOrInside(pathOfKey(k), path) || k === s.root));
         set({ listings, expanded });
         if (path === s.root) set({ listings: new Map(listings).set(path, []) });
       } else {
@@ -259,7 +370,7 @@ export async function applyFsChange(event: { created: string[]; modified: string
   if (plan.drop.length) {
     const listings = new Map(s.listings);
     dropListings(listings, plan.drop);
-    const gone = (k: string) => plan.drop.some((d) => isSameOrInside(k, d));
+    const gone = (k: string) => plan.drop.some((d) => isSameOrInside(pathOfKey(k), d));
     const selected = [...s.selected].filter((k) => !gone(k));
     set({
       listings,
@@ -271,10 +382,11 @@ export async function applyFsChange(event: { created: string[]; modified: string
   if (event.removed.length) {
     const cur = get();
     const removed = new Set(event.removed);
-    if ([...cur.selected].some((k) => removed.has(k))) {
+    const isRemoved = (k: string) => removed.has(pathOfKey(k));
+    if ([...cur.selected].some(isRemoved)) {
       set({
-        selected: new Set([...cur.selected].filter((k) => !removed.has(k))),
-        lead: cur.lead && removed.has(cur.lead) ? null : cur.lead,
+        selected: new Set([...cur.selected].filter((k) => !isRemoved(k))),
+        lead: cur.lead && isRemoved(cur.lead) ? null : cur.lead,
       });
     }
   }
@@ -298,7 +410,11 @@ export function revealPath(path: string, focus = false) {
   const project = get().root;
   const root = project && isSameOrInside(path, project) ? project : project ? extraRootOf(path) : null;
   if (!root) return false;
-  const ancestors = ancestorsWithin(root, path);
+  // Library folders sit below group nodes (External Libraries › SDK), keyed in their own namespace.
+  const model = currentModel();
+  const rootKey = root === project ? root : (model.keyOfPath.get(root) ?? root);
+  const folders = ancestorsWithin(root, path);
+  const ancestors = [...groupAncestors(model, rootKey), ...folders.map((a) => keyLike(rootKey, a))];
   const next = new Set(expanded);
   let changed = false;
   for (const a of ancestors)
@@ -308,26 +424,72 @@ export function revealPath(path: string, focus = false) {
     }
   if (changed) setExpanded(next);
   set({ revealRequest: { path, focus, seq: ++revealSeq } });
-  for (const a of ancestors) void loadDir(a);
+  for (const a of folders) void loadDir(a);
   return true;
 }
 
-/** The contributed root (scratches…) containing `path`, if any. */
+/** The contributed folder (scratches, a library root…) containing `path`, if any. */
 export function extraRootOf(path: string): string | null {
-  for (const r of useProjectViewRoots.getState().roots.values()) if (isSameOrInside(path, r.path)) return r.path;
+  for (const r of extraFolders(projectViewRoots(useProjectViewRoots.getState().roots)))
+    if (r.path !== undefined && isSameOrInside(path, r.path)) return r.path;
   return null;
+}
+
+/** Whether the current pane can show `path` (Select In switches to "Project" otherwise). */
+export function modeShows(path: string): boolean {
+  const { mode, root } = get();
+  if (!root) return false;
+  switch (mode) {
+    case "project":
+      return true;
+    case "projectFiles":
+      return isSameOrInside(path, root);
+    case "scratches":
+      return projectViewRoots(useProjectViewRoots.getState().roots).some(
+        (r) => r.scope === "scratches" && r.path !== undefined && isSameOrInside(path, r.path),
+      );
+    default:
+      return currentModel().keyOfPath.has(path);
+  }
+}
+
+/** Whether `path` lies in read-only library sources. */
+export function isReadOnlyPath(path: string): boolean {
+  if (isGroupKey(path) || isLibKey(path)) return true;
+  return extraFolders(projectViewRoots(useProjectViewRoots.getState().roots)).some(
+    (r) => r.readOnly && r.path !== undefined && isSameOrInside(path, r.path),
+  );
+}
+
+/** Group node keys above the node `key`, outermost first. */
+function groupAncestors(model: TreeModel, key: string): string[] {
+  const out: string[] = [];
+  for (let child = key; ; ) {
+    let parent: string | null = null;
+    for (const [k, kids] of model.children)
+      if (k.startsWith(GROUP_PREFIX) && kids.some((n) => n.key === child)) {
+        parent = k;
+        break;
+      }
+    if (!parent) return out;
+    out.unshift(parent);
+    child = parent;
+  }
 }
 
 export function clearRevealRequest(seq: number) {
   if (get().revealRequest?.seq === seq) set({ revealRequest: null });
 }
 
-/** Expands every folder below `from` (skipping excluded ones), loading as needed; capped. */
+/** Expands every folder below the node keyed `from` (skipping excluded ones), loading as needed; capped. */
 export async function expandAll(from?: string, limit = 400) {
-  const { root } = get();
+  const { root, mode } = get();
   if (!root) return;
-  const start = from ?? root;
-  const queue = [start];
+  const model = currentModel();
+  // Filtered panes hold every folder already.
+  if (isFilteredMode(mode))
+    return setExpanded(new Set([...model.byKey.values()].filter((n) => n.dir).map((n) => n.key)));
+  const queue = [from ?? model.roots[0]?.key ?? root];
   const toExpand = new Set(get().expanded);
   let count = 0;
   const gen = generation;
@@ -335,18 +497,23 @@ export async function expandAll(from?: string, limit = 400) {
     const dir = queue.shift()!;
     toExpand.add(dir);
     count++;
-    await loadDir(dir);
+    if (isGroupKey(dir)) {
+      for (const n of model.children.get(dir) ?? []) queue.push(n.key);
+      continue;
+    }
+    const path = pathOfKey(dir);
+    await loadDir(path);
     if (gen !== generation) return;
     const s = get();
-    for (const e of visibleEntries(s.listings.get(dir) ?? [], s.options))
-      if (isDirEntry(e) && !e.ignored && e.kind !== "symlink") queue.push(e.path);
+    for (const e of visibleEntries(s.listings.get(path) ?? [], s.options))
+      if (isDirEntry(e) && !e.ignored && e.kind !== "symlink") queue.push(keyLike(dir, e.path));
   }
   setExpanded(toExpand);
 }
 
 export function collapseAll() {
-  const { root } = get();
-  if (root) setExpanded(new Set([root]));
+  const { root, mode } = get();
+  if (root) setExpanded(new Set(mode === "project" || mode === "projectFiles" ? [root] : []));
 }
 
 // ---------------------------------------------------------------------------

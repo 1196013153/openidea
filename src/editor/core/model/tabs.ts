@@ -320,6 +320,15 @@ function rank(pane: Pane, tab: Tab): number {
   return i < 0 ? Number.MAX_SAFE_INTEGER : i;
 }
 
+/** Editor Tabs › Sort tabs alphabetically: orders the pinned and the other tabs of a pane by `title`. */
+export function sortTabs(s: TabsState, paneId: string, title: (t: Tab) => string): TabsState {
+  const pane = paneOf(s, paneId);
+  const byTitle = (a: Tab, b: Tab) =>
+    title(a).localeCompare(title(b), undefined, { sensitivity: "base" }) || title(a).localeCompare(title(b));
+  const tabs = [...pane.tabs.filter((t) => t.pinned).sort(byTitle), ...pane.tabs.filter((t) => !t.pinned).sort(byTitle)];
+  return tabs.every((t, i) => t === pane.tabs[i]) ? s : withPane(s, { ...pane, tabs });
+}
+
 export function cycleTab(s: TabsState, delta: number, paneId = s.activePane): TabsState {
   const pane = paneOf(s, paneId);
   if (pane.tabs.length < 2) return s;

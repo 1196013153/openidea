@@ -7,12 +7,14 @@ const reloaders: Record<string, () => void> = {
   [LIVE_TEMPLATES_KEY]: reloadLiveTemplates,
   [LIVE_TEMPLATE_OPTIONS_KEY]: reloadLiveTemplates,
   [POSTFIX_KEY]: reloadPostfixSettings,
-  [FILE_TEMPLATES_KEY]: reloadFileTemplates,
 };
 
 export function syncTemplatesFromStorage(): () => void {
   const onStorage = (e: StorageEvent) => {
-    if (e.key) reloaders[e.key]?.();
+    if (!e.key) return;
+    // File templates also keep per-project schemes under keys extending FILE_TEMPLATES_KEY.
+    if (e.key.startsWith(FILE_TEMPLATES_KEY)) reloadFileTemplates();
+    else reloaders[e.key]?.();
   };
   window.addEventListener("storage", onStorage);
   return () => window.removeEventListener("storage", onStorage);

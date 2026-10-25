@@ -1,10 +1,10 @@
 /** Context menu and "New" popup of the project view. */
-import { allActions, getAction } from "@/platform/actions";
+import { executeAction, getAction } from "@/platform/actions";
 import { formatBinding, hostBinding, isMacHost, shortcutLabel } from "@/platform/keymap";
 import { relativePath, useProject } from "@/platform/project";
 import { currentDetectedRoots, currentRoots } from "@/platform/projectRoots";
 import type { MenuItem } from "@/ui";
-import { menuGroupItems, type MenuGroupContext } from "@/workbench/contributions";
+import { menuGroupItems, toolWindowService, type MenuGroupContext } from "@/workbench/contributions";
 import type { FolderRole } from "@/platform/languageSettings";
 import { directoryRole, markDirectory } from "./markDirectory";
 import type { ProjectNode } from "./model";
@@ -44,16 +44,37 @@ export const LOCAL_KEYS: Record<string, string> = {
 export const keyLabel = (id: string) =>
   shortcutLabel(id) ?? (LOCAL_KEYS[id] ? formatBinding(hostBinding(LOCAL_KEYS[id])) : undefined);
 
-export function newMenuItems(parent: string | null): MenuItem[] {
+/**
+ * New › items for `parent`. `outsideTree` (⌘N in the editor): File asks for the
+ * name in a dialog, and the inline Directory / Package editors bring up the project view.
+ */
+export function newMenuItems(parent: string | null, { outsideTree = false } = {}): MenuItem[] {
   const root = useProject.getState().project?.root;
   const rel = parent && root ? (parent === root ? "" : relativePath(root, parent)) : null;
   const pkg = rel === null ? null : packageKindAt(rel, currentRoots(), currentDetectedRoots());
-  const dir: MenuItem = { id: "new.dir", label: "Directory", icon: "folder", run: () => void beginNew("dir", parent) };
+  const inline = (start: () => Promise<void>) => () => {
+    if (outsideTree) showProjectView();
+    void start();
+  };
+  const emptyFile = outsideTree && parent && getAction("templates.new.file");
+  const dir: MenuItem = {
+    id: "new.dir",
+    label: "Directory",
+    icon: "folder",
+    run: inline(() => beginNew("dir", parent)),
+  };
   return [
-    { id: "new.file", label: "File", icon: "file", run: () => void beginNew("file", parent) },
+    emptyFile
+      ? {
+          id: "new.file",
+          label: "File",
+          icon: "file",
+          run: () => void executeAction(emptyFile.id, { directory: parent }),
+        }
+      : { id: "new.file", label: "File", icon: "file", run: inline(() => beginNew("file", parent)) },
     // IDEA offers "Package" instead of "Directory" inside a Java / Kotlin source root.
     pkg === "jvm"
-      ? { id: "new.package", label: "Package", icon: "package", run: () => void beginNewPackage("jvm", parent) }
+      ? { id: "new.package", label: "Package", icon: "package", run: inline(() => beginNewPackage("jvm", parent)) }
       : dir,
     ...(pkg === "python"
       ? [
@@ -61,22 +82,25 @@ export function newMenuItems(parent: string | null): MenuItem[] {
             id: "new.pythonPackage",
             label: "Python Package",
             icon: "package",
-            run: () => void beginNewPackage("python", parent),
+            run: inline(() => beginNewPackage("python", parent)),
           },
         ]
       : []),
-    ...templateItems(parent),
+    ...contributedNewItems(parent),
   ];
 }
 
-/** File templates contributed by features/templates (`templates.new.*`). */
-function templateItems(parent: string | null): MenuItem[] {
-  const arg = parent ? { directory: parent } : undefined;
-  const items: MenuItem[] = allActions()
-    .filter((a) => a.id.startsWith("templates.new.") && a.id !== "templates.new.file")
-    .map((a) => ({ kind: "action", action: a.id, arg, label: a.title.replace(/^New /, "").replace(/…$/, "") }));
-  const more = getAction("templates.newFromTemplate");
-  if (more) items.push({ kind: "separator" }, { kind: "action", action: more.id, arg, label: "From Template…" });
+function showProjectView() {
+  try {
+    toolWindowService().show("project", false);
+  } catch {
+    /* tool window service not available (tests) */
+  }
+}
+
+/** File kinds contributed to the `new` menu group (templates, HTTP Request, Scratch File…). */
+function contributedNewItems(parent: string | null): MenuItem[] {
+  const items = menuGroupItems("new", parent ? { paths: [parent], dirs: [true] } : { paths: [] });
   return items.length ? [{ kind: "separator" }, ...items] : [];
 }
 
@@ -107,6 +131,7 @@ function submenu(id: string, label: string, entries: Entry[], icon?: string): Me
  * clipboard group), so the project root and Scratches get a shorter menu.
  */
 export function contextMenuItems(nodes: ProjectNode[]): MenuItem[] {
+  if (nodes.some((n) => n.readOnly)) return libraryMenuItems(nodes.filter((n) => !n.group));
   const lead = nodes[0] ?? null;
   const single = nodes.length === 1 ? lead : null;
   const nonRoot = nodes.filter((n) => !n.root);
@@ -336,6 +361,30 @@ export function contextMenuItems(nodes: ProjectNode[]): MenuItem[] {
     });
   }
   return items;
+}
+
+/** Library sources (External Libraries) are read-only: copy, find and reveal only. */
+function libraryMenuItems(nodes: ProjectNode[]): MenuItem[] {
+  if (!nodes.length) return [];
+  const single = nodes.length === 1 ? nodes[0]! : null;
+  const folder = single?.dir ? single.path : null;
+  const items: Entry[] = [
+    { id: "copy", label: "Copy", icon: "copy", shortcut: keyLabel("project.copy"), run: () => copySelection(false) },
+    {
+      id: "copyPath",
+      label: "Copy Path/Reference…",
+      submenu: [
+        { id: "abs", label: "Absolute Path", shortcut: keyLabel("project.copyAbsolutePath"), run: () => void copyPaths("absolute", nodes) },
+        { id: "name", label: "File Name", run: () => void copyPaths("name", nodes) },
+      ],
+    },
+    { kind: "separator" },
+    !!folder && delegated("find.inPath", { directory: folder }, "Find in Files…", { icon: "search" }),
+    !!folder && { kind: "separator" },
+    submenu("openIn", "Open In", [{ id: "finder", label: revealLabel(), icon: "external-link", run: () => void revealInFinder(nodes) }]),
+    single && !single.dir && delegated("diff.compareWith", single.path, "Compare With…", { icon: "diff", shortcut: keyLabel("project.compareWith") }),
+  ];
+  return items.filter((i): i is MenuItem => !!i);
 }
 
 export function revealLabel() {

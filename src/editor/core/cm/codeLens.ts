@@ -55,6 +55,7 @@ export function indentColumns(text: string, tabSize: number): number {
 
 const ICONS: Record<string, string> = {
   run: "M4 3l9 5-9 5z",
+  user: "M8 2a3 3 0 110 6 3 3 0 010-6zM2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5z",
   debug: "M8 2a3 3 0 013 3v1h1v2h-1v1h1v2h-1a3 3 0 01-6 0H4V9h1V8H4V6h1V5a3 3 0 013-3z",
 };
 

@@ -3,8 +3,19 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { CompletionItem } from "@/bindings";
 import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter } from "./completionItems";
-import { applyLspCompletion, commitsLookup, completionExtension, explicitCompletion, makeCompletion } from "./completion";
+import {
+  applyLspCompletion,
+  callParens,
+  commitsLookup,
+  completionExtension,
+  explicitCompletion,
+  makeCompletion,
+  matchRanges,
+  sortAlphabetically,
+} from "./completion";
 import type { CompletionSource } from "@codemirror/autocomplete";
+import { useProject } from "@/platform/project";
+import type { Settings } from "@/platform/ipc";
 
 function item(over: Partial<CompletionItem> = {}): CompletionItem {
   return {
@@ -121,6 +132,7 @@ describe("applying completions", () => {
     const { view, req } = setup("a.cr|Order.x");
     const c = makeCompletion(
       item({
+        kind: "field",
         insertText: "create",
         replaceRange: { start: { line: 0, col: 2 }, end: { line: 0, col: 4 } },
         replaceRangeTab: { start: { line: 0, col: 2 }, end: { line: 0, col: 9 } },
@@ -145,6 +157,7 @@ describe("applying completions", () => {
     const { view, req } = setup("\nfoo.ba|");
     const c = makeCompletion(
       item({
+        kind: "field",
         insertText: "bar",
         additionalEdits: [{ range: { start: { line: 0, col: 0 }, end: { line: 0, col: 0 } }, new_text: "import bar;" }],
       }),
@@ -154,12 +167,59 @@ describe("applying completions", () => {
     expect(view.state.doc.toString()).toBe("import bar;\nfoo.bar");
   });
 
+  it("adds parentheses to a called function and opens its parameters", () => {
+    const { view, req } = setup("svc.cr|");
+    apply(view, makeCompletion(item({ insertText: "create", labelDetail: "(req: Req)" }), req), 4);
+    expect(view.state.doc.toString()).toBe("svc.create()");
+    expect(view.state.selection.main.head).toBe(11);
+  });
+
+  it("places the caret after the parentheses of a parameterless call", () => {
+    const { view, req } = setup("svc.cl|");
+    apply(view, makeCompletion(item({ insertText: "close", labelDetail: "()" }), req), 4);
+    expect(view.state.doc.toString()).toBe("svc.close()");
+    expect(view.state.selection.main.head).toBe(11);
+  });
+
   it("expands snippets with fields", () => {
     const { view, req } = setup("pri|");
     apply(view, makeCompletion(item({ insertText: "println!(${1:arg})$0", isSnippet: true }), req), 0);
     expect(view.state.doc.toString()).toBe("println!(arg)");
     const sel = view.state.selection.main;
     expect(view.state.sliceDoc(sel.from, sel.to)).toBe("arg");
+  });
+});
+
+describe("insert parentheses", () => {
+  const line = (text: string) => ({ from: 0, text });
+  it("applies to plain callables only", () => {
+    expect(callParens(item(), line("a.cr"), 2, 4)).toBe("inside");
+    expect(callParens(item({ kind: "field" }), line("a.cr"), 2, 4)).toBeNull();
+    expect(callParens(item({ isSnippet: true }), line("a.cr"), 2, 4)).toBeNull();
+    expect(callParens(item({ insertText: "create()" }), line("a.cr"), 2, 4)).toBeNull();
+  });
+
+  it("skips calls that already have parentheses and imports", () => {
+    expect(callParens(item(), line("a.cr(x)"), 2, 4)).toBeNull();
+    expect(callParens(item(), line("import { cr"), 9, 11)).toBeNull();
+    expect(callParens(item(), line("use crate::cr"), 11, 13)).toBeNull();
+  });
+});
+
+describe("sort suggestions alphabetically", () => {
+  const result = (labels: string[]) => ({ from: 0, options: labels.map((label) => ({ label })), validFor: /^\w*$/ });
+
+  it("filters and orders by name", () => {
+    const sorted = sortAlphabetically(result(["zeta", "Alpha", "beta", "gamma", "alphabet"]), "a");
+    expect(sorted.filter).toBe(false);
+    expect(sorted.options.map((o) => o.label)).toEqual(["Alpha", "alphabet", "beta", "gamma", "zeta"]);
+    expect(sortAlphabetically(result(["zeta", "Alpha", "beta"]), "al").options.map((o) => o.label)).toEqual(["Alpha"]);
+  });
+
+  it("matches substrings, then subsequences", () => {
+    expect(matchRanges("getValue", "val")).toEqual([3, 6]);
+    expect(matchRanges("getValue", "gv")).toEqual([0, 1, 3, 4]);
+    expect(matchRanges("getValue", "x")).toBeNull();
   });
 });
 
@@ -204,6 +264,16 @@ describe("explicit completion", () => {
     explicitCompletion(view);
     await vi.waitFor(() => expect(view.state.doc.toString()).toBe("println"), { timeout: 2000 });
     view.destroy();
+  });
+
+  it("keeps a sole candidate in the list when auto-insert is off", async () => {
+    useProject.setState({ settings: { editor: { completion: { autoInsertSingle: false } } } as unknown as Settings });
+    const view = editor(["println"]);
+    explicitCompletion(view);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(view.state.doc.toString()).toBe("pri");
+    view.destroy();
+    useProject.setState({ settings: null });
   });
 
   it("shows the list when there are several candidates", async () => {

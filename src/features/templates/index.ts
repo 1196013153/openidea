@@ -6,12 +6,18 @@
 import { lazyComponent } from "@/ui";
 import { registerAction, registerActions, type Action } from "@/platform/actions";
 import { activeEditor, registerEditorContribution } from "@/editor/api";
-import { notifications, registerMenuGroup, registerOverlay, registerSettingsPage } from "@/workbench/contributions";
+import {
+  notifications,
+  registerMenuGroup,
+  registerOverlay,
+  registerSettingsPage,
+  type MenuGroupContext,
+} from "@/workbench/contributions";
 import { insertLiveTemplate, surroundTarget, surroundWith, templateEditorExtension } from "./editor";
 import { ChooserHost } from "./popup/Chooser";
 import { NewFileDialogHost, openNewFileDialog } from "./files/NewFileDialog";
 import { defaultDirectory } from "./files/create";
-import { fileTemplates, useFileTemplates } from "./files/store";
+import { fileTemplates, useFileTemplates, watchTemplateProject } from "./files/store";
 import type { FileTemplate } from "./files/model";
 import { syncTemplatesFromStorage } from "./sync";
 import { tagAtCaret, updateTag } from "./emmet/editor";
@@ -48,7 +54,15 @@ interface NewFileArg {
   extension?: string;
   name?: string;
   kindId?: string;
+  /** An ad-hoc template from another feature (New › HTTP Request), not kept in the template store. */
+  template?: FileTemplate;
 }
+
+const isTemplate = (t: unknown): t is FileTemplate =>
+  !!t &&
+  typeof (t as FileTemplate).name === "string" &&
+  Array.isArray((t as FileTemplate).kinds) &&
+  (t as FileTemplate).kinds.length > 0;
 
 function templateForExtension(extension: string | undefined, kindId: string | undefined): string | undefined {
   if (!extension) return undefined;
@@ -68,12 +82,45 @@ function newFileAction(t: FileTemplate): Action {
     category: "File",
     icon: t.icon,
     when: "projectOpen",
-    keywords: ["new", "create", "template", t.extension].filter(Boolean),
+    keywords: [
+      ...new Set(["new", "create", "template", t.extension, ...t.kinds.map((k) => k.extension), t.defaultName]),
+    ].filter((k): k is string => !!k),
     run: ({ arg }) => {
       const directory = directoryOf(arg);
       if (directory) openNewFileDialog({ directory, templateId: t.id });
     },
   };
+}
+
+/** New popup / New › entries: the enabled templates ("File" is the project view's own entry), then From Template…. */
+function registerNewMenuGroups(): () => void {
+  const arg = (ctx: MenuGroupContext) => (ctx.paths[0] ? { directory: ctx.paths[0] } : undefined);
+  const disposers = [
+    registerMenuGroup({
+      id: "templates.new",
+      menus: ["new"],
+      order: 10,
+      items: (_menu, ctx) =>
+        fileTemplates()
+          .filter((t) => t.enabled !== false && t.id !== "file")
+          .map((t) => ({
+            kind: "action",
+            action: `templates.new.${t.id}`,
+            arg: arg(ctx),
+            label: t.name,
+            icon: t.icon,
+          })),
+    }),
+    registerMenuGroup({
+      id: "templates.newFromTemplate",
+      menus: ["new"],
+      order: 100,
+      items: (_menu, ctx) => [
+        { kind: "action", action: "templates.newFromTemplate", arg: arg(ctx), label: "From Template…" },
+      ],
+    }),
+  ];
+  return () => disposers.forEach((d) => d());
 }
 
 function registerFileTemplateActions(): () => void {
@@ -117,7 +164,7 @@ export function activateSettingsPages(): () => void {
       title: "File and Code Templates",
       group: "Editor",
       order: 26,
-      keywords: ["new file", "class", "template", "package"],
+      keywords: ["new file", "class", "template", "package", "includes", "file header", "code", "scheme", "reformat"],
       component: lazyComponent(() => import("./settings/FileTemplatesPage").then((m) => m.FileTemplatesPage)),
     }),
   ];
@@ -181,13 +228,22 @@ export function activate(): () => void {
           const directory = directoryOf(arg);
           if (!directory) return;
           const a = (arg ?? {}) as NewFileArg;
-          openNewFileDialog({ directory, templateId: a.templateId ?? templateForExtension(a.extension, a.kindId), name: a.name, kindId: a.kindId });
+          if (isTemplate(a.template))
+            return openNewFileDialog({ directory, template: a.template, name: a.name, kindId: a.kindId });
+          openNewFileDialog({
+            directory,
+            templateId: a.templateId ?? templateForExtension(a.extension, a.kindId),
+            name: a.name,
+            kindId: a.kindId,
+          });
         },
       },
     ]),
     registerFileTemplateActions(),
+    registerNewMenuGroups(),
     activateSettingsPages(),
     syncTemplatesFromStorage(),
+    watchTemplateProject(),
   ];
   return () => disposers.reverse().forEach((d) => d());
 }

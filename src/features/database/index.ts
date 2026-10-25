@@ -8,7 +8,14 @@ import { lazyComponent } from "@/ui";
 import { activeEditor, registerEditorContribution } from "@/editor/api";
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
-import { registerEditorKind, registerOverlay, registerServiceView, registerToolWindow, toolWindowService } from "@/workbench/contributions";
+import {
+  registerEditorKind,
+  registerOverlay,
+  registerServiceView,
+  registerToolWindow,
+  setFileDecorations,
+  toolWindowService,
+} from "@/workbench/contributions";
 import { SQL_LANGUAGE, consoleExtension, executeInView } from "./console";
 import { DatabaseDialogs } from "./Dialogs";
 import { TABLE_KIND, tableTitle } from "./tableInput";
@@ -18,10 +25,12 @@ import {
   DB_TOOL_WINDOW,
   RESULTS_VIEW,
   consoleSource,
+  consoleTints,
   loadSources,
   openConsole,
   openSourceDialog,
   useDatabase,
+  watchIdleConnections,
 } from "./store";
 
 export function activate(): () => void {
@@ -72,6 +81,12 @@ export function activate(): () => void {
         newMenuOpen: false,
       });
     }),
+    // Consoles of coloured data sources get a tinted tab.
+    useDatabase.subscribe((s, prev) => {
+      if (s.consoles !== prev.consoles || s.sources !== prev.sources) setFileDecorations("database", consoleTints(s));
+    }),
+    () => setFileDecorations("database", new Map()),
+    watchIdleConnections(),
     registerDatabaseTreeActions(),
     registerActions([
       {

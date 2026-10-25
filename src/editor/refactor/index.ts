@@ -4,5 +4,5 @@
  * is not usable (see `@/editor/structure`).
  */
 export { introduceFallback, type FallbackReason, type IntroduceKind } from "./introduce";
-export { refactorThis, runRefactoring } from "./refactorThis";
+export { refactorThis, runRefactoring, showNothingHere } from "./refactorThis";
 export { askUsagesDetected, fileUsages, safeDelete, viewUsages, type FileUsages, type UsagesAnswer } from "./safeDelete";

@@ -553,6 +553,8 @@ function staticHeaderMenu(items: MenuItem[] | undefined): (id: string) => MenuIt
   return f;
 }
 
+const noTitleMenu = (): { label: string; items: MenuItem[] } | null => null;
+
 function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: boolean }) {
   const ref = useRef<HTMLElement>(null);
   const focusRequest = useToolWindowLayout((s) => s.focusRequest);
@@ -580,6 +582,9 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
 
   const useHeaderMenu = typeof tw.headerMenu === "function" ? tw.headerMenu : staticHeaderMenu(tw.headerMenu);
   const own = useHeaderMenu(tw.id);
+  const useTitleMenu = tw.titleMenu ?? noTitleMenu;
+  const titleMenu = useTitleMenu(tw.id);
+  const titleItems = titleMenu?.items ?? own;
   const more: MenuItem[] = [
     ...own,
     ...(own.length ? [{ kind: "separator" } as MenuItem] : []),
@@ -606,7 +611,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
         className={clsx(styles.header, Tabs && styles.headerTabbed)}
         onDoubleClick={(e) => e.target === e.currentTarget && toggleMaximizeToolWindow(tw.id)}
       >
-        {Tabs && tw.tabsReplaceTitle ? null : own.length > 0 ? (
+        {Tabs && tw.tabsReplaceTitle ? null : titleItems.length > 0 ? (
           <>
             <button
               ref={titleRef}
@@ -617,7 +622,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
               onClick={() => setTitleOpen((v) => !v)}
             >
               <span className={styles.title}>
-                <T>{tw.title}</T>
+                <T>{titleMenu?.label ?? tw.title}</T>
               </span>
               <Icon name="chevron-down" size={12} className={styles.titleChevron} />
             </button>
@@ -625,8 +630,8 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
               open={titleOpen}
               onClose={() => setTitleOpen(false)}
               anchor={titleRef}
-              items={own}
-              aria-label={`${tx(tw.title)} view options`}
+              items={titleItems}
+              aria-label={titleMenu ? `${tx(tw.title)} views` : `${tx(tw.title)} view options`}
             />
           </>
         ) : (

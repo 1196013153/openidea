@@ -36,8 +36,24 @@ pub struct ByteRange {
     pub total: u64,
 }
 
+/// Entry bytes of an archive path (`<archive>!/<entry>`), `None` for ordinary paths.
+fn archive_bytes(path: &Path, limit: u64) -> IdeResult<Option<Vec<u8>>> {
+    let Some((archive, entry)) = crate::split_archive_path(path) else { return Ok(None) };
+    let (size, _) = crate::archive::entry_size(&archive, &entry)?;
+    if size > limit {
+        return Err(IdeError::invalid(format!("{} is too large ({} MiB)", path.display(), size / (1024 * 1024))));
+    }
+    Ok(Some(crate::read_archive_entry(&archive, &entry)?.0))
+}
+
 /// Reads only the head of the file to classify it.
 pub fn probe(path: &Path) -> IdeResult<FileProbe> {
+    if let Some((archive, entry)) = crate::split_archive_path(path) {
+        let (size, _) = crate::archive::entry_size(&archive, &entry)?;
+        let head =
+            if size > crate::MAX_OPEN_SIZE { Vec::new() } else { crate::read_archive_entry(&archive, &entry)?.0 };
+        return Ok(FileProbe { size, binary: looks_binary(&head), too_large: size > READ_ONLY_THRESHOLD });
+    }
     let meta = fs::metadata(path)?;
     if meta.is_dir() {
         return Err(IdeError::invalid(format!("{} is a directory", path.display())));
@@ -49,6 +65,12 @@ pub fn probe(path: &Path) -> IdeResult<FileProbe> {
 
 /// Reads up to `len` bytes (capped at [`MAX_RANGE_LEN`]) from `offset`.
 pub fn read_range(path: &Path, offset: u64, len: u32) -> IdeResult<ByteRange> {
+    if let Some(bytes) = archive_bytes(path, crate::MAX_OPEN_SIZE)? {
+        let total = bytes.len() as u64;
+        let offset = offset.min(total);
+        let end = (offset + u64::from(len.min(MAX_RANGE_LEN))).min(total);
+        return Ok(ByteRange { offset, data: base64(&bytes[offset as usize..end as usize]), total });
+    }
     let mut file = File::open(path)?;
     let total = file.metadata()?.len();
     let offset = offset.min(total);
@@ -79,6 +101,9 @@ pub fn image_mime(path: &Path) -> Option<&'static str> {
 pub fn read_data_url(path: &Path) -> IdeResult<String> {
     let mime =
         image_mime(path).ok_or_else(|| IdeError::invalid(format!("{} is not a supported image", path.display())))?;
+    if let Some(bytes) = archive_bytes(path, MAX_IMAGE_SIZE)? {
+        return Ok(format!("data:{mime};base64,{}", base64(&bytes)));
+    }
     let meta = fs::metadata(path)?;
     if meta.len() > MAX_IMAGE_SIZE {
         return Err(IdeError::invalid(format!(

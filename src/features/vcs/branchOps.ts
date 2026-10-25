@@ -174,7 +174,7 @@ export async function checkoutRevision() {
   await performCheckout(r.value, () => `Checked out ${r.value}`);
 }
 
-function conflictActions(message: string) {
+export function conflictActions(message: string) {
   return conflictedFiles().length || /conflict/i.test(message)
     ? [{ label: "Resolve Conflicts…", run: () => void executeAction("vcs.resolveConflicts") }]
     : [];
@@ -184,7 +184,7 @@ function conflictActions(message: string) {
  * A merge / rebase that stopped on conflicts isn't an error in IDEA: it opens
  * the Conflicts dialog instead of an error balloon.
  */
-async function openConflictsInstead(): Promise<boolean> {
+export async function openConflictsInstead(): Promise<boolean> {
   await refreshNow();
   if (!conflictedFiles().length) return false;
   void executeAction("vcs.resolveConflicts");

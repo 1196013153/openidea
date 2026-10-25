@@ -262,10 +262,21 @@ export interface GlobListEditorProps {
   onChange: (value: string[]) => void;
   placeholder?: string;
   "aria-label"?: string;
+  /** Shown for an empty list. */
+  emptyText?: string;
+  /** Accessible name of the inline editor. */
+  itemLabel?: string;
 }
 
-/** Editable list of glob patterns (+ / − / edit toolbar, inline editing). */
-export function GlobListEditor({ value, onChange, placeholder = "**/pattern", ...aria }: GlobListEditorProps) {
+/** Editable list of glob patterns (+ / − / edit toolbar, inline editing); also plain string lists. */
+export function GlobListEditor({
+  value,
+  onChange,
+  placeholder = "**/pattern",
+  emptyText = "No patterns",
+  itemLabel = "Pattern",
+  ...aria
+}: GlobListEditorProps) {
   const [selected, setSelected] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ index: number; text: string } | null>(null);
   const listId = useId();
@@ -359,7 +370,7 @@ export function GlobListEditor({ value, onChange, placeholder = "**/pattern", ..
       >
         {rows.length === 0 && (
           <li className={styles.globEmpty}>
-            <T>No patterns</T>
+            <T>{emptyText}</T>
           </li>
         )}
         {rows.map((glob, i) => (
@@ -380,7 +391,7 @@ export function GlobListEditor({ value, onChange, placeholder = "**/pattern", ..
                 className={styles.globInput}
                 value={editing.text}
                 placeholder={placeholder}
-                aria-label="Pattern"
+                aria-label={itemLabel}
                 onChange={(e) => setEditing({ index: i, text: e.target.value })}
                 onKeyDown={onEditKey}
                 onBlur={commit}

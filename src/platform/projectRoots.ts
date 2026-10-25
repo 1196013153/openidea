@@ -138,3 +138,30 @@ export function inFileSet(set: ProjectFileSet, path: string, roots: readonly Roo
   if (set === "all") return true;
   return isTestPath(roots, rel) === (set === "test");
 }
+
+/** A module: the project itself or a folder with a build file roots were detected from. */
+export interface ProjectModule {
+  name: string;
+  /** Project-relative, `/`-separated; `""` is the project root. */
+  path: string;
+}
+
+/** Modules of the project, root first, then by path. */
+export function projectModules(detected: readonly RootFolder[], projectName: string): ProjectModule[] {
+  const dirs = new Set([""]);
+  for (const r of detected) {
+    if (!r.detectedFrom) continue;
+    const i = r.detectedFrom.lastIndexOf("/");
+    dirs.add(i < 0 ? "" : r.detectedFrom.slice(0, i));
+  }
+  return [...dirs]
+    .sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a < b ? -1 : a > b ? 1 : 0))
+    .map((path) => ({ path, name: path ? path.slice(path.lastIndexOf("/") + 1) : projectName }));
+}
+
+/** Modules of the open project (reactive). */
+export function useProjectModules(): ProjectModule[] {
+  const detected = useDetectedRoots();
+  const name = useProject((s) => s.project?.name ?? "");
+  return useMemo(() => projectModules(detected, name), [detected, name]);
+}

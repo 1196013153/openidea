@@ -14,6 +14,8 @@ import {
   notifications,
   registerMenuGroup,
   registerOverlay,
+  registerRunAnythingProvider,
+  registerServiceProvider,
   registerTitleItem,
   registerToolWindow,
 } from "@/workbench/contributions";
@@ -33,12 +35,22 @@ import { RunDialogsOverlay } from "./dialogs";
 import { registerExternalTools } from "./externalTools";
 import { EditConfigsOverlay } from "./EditConfigsDialog";
 import { RunWidget } from "./RunWidget";
+import { runConfigsRunAnything } from "./runAnything";
+import { runServiceProvider } from "./services";
+import { runBeforeLaunch } from "./beforeLaunch";
+import { compoundChildren } from "./configs";
+import { registerBuiltinTypes } from "./types";
 import { runGutter } from "./runGutter";
 import { activateStackTrace, useStackTraces } from "./stackTrace";
 import { clearRuntimeCache } from "./runtimes";
 import {
   adoptTemporary,
   applyConsoleSettings,
+  CURRENT_FILE,
+  currentFileSelected,
+  prepareLaunch,
+  sessionsOf,
+  setBeforeLaunchRunner,
   loadConfigs,
   failedTests,
   onRunExited,
@@ -64,6 +76,7 @@ async function ensureConfigs() {
 
 async function runSelected() {
   await ensureConfigs();
+  if (currentFileSelected()) return runCurrentFile(false);
   const config = selectedConfig();
   if (!config) {
     useRun.setState({ chooserOpen: true, chooserMode: "run" });
@@ -72,7 +85,14 @@ async function runSelected() {
   await startRun(config);
 }
 
-async function debugConfig(config: RunConfig) {
+async function debugConfig(config: RunConfig, chain: readonly string[] = []) {
+  if (config.kind === "compound") {
+    if (!(await prepareLaunch(config, chain))) return;
+    const children = compoundChildren(config, useRun.getState().configs);
+    await Promise.all(children.map((c) => debugConfig(c, [...chain, config.id])));
+    return;
+  }
+  if (!(await prepareLaunch(config, chain))) return;
   // A single compiled file (rustc / clang): build with debug info, then debug the binary.
   const compiled = await compiledDebugPlan(config);
   if (compiled?.debug) {
@@ -95,11 +115,12 @@ async function debugConfig(config: RunConfig) {
     body: `Running '${config.name}' without the debugger.`,
     key: "run-no-debugger",
   });
-  await startRun(config);
+  await startRun(config, undefined, undefined, { prepared: true });
 }
 
 async function debugSelected() {
   await ensureConfigs();
+  if (currentFileSelected()) return runCurrentFile(true);
   const config = selectedConfig();
   if (!config) {
     useRun.setState({ chooserOpen: true, chooserMode: "debug" });
@@ -110,6 +131,12 @@ async function debugSelected() {
 
 async function runContext(debug: boolean, arg?: unknown) {
   if (!(await runContextAction(debug, arg))) nothingToRun();
+}
+
+/** "Current File" stays selected after running the file's context (which adopts a temporary configuration). */
+async function runCurrentFile(debug: boolean) {
+  await runContext(debug);
+  selectConfig(CURRENT_FILE);
 }
 
 function nothingToRun() {
@@ -153,6 +180,15 @@ function stopAction() {
     const active = running.find((s) => s.id === activeSession);
     if (active) {
       void stopSession(active.id);
+      return;
+    }
+  }
+  // A selected compound stops all of its configurations.
+  const selected = selectedConfig();
+  if (selected?.kind === "compound") {
+    const own = sessionsOf(selected, running);
+    if (own.length) {
+      own.forEach((s) => void stopSession(s.id));
       return;
     }
   }
@@ -208,10 +244,13 @@ export function activate(): () => void {
       headerContent: lazyComponent(() => import("./RunView").then((m) => m.RunTabs)),
       useBadge: useRunningCount,
     }),
-    registerTitleItem({ id: "run.widget", align: "right", priority: 0, component: RunWidget }),
+    registerTitleItem({ id: "run.widget", title: "Run Widget", align: "right", priority: 0, component: RunWidget }),
+    registerRunAnythingProvider(runConfigsRunAnything),
+    registerBuiltinTypes(),
     registerOverlay({ id: "run.chooser", component: ConfigChooserOverlay }),
     registerOverlay({ id: "run.editConfigs", component: EditConfigsOverlay }),
     registerOverlay({ id: "run.dialogs", component: RunDialogsOverlay }),
+    registerServiceProvider(runServiceProvider),
     onWorkflowSettingsChange((w) => w.console, applyConsoleSettings),
     registerExternalTools(),
     activateStackTrace(),
@@ -380,6 +419,10 @@ export function activate(): () => void {
             return;
           }
           await ensureConfigs();
+          if (config === undefined && currentFileSelected()) {
+            if (!(await executeContext(executor, undefined))) nothingToRun();
+            return;
+          }
           const target = config !== undefined ? configFromArg(config) : selectedConfig();
           if (!target) {
             useRun.setState({ chooserOpen: true, chooserMode: "run" });
@@ -418,6 +461,8 @@ export function activate(): () => void {
     }),
   ];
 
+  setBeforeLaunchRunner(runBeforeLaunch);
+  disposers.push(() => setBeforeLaunchRunner(null));
   if (hasProject()) void loadConfigs();
 
   // Reload when run.toml or build files change on disk (cheap; detection is fast).

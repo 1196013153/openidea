@@ -261,8 +261,18 @@ export async function refactorThis(view: EditorView, rename: (view: EditorView) 
   // Superseded, or the caret moved / the text changed meanwhile: the answer is stale.
   if (run.signal.aborted || view.state.doc !== state.doc || !view.state.selection.eq(state.selection)) return;
   if (!items.length) {
-    showHint(view, "No refactorings available at the caret");
+    showNothingHere(caretAnchor(view, state.selection.main.head));
     return;
   }
   openPopup({ kind: "list", anchor: caretAnchor(view, state.selection.main.head), title: "Refactor This", items, numbered: true });
+}
+
+/** IDEA's "Nothing here" popup: Refactor This where no refactoring applies (or outside an editor). */
+export function showNothingHere(anchor: { x: number; y: number } = { x: window.innerWidth / 2, y: window.innerHeight / 3 }) {
+  openPopup({
+    kind: "list",
+    anchor,
+    title: "Refactor This",
+    items: [{ id: "nothing", label: "Nothing here", disabled: "No refactoring applies here", run: () => {} }],
+  });
 }

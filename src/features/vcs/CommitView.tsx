@@ -313,7 +313,7 @@ function ChangesPanel() {
     <SplitGroup orientation="vertical" className={styles.split}>
       <SplitPanel defaultSize="62%" minSize="20%">
         <div className={styles.changes}>
-          <div className={styles.toolbar} role="toolbar" aria-label="Changes">
+          <div className={styles.toolbar} role="toolbar" aria-label={tx("Changes")}>
             <IconButton icon="refresh" title="Refresh" size="small" onClick={() => void refreshNow()} />
             <IconButton icon="undo" action="vcs.rollback" size="small" />
             <IconButton icon="git-pull" action="vcs.update" size="small" />
@@ -730,7 +730,7 @@ function StashesPanel() {
   const current = stashes[active];
   return (
     <div className={styles.changes}>
-      <div className={styles.toolbar} role="toolbar" aria-label="Stashes">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Stashes")}>
         <IconButton icon="refresh" title="Refresh" size="small" onClick={() => void loadStashes()} />
         <IconButton icon="plus" title="Stash Changes…" size="small" onClick={() => void stashChanges()} />
         <span className={styles.sep} />

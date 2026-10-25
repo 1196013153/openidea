@@ -20,9 +20,9 @@ import {
   type SqlStatement,
 } from "@/platform/ipc";
 import { editorsFor } from "@/editor/api";
-import { editorService, notifications, showServiceView, toolWindowService } from "@/workbench/contributions";
+import { editorService, notifications, showServiceView, toolWindowService, type FileDecoration } from "@/workbench/contributions";
 import { ask, confirm } from "@/workbench/messages";
-import { connectRemedy, databaseKey, newSourceId, splitTarget } from "./model";
+import { colorVar, connectRemedy, databaseKey, idleTargets, newSourceId, splitTarget } from "./model";
 import type { DbNode } from "./nodes";
 import type { DbObjectRef } from "./objects";
 import { formatted } from "./sql/format";
@@ -321,13 +321,25 @@ export async function resolveConnectError(e: unknown, source: DataSource): Promi
   }
 }
 
+/** Target → time of its last use (Options › Auto-disconnect). */
+const lastUsed = new Map<string, number>();
+
+/** Options › Transaction control: a manual data source's consoles start in manual commit. */
+function applyConnectDefaults(id: string) {
+  if (sourceById(id)?.options?.transaction === "manual" && !useDatabase.getState().manualCommit.has(id))
+    void setManualCommit(id, true).catch(() => {});
+}
+
 /** Runs `op`, asking for passwords / host key trust and retrying when the connection needs them. */
 export async function withConnection<T>(id: string, op: () => Promise<T>): Promise<T> {
   for (;;) {
     try {
       const r = await op();
-      if (!useDatabase.getState().connected.has(id))
+      lastUsed.set(id, Date.now());
+      if (!useDatabase.getState().connected.has(id)) {
         useDatabase.setState((s) => ({ connected: new Set(s.connected).add(id) }));
+        applyConnectDefaults(id);
+      }
       return r;
     } catch (e) {
       const source = sourceById(id);
@@ -358,6 +370,31 @@ export async function disconnect(id: string): Promise<void> {
     for (const t of targets) connected.delete(t);
     return { connected };
   });
+}
+
+/** Disconnects targets idle past their data source's Auto-disconnect; returns the stopper. */
+export function watchIdleConnections(everyMs = 5000): () => void {
+  const timer = setInterval(() => {
+    const s = useDatabase.getState();
+    const running = new Set(Object.keys(s.running).map((path) => s.consoles[path]));
+    const busy = (t: string) => running.has(t) || s.pendingTx.has(t);
+    for (const t of idleTargets(s.connected, s.sources, lastUsed, busy, Date.now())) {
+      lastUsed.delete(t);
+      void disconnect(t).then(() => log("info", `${targetLabel(t)}: disconnected after being idle`));
+    }
+  }, everyMs);
+  return () => clearInterval(timer);
+}
+
+/** Console files of coloured data sources, tinted like IDEA's (file decorations). */
+export function consoleTints(s: Pick<DatabaseState, "consoles" | "sources">): Map<string, FileDecoration> {
+  const out = new Map<string, FileDecoration>();
+  for (const [path, target] of Object.entries(s.consoles)) {
+    const id = splitTarget(target).id;
+    const tint = colorVar(s.sources.find((x) => x.id === id)?.color);
+    if (tint) out.set(path, { tint });
+  }
+  return out;
 }
 
 /** PostgreSQL data sources show their server's databases (IDEA's data source › database › schema). */

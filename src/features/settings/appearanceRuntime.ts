@@ -107,6 +107,19 @@ export function zoomActions(): Action[] {
       keywords: ["zoom", "scale", "100%", "accessibility"],
       run: () => setZoom(100),
     },
+    {
+      // View › Appearance › Compact Mode (Settings › Appearance › "Compact mode").
+      id: "view.toggleCompactMode",
+      title: "Compact Mode",
+      category: "View",
+      keywords: ["appearance", "density", "smaller"],
+      toggled: () => validateSettings(useProject.getState().settings).appearance.compactMode,
+      run: async () => {
+        if (!isTauri()) return;
+        const next = !validateSettings(useProject.getState().settings).appearance.compactMode;
+        useProject.setState({ settings: await call(commands.settingsSet("global", "appearance.compactMode", JSON.stringify(next))) });
+      },
+    },
   ];
 }
 

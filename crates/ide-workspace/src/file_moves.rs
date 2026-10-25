@@ -241,7 +241,7 @@ mod tests {
     use std::sync::Arc;
 
     fn documents() -> Documents {
-        Documents::new(Arc::new(|_| {}), Box::new(|_: &Path| LanguageId::new("plaintext")))
+        Documents::new(Arc::new(|_| {}), Box::new(|_: &Path, _: Option<&str>| LanguageId::new("plaintext")))
     }
 
     fn apply(documents: &Documents) -> impl Fn(&WorkspaceEdit) -> IdeResult<()> + '_ {

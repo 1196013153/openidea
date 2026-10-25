@@ -44,7 +44,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.form} role="radiogroup" aria-label="Update type">
+      <div className={styles.form} role="radiogroup" aria-label={tx("Update type")}>
         <div className={styles.hint}>
           {branch?.upstream
             ? `Update ${branch.head ?? "HEAD"} from ${branch.upstream}${branch.behind ? ` (${branch.behind} incoming)` : ""}`

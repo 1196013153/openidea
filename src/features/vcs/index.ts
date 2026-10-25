@@ -43,7 +43,7 @@ function trackTitleItem(): () => void {
   let dispose: (() => void) | null = null;
   const sync = (available: boolean) => {
     if (available && !dispose) {
-      dispose = registerTitleItem({ id: "vcs.branch", align: "left", priority: 10, component: BranchWidget });
+      dispose = registerTitleItem({ id: "vcs.branch", title: "VCS Widget", align: "left", priority: 10, component: BranchWidget });
     } else if (!available && dispose) {
       dispose();
       dispose = null;

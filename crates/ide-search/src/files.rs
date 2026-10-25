@@ -27,7 +27,10 @@ pub fn scope_files(
     filter: Option<PathFilter<'_>>,
     cancel: &CancellationToken,
 ) -> IdeResult<Vec<ScopeFile>> {
-    let keep = |rel: &str| mask.matches(rel) && filter.is_none_or(|f| f(rel));
+    let pattern = scope.pattern()?;
+    let keep = |rel: &str| {
+        mask.matches(rel) && pattern.as_ref().is_none_or(|p| p.matches(rel)) && filter.is_none_or(|f| f(rel))
+    };
     let found = Mutex::new(Vec::new());
     let mut on_disk = Vec::new();
     for path in roots(root, scope)? {
@@ -63,7 +66,7 @@ pub fn scope_files(
                     return WalkState::Quit;
                 }
                 let Ok(entry) = entry else { return WalkState::Continue };
-                if entry.file_type().is_some_and(|t| t.is_file()) {
+                if entry.file_type().is_some_and(|t| t.is_file()) && !ide_vfs::is_archive_file(entry.path()) {
                     let rel = rel_path(root, entry.path());
                     if keep(&rel) {
                         found
@@ -138,5 +141,16 @@ mod tests {
             rels(&scope_files(dir.path(), &files, &none, None, &cancel).unwrap()),
             vec!["src/a.rs", "src/new.rs"]
         );
+    }
+
+    #[test]
+    fn pattern_scope() {
+        let dir = tree();
+        let none = FileMask::new(&[], &[]).unwrap();
+        let cancel = CancellationToken::new();
+        let scope = SearchScope::Pattern { pattern: "file:src//*.rs&&!file:src/sub//*".into() };
+        assert_eq!(rels(&scope_files(dir.path(), &scope, &none, None, &cancel).unwrap()), vec!["src/a.rs"]);
+        let bad = SearchScope::Pattern { pattern: "(".into() };
+        assert!(scope_files(dir.path(), &bad, &none, None, &cancel).is_err());
     }
 }

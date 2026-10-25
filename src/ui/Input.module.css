@@ -93,6 +93,15 @@
   line-height: 20px;
   padding: 0;
 }
+/* A multi-line capable field holding one line looks like a text input. */
+.searchAreaSingle {
+  height: 20px;
+  overflow: hidden;
+}
+.leading:is(button) {
+  margin-right: 2px;
+  margin-left: -4px;
+}
 .invalid .searchInput {
   color: var(--danger);
 }

@@ -416,6 +416,42 @@ async fn completion_mapping_merge_and_resolve() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn inline_completion_only_from_servers_that_advertise_it() {
+    let h = harness(&[
+        ("plain", incremental_caps()),
+        ("ghost", json!({ "textDocumentSync": 2, "inlineCompletionProvider": {} })),
+        ("late", json!({ "textDocumentSync": 2 })),
+    ]);
+    let (doc, _) = h.open("a.mk", "let x = fo");
+    for name in ["plain", "ghost", "late"] {
+        h.wait_status(name, ServerStatus::Ready).await;
+    }
+    let (plain, ghost) = (h.launcher.state("plain"), h.launcher.state("ghost"));
+    let init = &plain.requested("initialize")[0];
+    assert_eq!(init["capabilities"]["textDocument"]["inlineCompletion"], json!({ "dynamicRegistration": true }));
+    ghost.respond(
+        "textDocument/inlineCompletion",
+        json!({ "items": [
+            { "insertText": "foo(1)", "range": {"start":{"line":0,"character":8},"end":{"line":0,"character":10}},
+              "command": { "title": "accepted", "command": "ghost.accepted", "arguments": [7] } },
+            { "insertText": { "kind": "snippet", "value": "foo(${1:a}, $2)$0" }, "filterText": "fo" },
+            { "insertText": "" }
+        ] }),
+    );
+    let items = h.mgr.inline_completion(doc, Pos::new(0, 10), true, Default::default()).await.unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].insert_text, "foo(1)");
+    assert_eq!(items[0].range, Some(rng(0, 8, 0, 10)));
+    assert_eq!(items[0].command.as_ref().unwrap().command, "ghost.accepted");
+    assert_eq!(items[1].insert_text, "foo(a, )");
+    assert_eq!(items[1].filter_text.as_deref(), Some("fo"));
+    let req = &ghost.requested("textDocument/inlineCompletion")[0];
+    assert_eq!(req["context"], json!({ "triggerKind": 2 }));
+    assert_eq!(req["position"], json!({ "line": 0, "character": 10 }));
+    assert!(plain.requested("textDocument/inlineCompletion").is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn diagnostics_become_events_and_feed_code_actions() {
     let h = harness(&[("mock", incremental_caps())]);
     let (doc, path) = h.open("a.mk", "let unused = 1;\nlet y = 2;\n");

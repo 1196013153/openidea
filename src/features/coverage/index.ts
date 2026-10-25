@@ -6,10 +6,11 @@
 import { registerEditorContribution } from "@/editor/api";
 import { executeAction, registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
-import { registerRunExecutor, registerToolWindow, toolWindowService } from "@/workbench/contributions";
+import { registerOverlay, registerRunExecutor, registerToolWindow, toolWindowService } from "@/workbench/contributions";
 import { CoverageHeaderActions, CoverageTabs, CoverageView } from "./CoverageView";
 import { coverageExecutor } from "./executor";
 import { coverageGutter } from "./gutter";
+import { ManageReportsOverlay, importReport, openManageReports } from "./reports";
 import { resetCoverage, setCoverageVisible, syncCoverageViews, useCoverage } from "./store";
 
 export function activate(): () => void {
@@ -28,6 +29,7 @@ export function activate(): () => void {
     }),
     registerEditorContribution({ id: "coverage.gutter", order: 65, extensions: coverageGutter }),
     syncCoverageViews(),
+    registerOverlay({ id: "coverage.manageReports", component: ManageReportsOverlay }),
     registerActions([
       {
         id: "run.coverage",
@@ -48,6 +50,26 @@ export function activate(): () => void {
         when: "projectOpen",
         keywords: ["coverage"],
         run: ({ arg }) => executeAction("run.withExecutor", { executor: "coverage", context: arg ?? true }).then(() => undefined),
+      },
+      {
+        id: "coverage.importReport",
+        title: "Import a Coverage Report…",
+        description: "Show a report collected elsewhere (CI): lcov, JaCoCo XML or a Go cover profile; argument: the file path",
+        category: "Run",
+        icon: "folder-open",
+        when: "projectOpen",
+        keywords: ["coverage", "lcov", "jacoco", "ci", "import"],
+        run: ({ arg }) => importReport(typeof arg === "string" ? arg : undefined).then(() => undefined),
+      },
+      {
+        id: "coverage.manageReports",
+        title: "Manage Coverage Reports…",
+        description: "Choose the shown coverage suite, delete suites and imported reports",
+        category: "Run",
+        icon: "list",
+        when: "projectOpen",
+        keywords: ["coverage", "suites", "show coverage data"],
+        run: () => openManageReports(),
       },
       {
         id: "coverage.hide",

@@ -8,12 +8,15 @@ import {
   type StructuralFile,
   type StructuralLanguage,
 } from "@/platform/ipc";
-import { basename } from "@/platform/project";
-import { Checkbox, Dialog, Input, Select, Spinner, T } from "@/ui";
+import { executeAction } from "@/platform/actions";
+import { activeProfileId, listProfiles, validateInspections, type ProfileId } from "@/platform/inspections";
+import { basename, useProject } from "@/platform/project";
+import { Button, Checkbox, Dialog, Input, Select, Spinner, T } from "@/ui";
 import { ScopeFields, openDialog } from "./dialogs";
 import { locateDuplicates, loadDuplicateOptions } from "./duplicates";
 import { runInspection } from "./inspect";
-import { defaultScope, type ScopeChoice } from "./scope";
+import { runCodeCleanup, type CleanupOptions } from "./cleanup";
+import { currentFile, defaultScope, type ScopeChoice } from "./scope";
 import {
   applyStructuralReplace,
   buildReplaceEdit,
@@ -28,9 +31,21 @@ import styles from "./Analysis.module.css";
 
 function InspectCodeDialog({ onClose }: { onClose: () => void }) {
   const [scope, setScope] = useState<ScopeChoice>(() => defaultScope());
+  const [profile, setProfile] = useState<ProfileId>(activeProfileId);
+  const hasProject = useProject((s) => !!s.project);
+  const settings = useProject((s) => s.settings);
+  const profiles = useMemo(
+    () =>
+      listProfiles(validateInspections(settings?.inspections), hasProject).map((p) => ({
+        value: p.id,
+        label: p.label,
+        detail: p.level === "project" ? "Project" : "IDE",
+      })),
+    [hasProject, settings],
+  );
   const ok = () => {
     onClose();
-    void runInspection(scope);
+    void runInspection(scope, profile);
   };
   return (
     <Dialog
@@ -45,8 +60,73 @@ function InspectCodeDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={styles.form}>
         <ScopeFields name="inspect-scope" value={scope} onChange={setScope} />
+        <div className={styles.fieldRow}>
+          <span>
+            <T>Inspection profile:</T>
+          </span>
+          <Select
+            className={styles.grow}
+            aria-label="Inspection profile"
+            value={profile}
+            options={profiles}
+            onChange={setProfile}
+          />
+          <Button
+            aria-label="Configure inspections"
+            onClick={() => void executeAction("file.settings", "editor.inspections")}
+          >
+            …
+          </Button>
+        </div>
         <div className={styles.hint}>
           <T>Files are checked by their language servers; files without one are skipped.</T>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+const CLEANUP_SCOPES = ["project", "directory", "file", "changed"] as const;
+
+function CodeCleanupDialog({ onClose }: { onClose: () => void }) {
+  const [scope, setScope] = useState<ScopeChoice>(() => defaultScope(currentFile() ? "file" : "project"));
+  const [options, setOptions] = useState<CleanupOptions>({ fixAll: true, optimizeImports: true, reformat: true });
+  const any = options.fixAll || options.optimizeImports || options.reformat;
+  const ok = () => {
+    if (!any) return;
+    onClose();
+    void runCodeCleanup(scope, options);
+  };
+  return (
+    <Dialog
+      open
+      title="Run Code Cleanup"
+      onClose={onClose}
+      width={440}
+      buttons={[
+        { label: "OK", role: "default", disabled: !any, onClick: ok },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <div className={styles.form}>
+        <ScopeFields name="cleanup-scope" value={scope} onChange={setScope} kinds={CLEANUP_SCOPES} />
+        <Checkbox
+          checked={options.fixAll}
+          onChange={(fixAll) => setOptions({ ...options, fixAll })}
+          label="Apply the language servers' automatic fixes"
+        />
+        <Checkbox
+          checked={options.optimizeImports}
+          onChange={(optimizeImports) => setOptions({ ...options, optimizeImports })}
+          label="Optimize imports"
+        />
+        <Checkbox
+          checked={options.reformat}
+          onChange={(reformat) => setOptions({ ...options, reformat })}
+          label="Reformat code"
+        />
+        <div className={styles.hint}>
+          <T>Files are cleaned up by their language servers and saved; files without one are skipped.</T>
         </div>
       </div>
     </Dialog>
@@ -303,6 +383,7 @@ function ReplacePreviewDialog({ files, onClose }: { files: StructuralFile[]; onC
 
 export const showInspectCodeDialog = () => openDialog((close) => <InspectCodeDialog onClose={close} />);
 export const showDuplicatesDialog = () => openDialog((close) => <DuplicatesDialog onClose={close} />);
+export const showCodeCleanupDialog = () => openDialog((close) => <CodeCleanupDialog onClose={close} />);
 export const showStructuralDialog = (replace: boolean) =>
   openDialog((close) => <StructuralDialog replace={replace} onClose={close} />);
 export const showReplacePreview = (files: StructuralFile[]) =>

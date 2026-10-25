@@ -95,7 +95,7 @@ export function Select<V extends string = string>({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={aria["aria-label"]}
+        aria-label={tx(aria["aria-label"])}
         disabled={disabled}
         className={clsx(styles.trigger, styles[variant], className)}
         onClick={() => (open ? setOpen(false) : openPopup())}
@@ -148,7 +148,7 @@ export function Select<V extends string = string>({
             focusable={false}
             hoverSelects
             rowHeight={24}
-            aria-label={aria["aria-label"]}
+            aria-label={tx(aria["aria-label"])}
             className={styles.list}
             renderItem={(o) => (
               <>

@@ -17,7 +17,8 @@ fn main() {
     std::fs::write(&path, &text).expect("write");
     drop(text);
 
-    let docs = Documents::new(Arc::new(NullSink), Box::new(|_| LanguageId::plain_text()));
+    let docs =
+        Documents::new(Arc::new(NullSink), Box::new(|_: &std::path::Path, _: Option<&str>| LanguageId::plain_text()));
     let rss0 = resident_bytes().unwrap_or(0);
     let t = Instant::now();
     let info = docs.open(&path).expect("open");

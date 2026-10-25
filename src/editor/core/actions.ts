@@ -36,7 +36,9 @@ import { cyclicExpandWord } from "./wordCompletion";
 import { qualifiedReference } from "./copyReference";
 import { symbolChain } from "./view/outline";
 import { recordClipboard } from "./clipboardHistory";
-import { useOutline } from "./model/document";
+import { useDocMeta, useOutline } from "./model/document";
+import { fontZoom, setFontZoom } from "./cm/prefs";
+import { useEditorRegistry } from "@/editor/api";
 import { useProject } from "@/platform/project";
 import { toggleReadOnly } from "./fileAttributes";
 import { openNavBarPopup } from "./view/NavBarPopup";
@@ -408,6 +410,32 @@ export function registerEditorActions(): () => void {
         const paths = typeof arg === "string" ? [arg] : Array.isArray(arg) ? arg.filter((p): p is string => typeof p === "string") : [];
         const active = ctrl.activePath();
         return ctrl.reloadFromDisk(paths.length ? paths : active ? [active] : []);
+      },
+    },
+    {
+      // IDEA's Synchronize: open documents without unsaved changes, the project tree and VCS status.
+      id: "file.reloadAllFromDisk",
+      title: "Reload All from Disk",
+      category: "File",
+      icon: "refresh",
+      when: "projectOpen",
+      keywords: ["synchronize", "refresh"],
+      run: async () => {
+        const meta = useDocMeta.getState();
+        await ctrl.reloadFromDisk(ctrl.openPaths().filter((p) => !meta[p]?.dirty));
+        void executeAction("project.refresh");
+        void executeAction("vcs.refresh");
+      },
+    },
+    {
+      id: "editor.resetFontSize",
+      title: "Reset Font Size in All Editors",
+      category: "View",
+      keywords: ["zoom", "font size", "mouse wheel"],
+      when: "projectOpen",
+      run: () => {
+        for (const ed of useEditorRegistry.getState().editors)
+          if (ed.view.state.field(fontZoom, false)) ed.view.dispatch({ effects: setFontZoom.of(0) });
       },
     },
     {

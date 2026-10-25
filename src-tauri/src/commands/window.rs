@@ -150,13 +150,29 @@ pub fn menu_refresh(app: AppHandle, menu_state: State<'_, MenuState>, state: Sta
 /// The menu bar for a title bar drawn by the frontend (Windows).
 #[tauri::command]
 #[specta::specta]
-pub fn menu_model(app: AppHandle, state: State<'_, AppState>) -> Vec<menu::MenuNode> {
+pub fn menu_model(app: AppHandle, state: State<'_, AppState>, menu_state: State<'_, MenuState>) -> Vec<menu::MenuNode> {
     let mut spec = menu::spec(menu::Os::current());
     if !updates_configured(&app) {
         spec = menu::without_action(spec, "app.checkForUpdates");
     }
     let home = dirs::home_dir();
-    menu::model(&spec, &menu::recent_items(&state.recent.list(), home.as_deref()))
+    let config = menu_state.config.lock().clone();
+    menu::model(&spec, &menu::recent_items(&state.recent.list(), home.as_deref()), &config)
+}
+
+/// Action ids the focused window cannot run now: their native menu items are
+/// disabled in place (no rebuild).
+#[tauri::command]
+#[specta::specta]
+pub fn menu_set_disabled(app: AppHandle, menu_state: State<'_, MenuState>, ids: Vec<String>) {
+    let disabled: std::collections::HashSet<String> = ids.into_iter().collect();
+    if *menu_state.disabled.lock() == disabled {
+        return;
+    }
+    *menu_state.disabled.lock() = disabled.clone();
+    if menu::native_menu_bar() {
+        menu::apply_disabled(&app, &disabled);
+    }
 }
 
 #[derive(Serialize, Deserialize, Type)]

@@ -1,10 +1,8 @@
 /**
  * Run targets of Dockerfiles (`FROM` lines → build image) and Compose files
  * (`services:` → up all, each service → up that service), detected per line like
- * the run gutter does, and the run configurations they start.
+ * the run gutter does (the configurations they start are in `runTypes.ts`).
  */
-import type { RunConfig } from "@/platform/ipc";
-
 export type DockerTarget =
   | { kind: "build"; line: number; stage: string | null; last: boolean }
   | { kind: "composeAll"; line: number }
@@ -71,59 +69,13 @@ export function imageTag(path: string): string {
   return `${folder || "image"}:latest`;
 }
 
-function rel(path: string, root: string | null): string {
-  return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : base(path);
-}
-
 export function targetTitle(t: DockerTarget, path: string): string {
   switch (t.kind) {
     case "build":
-      return t.stage && !t.last ? `Build Stage '${t.stage}'` : `Build Image '${imageTag(path)}'`;
+      return t.stage && !t.last ? `Build Stage '${t.stage}'` : `Run '${base(path)}'`;
     case "composeAll":
       return "Compose Up (All Services)";
     case "composeService":
       return `Compose Up '${t.service}'`;
   }
-}
-
-/** The run configuration a target starts, run with `docker` (the resolved executable when known). */
-export function targetConfig(t: DockerTarget, path: string, root: string | null, docker = "docker"): RunConfig {
-  const cwd = dir(path);
-  const file = rel(path, root);
-  const common = { command: docker, cwd, env: {}, detected: false, isTest: false, debugAdapter: null, kind: "docker" };
-  switch (t.kind) {
-    case "build": {
-      const args = ["build", "--file", path, "--tag", imageTag(path)];
-      const stage = t.stage && !t.last ? t.stage : null;
-      if (stage) args.push("--target", stage);
-      args.push(cwd);
-      return { ...common, id: `docker:build:${file}${stage ? `:${stage}` : ""}`, name: stage ? `${file} [${stage}]` : file, args };
-    }
-    case "composeAll":
-      return { ...common, id: `docker:compose:${file}`, name: `Compose: ${file}`, args: ["compose", "--file", path, "up"] };
-    case "composeService":
-      return {
-        ...common,
-        id: `docker:compose:${file}:${t.service}`,
-        name: `Compose: ${t.service}`,
-        args: ["compose", "--file", path, "up", t.service],
-      };
-  }
-}
-
-/** `docker compose down` for a compose file (gutter menu of `services:`). */
-export function composeDownConfig(path: string, root: string | null, docker = "docker"): RunConfig {
-  const file = rel(path, root);
-  return {
-    id: `docker:compose-down:${file}`,
-    name: `Compose Down: ${file}`,
-    kind: "docker",
-    command: docker,
-    args: ["compose", "--file", path, "down"],
-    cwd: dir(path),
-    env: {},
-    detected: false,
-    isTest: false,
-    debugAdapter: null,
-  };
 }

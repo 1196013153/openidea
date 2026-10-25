@@ -6,15 +6,18 @@
 import {
   provideEditorArea,
   provideEditorService,
+  registerEditorBanner,
   registerOverlay,
   registerStatusItem,
 } from "@/workbench/contributions";
-import { _provideCodePreview, _provideDocumentAttacher } from "@/editor/api";
+import { _provideCodePreview, _provideDocumentAttacher, editorsFor } from "@/editor/api";
+import { formatDocument } from "@/editor/lsp/format";
 import { editorController } from "./controller";
 import { attachDocument } from "./model/attachment";
 import { previewExtensions } from "./cm/preview";
 import { registerEditorActions } from "./actions";
 import { installColorScheme } from "./colorSchemeRuntime";
+import { documentBanner } from "./view/Banner";
 import { EditorAreaView } from "./view/EditorArea";
 import { GotoLineDialog } from "./view/GotoLineDialog";
 import { NavBarPopup } from "./view/NavBarPopup";
@@ -41,6 +44,10 @@ export function activate(): void | (() => void) {
     openPaths: () => ctrl.openPaths(),
     closePath: (path) => ctrl.closePath(path),
     closeInput: (key) => ctrl.closeInput(key),
+    reformat: async (path) => {
+      const handle = editorsFor(path)[0];
+      return !!handle && (await formatDocument(handle.view, { explicit: false, selectionOnly: false })).applied;
+    },
   });
   _provideDocumentAttacher((path) => attachDocument(ctrl.manager, path));
   _provideCodePreview((path) => previewExtensions(path, ctrl.manager.settings()?.editor));
@@ -48,6 +55,7 @@ export function activate(): void | (() => void) {
     installColorScheme(),
     provideEditorArea(EditorAreaView),
     registerEditorActions(),
+    registerEditorBanner(documentBanner),
     registerOverlay({ id: "editor.gotoLine", component: GotoLineDialog }),
     registerOverlay({ id: "editor.navigationBar", component: NavBarPopup }),
     installClipboardTracking(),

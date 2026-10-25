@@ -50,6 +50,56 @@ pub fn load(root: &Path, cache_dir: &Path, maven_repo: Option<PathBuf>) -> Build
     BuildModel { maven, gradle }
 }
 
+/// A library the project depends on, as `groupId:artifactId:version`.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DependencyCoordinate {
+    /// Gradle builds resolve into the Gradle cache, Maven ones into the local repository.
+    pub gradle: bool,
+    pub group_id: String,
+    pub artifact_id: String,
+    pub version: String,
+}
+
+/// The external libraries of `model`, sorted and deduplicated: Maven dependencies
+/// (with the transitive ones the last sync read), except the build's own modules,
+/// `pom` imports and `system` scope; dependencies declared in the Gradle build scripts.
+pub fn dependency_coordinates(root: &Path, model: &BuildModel) -> Vec<DependencyCoordinate> {
+    let mut out = Vec::new();
+    if let Some(m) = &model.maven {
+        let modules: std::collections::HashSet<String> = m.projects.iter().map(MavenProject::key).collect();
+        let mut stack: Vec<&MavenDependency> = m.projects.iter().flat_map(|p| &p.dependencies).collect();
+        while let Some(d) = stack.pop() {
+            stack.extend(&d.children);
+            let Some(version) = d.version.as_deref().filter(|v| !v.is_empty() && !v.contains("${")) else {
+                continue;
+            };
+            if d.kind == "pom" || matches!(d.scope.as_str(), "import" | "system") {
+                continue;
+            }
+            if modules.contains(&format!("{}:{}", d.group_id, d.artifact_id)) {
+                continue;
+            }
+            out.push(DependencyCoordinate {
+                gradle: false,
+                group_id: d.group_id.clone(),
+                artifact_id: d.artifact_id.clone(),
+                version: version.to_owned(),
+            });
+        }
+    }
+    if let Some(g) = &model.gradle {
+        for script in g.projects.iter().filter_map(|p| p.build_file.as_ref()) {
+            let Ok(text) = std::fs::read_to_string(root.join(script)) else { continue };
+            out.extend(gradle::script_dependencies(&text).into_iter().map(|(group_id, artifact_id, version)| {
+                DependencyCoordinate { gradle: true, group_id, artifact_id, version }
+            }));
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Whether a created / changed / removed project-relative path can change the build model.
 pub fn affects_build(rel: &Path) -> bool {
     let Some(name) = rel.file_name().and_then(|n| n.to_str()) else { return false };
@@ -77,5 +127,44 @@ mod tests {
         assert_eq!(m.gradle.unwrap().projects[0].path, ":");
         assert!(affects_build(Path::new("a/pom.xml")) && affects_build(Path::new("settings.gradle.kts")));
         assert!(!affects_build(Path::new("src/Main.java")));
+    }
+
+    #[test]
+    fn dependency_coordinates_flatten_maven_trees_and_read_gradle_scripts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("build.gradle"), "dependencies { implementation 'org.a:x:1.0' }\n").unwrap();
+        let dep = |g: &str, a: &str, v: Option<&str>, children: Vec<MavenDependency>| MavenDependency {
+            group_id: g.into(),
+            artifact_id: a.into(),
+            version: v.map(Into::into),
+            kind: "jar".into(),
+            scope: "compile".into(),
+            children,
+            ..Default::default()
+        };
+        let maven = MavenModel {
+            projects: vec![
+                MavenProject {
+                    group_id: "me".into(),
+                    artifact_id: "app".into(),
+                    dependencies: vec![
+                        dep("me", "core", Some("1"), vec![]),
+                        dep("org.b", "y", Some("2"), vec![dep("org.c", "z", Some("3"), vec![])]),
+                        dep("org.d", "unresolved", Some("${v}"), vec![]),
+                    ],
+                    ..Default::default()
+                },
+                MavenProject { group_id: "me".into(), artifact_id: "core".into(), ..Default::default() },
+            ],
+            ..Default::default()
+        };
+        let gradle = gradle::load(root);
+        let model = BuildModel { maven: Some(maven), gradle };
+        let names: Vec<String> = dependency_coordinates(root, &model)
+            .into_iter()
+            .map(|c| format!("{}{}:{}:{}", if c.gradle { "G " } else { "M " }, c.group_id, c.artifact_id, c.version))
+            .collect();
+        assert_eq!(names, ["M org.b:y:2", "M org.c:z:3", "G org.a:x:1.0"]);
     }
 }

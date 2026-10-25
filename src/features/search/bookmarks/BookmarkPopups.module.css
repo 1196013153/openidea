@@ -105,6 +105,10 @@
 .fileName {
   color: var(--fg-strong);
 }
+.listRow {
+  color: var(--fg-muted);
+  font-weight: 600;
+}
 .markText {
   min-width: 0;
   overflow: hidden;

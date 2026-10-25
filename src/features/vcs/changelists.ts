@@ -7,9 +7,10 @@ import { create } from "zustand";
 import type { Changelist, ChangelistState, FileStatus } from "@/bindings";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
+import { setLocalChanges, type LocalChangelist } from "@/workbench/contributions";
 import type { CheckState } from "./changes";
 import { groupOf } from "./changes";
-import { relTo, stripSlash } from "./model";
+import { effectiveKind, relTo, stripSlash } from "./model";
 import { useVcs } from "./store";
 
 export const DEFAULT_LIST_ID = "default";
@@ -160,6 +161,20 @@ export function changedRels(status: readonly FileStatus[], root: string): string
   return status.filter((f) => groupOf(f) === "changes").map((f) => relTo(root, stripSlash(f.path)));
 }
 
+/** The lists with their files, for the `useLocalChanges` service (conflicted files stay in their list). */
+export function localChangelists(status: readonly FileStatus[], root: string, state: ChangelistState): LocalChangelist[] {
+  const lists = state.lists.map((l): LocalChangelist => ({ id: l.id, name: l.name, active: l.id === state.active, files: [] }));
+  const byId = new Map(lists.map((l) => [l.id, l]));
+  for (const f of status) {
+    const group = groupOf(f);
+    if (group !== "changes" && group !== "conflicts") continue;
+    const path = stripSlash(f.path);
+    const list = byId.get(listOf(state, relTo(root, path))) ?? lists[0];
+    list?.files.push(effectiveKind(f) === "deleted" ? { path, deleted: true } : { path });
+  }
+  return lists;
+}
+
 export function relOf(path: string): string {
   return relTo(useVcs.getState().root ?? "", stripSlash(path));
 }
@@ -196,9 +211,29 @@ export function installChangelists(): () => void {
   const offVcs = useVcs.subscribe((s, p) => {
     if (s.status !== p.status) sync();
   });
+  let clearPublished: (() => void) | null = null;
+  const publish = () => {
+    const { status, root, available } = useVcs.getState();
+    if (!available || !root) {
+      clearPublished?.();
+      clearPublished = null;
+      return;
+    }
+    clearPublished = setLocalChanges("vcs", localChangelists(status, root, useChangelists.getState().state));
+  };
+  publish();
+  const offPublishVcs = useVcs.subscribe((s, p) => {
+    if (s.status !== p.status || s.root !== p.root || s.available !== p.available) publish();
+  });
+  const offPublishLists = useChangelists.subscribe((s, p) => {
+    if (s.state !== p.state) publish();
+  });
   return () => {
     offProject();
     offVcs();
+    offPublishVcs();
+    offPublishLists();
+    clearPublished?.();
     clearTimeout(saveTimer);
   };
 }

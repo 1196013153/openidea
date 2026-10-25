@@ -11,11 +11,13 @@ mod files;
 mod iter;
 mod line;
 mod mask;
+mod pattern;
 mod query;
 mod replace;
 
 pub use files::{ScopeFile, scope_files};
 pub use mask::FileMask;
+pub use pattern::ScopePattern;
 pub use replace::{
     ReplaceEvent, ReplaceHost, ReplacePreview, ReplaceSummary, ReplaceTarget, apply_edits, preserve_case, preview,
     replace_files, replacement_edits,
@@ -114,6 +116,21 @@ pub enum SearchScope {
     FileSet {
         set: ProjectFileSet,
     },
+    /// A custom scope: the project's files matching a [`ScopePattern`]
+    /// (`file:src//*.ts&&!file:*test*`).
+    Pattern {
+        pattern: String,
+    },
+}
+
+impl SearchScope {
+    /// The file pattern of a [`SearchScope::Pattern`].
+    pub fn pattern(&self) -> IdeResult<Option<ScopePattern>> {
+        match self {
+            Self::Pattern { pattern } => ScopePattern::parse(pattern).map(Some),
+            _ => Ok(None),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -211,6 +228,7 @@ pub fn search_in_context(
         scope: &query.scope,
         compiled: query::compile(query)?,
         mask,
+        pattern: query.scope.pattern()?,
         filter,
         context: query.context,
         literals,
@@ -225,6 +243,7 @@ pub fn search_in_context(
 /// invalid regex while the user types.
 pub fn validate_query(query: &SearchQuery) -> IdeResult<()> {
     FileMask::new(&query.include, &query.exclude)?;
+    query.scope.pattern()?;
     if !query.pattern.is_empty() {
         query::compile(query)?;
     }

@@ -44,9 +44,25 @@ pub(crate) fn which(name: &str) -> Option<PathBuf> {
 /// Runs `program args` and returns trimmed stdout (stderr when stdout is empty)
 /// on success; `None` on failure or after `timeout`.
 pub(crate) fn query(program: &Path, args: &[&str], timeout: Duration) -> Option<String> {
-    let mut child = ide_core::process::no_window(&mut Command::new(program))
+    query_in(program, args, None, &[], timeout)
+}
+
+/// [`query`] in `cwd` with extra environment variables.
+pub(crate) fn query_in(
+    program: &Path,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(&str, &str)],
+    timeout: Duration,
+) -> Option<String> {
+    let mut cmd = Command::new(program);
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+    let mut child = ide_core::process::no_window(&mut cmd)
         .args(args)
         .env("PATH", search_path())
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

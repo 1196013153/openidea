@@ -32,12 +32,12 @@ pub fn python_interpreter(root: &Path, s: &Settings) -> Option<PathBuf> {
 }
 
 /// The configured `node` executable's directory.
-fn node_dir(root: &Path, s: &Settings) -> Option<PathBuf> {
+pub(crate) fn node_dir(root: &Path, s: &Settings) -> Option<PathBuf> {
     setting_path(root, &s.languages.node.interpreter).and_then(|p| p.parent().map(Path::to_path_buf))
 }
 
 /// The configured Rust toolchain's `bin` directory and rustup toolchain name.
-fn rust_bin(root: &Path, s: &Settings) -> Option<(PathBuf, Option<String>)> {
+pub(crate) fn rust_bin(root: &Path, s: &Settings) -> Option<(PathBuf, Option<String>)> {
     let dir = setting_path(root, &s.languages.rust.toolchain)?;
     let bin = if dir.join("bin").join(exe("rustc")).is_file() || dir.join("bin").join(exe("cargo")).is_file() {
         dir.join("bin")
@@ -52,7 +52,7 @@ fn rust_bin(root: &Path, s: &Settings) -> Option<(PathBuf, Option<String>)> {
     Some((bin, toolchain))
 }
 
-fn goroot(root: &Path, s: &Settings) -> Option<PathBuf> {
+pub(crate) fn goroot(root: &Path, s: &Settings) -> Option<PathBuf> {
     setting_path(root, &s.languages.go.goroot)
 }
 

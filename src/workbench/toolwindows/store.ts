@@ -551,6 +551,66 @@ export const toolWindowServiceImpl: ToolWindowService = {
   isVisible: isToolWindowVisible,
 };
 
+/** What Window › Tool Window Layouts saves and restores. */
+export interface ToolWindowLayoutSnapshot {
+  visible: SlotRecord;
+  sizes: Record<ToolWindowAnchor, number>;
+  splits: Record<ToolWindowAnchor, number>;
+  placements: Record<string, ToolWindowPlacement>;
+  stripeButtons: Record<string, boolean>;
+}
+
+export function toolWindowLayoutSnapshot(): ToolWindowLayoutSnapshot {
+  const s = useToolWindowLayout.getState();
+  return {
+    visible: { ...(s.distractionFreeStash ?? s.visible) },
+    sizes: { ...s.sizes },
+    splits: { ...s.splits },
+    placements: { ...s.placements },
+    stripeButtons: { ...s.stripeButtons },
+  };
+}
+
+/** Validates a stored snapshot (unknown shape: from storage). */
+export function sanitizeLayoutSnapshot(raw: unknown): ToolWindowLayoutSnapshot {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    visible: sanitizeVisible(r.visible),
+    sizes: sanitizeSizes(r.sizes),
+    splits: sanitizeSplits(r.splits),
+    placements: sanitizePlacements(r.placements),
+    stripeButtons: sanitizeStripeButtons(r.stripeButtons),
+  };
+}
+
+/** The layout of a fresh project (Restore Default Layout). */
+export function defaultLayoutSnapshot(): ToolWindowLayoutSnapshot {
+  return sanitizeLayoutSnapshot(null);
+}
+
+/** Applies a saved layout to this project (and persists it as the project's layout). */
+export function applyToolWindowLayout(snapshot: ToolWindowLayoutSnapshot) {
+  const s = useToolWindowLayout.getState();
+  const placements = { ...snapshot.placements };
+  // Windows registered later keep their saved area; unknown ones simply never show.
+  const visible = reconcile(snapshot.visible, placements) ?? { ...snapshot.visible };
+  const mounted = new Set(s.mounted);
+  for (const id of Object.values(visible)) if (id) mounted.add(id);
+  const hadFocus = !!s.focused && !Object.values(visible).includes(s.focused);
+  update({
+    visible,
+    sizes: { ...snapshot.sizes },
+    splits: { ...snapshot.splits },
+    placements,
+    stripeButtons: { ...snapshot.stripeButtons },
+    mounted,
+    maximized: null,
+    stashed: null,
+    distractionFreeStash: null,
+  });
+  if (hadFocus) focusEditor();
+}
+
 /** Test helper. */
 export function resetToolWindowLayout() {
   lastUsed = null;

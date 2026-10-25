@@ -5,7 +5,7 @@
 import { registerActions } from "@/platform/actions";
 import { onFileOperation } from "@/platform/fileOps";
 import { emitLocalIdeEvent } from "@/platform/ipc";
-import { registerOverlay, registerProjectViewRoot } from "@/workbench/contributions";
+import { registerMenuGroup, registerOverlay, registerProjectViewRoot } from "@/workbench/contributions";
 import { ScratchChooserHost } from "./ScratchChooser";
 import { openChooser } from "./store";
 import { scratchBackend, scratchesAvailable, scratchesDir } from "./scratches";
@@ -25,7 +25,7 @@ export function activate(): () => void {
       .then((path) => {
         if (disposed) return;
         dir = path;
-        unregisterRoot = registerProjectViewRoot({ id: "scratches", label: SCRATCHES_ROOT_LABEL, icon: "scratches", path, order: 10 });
+        unregisterRoot = registerProjectViewRoot({ id: "scratches", label: SCRATCHES_ROOT_LABEL, icon: "scratches", path, order: 10, scope: "scratches" });
       })
       .catch((e: unknown) => console.warn("scratch files: no scratches folder", e));
   const disposers = [
@@ -35,6 +35,13 @@ export function activate(): () => void {
       if (removed.length) emitLocalIdeEvent({ type: "fsChanged", created: [], modified: [], removed });
     }),
     registerOverlay({ id: "scratch.chooser", component: ScratchChooserHost }),
+    // IDEA lists it near the top of the New popup.
+    registerMenuGroup({
+      id: "scratch.new",
+      menus: ["new"],
+      order: 0,
+      items: () => [{ kind: "action", action: "file.newScratchFile", label: "Scratch File" }],
+    }),
     registerActions([
       {
         id: "file.newScratchFile",

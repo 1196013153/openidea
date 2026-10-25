@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { TodoView, useTodoView, useTodoViewOptions } from "./TodoView";
 import { useTodos } from "./store";
+import { setLocalChanges } from "@/workbench/contributions";
 
 describe("TodoView", () => {
   it("renders grouped items with the keyword emphasised and filters by keyword", () => {
@@ -27,6 +28,36 @@ describe("TodoView", () => {
     act(() => useTodoView.getState().toggleKeyword("FIXME"));
     expect(screen.getByText("1 item")).toBeInTheDocument();
     act(() => useTodoView.getState().showAll());
+  });
+
+  it("lists only changed files on the Changes tab, by change list", () => {
+    let clear = () => {};
+    act(() => {
+      clear = setLocalChanges("vcs", [
+        { id: "default", name: "Changes", active: true, files: [{ path: "/p/src/b.ts" }] },
+        { id: "ui", name: "UI work", active: false, files: [{ path: "/p/src/a.ts" }] },
+      ]);
+      useTodos.setState({
+        scannedOnce: true,
+        scanned: new Map([
+          ["/p/src/a.ts", [{ path: "/p/src/a.ts", line: 0, col: 3, keyword: "TODO", text: "TODO a" }]],
+          ["/p/src/b.ts", [{ path: "/p/src/b.ts", line: 0, col: 3, keyword: "TODO", text: "TODO b" }]],
+        ]),
+      });
+      useTodoView.getState().setTab("changes");
+    });
+    render(<TodoView />);
+    expect(screen.getByText("b.ts")).toBeInTheDocument();
+    expect(screen.queryByText("a.ts")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Changelist"));
+    fireEvent.click(screen.getByRole("option", { name: /UI work/ }));
+    expect(useTodoView.getState().changelist).toBe("ui");
+    expect(screen.getByText("a.ts")).toBeInTheDocument();
+    expect(screen.queryByText("b.ts")).toBeNull();
+    act(() => {
+      useTodoView.setState({ tab: "project", changelist: null });
+      clear();
+    });
   });
 
   it("shows the preview pane and does not autoscroll by default, as IDEA", () => {

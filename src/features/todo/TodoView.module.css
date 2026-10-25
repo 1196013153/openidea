@@ -32,6 +32,19 @@
   color: var(--warning);
   border-bottom: 1px solid var(--border);
 }
+.scopeBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+.scopeSelect {
+  min-width: 200px;
+  max-width: 360px;
+}
 .row {
   display: flex;
   align-items: center;

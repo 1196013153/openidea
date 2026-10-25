@@ -6,6 +6,12 @@
 import { create } from "zustand";
 import type { Diagnostic, Severity } from "@/bindings";
 import { onIdeEvent } from "@/platform/ipc";
+import {
+  applyProfile,
+  inspectionProfile,
+  subscribeInspectionProfile,
+  type ProfileOverrides,
+} from "@/platform/inspections";
 
 export type FileDiagnostics = ReadonlyMap<string, readonly Diagnostic[]>;
 /** path → source → diagnostics. */
@@ -89,23 +95,46 @@ export function worstSeverity(diags: Iterable<Diagnostic>): Severity | null {
   return best;
 }
 
+/** `raw` under the inspection profile: disabled inspections dropped, severities remapped. */
+export function profiledProblems(raw: ProblemsMap, profile: ProfileOverrides): ProblemsMap {
+  let out: ProblemsMap = new Map();
+  for (const [path, sources] of raw) {
+    for (const [source, items] of sources) {
+      out = mergeDiagnostics(out, path, source, applyProfile(profile, source, items));
+    }
+  }
+  return out;
+}
+
 interface ProblemsState {
+  /** As reported, before the inspection profile. */
+  raw: ProblemsMap;
+  /** What the views show. */
   map: ProblemsMap;
 }
 
-export const useProblems = create<ProblemsState>(() => ({ map: new Map() }));
+export const useProblems = create<ProblemsState>(() => ({ raw: new Map(), map: new Map() }));
 
 export function applyDiagnosticsEvent(path: string, source: string, items: readonly Diagnostic[]) {
   useProblems.setState((s) => {
-    const map = mergeDiagnostics(s.map, path, source, items);
-    return map === s.map ? s : { map };
+    const raw = mergeDiagnostics(s.raw, path, source, items);
+    if (raw === s.raw) return s;
+    const map = mergeDiagnostics(s.map, path, source, applyProfile(inspectionProfile(), source, items));
+    return { raw, map };
   });
 }
 
 export function clearProblems() {
-  useProblems.setState({ map: new Map() });
+  useProblems.setState({ raw: new Map(), map: new Map() });
 }
 
 export function installProblemsEvents(): () => void {
-  return onIdeEvent("diagnostics", (e) => applyDiagnosticsEvent(e.path, e.source, e.items));
+  const off = onIdeEvent("diagnostics", (e) => applyDiagnosticsEvent(e.path, e.source, e.items));
+  const offProfile = subscribeInspectionProfile(() =>
+    useProblems.setState((s) => ({ map: profiledProblems(s.raw, inspectionProfile()) })),
+  );
+  return () => {
+    off();
+    offProfile();
+  };
 }

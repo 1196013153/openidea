@@ -129,6 +129,11 @@ pub struct Diagnostic {
     pub unnecessary: bool,
     #[serde(default)]
     pub deprecated: bool,
+    /// Language server (or tool) that reported it, e.g. `basedpyright`; `source`
+    /// is what the producer calls itself. Inspection profiles key on this.
+    #[serde(default)]
+    #[specta(optional)]
+    pub server: Option<String>,
 }
 
 /// Symbol kinds, a stable subset of LSP `SymbolKind`.
@@ -168,6 +173,17 @@ impl SymbolKind {
     }
 }
 
+/// Declared (or conventional) visibility of an outline symbol.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum Visibility {
+    Public,
+    Protected,
+    /// Package / module / assembly scope (Java default, `internal`, `pub(crate)`, Go unexported).
+    Package,
+    Private,
+}
+
 /// A node of a document outline (Structure tool window, breadcrumbs).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct OutlineItem {
@@ -179,6 +195,10 @@ pub struct OutlineItem {
     /// The identifier itself; where navigation lands.
     pub selection_range: Range,
     pub children: Vec<OutlineItem>,
+    /// Unknown (`None`) for language-server symbols and languages without the notion.
+    #[serde(default)]
+    #[specta(optional)]
+    pub visibility: Option<Visibility>,
 }
 
 /// Fuzzy-match highlight: indices (in chars of the displayed string) that matched.

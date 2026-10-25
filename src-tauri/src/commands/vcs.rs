@@ -374,6 +374,13 @@ pub enum RemoteOp {
     UpdateBranch {
         branch: String,
     },
+    /// Pull dialog: `branches` of `remote` (none = the configured merge branch).
+    PullFrom {
+        remote: String,
+        branches: Vec<String>,
+        rebase: bool,
+        options: MergeOptions,
+    },
 }
 
 /// Network operation; progress lines stream through `on_output`. Cancellable.
@@ -393,7 +400,7 @@ pub async fn vcs_remote(
         let out = |line: String| {
             let _ = on_output.send(line);
         };
-        let recorded = matches!(op, RemoteOp::Pull { .. }).then_some("Git pull");
+        let recorded = matches!(op, RemoteOp::Pull { .. } | RemoteOp::PullFrom { .. }).then_some("Git pull");
         project.with_repo_recorded(repo.as_deref(), recorded, |r| match op {
             RemoteOp::Fetch => r.fetch(&cancel, &out),
             RemoteOp::Pull { rebase } => r.pull(rebase, &cancel, &out),
@@ -408,6 +415,9 @@ pub async fn vcs_remote(
                 None => r.push_branch(&branch, revision.as_deref(), force_with_lease, &cancel, &out),
             },
             RemoteOp::UpdateBranch { branch } => r.update_branch(&branch, &cancel, &out),
+            RemoteOp::PullFrom { remote, branches, rebase, options } => {
+                r.pull_from(&remote, &branches, rebase, &options, &cancel, &out)
+            }
         })
     })
     .await
@@ -484,6 +494,14 @@ pub async fn vcs_clone(
     .map_err(|e| ide_core::IdeError::internal(e.to_string()))?;
     state.end_request(request);
     result
+}
+
+/// `git init` in `dir` (File › New Project… "Create Git repository").
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_init(state: State<'_, AppState>, dir: PathBuf) -> IdeResult<()> {
+    apply_git_executable(&state.global_settings.effective());
+    blocking(move || ide_vcs::init(&dir)).await
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -627,6 +645,100 @@ pub async fn vcs_create_tag(
 pub async fn vcs_tags(window: Window, state: State<'_, AppState>, repo: Option<PathBuf>) -> IdeResult<Vec<String>> {
     let project = state.project(window.label())?;
     blocking(move || project.with_repo_at(repo.as_deref(), |r| r.tags())).await
+}
+
+/// Merge dialog: merges `branches` into the current branch.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_merge_with(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    branches: Vec<String>,
+    options: MergeOptions,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo_recorded(repo.as_deref(), Some("Git merge"), |r| r.merge_with(&branches, &options))
+    })
+    .await
+}
+
+/// Rebase dialog: rebases the current branch onto `upstream` (or `--onto`).
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_rebase_with(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    upstream: String,
+    options: RebaseOptions,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo_recorded(repo.as_deref(), Some("Git rebase"), |r| r.rebase_with(&upstream, &options))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_remotes(window: Window, state: State<'_, AppState>, repo: Option<PathBuf>) -> IdeResult<Vec<Remote>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.remotes())).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_edit_remote(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    edit: RemoteEdit,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.edit_remote(&edit))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_worktrees(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+) -> IdeResult<Vec<Worktree>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.worktrees())).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_add_worktree(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    path: PathBuf,
+    commitish: String,
+    new_branch: Option<String>,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || {
+        project.with_repo_at(repo.as_deref(), |r| r.add_worktree(&path, &commitish, new_branch.as_deref()))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_remove_worktree(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    path: PathBuf,
+    force: bool,
+) -> IdeResult<()> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.remove_worktree(&path, force))).await
 }
 
 /// Compare with Local: tracked files that differ between `rev` and the working tree.

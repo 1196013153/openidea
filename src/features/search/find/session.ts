@@ -10,6 +10,7 @@
  * per file and are published at most once per microtask.
  */
 import type { FileMatches, RequestId, SearchQuery, SearchSummary } from "@/platform/ipc";
+import { preserveCase } from "@/platform/search";
 
 export type FindStatus = "idle" | "validating" | "invalid" | "searching" | "done" | "error";
 
@@ -203,17 +204,6 @@ export function previewReplacement(
     }
   })();
   return preserve ? preserveCase(matched, out) : out;
-}
-
-/** IDEA's "Preserve case" (same rules as the backend's `preserve_case`). */
-export function preserveCase(found: string, replacement: string): string {
-  const letters = [...found].filter((c) => c.toLowerCase() !== c.toUpperCase());
-  const first = letters[0];
-  if (!first || !replacement) return replacement;
-  const isUpper = (c: string) => c === c.toUpperCase() && c !== c.toLowerCase();
-  if (letters.length > 1 && letters.every(isUpper)) return replacement.toUpperCase();
-  const [head = "", ...rest] = [...replacement];
-  return (isUpper(first) ? head.toUpperCase() : head.toLowerCase()) + rest.join("");
 }
 
 /** Ranges → highlight indices (for `HighlightedText`). */

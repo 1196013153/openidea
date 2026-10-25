@@ -14,9 +14,11 @@ export const MAX_SUITES = 5;
 
 export interface Suite {
   id: string;
-  /** Run configuration name. */
+  /** Run configuration name, or the imported report's file name. */
   name: string;
   createdAt: number;
+  /** The report file of an imported suite ("Import a report collected in CI"). */
+  file?: string;
   data: CoverageSuite;
   byPath: Map<string, FileCoverage>;
 }
@@ -43,15 +45,21 @@ export function shownFileCoverage(path: string, s: CoverageState = useCoverage.g
   return activeSuite(s)?.byPath.get(path) ?? null;
 }
 
-export function addSuite(name: string, data: CoverageSuite): Suite {
+export function addSuite(name: string, data: CoverageSuite, file?: string): Suite {
   const suite: Suite = {
     id: `suite${++seq}`,
     name,
     createdAt: Date.now(),
+    file,
     data,
     byPath: new Map(data.files.map((f) => [f.path, f])),
   };
-  useCoverage.setState((s) => ({ suites: [suite, ...s.suites].slice(0, MAX_SUITES), activeId: suite.id, visible: true }));
+  useCoverage.setState((s) => ({
+    // A re-imported file replaces its earlier suite.
+    suites: [suite, ...s.suites.filter((x) => !file || x.file !== file)].slice(0, MAX_SUITES),
+    activeId: suite.id,
+    visible: true,
+  }));
   return suite;
 }
 
@@ -96,4 +104,76 @@ export function syncCoverageViews(): () => void {
     unsub();
     setFileDecorations("coverage", new Map());
   };
+}
+
+// ---------------------------------------------------------------------------
+// Imported reports, remembered per project so "Manage Coverage Reports" lists
+// them after a restart.
+
+export interface ImportedReport {
+  path: string;
+  name: string;
+  importedAt: number;
+}
+
+const IMPORTED_KEY = "openidea.coverage.imported.v1:";
+const MAX_IMPORTED = 20;
+
+export function importedReports(root: string | null = useProject.getState().project?.root ?? null): ImportedReport[] {
+  if (!root) return [];
+  try {
+    const v: unknown = JSON.parse(globalThis.localStorage?.getItem(IMPORTED_KEY + root) ?? "[]");
+    if (!Array.isArray(v)) return [];
+    return v.filter(
+      (r): r is ImportedReport =>
+        !!r && typeof r.path === "string" && typeof r.name === "string" && typeof r.importedAt === "number",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveImported(root: string, reports: ImportedReport[]) {
+  try {
+    globalThis.localStorage?.setItem(IMPORTED_KEY + root, JSON.stringify(reports.slice(0, MAX_IMPORTED)));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+export function rememberImport(report: ImportedReport) {
+  const root = useProject.getState().project?.root;
+  if (root) saveImported(root, [report, ...importedReports(root).filter((r) => r.path !== report.path)]);
+}
+
+export function forgetImport(path: string) {
+  const root = useProject.getState().project?.root;
+  if (root) saveImported(root, importedReports(root).filter((r) => r.path !== path));
+}
+
+/** A row of "Manage Coverage Reports": a loaded suite, or an imported report not loaded now. */
+export interface ReportEntry {
+  key: string;
+  name: string;
+  /** Tool or file shown beside the name. */
+  detail: string;
+  time: number;
+  suite: Suite | null;
+  file: string | null;
+}
+
+export function reportEntries(suites: readonly Suite[], imported: readonly ImportedReport[]): ReportEntry[] {
+  const out: ReportEntry[] = suites.map((s) => ({
+    key: s.id,
+    name: s.name,
+    detail: s.file ?? s.data.runner,
+    time: s.createdAt,
+    suite: s,
+    file: s.file ?? null,
+  }));
+  for (const r of imported) {
+    if (suites.some((s) => s.file === r.path)) continue;
+    out.push({ key: `file:${r.path}`, name: r.name, detail: r.path, time: r.importedAt, suite: null, file: r.path });
+  }
+  return out;
 }

@@ -5,13 +5,16 @@
 import { activeEditor } from "@/editor/api";
 import { call, commands, isTauri, type SearchScope } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
+import { findCustomScope } from "@/platform/search";
 
-export type ScopeKind = "project" | "directory" | "file" | "changed";
+export type ScopeKind = "project" | "directory" | "file" | "changed" | "custom";
 
 export interface ScopeChoice {
   kind: ScopeKind;
   /** Absolute directory for `directory`. */
   directory: string;
+  /** Name of the custom scope for `custom` (`@/platform/search`). */
+  custom?: string;
 }
 
 export const SCOPE_LABELS: Record<ScopeKind, string> = {
@@ -19,6 +22,7 @@ export const SCOPE_LABELS: Record<ScopeKind, string> = {
   directory: "Module or directory",
   file: "Current file",
   changed: "Uncommitted files",
+  custom: "Custom scope",
 };
 
 /** The file of the active editor, if it is a real file. */
@@ -66,6 +70,10 @@ export async function resolveScope(choice: ScopeChoice): Promise<SearchScope | s
       }
       return paths.length ? { kind: "files", paths } : "There are no uncommitted files";
     }
+    case "custom": {
+      const scope = choice.custom ? findCustomScope(choice.custom) : null;
+      return scope ? { kind: "pattern", pattern: scope.pattern } : "Choose a scope";
+    }
   }
 }
 
@@ -84,5 +92,7 @@ export function describeScope(choice: ScopeChoice, scope: SearchScope): string {
       return scope.kind === "files"
         ? `${scope.paths.length} uncommitted file${scope.paths.length === 1 ? "" : "s"}`
         : "Uncommitted files";
+    case "custom":
+      return `Scope '${choice.custom ?? ""}'`;
   }
 }

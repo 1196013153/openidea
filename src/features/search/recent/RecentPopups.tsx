@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import clsx from "clsx";
 import { editorsFor, getNavigationHistory } from "@/editor/api";
-import { call, commands } from "@/platform/ipc";
+import { call, commands, type OutlineItem } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
 import { Checkbox, Dialog, HighlightedText, Icon, List, fileIconName, listNavigate, T } from "@/ui";
@@ -12,13 +12,18 @@ import {
   useFileDecoration,
   type ToolWindowContribution,
 } from "@/workbench/contributions";
+import { highlightTokens, languageForPath, type CodeToken } from "@/editor/lsp/markdown";
 import { basename, openLocation } from "../common/open";
+import { outlinePathAt } from "../structure/outline";
 import { fromNavigationHistory, isDismissed, mergeLocations, type RecentLocation } from "../common/locations";
 import { dismissLocation, useTracking } from "../common/tracking";
 import {
   filterLocations,
   filterRecentFiles,
   initialFileIndex,
+  lineSegments,
+  locationBreadcrumb,
+  locationTime,
   switcherPaths,
   switcherSelection,
   switcherToolWindows,
@@ -360,11 +365,79 @@ function withSnippets(list: RecentLocation[], recorded: readonly RecentLocation[
 
 const LOCATION_ROW = 78;
 
+function breadcrumbOf(outline: readonly OutlineItem[] | undefined, l: RecentLocation): string {
+  return outline ? locationBreadcrumb(outlinePathAt(outline, { line: l.line, col: l.col })) : "";
+}
+
 /** Strips the common indentation so snippets line up at the left edge. */
 function dedent(lines: readonly string[]): string[] {
   const indents = lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length);
   const min = indents.length ? Math.min(...indents) : 0;
   return lines.map((l) => l.slice(Math.min(min, l.length - l.trimStart().length)));
+}
+
+/** Outlines of the open documents among `paths` (breadcrumbs); closed files get none. */
+function useOpenOutlines(paths: readonly string[]): ReadonlyMap<string, OutlineItem[]> {
+  const [outlines, setOutlines] = useState<ReadonlyMap<string, OutlineItem[]>>(() => new Map());
+  const requested = useRef(new Set<string>());
+  useEffect(() => {
+    for (const path of new Set(paths)) {
+      if (requested.current.has(path)) continue;
+      const doc = editorsFor(path)[0]?.ctx.doc;
+      if (doc === undefined) continue;
+      requested.current.add(path);
+      call(commands.docOutline(doc))
+        .then((items) => setOutlines((m) => new Map(m).set(path, items)))
+        .catch(() => {});
+    }
+  }, [paths]);
+  return outlines;
+}
+
+const tokenCache = new Map<string, CodeToken[]>();
+
+/** A snippet's lines coloured by the file's language (parsed together, so multi-line constructs colour right). */
+function SnippetCode({ path, lines, first, caret }: { path: string; lines: readonly string[]; first: number; caret: number }) {
+  const language = useMemo(() => languageForPath(path), [path]);
+  const text = lines.join("\n");
+  const key = `${language}\u0000${text}`;
+  const [loaded, setLoaded] = useState<{ key: string; tokens: CodeToken[] } | null>(null);
+  const tokens = tokenCache.get(key) ?? (loaded?.key === key ? loaded.tokens : null);
+  useEffect(() => {
+    if (tokens || !language) return;
+    let alive = true;
+    void highlightTokens(text, language).then((t) => {
+      tokenCache.set(key, t);
+      if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value!);
+      if (alive) setLoaded({ key, tokens: t });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [key, language, text, tokens]);
+  const segments = useMemo(() => lineSegments(lines, tokens ?? []), [lines, tokens]);
+  return (
+    <pre className={styles.snippet}>
+      {segments.map((segs, i) => (
+        <div key={i} className={clsx(styles.snippetLine, first + i === caret && styles.caretLine)}>
+          <span className={styles.lineNo}>{first + i + 1}</span>
+          <span className={styles.code}>
+            {segs.length
+              ? segs.map((seg, j) =>
+                  seg.cls ? (
+                    <span key={j} className={seg.cls}>
+                      {seg.text}
+                    </span>
+                  ) : (
+                    seg.text
+                  ),
+                )
+              : " "}
+          </span>
+        </div>
+      ))}
+    </pre>
+  );
 }
 
 function RecentLocationsDialog() {
@@ -385,6 +458,10 @@ function RecentLocationsDialog() {
     [source, query, changedOnly, root],
   );
   const active = items.length ? Math.min(index, items.length - 1) : -1;
+  const paths = useMemo(() => items.map((l) => l.path), [items]);
+  const outlines = useOpenOutlines(paths);
+  // Relative times as of opening the popup.
+  const [now] = useState(() => Date.now());
 
   const open = (l: RecentLocation | undefined, side = false) => {
     if (l) afterClose(() => void openLocation(l.path, { line: l.line, col: l.col }, { side }));
@@ -468,20 +545,11 @@ function RecentLocationsDialog() {
                   indices={l.nameIndices}
                   tone="strong"
                 />
-                <span className={styles.dir}>{l.rel}</span>
+                <span className={styles.dir}>{breadcrumbOf(outlines.get(l.path), l) || l.rel}</span>
                 {l.changed && <span className={styles.changed}>changed</span>}
+                <span className={styles.time}>{locationTime(l.time, now)}</span>
               </div>
-              <pre className={styles.snippet}>
-                {dedent(l.snippet).map((text, i) => {
-                  const n = l.snippetStart + i;
-                  return (
-                    <div key={i} className={clsx(styles.snippetLine, n === l.line && styles.caretLine)}>
-                      <span className={styles.lineNo}>{n + 1}</span>
-                      <span>{text || " "}</span>
-                    </div>
-                  );
-                })}
-              </pre>
+              <SnippetCode path={l.path} lines={dedent(l.snippet)} first={l.snippetStart} caret={l.line} />
             </div>
           )}
         />

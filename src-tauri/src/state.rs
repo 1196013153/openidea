@@ -2,7 +2,7 @@ use crate::events::TauriSink;
 use ide_core::{CancellationToken, IdeError, IdeEvent, IdeResult, RequestId, SharedSink};
 use ide_dap::DebugManager;
 use ide_index::ProjectIndex;
-use ide_language::{LanguageRegistry, Syntax, SyntaxCache};
+use ide_language::{FileTypes, LanguageRegistry, Syntax, SyntaxCache};
 use ide_lsp::LspManager;
 use ide_run::ProcessManager;
 use ide_syntax::StructureService;
@@ -51,6 +51,8 @@ pub struct Project {
     pub root: PathBuf,
     /// Window-scoped event sink, for commands that emit project events.
     pub sink: SharedSink,
+    /// The app's language definitions with this project's File Types applied.
+    pub languages: Arc<LanguageRegistry>,
     pub settings: Arc<SettingsStore>,
     pub documents: Arc<Documents>,
     pub history: Arc<LocalHistory>,
@@ -72,7 +74,9 @@ pub struct Project {
     pub db: Arc<ide_db::DbManager>,
     /// HTTP Client responses (IDEA's `.idea/httpRequests`), in the app data dir.
     pub http_history: Arc<ide_http::History>,
-    _watcher: Watcher,
+    watcher: Watcher,
+    /// Watchers of the Project Structure content roots outside the project folder.
+    content_watchers: Mutex<Vec<(PathBuf, Watcher)>>,
     _scratch_watcher: Option<Watcher>,
 }
 
@@ -214,10 +218,19 @@ impl AppState {
         let settings = SettingsStore::load(&self.config_dir, Some(&root));
         let detected_roots = Arc::new(RwLock::new(ide_workspace::roots::detect(&root)));
         let excludes = exclude_globs(&settings.effective(), &detected_roots.read());
+        let extra_roots = content_roots(&settings.effective(), &root);
         mark("roots");
 
-        let languages = self.languages.clone();
-        let documents = Arc::new(Documents::new(sink.clone(), Box::new(move |p: &Path| languages.detect(p, None))));
+        // The project's own registry: File Types associations may be project-scoped.
+        let languages = Arc::new(self.languages.fork());
+        languages.set_file_types(FileTypes::from_settings(&settings.effective().files, Some(&root)));
+        let documents = {
+            let languages = languages.clone();
+            Arc::new(Documents::new(
+                sink.clone(),
+                Box::new(move |p: &Path, first: Option<&str>| languages.detect(p, first)),
+            ))
+        };
         documents.set_file_defaults(ide_workspace::FileDefaults::from_settings(&settings.effective(), Some(&root)));
         let history = Arc::new(LocalHistory::open(&self.data_dir.join("history"), &root)?);
         {
@@ -233,13 +246,14 @@ impl AppState {
         let index = ProjectIndex::open(
             &root,
             &self.data_dir.join("index").join(&project_key),
+            extra_roots.clone(),
             excludes.clone(),
-            self.languages.clone(),
+            languages.clone(),
             self.syntax(),
             sink.clone(),
         )?;
         mark("index");
-        let lsp = LspManager::new(root.clone(), self.languages.clone(), sink.clone());
+        let lsp = LspManager::new(root.clone(), languages.clone(), sink.clone());
         let settings = Arc::new(settings);
         {
             let settings = settings.clone();
@@ -301,7 +315,7 @@ impl AppState {
             let history = history.clone();
             Watcher::start(
                 &root.clone(),
-                excludes,
+                excludes.clone(),
                 sink.clone(),
                 Box::new(move |batch| {
                     let changed: Vec<PathBuf> = batch.created.iter().chain(&batch.modified).cloned().collect();
@@ -314,6 +328,9 @@ impl AppState {
                     if touched.into_iter().any(ide_workspace::roots::affects_roots) {
                         let fresh = ide_workspace::roots::detect(&root);
                         if *detected_roots.read() != fresh {
+                            // Detected excluded folders (`target`, `build`) leave the index too.
+                            let effective = settings.effective();
+                            index.set_scope(content_roots(&effective, &root), exclude_globs(&effective, &fresh));
                             *detected_roots.write() = fresh;
                             sink.emit(IdeEvent::ProjectRootsChanged { root: root.clone().into() });
                         }
@@ -356,6 +373,13 @@ impl AppState {
             })
         };
 
+        let content_watchers = extra_roots
+            .iter()
+            .filter_map(|r| {
+                let w = content_root_watcher(r, &excludes, &sink, &index, &documents, &history)?;
+                Some((r.clone(), w))
+            })
+            .collect();
         mark("watcher");
         let branch = repos.read().primary().and_then(|r| r.branch_info().ok()).and_then(|b| b.head);
         {
@@ -366,6 +390,10 @@ impl AppState {
         }
         mark("git");
         self.recent.touch(&root, branch)?;
+        let display_name = settings.effective().general.project_name;
+        if !display_name.trim().is_empty() {
+            self.recent.rename(&root, Some(display_name.trim()))?;
+        }
         mark("recent");
         tracing::info!("opened {} in window {window} in {} ms {laps:?}", root.display(), started.elapsed().as_millis());
 
@@ -374,6 +402,7 @@ impl AppState {
         let project = Arc::new(Project {
             root,
             sink,
+            languages,
             settings,
             documents,
             history,
@@ -387,7 +416,8 @@ impl AppState {
             cache_dir: self.data_dir.join("cache").join(&project_key),
             db,
             http_history,
-            _watcher: watcher,
+            watcher,
+            content_watchers: Mutex::new(content_watchers),
             _scratch_watcher: scratch_watcher,
         });
         self.projects.write().insert(window.to_owned(), project.clone());
@@ -538,11 +568,15 @@ impl Project {
     }
 
     /// File masks (`ide_search::FileMask`) for Find in Files and inspections: the
-    /// excluded roots and the ignored names (files, and everything under such folders).
+    /// excluded roots, the ignored names and the "Exclude files" patterns (files,
+    /// and everything under such folders).
     pub fn search_excludes(&self) -> Vec<String> {
         let mut out: Vec<String> =
             self.roots().excluded_globs().iter().map(|d| format!("{}/**", d.trim_start_matches('/'))).collect();
-        for name in &self.settings.effective().files.ignored_names {
+        let settings = self.settings.effective();
+        let names =
+            settings.files.ignored_names.iter().cloned().chain(settings.project_structure.exclude_file_patterns());
+        for name in names {
             let name = name.trim();
             if !name.is_empty() && !name.contains(['/', ',']) {
                 out.push(name.to_owned());
@@ -555,6 +589,45 @@ impl Project {
     /// `files.exclude`, the ignored names and the effective excluded roots (user-marked and detected).
     pub fn exclude_globs(&self) -> Vec<String> {
         exclude_globs(&self.settings.effective(), &self.detected_roots.read())
+    }
+
+    /// Project Structure content roots besides the project folder (existing directories).
+    pub fn content_roots(&self) -> Vec<PathBuf> {
+        content_roots(&self.settings.effective(), &self.root)
+    }
+
+    /// Applies Settings › File Types; open documents whose language changed are
+    /// re-detected (language servers and syntax trees follow) and the index
+    /// re-parses the files whose language changed.
+    pub fn apply_file_types(&self, settings: &ide_core::settings::Settings) {
+        let before = Arc::new(self.languages.snapshot());
+        if self.languages.set_file_types(FileTypes::from_settings(&settings.files, Some(&self.root))) {
+            self.documents.redetect_languages();
+            self.index.languages_changed(before);
+        }
+    }
+
+    /// Applies changed content roots and exclude settings to the index (which
+    /// rescans in the background) and the file watchers, without reopening the project.
+    pub fn refresh_index_scope(&self) {
+        let (roots, excludes) = (self.content_roots(), self.exclude_globs());
+        self.index.set_scope(roots.clone(), excludes.clone());
+        self.watcher.set_excludes(&excludes);
+        let mut watchers = self.content_watchers.lock();
+        watchers.retain(|(p, _)| roots.contains(p));
+        for (_, w) in watchers.iter() {
+            w.set_excludes(&excludes);
+        }
+        for r in roots {
+            if watchers.iter().any(|(p, _)| *p == r) {
+                continue;
+            }
+            if let Some(w) =
+                content_root_watcher(&r, &excludes, &self.sink, &self.index, &self.documents, &self.history)
+            {
+                watchers.push((r, w));
+            }
+        }
     }
 
     /// Current text of `path`: the open buffer when available, else the file on disk.
@@ -622,6 +695,44 @@ pub fn history_retention(settings: &ide_core::settings::Settings) -> ide_workspa
         working_days: settings.files.local_history_days,
         max_bytes: u64::from(settings.files.local_history_max_mb.max(1)) * 1024 * 1024,
     }
+}
+
+/// Project Structure content roots outside `root` (existing absolute directories).
+fn content_roots(settings: &ide_core::settings::Settings, root: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for r in &settings.project_structure.content_roots {
+        let p = PathBuf::from(r.trim());
+        if p.is_absolute() && p.is_dir() && !p.starts_with(root) && !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// Watches a content root outside the project: the index, open documents and
+/// Local History follow its changes like the project folder's.
+fn content_root_watcher(
+    dir: &Path,
+    excludes: &[String],
+    sink: &SharedSink,
+    index: &Arc<ProjectIndex>,
+    documents: &Arc<Documents>,
+    history: &Arc<LocalHistory>,
+) -> Option<Watcher> {
+    let (index, documents, history) = (index.clone(), documents.clone(), history.clone());
+    Watcher::start(
+        dir,
+        excludes.to_vec(),
+        sink.clone(),
+        Box::new(move |batch| {
+            let changed: Vec<PathBuf> = batch.created.iter().chain(&batch.modified).cloned().collect();
+            index.update(&changed, &batch.removed);
+            documents.on_disk_changed(&changed);
+            record_external_changes(&history, &changed, &batch.removed);
+        }),
+    )
+    .map_err(|e| tracing::warn!("content root watcher {}: {e}", dir.display()))
+    .ok()
 }
 
 fn exclude_globs(settings: &ide_core::settings::Settings, detected: &[SourceFolder]) -> Vec<String> {

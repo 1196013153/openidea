@@ -3,7 +3,9 @@
  * @codemirror/search's query + commands; the bar itself is a React component
  * (view/FindBar.tsx). Highlighting is ours because CodeMirror only highlights
  * while its own panel is open. Match positions found by the bar's counter are
- * kept in `findMarks` for the overview lane.
+ * kept in `findMarks` for the overview lane. The search context (comments /
+ * string literals) and excluded matches filter matches through the query's
+ * `test`, so CodeMirror's own commands honour them too.
  */
 import { EditorSelection, Prec, StateEffect, StateField, type ChangeDesc, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
@@ -18,6 +20,8 @@ import {
   setSearchQuery,
 } from "@codemirror/search";
 import { scrollbarMarks, type ScrollbarMark } from "@/editor/api";
+import { contextAccepts, preserveCase, type SearchContext } from "@/platform/search";
+import { literalKindAt, literalsExtension } from "./literals";
 
 export const setFindOpen = StateEffect.define<boolean>();
 export const setFindMarks = StateEffect.define<number[]>();
@@ -51,6 +55,46 @@ export const findScope = StateField.define<FindScope | null>({
   provide: (f) => Prec.lowest(EditorView.decorations.from(f, (s) => (s ? Decoration.set([scopeDeco.range(s.from, s.to)]) : Decoration.none))),
 });
 
+/** IDEA's Exclude: matches skipped by Next / Previous and Replace All until the query changes. */
+export const toggleFindExcluded = StateEffect.define<FindScope>();
+
+export const findExcluded = StateField.define<readonly FindScope[]>({
+  create: () => [],
+  update(v, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setSearchQuery) || (e.is(setFindOpen) && !e.value)) v = [];
+      else if (e.is(toggleFindExcluded)) {
+        const { from, to } = e.value;
+        v = v.some((x) => x.from === from && x.to === to)
+          ? v.filter((x) => x.from !== from || x.to !== to)
+          : [...v, { from, to }];
+      }
+    }
+    if (!tr.docChanged || !v.length) return v;
+    return v
+      .map((x) => ({ from: tr.changes.mapPos(x.from, 1), to: tr.changes.mapPos(x.to, -1) }))
+      .filter((x) => x.to > x.from);
+  },
+});
+
+export function isExcluded(state: EditorState, from: number, to: number): boolean {
+  return (state.field(findExcluded, false) ?? []).some((x) => x.from === from && x.to === to);
+}
+
+type MatchTest = (match: string, state: EditorState, from: number, to: number) => boolean;
+const tests = new Map<SearchContext, MatchTest>();
+
+/** One stable test per context, so equal options give equal queries (`SearchQuery.eq`). */
+function testFor(context: SearchContext): MatchTest {
+  let test = tests.get(context);
+  if (!test) {
+    test = (_match, state, from, to) =>
+      !isExcluded(state, from, to) && (context === "any" || contextAccepts(context, literalKindAt(state, from)));
+    tests.set(context, test);
+  }
+  return test;
+}
+
 function scopeOf(state: EditorState): FindScope {
   return state.field(findScope, false) ?? { from: 0, to: state.doc.length };
 }
@@ -82,6 +126,7 @@ export const findMarks = StateField.define<number[]>({
 
 const matchDeco = Decoration.mark({ class: "cm-openidea-findMatch" });
 const currentDeco = Decoration.mark({ class: "cm-openidea-findMatch cm-openidea-findMatch-current" });
+const excludedDeco = Decoration.mark({ class: "cm-openidea-findExcluded" });
 const MAX_VISIBLE = 2000;
 
 function buildHighlights(view: EditorView): DecorationSet {
@@ -104,6 +149,8 @@ function buildHighlights(view: EditorView): DecorationSet {
       ranges.push((m.from === main.from && m.to === main.to ? currentDeco : matchDeco).range(m.from, m.to));
     }
   }
+  for (const x of state.field(findExcluded, false) ?? [])
+    if (x.from >= scope.from && x.to <= scope.to) ranges.push(excludedDeco.range(x.from, x.to));
   return Decoration.set(ranges, true);
 }
 
@@ -120,7 +167,8 @@ const findHighlighter = ViewPlugin.fromClass(
         u.selectionSet ||
         u.startState.field(findOpen, false) !== u.state.field(findOpen, false) ||
         getSearchQuery(u.startState) !== getSearchQuery(u.state) ||
-        u.startState.field(findScope, false) !== u.state.field(findScope, false)
+        u.startState.field(findScope, false) !== u.state.field(findScope, false) ||
+        u.startState.field(findExcluded, false) !== u.state.field(findExcluded, false)
       )
         this.decorations = buildHighlights(u.view);
     }
@@ -136,7 +184,9 @@ export function findExtension(): Extension {
     }),
     findOpen,
     findScope,
+    findExcluded,
     findMarks,
+    literalsExtension,
     findHighlighter,
   ];
 }
@@ -147,6 +197,10 @@ export interface FindOptions {
   wholeWord: boolean;
   regexp: boolean;
   replace: string;
+  /** IDEA's search scope filter: anywhere, only / except comments and string literals. */
+  context?: SearchContext;
+  /** Replace keeps the case of each occurrence. */
+  preserveCase?: boolean;
 }
 
 export function makeQuery(o: FindOptions) {
@@ -158,6 +212,7 @@ export function makeQuery(o: FindOptions) {
     wholeWord: o.wholeWord,
     regexp: o.regexp,
     replace: o.replace,
+    test: testFor(o.context ?? "any"),
   });
 }
 
@@ -251,30 +306,56 @@ export function findPrevious(view: EditorView): boolean {
   return view.state.field(findScope, false) ? step(view, false) : cmFindPrevious(view);
 }
 
+/** The text replacing `m`, keeping its case when `preserve` is set. */
+function insertFor(state: EditorState, query: SearchQuery, m: Match, preserve: boolean): string {
+  const insert = replacementFor(query, m);
+  return preserve ? preserveCase(state.sliceDoc(m.from, m.to), insert) : insert;
+}
+
 /** Replaces the selected match (if it is one) and selects the next match. */
-export function replaceNext(view: EditorView): boolean {
+export function replaceNext(view: EditorView, preserve = false): boolean {
   const { state } = view;
-  if (!state.field(findScope, false)) return cmReplaceNext(view);
+  if (!state.field(findScope, false) && !preserve) return cmReplaceNext(view);
   if (state.readOnly) return false;
   const query = getSearchQuery(state);
   const ms = matchesIn(state);
   const { from, to } = state.selection.main;
   const cur = ms.find((m) => m.from === from && m.to === to);
   if (!cur) return step(view, true);
-  const insert = replacementFor(query, cur);
-  view.dispatch({ changes: { from: cur.from, to: cur.to, insert }, selection: EditorSelection.cursor(cur.from + insert.length), userEvent: "input.replace" });
-  const next = matchesIn(view.state).find((m) => m.from >= cur.from + insert.length);
+  const insert = insertFor(state, query, cur, preserve);
+  view.dispatch({
+    changes: { from: cur.from, to: cur.to, insert },
+    selection: EditorSelection.cursor(cur.from + insert.length),
+    userEvent: "input.replace",
+  });
+  const after = matchesIn(view.state);
+  const next = after.find((m) => m.from >= cur.from + insert.length) ?? after[0];
   if (next) selectMatch(view, next);
   return true;
 }
 
-export function replaceAll(view: EditorView): boolean {
+export function replaceAll(view: EditorView, preserve = false): boolean {
   const { state } = view;
-  if (!state.field(findScope, false)) return cmReplaceAll(view);
+  if (!state.field(findScope, false) && !preserve) return cmReplaceAll(view);
   if (state.readOnly) return false;
   const query = getSearchQuery(state);
-  const changes = matchesIn(state).map((m) => ({ from: m.from, to: m.to, insert: replacementFor(query, m) }));
+  const changes = matchesIn(state).map((m) => ({
+    from: m.from,
+    to: m.to,
+    insert: insertFor(state, query, m, preserve),
+  }));
   if (!changes.length) return false;
   view.dispatch({ changes, userEvent: "input.replace.all" });
+  return true;
+}
+
+/** IDEA's Exclude: skips the selected match (or includes it again) and selects the next one. */
+export function excludeCurrent(view: EditorView): boolean {
+  const { from, to } = view.state.selection.main;
+  const excluded = isExcluded(view.state, from, to);
+  if (!excluded && (from === to || !matchesIn(view.state).some((m) => m.from === from && m.to === to)))
+    return step(view, true);
+  view.dispatch({ effects: toggleFindExcluded.of({ from, to }) });
+  if (!excluded) step(view, true);
   return true;
 }

@@ -117,6 +117,12 @@ pub struct CompletionSettings {
     pub auto_popup: bool,
     /// Insert the selected suggestion by pressing space, dot, or other context-dependent keys.
     pub insert_on_special_keys: bool,
+    /// Insert a sole suggestion of explicit (⌃Space) completion right away.
+    pub auto_insert_single: bool,
+    /// Sort suggestions by name instead of relevance.
+    pub sort_alphabetically: bool,
+    /// Add `()` after function and method suggestions.
+    pub insert_parentheses: bool,
     pub show_documentation: bool,
     pub documentation_delay: u32,
     pub parameter_info: bool,
@@ -130,6 +136,9 @@ impl Default for CompletionSettings {
             case_sensitivity: "first".into(),
             auto_popup: true,
             insert_on_special_keys: false,
+            auto_insert_single: true,
+            sort_alphabetically: false,
+            insert_parentheses: true,
             show_documentation: false,
             documentation_delay: 500,
             parameter_info: true,
@@ -166,13 +175,22 @@ impl Default for FoldingSettings {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 #[serde(default, rename_all = "camelCase")]
 pub struct EditorTabsSettings {
-    /// `top` | `none`.
+    /// `top` | `bottom` | `none`.
     pub placement: String,
     pub multiple_rows: bool,
+    /// One row that doesn't fit: `scroll` the tabs panel | `squeeze` the tabs.
+    pub one_row_overflow: String,
+    pub pinned_separate_row: bool,
+    pub show_file_icon: bool,
     pub show_extension: bool,
+    pub show_directory_for_non_unique: bool,
     /// Mark modified tabs with an asterisk.
     pub mark_modified: bool,
+    pub show_full_path_on_hover: bool,
     pub show_close_button: bool,
+    /// `right` | `left` (with `show_close_button`).
+    pub close_button_position: String,
+    pub sort_alphabetically: bool,
     pub preview_tab: bool,
     pub open_at_end: bool,
     pub tab_limit: u32,
@@ -187,9 +205,16 @@ impl Default for EditorTabsSettings {
         Self {
             placement: "top".into(),
             multiple_rows: false,
+            one_row_overflow: "scroll".into(),
+            pinned_separate_row: false,
+            show_file_icon: true,
             show_extension: true,
+            show_directory_for_non_unique: true,
             mark_modified: false,
+            show_full_path_on_hover: true,
             show_close_button: true,
+            close_button_position: "right".into(),
+            sort_alphabetically: false,
             preview_tab: true,
             open_at_end: false,
             tab_limit: 30,
@@ -275,11 +300,38 @@ pub struct InlayHintsSettings {
     pub disabled_languages: Vec<String>,
     /// Code vision: usages above declarations.
     pub code_vision_usages: bool,
+    /// Code vision: last author of a declaration (VCS blame) beside its usages.
+    pub code_vision_author: bool,
 }
 
 impl Default for InlayHintsSettings {
     fn default() -> Self {
-        Self { types: true, parameters: true, other: true, disabled_languages: Vec::new(), code_vision_usages: true }
+        Self {
+            types: true,
+            parameters: true,
+            other: true,
+            disabled_languages: Vec::new(),
+            code_vision_usages: true,
+            code_vision_author: true,
+        }
+    }
+}
+
+/// Editor › General › Inline Completion: ghost text from language servers that
+/// support `textDocument/inlineCompletion` (LSP 3.18).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct InlineCompletionSettings {
+    pub enabled: bool,
+    /// Ask only once typing has paused for `pause_ms`, instead of right after each change.
+    pub only_on_pause: bool,
+    pub pause_ms: u32,
+    pub disabled_languages: Vec<String>,
+}
+
+impl Default for InlineCompletionSettings {
+    fn default() -> Self {
+        Self { enabled: true, only_on_pause: false, pause_ms: 500, disabled_languages: Vec::new() }
     }
 }
 
@@ -335,6 +387,14 @@ pub struct CodeStyleSettings {
     /// Enable EditorConfig support.
     pub editorconfig: bool,
     pub languages: BTreeMap<String, LanguageCodeStyle>,
+    /// Formatter › Do not format: globs (`*.min.js`, `generated/**`) Reformat Code skips.
+    pub do_not_format: Vec<String>,
+    /// Formatter › Turn formatter on/off with markers in code comments.
+    pub formatter_tags_enabled: bool,
+    pub formatter_off_tag: String,
+    pub formatter_on_tag: String,
+    /// The markers are regular expressions.
+    pub formatter_tags_regexp: bool,
 }
 
 impl Default for CodeStyleSettings {
@@ -346,6 +406,11 @@ impl Default for CodeStyleSettings {
             detect_indents: true,
             editorconfig: true,
             languages: BTreeMap::new(),
+            do_not_format: Vec::new(),
+            formatter_tags_enabled: false,
+            formatter_off_tag: "@formatter:off".into(),
+            formatter_on_tag: "@formatter:on".into(),
+            formatter_tags_regexp: false,
         }
     }
 }

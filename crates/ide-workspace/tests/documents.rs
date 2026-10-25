@@ -47,7 +47,7 @@ fn fixture() -> Fixture {
     };
     let docs = Documents::new(
         sink,
-        Box::new(|p: &Path| match p.extension().and_then(|e| e.to_str()) {
+        Box::new(|p: &Path, _: Option<&str>| match p.extension().and_then(|e| e.to_str()) {
             Some("rs") => LanguageId::new("rust"),
             _ => LanguageId::plain_text(),
         }),
@@ -59,6 +59,51 @@ fn fixture() -> Fixture {
 
 fn change(from: u32, to: u32, insert: &str) -> ChangeSet {
     ChangeSet { changes: vec![TextChange { from, to, insert: insert.into() }] }
+}
+
+#[test]
+fn redetect_reopens_documents_whose_language_changed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let events: Arc<Mutex<Vec<IdeEvent>>> = Arc::default();
+    let sink: SharedSink = {
+        let events = events.clone();
+        Arc::new(move |e: IdeEvent| events.lock().push(e))
+    };
+    let foo_is_python = Arc::new(Mutex::new(false));
+    let docs = {
+        let foo_is_python = foo_is_python.clone();
+        Documents::new(
+            sink,
+            Box::new(move |p: &Path, first: Option<&str>| {
+                if p.extension().is_some_and(|e| e == "foo") && *foo_is_python.lock() {
+                    LanguageId::new("python")
+                } else if first.is_some_and(|l| l.starts_with("#!")) {
+                    LanguageId::new("shellscript")
+                } else {
+                    LanguageId::plain_text()
+                }
+            }),
+        )
+    };
+    let rec = Arc::new(Recorder::default());
+    docs.add_observer(rec.clone());
+    let foo = tmp.path().join("a.foo");
+    let script = tmp.path().join("run");
+    fs::write(&foo, "x = 1\n").unwrap();
+    fs::write(&script, "#!/bin/sh\necho\n").unwrap();
+    let a = docs.open(&foo).unwrap();
+    assert_eq!(a.language.as_str(), "plaintext");
+    assert_eq!(docs.open(&script).unwrap().language.as_str(), "shellscript", "the first line is detected");
+
+    assert!(docs.redetect_languages().is_empty());
+    *foo_is_python.lock() = true;
+    assert_eq!(docs.redetect_languages(), vec![a.id]);
+    assert_eq!(docs.snapshot(a.id).unwrap().language.as_str(), "python");
+    let log = rec.log.lock().clone();
+    assert_eq!(log[log.len() - 2..], ["close".to_owned(), "open v0 python".to_owned()]);
+    assert!(events.lock().iter().any(
+        |e| matches!(e, IdeEvent::DocLanguage { doc, language } if *doc == a.id && language.as_str() == "python")
+    ));
 }
 
 fn dirty_events(events: &[IdeEvent]) -> Vec<bool> {
@@ -449,4 +494,21 @@ fn toggling_the_writable_bit_updates_the_open_document() {
     fs::write(&other, "").unwrap();
     assert!(f.docs.set_writable(&other, false).unwrap());
     assert!(fs::metadata(&other).unwrap().permissions().readonly());
+}
+
+#[test]
+fn archive_entries_open_read_only_without_observers() {
+    use std::io::Write;
+    let f = fixture();
+    let jar = f.root.join("lib-sources.jar");
+    let mut w = zip::ZipWriter::new(fs::File::create(&jar).unwrap());
+    w.start_file("org/x/Main.rs", zip::write::SimpleFileOptions::default()).unwrap();
+    w.write_all(b"fn main() {}\n").unwrap();
+    w.finish().unwrap();
+    let path = ide_vfs::archive_entry_path(&jar, "org/x/Main.rs");
+    let info = f.docs.open(&path).unwrap();
+    assert_eq!((info.text.as_str(), info.language.as_str(), info.read_only), ("fn main() {}\n", "rust", true));
+    assert_eq!(*info.path, *path);
+    assert!(f.rec.log.lock().is_empty(), "language servers / history never see archive entries");
+    f.docs.close(info.id);
 }

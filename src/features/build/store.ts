@@ -30,6 +30,8 @@ import { appendOutput, finishSummary, firstError, messageFiles, type BuildStatus
 
 export const BUILD_TASK_ID = "build:compile";
 export const BUILD_RUNNING = "build.running";
+/** Outcome of the last build (`success` | `failed` | `cancelled`), e.g. for Run's "Build" before launch task. */
+export const BUILD_LAST_STATUS = "build.lastStatus";
 
 /** How builds reach the backend; replaced in tests. */
 export interface BuildBackend {
@@ -205,6 +207,7 @@ export async function startBuild(kind: BuildKind, file: string | null = null): P
     }
   } finally {
     if (useBuildRun.getState().request === request) useBuildRun.setState({ request: null });
+    setContext(BUILD_LAST_STATUS, result?.success ? "success" : useBuildRun.getState().status === "cancelled" ? "cancelled" : "failed");
     setContext(BUILD_RUNNING, false);
     upsertTask({ id: BUILD_TASK_ID, title: taskTitle, message: null, fraction: 1, done: true });
   }

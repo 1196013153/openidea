@@ -1,8 +1,10 @@
 /** Dialog stack of the analysis feature and the shared "Specify Scope" fields. */
 import { Fragment, type ReactNode } from "react";
 import { create } from "zustand";
+import { executeAction } from "@/platform/actions";
 import { isTauri } from "@/platform/ipc";
-import { Button, Input, T } from "@/ui";
+import { EDIT_SCOPES_ACTION, useCustomScopeList } from "@/platform/search";
+import { Button, IconButton, Input, Select, T } from "@/ui";
 import { SCOPE_LABELS, currentFile, type ScopeChoice, type ScopeKind } from "./scope";
 import styles from "./Analysis.module.css";
 
@@ -42,32 +44,38 @@ async function browseDirectory(initial: string): Promise<string | null> {
   return typeof picked === "string" ? picked : null;
 }
 
-const KINDS: ScopeKind[] = ["project", "directory", "file", "changed"];
+const KINDS: ScopeKind[] = ["project", "directory", "file", "changed", "custom"];
 
 /** IDEA's "Specify Scope" radio group. */
 export function ScopeFields({
   value,
   onChange,
   name,
+  kinds = KINDS,
 }: {
   value: ScopeChoice;
   onChange: (v: ScopeChoice) => void;
   name: string;
+  /** The choices offered (default: all). */
+  kinds?: readonly ScopeKind[];
 }) {
   const file = currentFile();
+  const scopes = useCustomScopeList();
   return (
     <fieldset className={styles.scope}>
       <legend className={styles.fieldLabel}>
         <T>Scope</T>
       </legend>
-      {KINDS.map((kind) => (
+      {kinds.map((kind) => (
         <label key={kind} className={styles.radioRow}>
           <input
             type="radio"
             name={name}
             checked={value.kind === kind}
             disabled={kind === "file" && !file}
-            onChange={() => onChange({ ...value, kind })}
+            onChange={() =>
+              onChange({ ...value, kind, custom: kind === "custom" ? (value.custom ?? scopes[0]?.name) : value.custom })
+            }
           />
           <span>{kind === "file" && file ? `File '${file.split("/").pop()}'` : SCOPE_LABELS[kind]}</span>
         </label>
@@ -85,6 +93,23 @@ export function ScopeFields({
           >
             <T>Browse…</T>
           </Button>
+        </div>
+      )}
+      {value.kind === "custom" && (
+        <div className={styles.dirRow}>
+          <Select<string>
+            className={styles.grow}
+            value={value.custom ?? null}
+            options={scopes.map((s) => ({ value: s.name, label: s.name, detail: s.pattern }))}
+            placeholder="No custom scopes"
+            onChange={(custom) => onChange({ ...value, custom })}
+            aria-label="Custom scope"
+          />
+          <IconButton
+            icon="more-horizontal"
+            title="Edit Scopes…"
+            onClick={() => void executeAction(EDIT_SCOPES_ACTION, value.custom ? { select: value.custom } : undefined)}
+          />
         </div>
       )}
     </fieldset>

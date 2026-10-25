@@ -9,6 +9,9 @@ import { showChooser } from "../popup/store";
 import { BUILTIN_TEMPLATES } from "../live/builtins";
 import { useLiveTemplates } from "../live/store";
 import { usePostfixSettings } from "../postfix/store";
+import { reloadFileTemplates, resetInclude, saveInclude, setTemplateScheme, useFileTemplates } from "../files/store";
+import { useProject } from "@/platform/project";
+import type { ProjectInfo } from "@/platform/ipc";
 
 describe("settings pages", () => {
   it("groups and filters live templates", () => {
@@ -39,6 +42,38 @@ describe("settings pages", () => {
     render(<FileTemplatesPage />);
     expect(screen.getByText("Kotlin Class/File")).toBeInTheDocument();
   });
+
+  it("edits includes and code templates in their tabs", () => {
+    render(<FileTemplatesPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Includes" }));
+    fireEvent.change(screen.getByLabelText("Include body"), { target: { value: "// header" } });
+    expect(useFileTemplates.getState().includes.find((f) => f.name === "File Header")?.body).toBe("// header");
+    fireEvent.click(screen.getByText("Restore Default"));
+    expect(useFileTemplates.getState().includes.find((f) => f.name === "File Header")?.body).toBe("");
+    fireEvent.click(screen.getByRole("tab", { name: "Code" }));
+    expect(screen.getByText("JUnit5 Test Method")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Code template body"), { target: { value: "@Test\nvoid t() {}\n" } });
+    expect(useFileTemplates.getState().codeTemplates[0]?.body).toBe("@Test\nvoid t() {}\n");
+    fireEvent.click(screen.getByText("Restore Default"));
+  });
+
+  it("keeps a project scheme seeded from Default", () => {
+    useProject.setState({ project: { root: "/proj", name: "proj" } as unknown as ProjectInfo });
+    reloadFileTemplates();
+    saveInclude({ name: "File Header", body: "// default" });
+    setTemplateScheme("project");
+    expect(useFileTemplates.getState().scheme).toBe("project");
+    expect(useFileTemplates.getState().includes[0]?.body).toBe("// default");
+    saveInclude({ name: "File Header", body: "// project" });
+    setTemplateScheme("default");
+    expect(useFileTemplates.getState().includes[0]?.body).toBe("// default");
+    setTemplateScheme("project");
+    expect(useFileTemplates.getState().includes[0]?.body).toBe("// project");
+    setTemplateScheme("default");
+    resetInclude("File Header");
+    useProject.setState({ project: null });
+    reloadFileTemplates();
+  });
 });
 
 describe("dialogs", () => {
@@ -48,6 +83,35 @@ describe("dialogs", () => {
     fireEvent.click(screen.getByText("Kotlin Class/File"));
     expect(screen.getByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByText("Data class")).toBeInTheDocument();
+  });
+
+  it("prefills fixed names and follows the kind's extension", () => {
+    render(<NewFileDialogHost />);
+    act(() => openNewFileDialog({ directory: "/p", templateId: "dockerfile" }));
+    expect(screen.getByLabelText("Name")).toHaveValue("Dockerfile");
+    act(() => openNewFileDialog({ directory: "/p", templateId: "stylesheet" }));
+    expect(screen.getByLabelText("Name")).toHaveAttribute("placeholder", "Name (.css)");
+    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "ArrowDown" });
+    expect(screen.getByLabelText("Name")).toHaveAttribute("placeholder", "Name (.scss)");
+  });
+
+  it("names an ad-hoc template from another feature", () => {
+    render(<NewFileDialogHost />);
+    act(() =>
+      openNewFileDialog({
+        directory: "/p",
+        template: {
+          id: "http-request",
+          name: "HTTP Request",
+          icon: "file-http",
+          extension: "http",
+          nameStyle: "asis",
+          kinds: [{ id: "request", label: "HTTP Request", body: "GET /\n" }],
+        },
+      }),
+    );
+    expect(screen.getByRole("dialog", { name: "New HTTP Request" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveAttribute("placeholder", "Name (.http)");
   });
 
   it("chooser filters by typing and picks with Enter", () => {

@@ -21,6 +21,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.defaultList {
+  font-weight: 600;
+}
 .meta {
   min-width: 0;
   overflow: hidden;

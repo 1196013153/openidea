@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FileMatches, ReplaceEvent, SearchQuery } from "@/platform/ipc";
-import { matchRows, preserveCase, previewReplacement } from "../find/session";
+import { preserveCase } from "@/platform/search";
+import { matchRows, previewReplacement } from "../find/session";
 import {
   NO_MARKS,
   confirmText,

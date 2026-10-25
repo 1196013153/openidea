@@ -6,6 +6,8 @@ import { languages } from "@codemirror/language-data";
 import type { FileMatches } from "@/platform/ipc";
 import {
   buildTodoQuery,
+  changedPaths,
+  todoSearchScope,
   countItems,
   DEFAULT_TODO_SETTINGS,
   groupTodos,
@@ -127,5 +129,32 @@ describe("editor highlighting", () => {
       [fixme, fixme + 5, "cm-openidea-todo-keyword"],
     ]);
     view.destroy();
+  });
+});
+
+describe("scope based and changes tabs", () => {
+  it("maps scopes to backend scopes", () => {
+    const custom = [{ name: "Web", pattern: "file:web//*" }];
+    expect(todoSearchScope("projectFiles", custom, [])).toEqual({ kind: "project" });
+    expect(todoSearchScope("testFiles", custom, [])).toEqual({ kind: "fileSet", set: "test" });
+    expect(todoSearchScope("openFiles", custom, [])).toBeNull();
+    expect(todoSearchScope("openFiles", custom, ["/p/a.ts"])).toEqual({ kind: "files", paths: ["/p/a.ts"] });
+    expect(todoSearchScope("custom:Web", custom, [])).toEqual({ kind: "pattern", pattern: "file:web//*" });
+    expect(todoSearchScope("custom:Gone", custom, [])).toBeNull();
+  });
+
+  it("keeps only files of the chosen change list (the active one by default)", () => {
+    const lists = [
+      { id: "default", name: "Changes", active: true, files: [{ path: "/p/a.ts" }, { path: "/p/new.ts" }, { path: "/p/gone.ts", deleted: true }] },
+      { id: "ui", name: "UI", active: false, files: [{ path: "/p/b.ts" }] },
+    ];
+    const changed = changedPaths(lists);
+    expect([...changed]).toEqual(["/p/a.ts", "/p/new.ts"]);
+    const item = (path: string) => ({ path, line: 0, col: 0, keyword: "TODO", text: "TODO" });
+    const map = new Map(["/p/a.ts", "/p/b.ts"].map((p) => [p, [item(p)]]));
+    expect(groupTodos(map, { keywords: null, paths: changed }).map((g) => g.path)).toEqual(["/p/a.ts"]);
+    expect([...changedPaths(lists, "ui")]).toEqual(["/p/b.ts"]);
+    expect([...changedPaths(lists, "gone")]).toEqual(["/p/a.ts", "/p/new.ts"]);
+    expect(changedPaths([]).size).toBe(0);
   });
 });

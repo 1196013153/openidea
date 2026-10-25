@@ -43,6 +43,7 @@ fn cfg(id: &str, command: &str, args: &[&str]) -> RunConfig {
         is_test: false,
         debug_adapter: None,
         allow_parallel: false,
+        extras: Default::default(),
     }
 }
 
@@ -272,4 +273,109 @@ fn exit_event_goes_to_the_starters_sink_only() {
     std::thread::sleep(Duration::from_millis(100));
     assert!(other_events.try_recv().is_err());
     assert!(h.events.try_recv().is_err());
+}
+
+#[test]
+fn env_files_system_env_and_redirects() {
+    let h = harness();
+    let root = h.root.path();
+    std::fs::write(root.join(".env"), "FROM_FILE=file\nOVERRIDDEN=file\n").unwrap();
+    std::fs::write(root.join("input.txt"), "from file\n").unwrap();
+    let mut config = cfg(
+        "t:extras",
+        "/bin/sh",
+        &["-c", "printf '%s|%s|%s|' \"$FROM_FILE\" \"$OVERRIDDEN\" \"${HOME:-unset}\"; cat"],
+    );
+    config.env.insert("OVERRIDDEN".into(), "config".into());
+    config.extras.env_files = vec![".env".into()];
+    config.extras.include_system_env = false;
+    config.extras.stdin_file = Some("input.txt".into());
+    config.extras.output_file = Some("logs/out.log".into());
+    let (id, chunks) = start(&h, &config);
+    // stdin comes from the file: writing to it is refused.
+    assert!(h.pm.write_stdin(id, "x").is_err());
+    assert_eq!(wait_exit(&h, id, Duration::from_secs(10)), Some(0));
+    assert_eq!(text(&chunks, stdout), "file|config|unset|from file\n");
+    let saved = std::fs::read_to_string(root.join("logs/out.log")).unwrap();
+    assert!(saved.contains("file|config|unset|from file\n"), "{saved}");
+    assert!(saved.contains("Process finished with exit code 0"), "{saved}");
+
+    // With the system environment, HOME is inherited.
+    config.extras.include_system_env = true;
+    config.extras.stdin_file = None;
+    config.extras.output_file = None;
+    config.args = vec!["-c".into(), "printf '%s' \"${HOME:+set}\"".into()];
+    let (id, chunks) = start(&h, &config);
+    assert_eq!(wait_exit(&h, id, Duration::from_secs(10)), Some(0));
+    assert_eq!(text(&chunks, stdout), "set");
+
+    config.extras.env_files = vec!["missing.env".into()];
+    assert!(h.pm.start(root, &config, &StartOptions::default(), h.sink.clone(), Box::new(|_| {})).is_err());
+}
+
+#[test]
+fn emulated_terminal_is_a_tty_with_input_resize_and_exit_code() {
+    let h = harness();
+    let script = "[ -t 1 ] && echo tty-yes; echo \"term=$TERM\"; read line; echo \"got:$line\"; stty size; exit 3";
+    let mut config = cfg("t:pty", "/bin/sh", &["-c", script]);
+    config.extras.emulate_terminal = true;
+    let (id, chunks) = start(&h, &config);
+    assert!(h.pm.list().iter().any(|r| r.id == id && r.pty));
+    wait_for(&chunks, "term=xterm-256color");
+    h.pm.resize(id, 100, 40).unwrap();
+    h.pm.write_stdin(id, "hello\r").unwrap();
+    let out = wait_for(&chunks, "40 100");
+    assert!(out.contains("tty-yes"), "{out:?}");
+    assert!(out.contains("got:hello"), "{out:?}");
+    assert_eq!(wait_exit(&h, id, Duration::from_secs(10)), Some(3));
+    assert!(text(&chunks, system).contains("Process finished with exit code 3"));
+    // Stdout and stderr share the terminal.
+    assert_eq!(text(&chunks, stderr), "");
+}
+
+#[test]
+fn emulated_terminal_stop_reports_the_signal() {
+    let h = harness();
+    let mut config = cfg("t:pty-stop", "/bin/sh", &["-c", "echo ready; sleep 30"]);
+    config.extras.emulate_terminal = true;
+    let (id, chunks) = start(&h, &config);
+    wait_for(&chunks, "ready");
+    h.pm.stop(id).unwrap();
+    let code = wait_exit(&h, id, Duration::from_secs(10));
+    assert_eq!(code, Some(130), "{:?}", text(&chunks, system));
+    assert!(text(&chunks, system).contains("SIGINT"));
+}
+
+#[test]
+fn emulated_terminal_refuses_input_redirection() {
+    let h = harness();
+    let mut config = cfg("t:pty-stdin", "/bin/cat", &[]);
+    config.extras.emulate_terminal = true;
+    config.extras.stdin_file = Some("input.txt".into());
+    assert!(h.pm.start(h.root.path(), &config, &StartOptions::default(), h.sink.clone(), Box::new(|_| {})).is_err());
+}
+
+#[test]
+fn pipe_runs_cannot_be_resized() {
+    let h = harness();
+    let (id, _chunks) = start(&h, &cfg("t:pipes", "/bin/sh", &["-c", "sleep 5"]));
+    assert!(!h.pm.list().iter().find(|r| r.id == id).unwrap().pty);
+    assert!(h.pm.resize(id, 80, 24).is_err());
+    h.pm.stop(id).unwrap();
+    wait_exit(&h, id, Duration::from_secs(10));
+}
+
+#[test]
+fn stop_command_runs_first_with_the_run_environment() {
+    let h = harness();
+    let mut config = cfg("t:stop-cmd", "/bin/sh", &["-c", "echo ready; sleep 30"]);
+    config.env.insert("OPENIDEA_MARKER".into(), "stopped".into());
+    config.extras.stop_command = Some("touch \"$OPENIDEA_MARKER\"".into());
+    let (id, chunks) = start(&h, &config);
+    wait_for(&chunks, "ready");
+    h.pm.stop_with_grace(id, Duration::from_millis(200)).unwrap();
+    // `sleep` ignores nothing: the signals that follow the stop command end it.
+    assert_eq!(wait_exit(&h, id, Duration::from_secs(10)), Some(130));
+    assert!(h.root.path().join("stopped").exists(), "stop command did not run");
+    assert!(text(&chunks, system).contains("touch \"$OPENIDEA_MARKER\""));
 }
