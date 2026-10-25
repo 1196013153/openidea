@@ -868,6 +868,11 @@ fn smart_and_force_checkout_with_local_changes_in_the_way() {
     assert_eq!(outcome, CheckoutOutcome::Conflicts { files: vec!["f.txt".into()] });
     assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("other"));
     assert_eq!(repo.stashes().unwrap().len(), 1, "git keeps the stash after a conflicting pop");
+    // The stashed edit is the user's side of the merge, the checked-out branch the other.
+    let v = repo.merge_versions(&fx.path("f.txt")).unwrap();
+    assert_eq!(v.sides.operation.as_deref(), Some("unstash"));
+    assert!(v.sides.reversed);
+    assert_eq!(v.ours.as_deref(), Some("1\nmine\n3\n4\n5\n"));
 
     // Force discards the change in the way.
     fx.git(&["reset", "-q", "--hard"]);

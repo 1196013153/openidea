@@ -56,6 +56,12 @@ pub(crate) fn merge_sides(r: &Repo) -> IdeResult<MergeSides> {
         }
         Some("cherry-pick") => sides.commit = read("CHERRY_PICK_HEAD").map(short),
         Some("revert") => sides.commit = read("REVERT_HEAD").map(short),
+        // Conflicts outside an operation come from restoring stashed changes (Smart
+        // Checkout, update with autostash): stage 2 is the new HEAD, stage 3 the user's.
+        None if !crate::write::unmerged_paths(r)?.is_empty() => {
+            sides.operation = Some("unstash".into());
+            sides.reversed = true;
+        }
         _ => {}
     }
     Ok(sides)

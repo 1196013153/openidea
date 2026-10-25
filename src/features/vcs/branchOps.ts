@@ -75,6 +75,8 @@ async function performCheckout(rev: string, success: () => string): Promise<bool
     const opts = options;
     const outcome = await runOp(`Checkout ${rev}`, () => call(commands.vcsCheckout(currentRepo(), rev, false, opts)));
     if (!outcome) return false;
+    // `success` may name the branch now checked out.
+    if (outcome.kind === "done" || outcome.kind === "conflicts") await refreshNow();
     switch (outcome.kind) {
       case "done":
         notifications().notify({ group: "vcs", level: "info", title: success() });

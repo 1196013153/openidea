@@ -71,6 +71,10 @@ describe("mergeTitles", () => {
       yours: "Local Changes",
       theirs: "Changes from cherry-pick abc12345",
     });
+    expect(mergeTitles(sides("unstash"))).toEqual({
+      yours: "Your uncommitted changes",
+      theirs: "Changes from feature",
+    });
     expect(mergeTitles(null)).toEqual({ yours: "Your version", theirs: "Theirs (incoming)" });
   });
 });

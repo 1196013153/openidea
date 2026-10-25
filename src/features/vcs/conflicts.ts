@@ -133,6 +133,11 @@ export function mergeTitles(sides: MergeSides | null | undefined): { yours: stri
         yours: branch ? `Changes from ${branch}` : "Your version",
         theirs: other ? `Changes from ${other}` : commit ? `Changes from ${commit}` : "Changes from diverging branches",
       };
+    case "unstash":
+      return {
+        yours: "Your uncommitted changes",
+        theirs: branch ? `Changes from ${branch}` : "Changes from remote",
+      };
     case "cherry-pick":
       return {
         yours: "Local Changes",
