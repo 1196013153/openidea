@@ -32,6 +32,7 @@ import {
   type DebugSession,
 } from "./state";
 import { focusedDebugView } from "./ui/focusedView";
+import { expressionAt } from "./editor/valueTooltip";
 import {
   openBreakpointsDialog,
   openConfigChooser,
@@ -125,6 +126,16 @@ function cursor(): { path: string; line: number; selection: string } | null {
     line: state.doc.lineAt(main.head).number - 1,
     selection: state.sliceDoc(main.from, main.to),
   };
+}
+
+/** Evaluate's initial text, as in IDEA: the selection, else the expression at the caret. */
+function evaluateSeed(): string {
+  const ed = activeEditor();
+  if (!ed) return "";
+  const { state } = ed.view;
+  const sel = state.selection.main;
+  if (!sel.empty) return state.sliceDoc(sel.from, sel.to);
+  return expressionAt(ed.view, sel.head)?.text ?? "";
 }
 
 async function startConfig(arg: unknown) {
@@ -243,6 +254,8 @@ export function registerDebugActions(): () => void {
       category: "Debug",
       icon: "rerun",
       when: "debugCanRerun",
+      // ⌘R / Ctrl+F5 rerun only in the Debug tool window (⌘R is Replace in the editor).
+      keyWhen: "activeToolWindow == 'debug'",
       run: () => {
         const s = activeSession();
         if (s) void rerunSession(rootOf(s).id);
@@ -518,10 +531,7 @@ export function registerDebugActions(): () => void {
       title: "Evaluate Expression…",
       category: "Debug",
       when: "debugSessionActive",
-      run: () => {
-        const c = cursor();
-        openEvaluateDialog(c?.selection.split("\n")[0] ?? "");
-      },
+      run: () => openEvaluateDialog(evaluateSeed()),
     },
     {
       id: "debug.showToolWindow",

@@ -17,6 +17,12 @@ interface SeState {
   session: number;
   /** Code preview of the selected result under the list (remembered). */
   preview: boolean;
+  /**
+   * IDEA's auto "everywhere": while the user hasn't picked a scope, a query
+   * with no project results widens to non-project items; `notFound` is that query.
+   */
+  autoEverywhere: boolean;
+  notFound: string | null;
 }
 
 const PREVIEW_KEY = "openidea.search.everywherePreview.v1";
@@ -30,6 +36,8 @@ export const useSearchEverywhere = create<SeState>(() => ({
   ctx: {},
   session: 0,
   preview: loadJson<unknown>(PREVIEW_KEY, false) === true,
+  autoEverywhere: true,
+  notFound: null,
 }));
 
 export function setSearchEverywherePreview(preview: boolean) {
@@ -37,16 +45,15 @@ export function setSearchEverywherePreview(preview: boolean) {
   saveJson(PREVIEW_KEY, preview);
 }
 
-/** Opens (or re-targets) the dialog. Re-invoking the same scope toggles "include non-project items", like IDEA. */
-export function showSearchEverywhere(tab: SeTab, opts: { query?: string; toggleOnRepeat?: boolean } = {}) {
+/**
+ * Opens the dialog, or while it is open switches to `tab` (the query is kept);
+ * re-invoking the shown tab toggles "include non-project items", like IDEA.
+ */
+export function showSearchEverywhere(tab: SeTab, opts: { query?: string } = {}) {
   const s = useSearchEverywhere.getState();
   if (s.open) {
-    if (s.tab === tab || (opts.toggleOnRepeat && tab === "all")) {
-      useSearchEverywhere.setState({ includeNonProject: !s.includeNonProject });
-    } else {
-      useSearchEverywhere.setState({ tab });
-    }
-    if (opts.query !== undefined) useSearchEverywhere.setState({ query: opts.query });
+    if (s.tab === tab) setIncludeNonProject(!s.includeNonProject);
+    else selectSearchEverywhereTab(tab);
     return;
   }
   useSearchEverywhere.setState({
@@ -54,9 +61,38 @@ export function showSearchEverywhere(tab: SeTab, opts: { query?: string; toggleO
     tab,
     query: opts.query ?? s.query,
     includeNonProject: false,
+    autoEverywhere: true,
+    notFound: null,
     ctx: { ...getContext(), popupOpen: false },
     session: s.session + 1,
   });
+}
+
+/** The user's choice of scope: stops widening automatically. */
+export function setIncludeNonProject(includeNonProject: boolean, patch: Partial<SeState> = {}) {
+  useSearchEverywhere.setState({ ...patch, includeNonProject, autoEverywhere: false, notFound: null });
+}
+
+/** Switching tabs drops an automatically widened scope. */
+export function selectSearchEverywhereTab(tab: SeTab, patch: Partial<SeState> = {}) {
+  const s = useSearchEverywhere.getState();
+  const reset = s.autoEverywhere && s.notFound !== null ? { includeNonProject: false, notFound: null } : {};
+  useSearchEverywhere.setState({ ...patch, ...reset, tab });
+}
+
+/** Nothing in the project for `query`: search everywhere instead (as IDEA). */
+export function widenSearchEverywhere(query: string) {
+  const s = useSearchEverywhere.getState();
+  if (!s.autoEverywhere || s.includeNonProject || !query.trim()) return;
+  useSearchEverywhere.setState({ includeNonProject: true, notFound: query });
+}
+
+/** A new query that no longer contains the not-found one narrows back to the project. */
+export function onSearchEverywhereQuery(query: string) {
+  const s = useSearchEverywhere.getState();
+  if (s.notFound === null || !s.autoEverywhere || !s.includeNonProject) return;
+  if (s.notFound.length > 1 && query.includes(s.notFound)) return;
+  useSearchEverywhere.setState({ includeNonProject: false, notFound: null });
 }
 
 export function hideSearchEverywhere() {

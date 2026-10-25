@@ -250,3 +250,125 @@ pub(crate) fn anchors(tree: &Tree, text: &str, name: &str) -> Vec<Range> {
     });
     out
 }
+
+/// A path written in a document: an HTML URL attribute, a CSS `url()` / `@import`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FileReference {
+    pub range: Range,
+    pub value: String,
+}
+
+/// HTML attributes whose value is a URL.
+const URL_ATTRIBUTES: &[&str] = &[
+    "href",
+    "src",
+    "srcset",
+    "action",
+    "formaction",
+    "poster",
+    "data",
+    "cite",
+    "background",
+    "manifest",
+    "xlink:href",
+    "longdesc",
+    "icon",
+];
+
+/// `url(…)` arguments and `@import` targets of a stylesheet: `(start, end)` byte ranges.
+fn css_paths(tree: &Tree, css_text: &str, out: &mut Vec<(usize, usize)>) {
+    let target = |n: Node| -> Option<(usize, usize)> {
+        let n =
+            if n.kind() == "string_value" { n.named_child(0).filter(|c| c.kind() == "string_content")? } else { n };
+        matches!(n.kind(), "plain_value" | "string_content").then(|| (n.start_byte(), n.end_byte()))
+    };
+    walk(tree.root_node(), &mut |n| {
+        match n.kind() {
+            "import_statement" => {
+                if let Some(first) = n.named_child(0)
+                    && first.kind() == "string_value"
+                {
+                    out.extend(target(first));
+                }
+            }
+            "call_expression" => {
+                let is_url =
+                    n.named_child(0).is_some_and(|f| f.kind() == "function_name" && text_of(f, css_text) == "url");
+                if is_url
+                    && let Some(args) = n.child_by_field_name("arguments").or_else(|| n.named_child(1))
+                    && let Some(arg) = args.named_child(0)
+                {
+                    out.extend(target(arg));
+                }
+            }
+            _ => {}
+        }
+        true
+    });
+}
+
+/// File paths written in an HTML document or a stylesheet.
+pub(crate) fn file_references(g: &Grammar, css: Option<&Grammar>, tree: &Tree, text: &str) -> Vec<FileReference> {
+    let idx = LineIndex::new(text);
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for (base, css_text) in css_regions(g.spec.name, tree, text) {
+        let parsed;
+        let css_tree = if g.spec.name == "css" {
+            tree
+        } else {
+            let Some(t) = css.and_then(|c| parse(&c.language, css_text, None)) else { continue };
+            parsed = t;
+            &parsed
+        };
+        let mut found = Vec::new();
+        css_paths(css_tree, css_text, &mut found);
+        spans.extend(found.into_iter().map(|(s, e)| (base + s, base + e)));
+    }
+    if g.spec.name == "html" {
+        walk(tree.root_node(), &mut |n| {
+            if n.kind() != "attribute" {
+                return true;
+            }
+            let name = n.child(0).map(|a| text_of(a, text).to_ascii_lowercase()).unwrap_or_default();
+            let mut value = None;
+            walk(n, &mut |v| {
+                if v.kind() == "attribute_value" {
+                    value = Some(v);
+                }
+                value.is_none()
+            });
+            let Some(v) = value else { return false };
+            let (vs, vtext) = (v.start_byte(), text_of(v, text));
+            match name.as_str() {
+                "srcset" => {
+                    // `a.png 1x, b.png 2x`: the URL of each candidate.
+                    let mut at = 0;
+                    for part in vtext.split(',') {
+                        let lead = part.len() - part.trim_start().len();
+                        let url = part.split_whitespace().next().unwrap_or_default();
+                        if !url.is_empty() {
+                            spans.push((vs + at + lead, vs + at + lead + url.len()));
+                        }
+                        at += part.len() + 1;
+                    }
+                }
+                "style" => {
+                    let wrapped = format!("x{{{vtext}}}");
+                    if let Some(t) = css.and_then(|c| parse(&c.language, &wrapped, None)) {
+                        let mut found = Vec::new();
+                        css_paths(&t, &wrapped, &mut found);
+                        spans.extend(found.into_iter().map(|(s, e)| (vs + s - 2, vs + e - 2)));
+                    }
+                }
+                _ if URL_ATTRIBUTES.contains(&name.as_str()) && !vtext.trim().is_empty() => {
+                    spans.push((vs, vs + vtext.len()));
+                }
+                _ => {}
+            }
+            false
+        });
+    }
+    spans.sort_unstable();
+    spans.into_iter().map(|(s, e)| FileReference { range: idx.range(s, e), value: text[s..e].to_owned() }).collect()
+}

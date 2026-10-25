@@ -1,6 +1,7 @@
 /**
- * Anchored popover: portal + flip/shift positioning, Escape / outside-click
- * dismissal (top-most popup only), optional focus trap and focus restore.
+ * Anchored popover: portal + flip/shift positioning, Escape / outside-click /
+ * window-deactivation dismissal (top-most popup only for Escape), optional
+ * focus trap and focus restore.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -15,7 +16,7 @@ import {
   type Placement,
   type VirtualElement,
 } from "@floating-ui/react-dom";
-import { FOCUSABLE, openLayer, trapTab } from "./popupState";
+import { FOCUSABLE, onWindowDeactivate, openLayer, trapTab } from "./popupState";
 import styles from "./Popup.module.css";
 
 export type PopupAnchor = Element | VirtualElement | RefObject<Element | null> | { x: number; y: number } | null;
@@ -37,6 +38,8 @@ export interface PopupProps {
   autoFocus?: boolean;
   restoreFocus?: boolean;
   closeOnOutsideClick?: boolean;
+  /** Close (as "outside") when the app window loses focus, like IDEA popups (default true). */
+  closeOnDeactivate?: boolean;
   /** Match the anchor's width (dropdowns). */
   matchWidth?: boolean;
   /** Plain surface without border/shadow styling. */
@@ -71,6 +74,7 @@ function PopupInner({
   autoFocus = true,
   restoreFocus = true,
   closeOnOutsideClick = true,
+  closeOnDeactivate = true,
   matchWidth = false,
   unstyled = false,
   ...aria
@@ -129,7 +133,9 @@ function PopupInner({
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onPointer, true);
+    const stopDeactivate = closeOnDeactivate ? onWindowDeactivate(() => onCloseRef.current("outside")) : undefined;
     return () => {
+      stopDeactivate?.();
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointer, true);
       layer.release();

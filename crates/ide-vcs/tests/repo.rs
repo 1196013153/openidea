@@ -771,6 +771,213 @@ fn checkout_create_detached_delete_rebase() {
 }
 
 #[test]
+fn smart_and_force_checkout_with_local_changes_in_the_way() {
+    let fx = Fixture::new();
+    fx.write("f.txt", "1\n2\n3\n4\n5\n");
+    fx.commit_all("base");
+    fx.git(&["checkout", "-q", "-b", "other"]);
+    fx.write("f.txt", "1\nother\n3\n4\n5\n");
+    fx.commit_all("other edit");
+    fx.git(&["checkout", "-q", "main"]);
+    let repo = fx.repo();
+    let opts = |mode| CheckoutOptions { mode, diverged: None };
+
+    // A non-conflicting local edit to a file the switch rewrites.
+    fx.write("f.txt", "1\n2\n3\n4\nlocal\n");
+    let outcome = repo.checkout_with("other", false, &opts(CheckoutMode::Normal)).unwrap();
+    assert_eq!(outcome, CheckoutOutcome::LocalChanges { files: vec!["f.txt".into()] });
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("main"), "nothing changed");
+    assert_eq!(fx.read("f.txt"), "1\n2\n3\n4\nlocal\n");
+
+    let outcome = repo.checkout_with("other", false, &opts(CheckoutMode::Smart)).unwrap();
+    assert_eq!(outcome, CheckoutOutcome::Done);
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("other"));
+    assert_eq!(fx.read("f.txt"), "1\nother\n3\n4\nlocal\n", "local change carried over");
+    assert!(repo.stashes().unwrap().is_empty(), "stash restored and dropped");
+
+    // A local edit that conflicts with the target: smart checkout leaves a conflict.
+    fx.git(&["checkout", "-q", "-f", "main"]);
+    fx.write("f.txt", "1\nmine\n3\n4\n5\n");
+    let outcome = repo.checkout_with("other", false, &opts(CheckoutMode::Smart)).unwrap();
+    assert_eq!(outcome, CheckoutOutcome::Conflicts { files: vec!["f.txt".into()] });
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("other"));
+    assert_eq!(repo.stashes().unwrap().len(), 1, "git keeps the stash after a conflicting pop");
+
+    // Force discards the change in the way.
+    fx.git(&["reset", "-q", "--hard"]);
+    fx.git(&["stash", "drop", "-q"]);
+    fx.write("f.txt", "1\nmine\n3\n4\n5\n");
+    fx.write("untouched.txt", "new\n");
+    let outcome = repo.checkout_with("main", false, &opts(CheckoutMode::Force)).unwrap();
+    assert_eq!(outcome, CheckoutOutcome::Done);
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("main"));
+    assert_eq!(fx.read("f.txt"), "1\n2\n3\n4\n5\n");
+    assert_eq!(fx.read("untouched.txt"), "new\n", "untracked files survive");
+}
+
+#[test]
+fn checkout_remote_branch_with_existing_local_namesake() {
+    let (fx, bare) = with_remote();
+    let repo = fx.repo();
+    // Another clone advances origin/main.
+    let other = fx._tmp.path().join("other");
+    git_in(fx._tmp.path(), &["clone", "-q", bare.to_str().unwrap(), other.to_str().unwrap()]);
+    configure(&other);
+    std::fs::write(other.join("b.txt"), "remote\n").unwrap();
+    git_in(&other, &["add", "-A"]);
+    git_in(&other, &["commit", "-q", "-m", "remote work"]);
+    git_in(&other, &["push", "-q", "origin", "main"]);
+    fx.git(&["fetch", "-q"]);
+    fx.git(&["checkout", "-q", "-b", "topic"]);
+    let none = CheckoutOptions::default();
+
+    // Local main is only behind: it is fast-forwarded and checked out.
+    assert_eq!(repo.checkout_with("origin/main", false, &none).unwrap(), CheckoutOutcome::Done);
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("main"));
+    assert_eq!(fx.git(&["rev-parse", "main"]), fx.git(&["rev-parse", "origin/main"]));
+
+    // Local main has its own commit: the user must choose; nothing changes meanwhile.
+    fx.write("c.txt", "local\n");
+    let local_tip = fx.commit_all("local work");
+    fx.git(&["checkout", "-q", "topic"]);
+    let outcome = repo.checkout_with("origin/main", false, &none).unwrap();
+    assert_eq!(outcome, CheckoutOutcome::LocalBranchAhead { local: "main".into(), remote: "origin/main".into() });
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("topic"));
+
+    // Rebase onto Remote keeps the local commit on top of origin/main.
+    let rebase = CheckoutOptions { diverged: Some(DivergedLocal::Rebase), ..Default::default() };
+    assert_eq!(repo.checkout_with("origin/main", false, &rebase).unwrap(), CheckoutOutcome::Done);
+    assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("main"));
+    assert_eq!(fx.git(&["rev-parse", "main~1"]), fx.git(&["rev-parse", "origin/main"]));
+    assert_eq!(fx.git(&["log", "-1", "--format=%s"]), "local work");
+
+    // Drop Local Commits resets main to origin/main.
+    fx.git(&["checkout", "-q", "topic"]);
+    let reset = CheckoutOptions { diverged: Some(DivergedLocal::Reset), ..Default::default() };
+    assert_eq!(repo.checkout_with("origin/main", false, &reset).unwrap(), CheckoutOutcome::Done);
+    assert_eq!(fx.git(&["rev-parse", "main"]), fx.git(&["rev-parse", "origin/main"]));
+    assert_ne!(fx.git(&["rev-parse", "main"]), local_tip);
+    assert_eq!(repo.branch_info().unwrap().upstream.as_deref(), Some("origin/main"));
+}
+
+#[test]
+fn delete_branch_without_asking_and_restore_it() {
+    let (fx, _bare) = with_remote();
+    let repo = fx.repo();
+    fx.git(&["checkout", "-q", "-b", "merged", "--track", "origin/main"]);
+    fx.git(&["checkout", "-q", "-b", "work"]);
+    fx.write("w.txt", "work\n");
+    let work_tip = fx.commit_all("work");
+    fx.git(&["checkout", "-q", "main"]);
+
+    let merged = repo.delete_branch_restorable("merged").unwrap();
+    assert!(!merged.unmerged);
+    assert_eq!(merged.upstream.as_deref(), Some("origin/main"));
+
+    let work = repo.delete_branch_restorable("work").unwrap();
+    assert!(work.unmerged, "not fully merged branches are force-deleted and reported");
+    assert_eq!(work.tip, work_tip);
+    assert!(!repo.branches().unwrap().iter().any(|b| b.name == "work"));
+    assert!(repo.delete_branch_restorable("main").is_err(), "the current branch cannot be deleted");
+
+    repo.restore_branch(&work).unwrap();
+    repo.restore_branch(&merged).unwrap();
+    let branches = repo.branches().unwrap();
+    let find = |n: &str| branches.iter().find(|b| !b.remote && b.name == n).unwrap().clone();
+    assert_eq!(find("work").commit, work_tip);
+    assert_eq!(find("merged").upstream.as_deref(), Some("origin/main"));
+}
+
+fn range(h: &LineHunk) -> HunkRange {
+    HunkRange { start: h.start, lines: h.lines, old_start: h.old_start, old_lines: h.old_lines }
+}
+
+#[test]
+fn partial_commit_of_chosen_hunks_leaves_worktree_and_index_alone() {
+    let fx = Fixture::new();
+    let base = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n";
+    fx.write("f.txt", base);
+    fx.write("other.txt", "o\n");
+    fx.write("staged.txt", "s\n");
+    fx.commit_all("base");
+    let repo = fx.repo();
+
+    let edited = "A\nb\nc\nd\ne\nf\ng\nh\ni\nJ\nk\n";
+    fx.write("f.txt", edited);
+    fx.write("other.txt", "o2\n");
+    fx.write("staged.txt", "s2\n");
+    repo.stage(&[fx.path("other.txt")]).unwrap();
+    let hunks = diff_hunks(base, edited);
+    assert_eq!(hunks.len(), 2);
+
+    // Commit the first hunk of f.txt plus the staged other.txt; staged.txt is not staged.
+    let options = CommitOptions {
+        partial: vec![PartialCommitFile { path: fx.path("f.txt").into(), hunks: vec![range(&hunks[0])] }],
+        ..Default::default()
+    };
+    repo.commit_with("partial", &options).unwrap();
+
+    assert_eq!(fx.git(&["show", "HEAD:f.txt"]), "A\nb\nc\nd\ne\nf\ng\nh\ni\nj");
+    assert_eq!(fx.git(&["show", "HEAD:other.txt"]), "o2");
+    assert_eq!(fx.git(&["show", "HEAD:staged.txt"]), "s");
+    // The working tree is untouched.
+    assert_eq!(fx.read("f.txt"), edited);
+    assert_eq!(fx.read("staged.txt"), "s2\n");
+    // The index matches the commit; the rest of f.txt is an unstaged change.
+    assert_eq!(fx.git(&["diff", "--cached", "--name-only"]), "");
+    let st = repo.status().unwrap();
+    assert_eq!(status_of(&st, "f.txt").unstaged, Some(ChangeKind::Modified));
+    assert_eq!(status_of(&st, "f.txt").staged, None);
+    assert!(!fx.dir.join(".git/openidea-partial-index").exists());
+
+    // A stale hunk (the file changed since the UI computed it) refuses to commit anything.
+    let before = fx.git(&["rev-parse", "HEAD"]);
+    let stale = CommitOptions {
+        partial: vec![PartialCommitFile { path: fx.path("f.txt").into(), hunks: vec![range(&hunks[0])] }],
+        ..Default::default()
+    };
+    let err = repo.commit_with("stale", &stale).unwrap_err();
+    assert!(err.message.contains("changed"), "{}", err.message);
+    assert_eq!(fx.git(&["rev-parse", "HEAD"]), before);
+    assert_eq!(fx.git(&["diff", "--cached", "--name-only"]), "");
+    assert!(!fx.dir.join(".git/openidea-partial-index").exists());
+
+    // The remaining hunk commits on its own; then nothing is left.
+    let rest = diff_hunks(&repo.file_at(&fx.path("f.txt"), None).unwrap().unwrap(), edited);
+    assert_eq!(rest.len(), 1);
+    let options = CommitOptions {
+        partial: vec![PartialCommitFile { path: fx.path("f.txt").into(), hunks: vec![range(&rest[0])] }],
+        ..Default::default()
+    };
+    repo.commit_with("rest", &options).unwrap();
+    assert_eq!(repo.file_at(&fx.path("f.txt"), None).unwrap().as_deref(), Some(edited));
+    assert!(repo.status().unwrap().iter().all(|f| f.rel_path != "f.txt"));
+    assert_eq!(fx.read("staged.txt"), "s2\n");
+
+    // A failing pre-commit hook leaves everything as it was.
+    fx.write("f.txt", "Z\nb\nc\nd\ne\nf\ng\nh\ni\nJ\nk\nl\n");
+    let hook = fx.dir.join(".git/hooks/pre-commit");
+    std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let head = fx.git(&["rev-parse", "HEAD"]);
+    let hunks = diff_hunks(edited, &fx.read("f.txt"));
+    let options = CommitOptions {
+        run_hooks: true,
+        partial: vec![PartialCommitFile { path: fx.path("f.txt").into(), hunks: vec![range(&hunks[0])] }],
+        ..Default::default()
+    };
+    assert!(repo.commit_with("hooked", &options).is_err());
+    assert_eq!(fx.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(fx.git(&["diff", "--cached", "--name-only"]), "");
+    assert_eq!(fx.read("f.txt"), "Z\nb\nc\nd\ne\nf\ng\nh\ni\nJ\nk\nl\n");
+}
+
+#[test]
 fn partial_staging_with_built_patch() {
     let fx = Fixture::new();
     let base = "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\n";

@@ -13,8 +13,9 @@ describe("editor session", () => {
     s = open(s, "/p/a.ts");
     s = open(s, "/p/b.ts");
     s = togglePin(s, s.activePane, s.panes[s.activePane]!.tabs[1]!.id);
-    s = open(s, "/p/c.ts", { preview: true });
     s = openTab(s, s.activePane, { kind: "diff", key: "diff:x", data: { big: true } }).state;
+    // A regular tab opened later would close the preview: open it in the background last.
+    s = open(s, "/p/c.ts", { preview: true, activate: false });
     const first = s.activePane;
     s = splitPane(s, first, "column").state;
     s = open(s, "/p/d.ts");

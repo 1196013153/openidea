@@ -1,10 +1,12 @@
 import { registerAction, registerActions } from "@/platform/actions";
 import { useContributions } from "../contributions";
 import { focusEditor } from "../focus";
+import { closeSelectedContent } from "./content";
 import {
   activateToolWindow,
   hideActiveToolWindow,
   hideAllToolWindows,
+  hideToolWindow,
   jumpToLastToolWindow,
   useToolWindowLayout,
   toggleMaximizeToolWindow,
@@ -52,11 +54,24 @@ export function installToolWindowActions(): () => void {
       run: jumpToLastToolWindow,
     },
     {
+      // IDEA: also from the editor, hiding the last active window if it is still shown.
       id: "toolwindow.hideActive",
       title: "Hide Active Tool Window",
       category: "Window",
-      when: "toolWindowFocus && !popupOpen",
+      when: "projectOpen && !popupOpen",
       run: hideActiveToolWindow,
+    },
+    {
+      // Close Content, as IDEA (⌘W / Ctrl+F4 in a tool window): the selected closable tab, else the window.
+      id: "toolwindow.closeContent",
+      title: "Close Tool Window Tab",
+      category: "Window",
+      when: "toolWindowFocus && !popupOpen",
+      run: () => {
+        const s = useToolWindowLayout.getState();
+        const id = s.focused ?? s.lastActive;
+        if (id && !closeSelectedContent(id)) hideToolWindow(id);
+      },
     },
     {
       id: "toolwindow.focusEditor",

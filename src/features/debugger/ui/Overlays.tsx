@@ -1,11 +1,11 @@
 /** Debugger popovers and dialogs: breakpoint properties, View Breakpoints, Evaluate, config chooser. */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MutableRefObject } from "react";
 import { basename, relativePath, useProject } from "@/platform/project";
 import { executeAction } from "@/platform/actions";
 import { call, commands, type AttachableProcess, type RunConfig, type Variable } from "@/platform/ipc";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
-import { Button, Checkbox, Dialog, Icon, IconButton, Input, Kbd, List, Popup, Toggle, T } from "@/ui";
-import { isConditional, type BreakpointEntry } from "../breakpoints/model";
+import { Button, Checkbox, Dialog, Icon, IconButton, Input, Kbd, List, Menu, Popup, Toggle, T } from "@/ui";
+import { isConditional, suspends, type BreakpointEntry } from "../breakpoints/model";
 import {
   removeAllBreakpoints,
   removeBreakpoint,
@@ -31,6 +31,7 @@ import {
 } from "../breakpoints/exceptions";
 import { closeBreakpointPopover, useOverlays } from "./popoverStore";
 import { VariablesView, type VarRoot } from "./VariablesView";
+import { pushHistory, readHistory } from "./expressionHistory";
 import styles from "./Overlays.module.css";
 
 export function DebuggerOverlays() {
@@ -74,32 +75,10 @@ function BreakpointEditor({
   at: { x: number; y: number };
   focusLog: boolean;
 }) {
-  const [condition, setCondition] = useState(bp.condition ?? "");
-  const [hitCondition, setHitCondition] = useState(bp.hitCondition ?? "");
-  const [logEnabled, setLogEnabled] = useState(focusLog || !!bp.logMessage);
-  const [logMessage, setLogMessage] = useState(bp.logMessage ?? "");
-  const draft = useRef({ condition, hitCondition, logEnabled, logMessage });
-  useEffect(() => {
-    draft.current = { condition, hitCondition, logEnabled, logMessage };
-  });
-
-  const commit = () => {
-    const d = draft.current;
-    updateBreakpoint(path, bp.id, {
-      condition: d.condition.trim() || null,
-      hitCondition: d.hitCondition.trim() || null,
-      logMessage: d.logEnabled ? d.logMessage.trim() || null : null,
-    });
-  };
+  const commitText = useRef<(() => void) | null>(null);
   const close = () => {
-    commit();
+    commitText.current?.();
     closeBreakpointPopover();
-  };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      close();
-    }
   };
 
   return (
@@ -111,50 +90,13 @@ function BreakpointEditor({
             {basename(path)}:{bp.line + 1}
           </span>
         </div>
-        <Checkbox
-          checked={bp.enabled}
-          onChange={(enabled) => updateBreakpoint(path, bp.id, { enabled })}
-          label="Enabled"
+        <BreakpointFields
+          path={path}
+          bp={bp}
+          focus={focusLog ? "log" : "condition"}
+          onEnter={close}
+          commitRef={commitText}
         />
-        <label className={styles.field}>
-          <span className={styles.label}>
-            <T>Condition</T>
-          </span>
-          <Input
-            mono
-            value={condition}
-            onChange={(e) => setCondition(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="e.g. order.total > 100"
-            data-autofocus={focusLog ? undefined : ""}
-            aria-label="Condition"
-          />
-        </label>
-        <label className={styles.field}>
-          <span className={styles.label}>
-            <T>Hit count</T>
-          </span>
-          <Input
-            mono
-            value={hitCondition}
-            onChange={(e) => setHitCondition(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="e.g. 5 or >= 3"
-            aria-label="Hit count condition"
-          />
-        </label>
-        <Checkbox checked={logEnabled} onChange={setLogEnabled} label="Log message instead of suspending" />
-        {logEnabled && (
-          <Input
-            mono
-            value={logMessage}
-            onChange={(e) => setLogMessage(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="Value: {expression}"
-            data-autofocus={focusLog ? "" : undefined}
-            aria-label="Log message"
-          />
-        )}
         <div className={styles.bpFooter}>
           <button
             type="button"
@@ -183,6 +125,136 @@ function BreakpointEditor({
         </div>
       </div>
     </Popup>
+  );
+}
+
+/**
+ * Line breakpoint properties shared by the gutter popover and the Breakpoints dialog,
+ * like IDEA's: Suspend and the two logging options are independent. Text fields
+ * commit on blur (and through `commitRef` when the popover closes).
+ */
+function BreakpointFields({
+  path,
+  bp,
+  focus,
+  onEnter,
+  commitRef,
+}: {
+  path: string;
+  bp: BreakpointEntry;
+  focus?: "condition" | "log";
+  onEnter?: () => void;
+  commitRef?: MutableRefObject<(() => void) | null>;
+}) {
+  const [condition, setCondition] = useState(bp.condition ?? "");
+  const [hitCondition, setHitCondition] = useState(bp.hitCondition ?? "");
+  const [logEval, setLogEval] = useState(!!bp.logMessage?.trim());
+  const [logMessage, setLogMessage] = useState(bp.logMessage ?? "");
+  const conditionHistory = useMemo(() => readHistory("condition"), []);
+  const historyId = useId();
+  const draft = useRef({ condition, hitCondition, logEval, logMessage });
+  useEffect(() => {
+    draft.current = { condition, hitCondition, logEval, logMessage };
+  });
+  const commitText = () => {
+    const d = draft.current;
+    const cond = d.condition.trim() || null;
+    if (cond) pushHistory("condition", cond);
+    updateBreakpoint(path, bp.id, {
+      condition: cond,
+      hitCondition: d.hitCondition.trim() || null,
+      logMessage: d.logEval ? d.logMessage.trim() || null : null,
+    });
+  };
+  useEffect(() => {
+    if (!commitRef) return;
+    commitRef.current = commitText;
+    return () => {
+      commitRef.current = null;
+    };
+  });
+  const onKey = (e: KeyboardEvent) => {
+    if (onEnter && e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onEnter();
+    }
+  };
+  return (
+    <>
+      <Checkbox
+        checked={bp.enabled}
+        onChange={(enabled) => updateBreakpoint(path, bp.id, { enabled })}
+        label="Enabled"
+      />
+      <Checkbox
+        checked={suspends(bp)}
+        onChange={(on) => updateBreakpoint(path, bp.id, { suspend: on ? undefined : false })}
+        label="Suspend"
+      />
+      <label className={styles.field}>
+        <span className={styles.label}>
+          <T>Condition</T>
+        </span>
+        <Input
+          mono
+          value={condition}
+          onChange={(e) => setCondition(e.target.value)}
+          onBlur={commitText}
+          onKeyDown={onKey}
+          list={conditionHistory.length ? historyId : undefined}
+          placeholder="e.g. order.total > 100"
+          data-autofocus={focus === "condition" ? "" : undefined}
+          aria-label="Condition"
+        />
+        {conditionHistory.length > 0 && (
+          <datalist id={historyId}>
+            {conditionHistory.map((h) => (
+              <option key={h} value={h} />
+            ))}
+          </datalist>
+        )}
+      </label>
+      <label className={styles.field}>
+        <span className={styles.label}>
+          <T>Hit count</T>
+        </span>
+        <Input
+          mono
+          value={hitCondition}
+          onChange={(e) => setHitCondition(e.target.value)}
+          onBlur={commitText}
+          onKeyDown={onKey}
+          placeholder="e.g. 5 or >= 3"
+          aria-label="Hit count condition"
+        />
+      </label>
+      <Checkbox
+        checked={!!bp.logHit}
+        onChange={(on) => updateBreakpoint(path, bp.id, { logHit: on || undefined })}
+        label={'"Breakpoint hit" message'}
+      />
+      <Checkbox
+        checked={logEval}
+        onChange={(on) => {
+          setLogEval(on);
+          draft.current = { ...draft.current, logEval: on };
+          commitText();
+        }}
+        label="Evaluate and log"
+      />
+      {logEval && (
+        <Input
+          mono
+          value={logMessage}
+          onChange={(e) => setLogMessage(e.target.value)}
+          onBlur={commitText}
+          onKeyDown={onKey}
+          placeholder="Value: {expression}"
+          data-autofocus={focus === "log" ? "" : undefined}
+          aria-label="Evaluate and log"
+        />
+      )}
+    </>
   );
 }
 
@@ -411,7 +483,7 @@ function BreakpointsDialog() {
                     {basename(r.path)}:{r.bp.line + 1}
                   </span>
                   <span className={styles.bpDir}>{relativePath(root, r.path)}</span>
-                  {isConditional(r.bp) && <span className={styles.bpCond}>{r.bp.logMessage ? "log" : "if"}</span>}
+                  {isConditional(r.bp) && <span className={styles.bpCond}>{suspends(r.bp) ? "if" : "log"}</span>}
                   {r.bp.temporary && <span className={styles.bpCond}>temp</span>}
                 </div>
               );
@@ -476,10 +548,6 @@ function ExceptionBreakpoints({ open }: { open: boolean }) {
 function BreakpointDetail({ row, onGo }: { row: BpRow; onGo: () => void }) {
   const { path, bp } = row;
   const st = useBreakpoints((s) => s.status[bp.id]);
-  const [condition, setCondition] = useState(bp.condition ?? "");
-  const [hitCondition, setHitCondition] = useState(bp.hitCondition ?? "");
-  const [logMessage, setLogMessage] = useState(bp.logMessage ?? "");
-  const commit = (patch: Partial<BreakpointEntry>) => updateBreakpoint(path, bp.id, patch);
   return (
     <div className={styles.detail}>
       <div className={styles.bpTitle}>
@@ -495,45 +563,12 @@ function BreakpointDetail({ row, onGo }: { row: BpRow; onGo: () => void }) {
         </Button>
       </div>
       {st && <div className={styles.statusLine}>{st.verified ? "Verified" : (st.message ?? "Not verified")}</div>}
-      <Checkbox checked={bp.enabled} onChange={(enabled) => commit({ enabled })} label="Enabled" />
-      <Checkbox checked={!!bp.temporary} onChange={(temporary) => commit({ temporary })} label="Remove once hit" />
-      <label className={styles.field}>
-        <span className={styles.label}>
-          <T>Condition</T>
-        </span>
-        <Input
-          mono
-          value={condition}
-          onChange={(e) => setCondition(e.target.value)}
-          onBlur={() => commit({ condition: condition.trim() || null })}
-          aria-label="Condition"
-        />
-      </label>
-      <label className={styles.field}>
-        <span className={styles.label}>
-          <T>Hit count</T>
-        </span>
-        <Input
-          mono
-          value={hitCondition}
-          onChange={(e) => setHitCondition(e.target.value)}
-          onBlur={() => commit({ hitCondition: hitCondition.trim() || null })}
-          aria-label="Hit count condition"
-        />
-      </label>
-      <label className={styles.field}>
-        <span className={styles.label}>
-          <T>Log message</T>
-        </span>
-        <Input
-          mono
-          value={logMessage}
-          onChange={(e) => setLogMessage(e.target.value)}
-          onBlur={() => commit({ logMessage: logMessage.trim() || null })}
-          placeholder="Suspends when empty"
-          aria-label="Log message"
-        />
-      </label>
+      <BreakpointFields path={path} bp={bp} />
+      <Checkbox
+        checked={!!bp.temporary}
+        onChange={(temporary) => updateBreakpoint(path, bp.id, { temporary })}
+        label="Remove once hit"
+      />
     </div>
   );
 }
@@ -635,20 +670,64 @@ function EvaluateDialog() {
   return <EvaluateDialogInner initial={state.expression} />;
 }
 
+/**
+ * IDEA's Evaluate dialog: Enter evaluates, ⇧Enter adds a line (the field grows),
+ * ⇧⌘Enter / Ctrl+Shift+Enter adds a watch; ↑ on the first line / ↓ on the last walk
+ * the per-project history, which the history button also lists.
+ */
 function EvaluateDialogInner({ initial }: { initial: string }) {
   const [expression, setExpression] = useState(initial);
   const [result, setResult] = useState<VarRoot | null>(null);
+  const [history, setHistory] = useState(() => readHistory("evaluate"));
+  const [historyMenu, setHistoryMenu] = useState(false);
+  const historyPos = useRef(-1);
+  const historyButton = useRef<HTMLSpanElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const session = useDebug((s) => (s.active != null ? s.sessions[s.active] : undefined));
   const paused = session?.status === "paused";
   const close = () => useOverlays.setState({ evaluate: null });
+  const lines = Math.min(10, expression.split("\n").length);
   const run = async () => {
     const e = expression.trim();
     if (!e) return;
+    pushHistory("evaluate", e);
+    setHistory(readHistory("evaluate"));
+    historyPos.current = -1;
     try {
       const v: Variable = await evaluate(e, "repl", session ?? null);
       setResult({ key: `eval:${e}:${Date.now()}`, kind: "eval", name: e, variable: v, error: null });
     } catch (err) {
       setResult({ key: `eval:${e}:${Date.now()}`, kind: "eval", name: e, variable: null, error: errorText(err) });
+    }
+  };
+  const recall = (text: string) => {
+    setExpression(text);
+    requestAnimationFrame(() => {
+      const el = field.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(text.length, text.length);
+    });
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    const el = e.currentTarget;
+    if (e.key === "Enter" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      addWatch(expression);
+    } else if (e.key === "Enter" && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      if (paused) void run();
+    } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey) {
+      const before = el.value.slice(0, el.selectionStart);
+      const after = el.value.slice(el.selectionEnd);
+      const up = e.key === "ArrowUp";
+      if (up ? before.includes("\n") : after.includes("\n")) return;
+      const next = historyPos.current + (up ? 1 : -1);
+      if (next < -1 || next >= history.length) return;
+      e.preventDefault();
+      historyPos.current = next;
+      recall(next < 0 ? "" : history[next]!);
     }
   };
   return (
@@ -676,25 +755,49 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
       ]}
     >
       <div className={styles.evalBody}>
-        <label className={styles.field}>
+        <div className={styles.field}>
           <span className={styles.label}>
             <T>Expression</T>
           </span>
-          <Input
-            mono
-            value={expression}
-            onChange={(e) => setExpression(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void run();
-              }
-            }}
-            data-autofocus=""
-            aria-label="Expression"
-            placeholder={paused ? "Expression to evaluate in the selected frame" : "Pause the program to evaluate"}
+          <div className={styles.evalInputRow}>
+            <textarea
+              ref={field}
+              className={styles.evalInput}
+              rows={lines}
+              value={expression}
+              onChange={(e) => {
+                setExpression(e.target.value);
+                historyPos.current = -1;
+              }}
+              onKeyDown={onKeyDown}
+              onFocus={(e) => e.currentTarget.select()}
+              spellCheck={false}
+              autoComplete="off"
+              data-autofocus=""
+              aria-label="Expression"
+              placeholder={paused ? "Expression to evaluate in the selected frame" : "Pause the program to evaluate"}
+            />
+            <span ref={historyButton}>
+              <IconButton
+                icon="history"
+                title="History"
+                size="small"
+                disabled={!history.length}
+                onClick={() => setHistoryMenu(true)}
+              />
+            </span>
+          </div>
+          <Menu
+            open={historyMenu}
+            onClose={() => setHistoryMenu(false)}
+            anchor={historyButton}
+            placement="bottom-end"
+            aria-label="Expression history"
+            items={history
+              .slice(0, 20)
+              .map((h) => ({ label: h.replace(/\s+/g, " "), verbatim: true, run: () => recall(h) }))}
           />
-        </label>
+        </div>
         <div className={styles.evalResult}>
           {result ? (
             <VariablesView roots={[result]} session={session?.id ?? null} aria-label="Evaluation result" />

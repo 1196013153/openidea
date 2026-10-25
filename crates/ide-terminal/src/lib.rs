@@ -160,6 +160,19 @@ impl TerminalManager {
         Ok(())
     }
 
+    /// Whether the shell is running a command, so closing its tab should ask first
+    /// (as IDEA does). On Unix: the PTY's foreground process
+    /// group isn't the shell's, i.e. a job is in the foreground (background helpers
+    /// such as prompt daemons don't count). On Windows: the shell has child processes.
+    pub fn is_busy(&self, id: TerminalId) -> IdeResult<bool> {
+        let session = self.session(id)?;
+        if session.exited.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+        let Some(pid) = session.info.pid else { return Ok(false) };
+        Ok(foreground_busy(&session, pid))
+    }
+
     pub fn list(&self) -> Vec<TerminalInfo> {
         let mut out: Vec<TerminalInfo> = self.sessions.lock().values().map(|s| s.info.clone()).collect();
         out.sort_by_key(|i| i.id);
@@ -189,6 +202,76 @@ impl Drop for TerminalManager {
 
 fn not_found(id: TerminalId) -> IdeError {
     IdeError::not_found(format!("no such terminal: {id}"))
+}
+
+#[cfg(unix)]
+fn foreground_busy(session: &Session, pid: u32) -> bool {
+    let leader = session.master.lock().process_group_leader();
+    leader.is_some_and(|fg| u32::try_from(fg).ok() != Some(pid))
+}
+
+#[cfg(windows)]
+fn foreground_busy(_session: &Session, pid: u32) -> bool {
+    win::has_child_processes(pid)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn foreground_busy(_session: &Session, _pid: u32) -> bool {
+    false
+}
+
+#[cfg(windows)]
+mod win {
+    use std::ffi::c_void;
+
+    const TH32CS_SNAPPROCESS: u32 = 0x2;
+    const INVALID_HANDLE_VALUE: isize = -1;
+
+    /// `PROCESSENTRY32W` from `<tlhelp32.h>`.
+    #[repr(C)]
+    struct ProcessEntry32W {
+        dw_size: u32,
+        cnt_usage: u32,
+        th32_process_id: u32,
+        th32_default_heap_id: usize,
+        th32_module_id: u32,
+        cnt_threads: u32,
+        th32_parent_process_id: u32,
+        pc_pri_class_base: i32,
+        dw_flags: u32,
+        sz_exe_file: [u16; 260],
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> *mut c_void;
+        fn Process32FirstW(snapshot: *mut c_void, entry: *mut ProcessEntry32W) -> i32;
+        fn Process32NextW(snapshot: *mut c_void, entry: *mut ProcessEntry32W) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+
+    pub fn has_child_processes(pid: u32) -> bool {
+        // SAFETY: plain Win32 calls on a locally owned snapshot handle and entry buffer.
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot.is_null() || snapshot as isize == INVALID_HANDLE_VALUE {
+                return false;
+            }
+            let mut entry: ProcessEntry32W = std::mem::zeroed();
+            entry.dw_size = std::mem::size_of::<ProcessEntry32W>() as u32;
+            let mut found = false;
+            let mut ok = Process32FirstW(snapshot, &mut entry);
+            while ok != 0 {
+                if entry.th32_parent_process_id == pid && entry.th32_process_id != pid {
+                    found = true;
+                    break;
+                }
+                ok = Process32NextW(snapshot, &mut entry);
+            }
+            CloseHandle(snapshot);
+            found
+        }
+    }
 }
 
 /// Hangs up the shell (and its process group), escalating to SIGKILL if it lingers.
@@ -648,6 +731,31 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(5));
         assert!(h.manager.write(info.id, "x").is_err());
         assert!(h.manager.kill(info.id).is_err());
+    }
+
+    #[test]
+    fn busy_while_a_command_runs_in_the_foreground() {
+        let h = harness();
+        let mut opts = sh("");
+        opts.args = vec!["-i".into()];
+        opts.env.insert("PS1".into(), "$ ".into());
+        opts.env.insert("ENV".into(), "/dev/null".into());
+        let (info, _rx) = spawn_collect(&h, opts);
+        let wait_for = |want: bool| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while h.manager.is_busy(info.id).unwrap() != want {
+                assert!(Instant::now() < deadline, "is_busy never became {want}");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        wait_for(false);
+        h.manager.write(info.id, "sleep 30\n").unwrap();
+        wait_for(true);
+        h.manager.write(info.id, "\u{3}").unwrap();
+        wait_for(false);
+        h.manager.write(info.id, "exit\n").unwrap();
+        let _ = wait_exit(&h, info.id);
+        assert!(h.manager.is_busy(info.id).is_err());
     }
 
     #[test]

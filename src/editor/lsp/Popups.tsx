@@ -19,6 +19,7 @@ import { editorService } from "@/workbench/contributions";
 import { closePopup, useLspPopup, type ListPopupItem, type LspPopup } from "./popupStore";
 import { renderCode, renderMarkup } from "./markdown";
 import { describeSummary } from "./workspaceEdit";
+import { useUsagesStatus } from "./navigation";
 import styles from "./Popups.module.css";
 
 export function BulbIcon({ fix }: { fix?: boolean }) {
@@ -209,9 +210,15 @@ function DomContent({ build, className }: { build: () => HTMLElement; className?
 }
 
 function DocPopup({ popup }: { popup: Extract<LspPopup, { kind: "doc" }> }) {
+  const focusSeq = useLspPopup((s) => s.focusSeq);
+  const scope = useRef<HTMLDivElement>(null);
+  const opened = useRef(focusSeq);
+  useEffect(() => {
+    if (focusSeq !== opened.current) scope.current?.focus({ preventScroll: true });
+  }, [focusSeq]);
   return (
     <Popup open anchor={popup.anchor} onClose={closePopup} aria-label="Documentation" className={styles.docPopup}>
-      <div className={clsx(popup.themeClasses, styles.docScope)}>
+      <div ref={scope} tabIndex={-1} className={clsx(popup.themeClasses, styles.docScope)}>
         <DomContent className={styles.docBody} build={() => renderMarkup(popup.markup, popup.language)} />
       </div>
     </Popup>
@@ -316,6 +323,17 @@ function PreviewDialog({ popup }: { popup: Extract<LspPopup, { kind: "preview" }
         </ul>
       )}
     </Dialog>
+  );
+}
+
+/** Status bar text while ⌘⇧F7 usages are highlighted ("3 usages of 'x' found…"). */
+export function UsagesStatus() {
+  const text = useUsagesStatus((s) => s.text);
+  if (!text) return null;
+  return (
+    <span className={styles.statusMessage} role="status" title={text}>
+      {text}
+    </span>
   );
 }
 

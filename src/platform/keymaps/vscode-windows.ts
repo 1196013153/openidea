@@ -32,6 +32,7 @@ export const vscodeWindows: Record<string, string[]> = {
   "code.joinLines": [],
   "file.openProject": ["Ctrl+K Ctrl+O"],
   "editor.closeTab": ["Ctrl+W", "Ctrl+F4"],
+  "toolwindow.closeContent": ["Ctrl+W", "Ctrl+F4"],
   "editor.nextTab": ["Ctrl+PageDown"],
   "editor.prevTab": ["Ctrl+PageUp"],
   "window.toggleFullScreen": ["F11"],

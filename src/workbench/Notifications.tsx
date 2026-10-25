@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTxTemplate } from "@/platform/i18n";
 import { EmptyState, IconButton, Toast, T } from "@/ui";
 import {
@@ -20,15 +20,37 @@ function timeLabel(t: number) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function subscribeWindowFocus(onChange: () => void) {
+  window.addEventListener("focus", onChange);
+  window.addEventListener("blur", onChange);
+  return () => {
+    window.removeEventListener("focus", onChange);
+    window.removeEventListener("blur", onChange);
+  };
+}
+
+/** Whether the app window is active (focused). */
+function useWindowActive(): boolean {
+  return useSyncExternalStore(subscribeWindowFocus, () => document.hasFocus(), () => true);
+}
+
 function Balloon({ n }: { n: IdeNotification }) {
   const [hover, setHover] = useState(false);
+  const active = useWindowActive();
+  const remaining = useRef<number | null>(null);
   const txt = useTxTemplate();
+  // IDEA's smart fade-out: the clock runs only while the window is active and the balloon not hovered.
   useEffect(() => {
     const ms = BALLOON_TIMEOUT[n.level];
-    if (n.sticky || ms === null || hover) return;
-    const t = setTimeout(() => dismissBalloon(n.id), ms);
-    return () => clearTimeout(t);
-  }, [n.id, n.level, n.sticky, hover]);
+    if (n.sticky || ms === null || hover || !active) return;
+    const left = remaining.current ?? ms;
+    const start = Date.now();
+    const t = setTimeout(() => dismissBalloon(n.id), left);
+    return () => {
+      clearTimeout(t);
+      remaining.current = Math.max(1, left - (Date.now() - start));
+    };
+  }, [n.id, n.level, n.sticky, hover, active]);
   return (
     <Toast
       className={styles.balloon}

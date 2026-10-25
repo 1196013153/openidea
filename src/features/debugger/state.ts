@@ -20,7 +20,8 @@ import {
   type Variable,
 } from "@/platform/ipc";
 import { maybeEditorService, notifications, toolWindowService } from "@/workbench/contributions";
-import { consumeTemporary, refreshStates, resetStatuses } from "./breakpoints/store";
+import { breakpointsOf, consumeTemporary, refreshStates, resetStatuses } from "./breakpoints/store";
+import { interpolateLog, logParts, suspends } from "./breakpoints/model";
 import { syncSpecial, useSpecialBreakpoints } from "./breakpoints/special";
 import { refreshExceptionFilters } from "./breakpoints/exceptions";
 import { missingAdapter } from "./missingAdapter";
@@ -421,10 +422,27 @@ async function loadFrames(id: DebugSessionId, threadId: number, reveal: boolean)
   patch(id, { frames });
   const top = frames.find((f) => f.path && f.presentationHint !== "label") ?? frames[0];
   if (top?.path && (s.stopReason === "breakpoint" || s.stopReason === "function breakpoint")) {
+    void logSuspendingHit(id, top);
     consumeTemporary(top.path, top.line);
   }
   if (top) selectFrame(id, top.id, reveal);
   else updateExecutionPoint();
+}
+
+/**
+ * A suspending breakpoint that also logs: DAP logpoints never suspend, so the
+ * message is evaluated in the stopped frame and printed here instead.
+ */
+async function logSuspendingHit(id: DebugSessionId, frame: StackFrame) {
+  const bp = breakpointsOf(frame.path!).find((b) => b.line === frame.line && b.enabled);
+  if (!bp || !suspends(bp)) return;
+  for (const part of logParts(bp, frame.path!)) {
+    const text = await interpolateLog(part, async (expr) => {
+      const v = await call(commands.debugEvaluateIn(id, frame.id, expr, "repl"));
+      return v.value;
+    });
+    appendConsole(id, "console", `${text}\n`);
+  }
 }
 
 async function loadThreads(id: DebugSessionId) {

@@ -1,7 +1,8 @@
 /**
- * Rename (⇧F6): `lsp_prepare_rename` → inline name popup at the symbol →
- * `lsp_rename` → preview dialog when the edit spans several files (or moves
- * files), otherwise applied directly via `apply_workspace_edit`.
+ * Rename (⇧F6): `lsp_prepare_rename` → the name is edited in place with this
+ * file's occurrences linked (`inplaceRename.ts`; ⇧F6 again opens the name
+ * dialog) → `lsp_rename` → preview dialog when the edit spans several files
+ * (or moves files), otherwise applied directly via `apply_workspace_edit`.
  *
  * Dumb mode: when the server is not ready / failing, or answers nothing over
  * code with syntax errors, a *local* variable is renamed in place from the
@@ -18,6 +19,8 @@ import { comparePos, offsetToPos, rangeToOffsets } from "./positions";
 import { showHint } from "./hint";
 import { caretAnchor, openPopup, type PreviewOccurrence } from "./popupStore";
 import { needsPreview, summarizeWorkspaceEdit } from "./workspaceEdit";
+import { endInplaceRename, inplaceSession, startInplaceRename, type Span } from "./inplaceRename";
+import { shortcutLabel } from "@/platform/keymap";
 import {
   SYNTAX_NOTE,
   VALID_NAME,
@@ -46,6 +49,13 @@ async function hasSyntaxErrors(doc: number): Promise<boolean> {
 export async function startRename(view: EditorView) {
   const doc = docOf(view);
   if (!doc) return;
+  // ⇧F6 while renaming in place: the dialog with more options, keeping what was typed.
+  const session = inplaceSession(view.state);
+  if (session) {
+    const typed = endInplaceRename(view, "restore");
+    if (typed !== null) session.dialog(typed);
+    return;
+  }
   if (doc.readOnly) {
     showHint(view, "The file is read-only");
     return;
@@ -69,13 +79,66 @@ export async function startRename(view: EditorView) {
   }
   const { from, to } = rangeToOffsets(view.state.doc, range);
   const oldName = view.state.sliceDoc(from, to);
-  openPopup({
-    kind: "rename",
-    anchor: caretAnchor(view, from),
-    title: `Rename '${oldName}'`,
-    initial: oldName,
-    onSubmit: (newName) => void finishRename(view, doc, pos, oldName, newName),
+  const dialog = (initial: string) =>
+    openPopup({
+      kind: "rename",
+      anchor: caretAnchor(view, from),
+      title: `Rename '${oldName}'`,
+      initial,
+      onSubmit: (newName) => void finishRename(view, doc, pos, oldName, newName),
+    });
+  if (from === to) {
+    dialog(oldName);
+    return;
+  }
+  // IDEA renames in place by default: occurrences in this file follow live.
+  const state = view.state;
+  const others = await linkedOccurrences(view, doc.doc, pos, { from, to }, oldName);
+  if (view.state.doc !== state.doc) return;
+  const keys = shortcutLabel("refactor.rename");
+  startInplaceRename(view, {
+    primary: { from, to },
+    others,
+    hint: keys ? `Press ${keys} to show dialog with more options` : "Rename in place: ↵ to finish, Esc to cancel",
+    commit: (newName) => void commitInplace(view, doc, pos, oldName, newName),
+    dialog,
   });
+}
+
+/** This file's other occurrences of the symbol (document highlights with the same text). */
+async function linkedOccurrences(view: EditorView, doc: number, pos: Pos, primary: Span, name: string): Promise<Span[]> {
+  let highlights;
+  try {
+    highlights = await lspRequest(() => commands.lspDocumentHighlights(doc, pos));
+  } catch {
+    return [];
+  }
+  const text = view.state.doc;
+  return linkedSpans(
+    highlights.map((h) => rangeToOffsets(text, h.range)),
+    primary,
+    (s) => text.sliceString(s.from, s.to) === name,
+  );
+}
+
+/** Occurrence spans other than `primary`, sorted, without overlaps, that `accept` keeps. */
+export function linkedSpans(spans: readonly Span[], primary: Span, accept: (s: Span) => boolean): Span[] {
+  const out: Span[] = [];
+  for (const s of [...spans].sort((a, b) => a.from - b.from)) {
+    if (s.to > primary.from && s.from < primary.to) continue;
+    if (s.from >= s.to || !accept(s)) continue;
+    const last = out[out.length - 1];
+    if (last && s.from < last.to) continue;
+    out.push(s);
+  }
+  return out;
+}
+
+async function commitInplace(view: EditorView, doc: EditorDocContext, pos: Pos, oldName: string, newName: string) {
+  if (!newName.trim() || newName === oldName) return;
+  // The server renames from the original text, which the session just restored.
+  await whenSynced(view);
+  await finishRename(view, doc, pos, oldName, newName);
 }
 
 async function finishRename(view: EditorView, doc: EditorDocContext, pos: Pos, oldName: string, newName: string) {

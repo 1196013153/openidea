@@ -192,7 +192,11 @@ fn persistence_skips_unchanged_files_on_reopen() {
         assert_eq!(idx.status().files, 8);
         assert_eq!(symbols(&idx, "OrderController", SymbolFilter::Types)[0], "OrderController");
         assert_eq!(idx.recent_files(), vec![fx.root.join("web/app.py")]);
+        idx.remove_recent(&fx.root.join("web/app.py"));
+        assert!(idx.recent_files().is_empty());
+        assert!(idx.wait_idle(WAIT));
     }
+    assert!(fx.open().recent_files().is_empty(), "removal is persisted");
     std::thread::sleep(Duration::from_millis(20));
     fx.write("src/main.rs", "fn main() {}\nfn renamed_fn() {}\n");
     std::fs::remove_file(fx.root.join("docs/maintenance.md")).unwrap();

@@ -34,6 +34,10 @@ pub struct RunConfig {
     pub is_test: bool,
     /// DAP adapter that can debug this config, if any.
     pub debug_adapter: Option<String>,
+    /// "Allow multiple instances": Run on a running config starts another one instead of restarting it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub allow_parallel: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

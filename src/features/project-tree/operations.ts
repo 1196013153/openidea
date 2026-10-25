@@ -6,7 +6,7 @@ import { createElement, Fragment } from "react";
 import { askUsagesDetected, fileUsages, viewUsages } from "@/editor/refactor";
 import { executeAction, getAction } from "@/platform/actions";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
-import { confirm } from "@/workbench/messages";
+import { ask, confirmChecked } from "@/workbench/messages";
 import { runFileRefactoring } from "./fileRefactor";
 import { openFileRefactorDialog, rememberedOptions } from "./FileRefactorDialogs";
 import { projectFs } from "./fs";
@@ -165,7 +165,7 @@ export function openMoveDialog(nodes: ProjectNode[] = selectedNodes(), target?: 
   openMoveDialogFor(paths, target, paths.length === 1 && movable.some((n) => n.path === paths[0] && n.dir));
 }
 
-function openMoveDialogFor(paths: string[], target?: string, dir?: boolean) {
+function openMoveDialogFor(paths: string[], target?: string, dir?: boolean, done?: () => void) {
   if (!paths.length) return;
   openFileRefactorDialog({
     kind: "move",
@@ -173,6 +173,7 @@ function openMoveDialogFor(paths: string[], target?: string, dir?: boolean) {
     dir,
     target: target ?? parentOf(paths[0]!),
     onDone: (moves) => {
+      done?.();
       void afterMove(moves);
       if (rememberedOptions("move").openInEditor)
         for (const m of moves) if (!get().listings.has(m.to)) void openFile(m.to, { focus: false });
@@ -306,6 +307,16 @@ export function selectionAfterDelete(rows: readonly ProjectNode[], deleted: read
 /** Safe delete searches at most this many files, for at most this long. */
 const SAFE_DELETE_MAX_FILES = 20;
 const SAFE_DELETE_TIMEOUT_MS = 15_000;
+const SAFE_DELETE_PROGRESS_DELAY_MS = 400;
+const SAFE_DELETE_KEY = "openidea.projectTree.safeDelete";
+
+function safeDeleteEnabled(): boolean {
+  try {
+    return localStorage.getItem(SAFE_DELETE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
 
 /**
  * IDEA's safe delete for files: usages of their top-level symbols from other
@@ -316,15 +327,35 @@ export async function safeToDelete(files: string[]): Promise<boolean> {
   if (files.length > SAFE_DELETE_MAX_FILES) return true;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), SAFE_DELETE_TIMEOUT_MS);
+  // A search that takes a while shows progress the user can skip (delete anyway) or cancel.
+  const progress = new AbortController();
+  const user: { choice: "skip" | "cancel" | null } = { choice: null };
+  const shown = setTimeout(() => {
+    void ask({
+      title: "Delete",
+      body: "Looking for usages…",
+      icon: "info",
+      buttons: [{ id: "skip", label: "Delete Without Search" }],
+      signal: progress.signal,
+    }).then((r) => {
+      if (r.button === "dismissed") return;
+      user.choice = r.button === "skip" ? "skip" : "cancel";
+      abort.abort();
+    });
+  }, SAFE_DELETE_PROGRESS_DELAY_MS);
   let result;
   try {
     result = await fileUsages(files, abort.signal);
   } catch {
+    if (user.choice) return user.choice === "skip";
     notifications().notify({ level: "warning", title: "Usage search did not finish; nothing was deleted", key: "project.safeDelete" });
     return false;
   } finally {
     clearTimeout(timer);
+    clearTimeout(shown);
+    progress.abort();
   }
+  if (user.choice) return user.choice === "skip";
   if (result.status !== "ok" || !result.usages.length) return true;
   const name = files.length === 1 ? nameOf(files[0]!) : `${files.length} files`;
   const subject = files.length === 1 ? `File '${name}'` : `The ${name}`;
@@ -368,9 +399,14 @@ export async function deleteSelection(nodes: ProjectNode[] = selectedNodes()) {
   // Invoked from the tree (or its context menu): give the tree its focus back afterwards.
   const refocus = typeof document !== "undefined" && !!document.activeElement?.closest('[role="tree"], [role="menu"]');
   const folders = nodes.filter((n) => n.dir && paths.includes(n.path)).length;
-  const ok = await confirm({
+  const files = nodes.filter((n) => !n.dir && paths.includes(n.path)).map((n) => n.path);
+  // IDEA's Delete dialog: "Safe delete (with usage search)", remembered.
+  const searchable = files.length > 0 && files.length <= SAFE_DELETE_MAX_FILES;
+  const answer = await confirmChecked({
     title: "Delete",
     ok: "Delete",
+    checkbox: searchable ? "Safe delete (with usage search)" : undefined,
+    checked: searchable && safeDeleteEnabled(),
     message: createElement(
       Fragment,
       null,
@@ -379,9 +415,15 @@ export async function deleteSelection(nodes: ProjectNode[] = selectedNodes()) {
       "Items are moved to the Trash.",
     ),
   });
-  if (!ok) return;
-  const files = nodes.filter((n) => !n.dir && paths.includes(n.path)).map((n) => n.path);
-  if (files.length && !(await safeToDelete(files))) return;
+  if (!answer) return;
+  if (searchable) {
+    try {
+      localStorage.setItem(SAFE_DELETE_KEY, String(answer.checked));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  if (searchable && answer.checked && !(await safeToDelete(files))) return;
   const next = selectionAfterDelete(visibleNodes(), paths);
   const fs = projectFs(root);
   const parents = new Set<string>();
@@ -412,18 +454,47 @@ export function canPaste(): boolean {
   return !!get().clipboard?.paths.length;
 }
 
+/** Paste: cut items go through the Move dialog, copied ones through the Copy dialog (IDEA). */
 export async function paste(target = targetFolder()) {
   const { clipboard } = get();
   if (!clipboard || !target) return;
-  const done = await transfer(clipboard.paths, target, clipboard.cut ? "move" : "copy");
-  if (clipboard.cut && done) setClipboard(null);
+  const isDir = (p: string) => get().listings.has(p) || currentModel().byKey.get(currentModel().keyOfPath.get(p) ?? p)?.dir === true;
+  const single = clipboard.paths.length === 1 && isDir(clipboard.paths[0]!);
+  if (!clipboard.cut) return openCopyDialogFor(clipboard.paths, target, single);
+  const paths = clipboard.paths.filter((p) => parentOf(p) !== target);
+  if (!paths.length) return;
+  openMoveDialogFor(paths, target, single, () => {
+    if (get().clipboard === clipboard) setClipboard(null);
+  });
+}
+
+function openCopyDialogFor(paths: string[], target: string, dir?: boolean) {
+  if (!paths.length) return;
+  void loadDir(target);
+  openFileRefactorDialog({
+    kind: "copy",
+    paths,
+    target,
+    dir,
+    copy: async (to, name, openInEditor) => {
+      const first = await transfer(paths, to, "copy", name ?? undefined);
+      if (typeof first === "string" && openInEditor) void openFile(first, { focus: true });
+      return !!first;
+    },
+  });
 }
 
 /**
- * Moves or copies `paths` into `target`. Copies get a non-conflicting name
- * (`Foo copy.kt`); moves refuse to overwrite. Returns whether anything changed.
+ * Moves or copies `paths` into `target`. Copies take `name` (a single item) or
+ * get a non-conflicting name (`Foo copy.kt`); moves refuse to overwrite.
+ * Returns whether anything changed (for copies: the first copy's path).
  */
-export async function transfer(paths: string[], target: string, mode: "move" | "copy"): Promise<boolean> {
+export async function transfer(
+  paths: string[],
+  target: string,
+  mode: "move" | "copy",
+  name?: string,
+): Promise<string | boolean> {
   if (mode === "move") return moveInto(paths, target);
   const { root } = get();
   if (!root) return false;
@@ -434,6 +505,7 @@ export async function transfer(paths: string[], target: string, mode: "move" | "
   const touched = new Set<string>([target]);
   const errors: string[] = [];
   let first: string | null = null;
+  const newName = name;
   for (const src of paths) {
     const name = nameOf(src);
     if (isSameOrInside(target, src) && target !== parentOf(src) && src !== target) {
@@ -441,7 +513,7 @@ export async function transfer(paths: string[], target: string, mode: "move" | "
       continue;
     }
     const srcIsDir = get().listings.has(src) || currentModel().byKey.get(src)?.dir === true;
-    const finalName = uniqueName(name, isTaken, srcIsDir);
+    const finalName = paths.length === 1 && newName ? newName : uniqueName(name, isTaken, srcIsDir);
     const to = joinPath(target, finalName);
     try {
       await fs.copy(src, to);
@@ -458,7 +530,7 @@ export async function transfer(paths: string[], target: string, mode: "move" | "
     expandFolder(target);
     revealPath(first, false);
   }
-  return first !== null;
+  return first ?? false;
 }
 
 /**
@@ -499,10 +571,8 @@ export async function dropPaths(paths: string[], target: string, copy: boolean) 
     const node = movable.length === 1 ? currentModel().byKey.get(currentModel().keyOfPath.get(movable[0]!) ?? "") : undefined;
     return openMoveDialogFor(movable, target, node?.dir);
   }
-  const { root } = get();
-  const where = root && target === root ? (get().name ?? nameOf(target)) : relativeTo(root ?? "", target) || target;
-  const ok = await confirm({ title: "Copy", ok: "Copy", message: `Copy ${describe(movable)} to '${where}'?` });
-  if (ok) await transfer(movable, target, "copy");
+  const node = movable.length === 1 ? currentModel().byKey.get(currentModel().keyOfPath.get(movable[0]!) ?? "") : undefined;
+  openCopyDialogFor(movable, target, node?.dir);
 }
 
 /** Files dropped from the OS: copied into `target` (never moved). */

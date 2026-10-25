@@ -40,6 +40,13 @@ export interface DiffData {
   title?: string;
   /** Notes shown under lines (unified mode shows the right side's only). */
   annotations?: DiffAnnotation[];
+  /**
+   * The files of the change this diff belongs to (IDEA's diff request chain): F7 / Shift+F7
+   * past the last / first difference move to the next / previous one. Entries carry no chain.
+   */
+  chain?: DiffData[];
+  /** Select the first or last difference once shown (moving along the chain). */
+  reveal?: "first" | "last";
 }
 
 export const DIFF_KIND = "diff";
@@ -83,8 +90,25 @@ export function sideLabel(s: DiffSide): string {
   }
 }
 
+const diffKey = (data: DiffData) => `diff:${data.path}:${sideKey(data.left)}:${sideKey(data.right)}`;
+
 export function diffInput(data: DiffData): EditorInput {
-  return { kind: DIFF_KIND, key: `diff:${data.path}:${sideKey(data.left)}:${sideKey(data.right)}`, path: data.path, data };
+  return { kind: DIFF_KIND, key: diffKey(data), path: data.path, data };
+}
+
+/** `items` as a chain: each entry knows its siblings. */
+export function withChain(items: readonly DiffData[], index: number): DiffData {
+  const chain = items.length > 1 ? items.map(({ chain: _c, reveal: _r, ...d }) => d) : undefined;
+  return { ...items[index]!, chain };
+}
+
+/** The neighbour of `data` in its chain (`dir` 1: next, -1: previous), revealing the nearest difference. */
+export function chainNeighbour(data: DiffData, dir: 1 | -1): DiffData | null {
+  const chain = data.chain;
+  if (!chain) return null;
+  const index = chain.findIndex((d) => diffKey(d) === diffKey(data));
+  const next = index < 0 ? undefined : chain[index + dir];
+  return next ? { ...next, chain, reveal: dir === 1 ? "first" : "last" } : null;
 }
 
 export function diffTitle(data: DiffData): string {

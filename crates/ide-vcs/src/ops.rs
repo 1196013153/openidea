@@ -3,7 +3,7 @@
 
 use crate::cli::{self, run};
 use crate::repo::{gx, resolve};
-use crate::{ChangeKind, ChangedFile, RebaseAction, RebaseEntry, Repo, ResetMode};
+use crate::{ChangeKind, ChangedFile, MergeSides, RebaseAction, RebaseEntry, Repo, ResetMode};
 use ide_core::{CancellationToken, IdeError, IdeResult};
 
 /// The in-progress operation git can continue / abort / skip.
@@ -19,6 +19,64 @@ fn sequencer(r: &Repo) -> IdeResult<&'static str> {
 }
 
 use crate::write::unmerged_paths;
+
+/// The sides of the operation in progress, read from the files git keeps in `.git`.
+pub(crate) fn merge_sides(r: &Repo) -> IdeResult<MergeSides> {
+    let repo = r.gix()?;
+    let operation = crate::refs::operation(&repo);
+    let read = |name: &str| {
+        std::fs::read_to_string(r.git_dir.join(name))
+            .ok()
+            .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
+            .filter(|s| !s.is_empty())
+    };
+    let short = |id: String| id.chars().take(8).collect::<String>();
+    let head_branch = repo.head_name().map_err(gx)?.map(|n| crate::repo::to_string(n.as_ref().shorten()));
+    let mut sides = MergeSides { operation: operation.clone(), branch: head_branch, ..Default::default() };
+    match operation.as_deref() {
+        Some("rebase") => {
+            sides.reversed = true;
+            let dir = ["rebase-merge", "rebase-apply"].into_iter().find(|d| r.git_dir.join(d).is_dir());
+            if let Some(dir) = dir {
+                if let Some(head) = read(&format!("{dir}/head-name")) {
+                    sides.branch = Some(head.strip_prefix("refs/heads/").unwrap_or(&head).to_string());
+                }
+                sides.other_branch = read(&format!("{dir}/onto")).and_then(|onto| branch_at(r, &onto));
+            }
+            sides.commit = read("REBASE_HEAD").map(short);
+        }
+        Some("merge") => {
+            let head = read("MERGE_HEAD");
+            // git quotes the merged ref on the first line: `Merge branch 'main' into feature`.
+            sides.other_branch = read("MERGE_MSG")
+                .and_then(|m| m.split('\'').nth(1).map(str::to_string))
+                .filter(|b| !b.is_empty())
+                .or_else(|| head.as_deref().and_then(|h| branch_at(r, h)));
+            sides.commit = head.map(short);
+        }
+        Some("cherry-pick") => sides.commit = read("CHERRY_PICK_HEAD").map(short),
+        Some("revert") => sides.commit = read("REVERT_HEAD").map(short),
+        _ => {}
+    }
+    Ok(sides)
+}
+
+/// The single branch (local first, then remote) pointing at `commit`.
+fn branch_at(r: &Repo, commit: &str) -> Option<String> {
+    if commit.starts_with('-') {
+        return None;
+    }
+    ["refs/heads", "refs/remotes"].into_iter().find_map(|refs| {
+        let out =
+            run(r.root(), &["for-each-ref", "--points-at", commit, "--format=%(refname:short)", refs], None).ok()?;
+        let names: Vec<String> =
+            out.stdout_str().lines().filter(|l| !l.is_empty() && !l.ends_with("/HEAD")).map(str::to_string).collect();
+        match names.as_slice() {
+            [one] => Some(one.clone()),
+            _ => None,
+        }
+    })
+}
 
 fn check_commits(commits: &[String]) -> IdeResult<()> {
     if commits.is_empty() {
@@ -256,6 +314,13 @@ pub(crate) fn tags(r: &Repo) -> IdeResult<Vec<String>> {
 pub(crate) fn diff_with_worktree(r: &Repo, rev: &str) -> IdeResult<Vec<ChangedFile>> {
     check_commits(&[rev.to_string()])?;
     let out = run(r.root(), &["diff", "--name-status", "-z", "-M", "--no-ext-diff", rev, "--"], None)?;
+    Ok(parse_name_status(&out.stdout_str()))
+}
+
+/// Files that differ between two revisions (Update Project's "N files updated").
+pub(crate) fn diff_revisions(r: &Repo, from: &str, to: &str) -> IdeResult<Vec<ChangedFile>> {
+    check_commits(&[from.to_string(), to.to_string()])?;
+    let out = run(r.root(), &["diff", "--name-status", "-z", "-M", "--no-ext-diff", from, to, "--"], None)?;
     Ok(parse_name_status(&out.stdout_str()))
 }
 

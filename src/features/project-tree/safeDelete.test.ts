@@ -11,6 +11,12 @@ vi.mock("@/workbench/contributions", async (orig) => ({
   notifications: () => ({ notify }),
 }));
 
+const ask = vi.fn();
+vi.mock("@/workbench/messages", async (orig) => ({
+  ...(await orig<typeof import("@/workbench/messages")>()),
+  ask,
+}));
+
 const { safeToDelete } = await import("./operations");
 
 const usage: Location = { path: "/p/main.rs", range: { start: { line: 1, col: 0 }, end: { line: 1, col: 1 } } };
@@ -45,5 +51,28 @@ describe("safe delete of files", () => {
     fileUsages.mockRejectedValueOnce(new Error("cancelled"));
     expect(await safeToDelete(["/p/a.rs"])).toBe(false);
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ level: "warning" }));
+  });
+
+  it("lets a slow search be skipped (delete anyway) or cancelled", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = (_: string[], signal: AbortSignal) =>
+        new Promise((_r, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+      fileUsages.mockImplementation(pending);
+      ask.mockResolvedValueOnce({ button: "skip", checked: false });
+      const skipped = safeToDelete(["/p/a.rs"]);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await skipped).toBe(true);
+      expect(ask).toHaveBeenCalledWith(expect.objectContaining({ body: "Looking for usages…" }));
+
+      ask.mockResolvedValueOnce({ button: "cancel", checked: false });
+      const cancelled = safeToDelete(["/p/a.rs"]);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await cancelled).toBe(false);
+      expect(notify).not.toHaveBeenCalled();
+    } finally {
+      fileUsages.mockReset();
+      vi.useRealTimers();
+    }
   });
 });

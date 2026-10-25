@@ -24,18 +24,32 @@ describe("console settings", () => {
     expect(m.dropped).toBeGreaterThan(0);
   });
 
-  it("folds runs of matching lines", () => {
+  it("folds runs of matching lines onto the previous line, single lines too", () => {
     const m = new ConsoleModel();
     m.append({ kind: "stderr", text: "Error\n  at org.junit.A\n  at org.junit.B\n  at app.Main\n  at org.junit.C\n" });
     const rows = foldRows(m.lines, ["at org.junit."], new Set());
-    expect(rows.map((r) => (r.kind === "fold" ? `fold${r.count}` : m.lines[r.index]!.text.trim()))).toEqual([
-      "Error",
-      "fold2",
-      "at app.Main",
-      "at org.junit.C",
-    ]);
-    const fold = rows.find((r) => r.kind === "fold")!;
-    expect(foldRows(m.lines, ["at org.junit."], new Set([fold.kind === "fold" ? fold.id : 0])).length).toBe(5);
+    const show = (rs: typeof rows) =>
+      rs.map((r) => (r.kind === "fold" ? `fold${r.fold.count}` : m.lines[r.index]!.text.trim() + (r.fold ? ` +${r.fold.count}` : "")));
+    expect(show(rows)).toEqual(["Error +2", "at app.Main +1"]);
+    const first = rows[0]!.kind === "line" ? rows[0]!.fold! : null;
+    const open = foldRows(m.lines, ["at org.junit."], new Set([first!.id]));
+    expect(show(open)).toEqual(["Error +2", "at org.junit.A", "at org.junit.B", "at app.Main +1"]);
+    expect(open[0]!.kind === "line" && open[0]!.fold?.expanded).toBe(true);
+  });
+
+  it("keeps a fold with no line before it as a row of its own", () => {
+    const m = new ConsoleModel();
+    m.append({ kind: "stdout", text: "  at org.junit.A\nok\n" });
+    const rows = foldRows(m.lines, ["at org.junit."], new Set());
+    expect(rows.map((r) => r.kind)).toEqual(["fold", "line"]);
+  });
+
+  it("exposes the open (prompt) line", () => {
+    const m = new ConsoleModel();
+    m.append({ kind: "stdout", text: "done\nName: " });
+    expect(m.openLine?.text).toBe("Name: ");
+    m.append({ kind: "stdout", text: "x\n" });
+    expect(m.openLine).toBeNull();
   });
 });
 

@@ -43,6 +43,31 @@ export function initialFileIndex(items: readonly RecentFileItem[], activePath: s
   return 0;
 }
 
+/** Switcher (⌃⇥) files: only open editors, most recently opened first. */
+export function switcherPaths(recent: readonly string[], open: readonly string[]): string[] {
+  const isOpen = new Set(open);
+  const out = [...new Set(recent.filter((p) => isOpen.has(p)))];
+  const listed = new Set(out);
+  for (const p of open) if (!listed.has(p)) out.push(p);
+  return out;
+}
+
+/**
+ * Switcher selection `step` rows away from file row `base`: moving past the end
+ * of one column continues in the other (files, then tool windows), like IDEA.
+ */
+export function switcherSelection(
+  base: number,
+  step: number,
+  files: number,
+  tools: number,
+): { column: "files" | "tools"; index: number } | null {
+  const n = files + tools;
+  if (!n) return null;
+  const at = (((base + step) % n) + n) % n;
+  return at < files ? { column: "files", index: at } : { column: "tools", index: at - files };
+}
+
 const ANCHOR_ORDER = { left: 0, bottom: 1, right: 2 } as const;
 
 export function switcherToolWindows(

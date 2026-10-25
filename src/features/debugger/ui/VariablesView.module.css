@@ -79,7 +79,6 @@
   font-size: var(--fs-ui);
 }
 
-
 .editInput {
   flex: 1;
   min-width: 80px;
@@ -95,4 +94,17 @@
 }
 .editInvalid {
   border-color: var(--danger);
+}
+
+/* Changed since the previous stop. */
+.name.changed {
+  color: var(--debug-changed, var(--link));
+}
+
+/* Expanded value hint in the editor. */
+.hint {
+  display: flex;
+  flex-direction: column;
+  width: 460px;
+  height: 260px;
 }

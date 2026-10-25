@@ -13,8 +13,17 @@ import {
   useNotifications,
 } from "./notificationStore";
 import { installTaskEvents, useTasks } from "./tasks";
-import { ToolWindowStripe } from "./toolwindows/ToolWindows";
-import { isToolWindowVisible, loadToolWindowLayout, showToolWindow } from "./toolwindows/store";
+import { ToolWindowLayout, ToolWindowStripe } from "./toolwindows/ToolWindows";
+import { isToolWindowVisible, loadToolWindowLayout, showToolWindow, type SlotRecord } from "./toolwindows/store";
+
+const NO_SLOTS: SlotRecord = {
+  left: null,
+  "left-split": null,
+  bottom: null,
+  "bottom-split": null,
+  right: null,
+  "right-split": null,
+};
 
 const item = (id: string, align: "left" | "right", priority: number): StatusItemContribution => ({
   id,
@@ -68,7 +77,14 @@ describe("background tasks", () => {
     const dispose = registerStatusItem({ id: "workbench.tasks", align: "right", priority: 0, component: TaskStatus });
     render(<StatusBar />);
     act(() => {
-      emitLocalIdeEvent({ type: "task", id: 6, title: "Publish Diagnostics", message: null, fraction: null, done: false });
+      emitLocalIdeEvent({
+        type: "task",
+        id: 6,
+        title: "Publish Diagnostics",
+        message: null,
+        fraction: null,
+        done: false,
+      });
       emitLocalIdeEvent({ type: "task", id: 7, title: "Building index", message: null, fraction: 0.5, done: false });
     });
     expect(screen.queryByText("Building index")).toBeNull();
@@ -92,10 +108,12 @@ describe("notifications", () => {
   afterEach(() => {
     clearNotifications();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("shows balloons; info auto-dismisses, errors stay", () => {
     vi.useFakeTimers();
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     render(<Balloons />);
     act(() => {
       notify({ level: "info", title: "Saved" });
@@ -109,6 +127,26 @@ describe("notifications", () => {
     fireEvent.click(screen.getByText("Show log"));
     expect(screen.queryByText("Build failed")).toBeNull();
     expect(useNotifications.getState().items).toHaveLength(2);
+  });
+
+  it("pauses the balloon timeout while the app window is inactive", () => {
+    vi.useFakeTimers();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    try {
+      render(<Balloons />);
+      act(() => notify({ level: "info", title: "Indexed" }));
+      act(() => vi.advanceTimersByTime(BALLOON_TIMEOUT.info! - 1000));
+      hasFocus.mockReturnValue(false);
+      act(() => void fireEvent.blur(window));
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(screen.getByText("Indexed")).toBeInTheDocument();
+      hasFocus.mockReturnValue(true);
+      act(() => void fireEvent.focus(window));
+      act(() => vi.advanceTimersByTime(1100));
+      expect(screen.queryByText("Indexed")).toBeNull();
+    } finally {
+      hasFocus.mockRestore();
+    }
   });
 
   it("replaces notifications with the same key and subscribes to backend notify events", () => {
@@ -157,12 +195,84 @@ describe("tool window stripe", () => {
       { id: "project", title: "Project", icon: "folder", anchor: "left" as const, component: C },
       { id: "terminal", title: "Terminal", icon: "terminal", anchor: "bottom" as const, component: C },
     ];
-    render(<ToolWindowStripe side="left" windows={windows} visible={{ left: "project", right: null, bottom: null }} />);
+    render(<ToolWindowStripe side="left" windows={windows} visible={{ ...NO_SLOTS, left: "project" }} />);
     const project = screen.getByRole("button", { name: "Project" });
     expect(project).toHaveAttribute("aria-pressed", "true");
     expect(project).toHaveAttribute("aria-keyshortcuts", "⌘1");
     fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
     expect(isToolWindowVisible("terminal")).toBe(true);
+    disposers.forEach((d) => d());
+  });
+
+  it("groups buttons by area as IDEA's New UI stripes do", () => {
+    const C = () => null;
+    const windows = [
+      { id: "project", title: "Project", icon: "folder", anchor: "left" as const, component: C },
+      {
+        id: "structure",
+        title: "Structure",
+        icon: "structure",
+        anchor: "left" as const,
+        secondary: true,
+        component: C,
+      },
+      { id: "terminal", title: "Terminal", icon: "terminal", anchor: "bottom" as const, component: C },
+      { id: "db", title: "Database", icon: "db", anchor: "right" as const, component: C },
+      { id: "services", title: "Services", icon: "s", anchor: "bottom" as const, secondary: true, component: C },
+    ];
+    const ids = (slot: string) =>
+      [...document.querySelectorAll(`[data-stripe-slot="${slot}"] [data-stripe-button]`)].map((b) =>
+        b.getAttribute("data-stripe-button"),
+      );
+    const { unmount } = render(
+      <>
+        <ToolWindowStripe side="left" windows={windows} visible={NO_SLOTS} />
+        <ToolWindowStripe side="right" windows={windows} visible={NO_SLOTS} />
+      </>,
+    );
+    expect(ids("left")).toEqual(["project"]);
+    expect(ids("left-split")).toEqual(["structure"]);
+    expect(ids("bottom")).toEqual(["terminal"]);
+    expect(ids("right")).toEqual(["db"]);
+    expect(ids("bottom-split")).toEqual(["services"]);
+    // Only the left stripe has split windows: one separator.
+    expect(document.querySelectorAll("[data-stripe-separator]")).toHaveLength(1);
+    unmount();
+  });
+});
+
+describe("tool window split areas", () => {
+  it("renders both areas of a side with a splitter", () => {
+    const disposers = [
+      registerToolWindow({
+        id: "project",
+        title: "Project",
+        icon: "folder",
+        anchor: "left",
+        requiresProject: false,
+        component: () => <div>tree</div>,
+      }),
+      registerToolWindow({
+        id: "structure",
+        title: "Structure",
+        icon: "structure",
+        anchor: "left",
+        secondary: true,
+        requiresProject: false,
+        component: () => <div>members</div>,
+      }),
+    ];
+    loadToolWindowLayout("/split");
+    const { container, unmount } = render(<ToolWindowLayout editor={<div>editor</div>} />);
+    const splitter = container.querySelector('[data-split-handle="left"]')!;
+    expect(splitter).toHaveAttribute("hidden");
+    act(() => showToolWindow("structure"));
+    expect(screen.getByText("tree")).toBeVisible();
+    expect(screen.getByText("members")).toBeInTheDocument();
+    expect(splitter).not.toHaveAttribute("hidden");
+    expect(container.querySelector('[data-slot="left"]')!.nextElementSibling).toBe(splitter);
+    expect(container.querySelector('[data-slot="left-split"]')).not.toHaveAttribute("hidden");
+    unmount();
     disposers.forEach((d) => d());
   });
 });

@@ -2,7 +2,8 @@
 import { create } from "zustand";
 import { call, commands } from "@/platform/ipc";
 import type { CheckState } from "./changes";
-import { useVcs } from "./store";
+import type { CommitProblem } from "./commitChecks";
+import { currentRepo, useVcs } from "./store";
 
 interface CommitState {
   message: string;
@@ -15,10 +16,16 @@ interface CommitState {
   groupByDir: boolean;
   /** User overrides of the inclusion checkboxes (absolute path → state). */
   checks: Map<string, CheckState>;
+  /** Changed blocks left out of the commit (absolute path → `hunkKeys`) of `hunks` files. */
+  excludedHunks: Map<string, Set<string>>;
   /** Absolute paths selected in the changes tree. */
   selection: string[];
   /** Bumped to focus the message field. */
   focusTick: number;
+  /** Bumped to open the commit message history popup. */
+  historyTick: number;
+  /** Failed before-commit checks; while any are shown, Commit means "Commit Anyway". */
+  checkProblems: CommitProblem[];
   tab: CommitTab;
   /** Change list of the selected tree node (list actions without an argument). */
   selectedList: string | null;
@@ -36,8 +43,11 @@ export const useCommit = create<CommitState>(() => ({
   runHooks: true,
   groupByDir: readBool("openidea.vcs.groupByDir", false),
   checks: new Map(),
+  excludedHunks: new Map(),
   selection: [],
   focusTick: 0,
+  historyTick: 0,
+  checkProblems: [],
   tab: "changes",
   selectedList: null,
   selectedShelf: null,
@@ -85,6 +95,51 @@ export function rememberMessage(message: string) {
   }
 }
 
+/** The message typed before Amend replaced it, and the amended commit's message. */
+let amendData: { before: string; amend: string } | null = null;
+
+/**
+ * Amend checkbox, as in IDEA: checking it replaces the message
+ * with the last commit's (the draft is kept in the message history and restored when
+ * Amend is unchecked again, unless the amend message was edited meanwhile).
+ */
+export async function setAmend(on: boolean) {
+  useCommit.setState({ amend: on });
+  if (!on) {
+    const data = amendData;
+    amendData = null;
+    if (data && useCommit.getState().message === data.amend) useCommit.setState({ message: data.before });
+    return;
+  }
+  let last: string | undefined;
+  try {
+    const [head] = await call(
+      commands.vcsLog(currentRepo(), {
+        branch: "HEAD",
+        path: null,
+        author: null,
+        text: null,
+        range: null,
+        skip: 0,
+        limit: 1,
+      }),
+    );
+    last = head?.message.replace(/\s+$/, "");
+  } catch {
+    // No commits yet.
+  }
+  const before = useCommit.getState().message;
+  if (!last || !useCommit.getState().amend || before.trim() === last.trim()) return;
+  rememberMessage(before);
+  amendData = { before, amend: last };
+  useCommit.setState((s) => ({ message: last, focusTick: s.focusTick + 1 }));
+}
+
+/** After a commit: nothing to restore. */
+export function forgetAmendDraft() {
+  amendData = null;
+}
+
 /** Operations whose commit message git prepares in `.git/MERGE_MSG`. */
 const PREPARED_MESSAGE_OPS = new Set(["merge", "cherry-pick", "revert"]);
 
@@ -117,10 +172,12 @@ export function installPreparedMessage(): () => void {
   return useVcs.subscribe((s, prev) => {
     if (s.root !== prev.root) {
       // Another repository: nothing typed or ticked for the previous one carries over (Amend least of all).
+      amendData = null;
       useCommit.setState({
         message: "",
         amend: false,
         checks: new Map(),
+        excludedHunks: new Map(),
         selection: [],
         tab: "changes",
         selectedList: null,

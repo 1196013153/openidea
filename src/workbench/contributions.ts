@@ -22,8 +22,12 @@ export interface ToolWindowContribution {
   /** Icon name from `ui/icons`. */
   icon: string;
   anchor: ToolWindowAnchor;
-  /** Order within its stripe; lower first. Bottom-of-stripe group when `secondary`. */
+  /** Order within its stripe group; lower first. */
   order?: number;
+  /**
+   * Docks in the side's split area (IDEA `secondary` / `isSplit`): Left Bottom,
+   * Bottom Right or Right Bottom, so it can show beside the primary window.
+   */
   secondary?: boolean;
   component: ComponentType<{ id: string }>;
   /** Extra header controls, right-aligned (shown on hover like IDEA). */
@@ -303,6 +307,10 @@ export interface EditorService {
   saveAll(): Promise<void>;
   /** Move keyboard focus to the active editor (used by Escape from tool windows). */
   focus?(): void;
+  /** Paths of the documents open in editor tabs (all panes, tab order). */
+  openPaths?(): string[];
+  /** Closes every tab showing `path`. */
+  closePath?(path: string): void;
 }
 
 export interface ToolWindowService {
@@ -512,8 +520,10 @@ export function projectViewRoots(map: ReadonlyMap<string, ProjectViewRootContrib
 // editor tab context menus (IDEA's EditorPopupMenu / ProjectViewPopupMenu /
 // EditorTabPopupMenu / EditorGutterPopupMenu groups), e.g. "Run 'hi.ts'" from features/run.
 // `openIn` is the Open In › submenu those three menus share (Browser › from features/web).
+// `stopProcess` is the Stop chooser (as IDEA): one item per running process
+// a feature can stop (features/run: run sessions, features/debugger: debug sessions).
 
-export type ContextMenuId = "editor" | "projectView" | "editorTab" | "editorGutter" | "openIn";
+export type ContextMenuId = "editor" | "projectView" | "editorTab" | "editorGutter" | "openIn" | "stopProcess";
 
 export interface MenuGroupContext {
   /** Files / directories the menu is for (absolute paths; a virtual URI for virtual documents). */

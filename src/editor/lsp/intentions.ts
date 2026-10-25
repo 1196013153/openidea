@@ -37,6 +37,51 @@ async function fetchActions(view: EditorView, only: string[], whole = false): Pr
   return lspRequest(() => commands.lspCodeActions(doc.doc, range, only));
 }
 
+interface PlacedProblem {
+  from: number;
+  to: number;
+  severity: string;
+}
+
+/**
+ * As in IDEA, when no error touches the caret, the fixes of an
+ * error elsewhere on the caret line are offered too. The errors to ask about,
+ * in line order; none when an error is at the caret.
+ */
+export function lineErrorsAwayFromCaret(problems: readonly PlacedProblem[], lineFrom: number, lineTo: number, caret: number): PlacedProblem[] {
+  const errors = problems.filter((p) => p.severity === "error");
+  if (errors.some((p) => p.from <= caret && caret <= p.to)) return [];
+  return errors.filter((p) => p.from >= lineFrom && p.from <= lineTo).sort((a, b) => a.from - b.from);
+}
+
+/** ⌥↵ / lightbulb actions: those at the caret plus, as in IDEA, quick fixes of another error on the line. */
+async function fetchIntentions(view: EditorView): Promise<CodeAction[]> {
+  const actions = (await fetchActions(view, [])).filter((a) => !a.disabledReason);
+  const doc = docOf(view);
+  const state = view.state;
+  const sel = state.selection.main;
+  if (!doc || !sel.empty) return actions;
+  const line = state.doc.lineAt(sel.head);
+  const problems: PlacedProblem[] = [];
+  forEachDiagnostic(state, (d, from, to) => problems.push({ from, to, severity: d.severity }));
+  const titles = new Set(actions.map((a) => a.title));
+  for (const p of lineErrorsAwayFromCaret(problems, line.from, line.to, sel.head)) {
+    let more: CodeAction[];
+    try {
+      more = await lspRequest(() => commands.lspCodeActions(doc.doc, offsetsToRange(state.doc, p.from, p.to), ["quickfix"]));
+    } catch {
+      break;
+    }
+    if (view.state.doc !== state.doc) break;
+    const fixes = more.filter((a) => isQuickFix(a) && !a.disabledReason && !titles.has(a.title));
+    if (fixes.length) {
+      actions.push(...fixes);
+      break;
+    }
+  }
+  return actions;
+}
+
 export async function applyCodeAction(view: EditorView, action: CodeAction) {
   const doc = docOf(view);
   if (!doc) return;
@@ -91,7 +136,7 @@ function actionItems(view: EditorView, actions: CodeAction[]): ListPopupItem[] {
 export async function showIntentions(view: EditorView) {
   try {
     // Like IDEA, only applicable intentions are listed (servers also report disabled refactorings).
-    const actions = (await fetchActions(view, [])).filter((a) => !a.disabledReason);
+    const actions = await fetchIntentions(view);
     if (!actions.length) {
       showHint(view, "No intentions available");
       return;
@@ -205,7 +250,7 @@ const bulbPlugin = ViewPlugin.fromClass(
       if (!doc || doc.readOnly || serverBackoff.active(doc.doc) || !this.view.dom.isConnected) return;
       const state = this.view.state;
       try {
-        const actions = (await fetchActions(this.view, [])).filter((a) => !a.disabledReason);
+        const actions = await fetchIntentions(this.view);
         if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
         const line = state.doc.lineAt(state.selection.main.head).number;
         this.view.dispatch({

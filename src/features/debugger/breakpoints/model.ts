@@ -11,6 +11,10 @@ export interface BreakpointEntry {
   hitCondition: string | null;
   /** Temporary line breakpoint (⌥⇧⌘F8): removed after the first hit. */
   temporary?: boolean;
+  /** `false`: the breakpoint never suspends (IDEA's "Suspend" unchecked). Absent means it suspends. */
+  suspend?: boolean;
+  /** Log the IDEA-style "Breakpoint reached at file:line" message on every hit. */
+  logHit?: boolean;
 }
 
 export interface BreakpointStatus {
@@ -38,7 +42,46 @@ export function makeBreakpoint(
     logMessage: props.logMessage ?? null,
     hitCondition: props.hitCondition ?? null,
     ...(props.temporary ? { temporary: true } : {}),
+    ...(props.suspend === false ? { suspend: false } : {}),
+    ...(props.logHit ? { logHit: true } : {}),
   };
+}
+
+export function suspends(b: BreakpointEntry): boolean {
+  return b.suspend !== false;
+}
+
+/** The "Breakpoint hit" message IDEA logs for `path:line` (0-based line). */
+export function hitMessage(path: string, line: number): string {
+  return `Breakpoint reached at ${path.split(/[\\/]/).pop() ?? path}:${line + 1}`;
+}
+
+/** What a hit logs: the hit message and/or the "Evaluate and log" template, one per line. */
+export function logParts(b: BreakpointEntry, path: string): string[] {
+  const parts: string[] = [];
+  if (b.logHit) parts.push(hitMessage(path, b.line));
+  const msg = b.logMessage?.trim();
+  if (msg) parts.push(msg);
+  return parts;
+}
+
+/**
+ * Fills the `{expression}` placeholders of a log template (DAP logpoint syntax)
+ * with `evaluate`; failures render as the error text, like adapters do.
+ */
+export async function interpolateLog(template: string, evaluate: (expr: string) => Promise<string>): Promise<string> {
+  const parts = template.split(/(\{[^{}]+\})/);
+  const out = await Promise.all(
+    parts.map(async (p) => {
+      if (!/^\{[^{}]+\}$/.test(p)) return p;
+      try {
+        return await evaluate(p.slice(1, -1).trim());
+      } catch (e) {
+        return `<${e instanceof Error ? e.message : String(e)}>`;
+      }
+    }),
+  );
+  return out.join("");
 }
 
 export function sortByLine<T extends { line: number }>(list: readonly T[]): T[] {
@@ -52,9 +95,9 @@ export function toggleLine(list: readonly BreakpointEntry[], line: number): Brea
     : sortByLine([...list, makeBreakpoint(line)]);
 }
 
-/** True when the breakpoint has a condition, hit condition or log message. */
+/** True when the breakpoint has a condition, hit condition or logs something. */
 export function isConditional(b: BreakpointEntry): boolean {
-  return !!(b.condition?.trim() || b.hitCondition?.trim() || b.logMessage?.trim());
+  return !!(b.condition?.trim() || b.hitCondition?.trim() || b.logMessage?.trim() || b.logHit);
 }
 
 /**
@@ -87,15 +130,22 @@ export function mapLines<T extends { line: number }>(
   return out;
 }
 
-/** The list sent to the backend; muting disables everything without touching the stored flags. */
-export function toBackend(list: readonly BreakpointEntry[], muted: boolean): Breakpoint[] {
-  return list.map((b) => ({
-    line: b.line,
-    condition: b.condition?.trim() || null,
-    hitCondition: b.hitCondition?.trim() || null,
-    logMessage: b.logMessage?.trim() || null,
-    enabled: b.enabled && !muted,
-  }));
+/**
+ * The list sent to the backend; muting disables everything without touching the stored flags.
+ * A non-suspending breakpoint becomes a DAP logpoint; one that logs nothing has no DAP
+ * equivalent and stays disabled. Suspending breakpoints log from the UI when they stop.
+ */
+export function toBackend(list: readonly BreakpointEntry[], muted: boolean, path = ""): Breakpoint[] {
+  return list.map((b) => {
+    const log = suspends(b) ? null : logParts(b, path).join("\n") || null;
+    return {
+      line: b.line,
+      condition: b.condition?.trim() || null,
+      hitCondition: b.hitCondition?.trim() || null,
+      logMessage: log,
+      enabled: b.enabled && !muted && (suspends(b) || log != null),
+    };
+  });
 }
 
 export function sameEntries(a: readonly BreakpointEntry[], b: readonly BreakpointEntry[]): boolean {
@@ -109,7 +159,9 @@ export function sameEntries(a: readonly BreakpointEntry[], b: readonly Breakpoin
       x.condition === y.condition &&
       x.logMessage === y.logMessage &&
       x.hitCondition === y.hitCondition &&
-      !!x.temporary === !!y.temporary
+      !!x.temporary === !!y.temporary &&
+      suspends(x) === suspends(y) &&
+      !!x.logHit === !!y.logHit
     );
   });
 }

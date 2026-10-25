@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Text } from "@codemirror/state";
-import { fragmentOffset, linkReference, looksLikePath, normalizePath, pathCandidates, textReference } from "./links";
+import { fragmentOffset, linkReference, looksLikePath, textReference } from "./links";
 
 const at = (src: string, marker = "|") => {
   const offset = src.indexOf(marker);
@@ -37,19 +37,6 @@ describe("text references", () => {
     expect(looksLikePath("logo.svg#icon")).toBe(true);
     const { text, offset } = at('log("do|ne")');
     expect(textReference(text, offset)).toBeNull();
-  });
-});
-
-describe("path resolution", () => {
-  it("resolves against the file's directory, then the project root", () => {
-    expect(pathCandidates("../img/a%20b.png?v=2", "/p/web/x/index.html", "/p")).toEqual(["/p/web/img/a b.png"]);
-    expect(pathCandidates("img/a.png", "/p/web/index.html", "/p")).toEqual(["/p/web/img/a.png", "/p/img/a.png"]);
-    expect(pathCandidates("/splash.css", "/p/index.html", "/p", ["/p/public"])).toEqual([
-      "/p/splash.css",
-      "/p/public/splash.css",
-      "/splash.css",
-    ]);
-    expect(normalizePath("/a/./b/../c")).toBe("/a/c");
   });
 });
 

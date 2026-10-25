@@ -1,7 +1,7 @@
 /**
  * IDEA-style Find / Replace bar at the top of the editor (⌘F / ⌘R): search
  * field with Match Case / Words / Regex toggles (⌥C / ⌥W / ⌥X), In Selection
- * (on by default when opened over a multi-line selection), n/N counter,
+ * (on by default when Replace opens over a multi-line selection), n/N counter,
  * ↑/↓ (⇧↵ / ↵), Replace / Replace All, Esc closes.
  */
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
@@ -52,22 +52,39 @@ export function closeFindBar(paneId: string) {
   useFindBars.setState({ [paneId]: undefined });
 }
 
-/** Opens (or refocuses) the bar; a single-line selection becomes the query. */
+/** Longest selection that becomes the query. */
+const MAX_QUERY = 10_000;
+
+/**
+ * Opens (or refocuses) the bar, as in IDEA: the
+ * selection becomes the query — multi-line too — and the search covers the
+ * file, except that Replace over a multi-line selection searches in it. A
+ * multi-line query isn't kept for a later search without a selection.
+ */
 export function openFindBar(paneId: string, replace: boolean) {
   const view = activeView(paneId);
   const sel = view?.state.selection.main;
   if (view && sel && !sel.empty) {
-    const text = view.state.sliceDoc(sel.from, Math.min(sel.to, sel.from + 500));
+    const text = view.state.sliceDoc(sel.from, sel.to);
+    const multiline = text.includes("\n");
     openSelections.set(paneId, { from: sel.from, to: sel.to });
-    if (text.includes("\n") || sel.to - sel.from >= 500) {
-      // A multi-line selection becomes the search scope, like IDEA.
+    if (multiline && replace) {
       view.dispatch({ effects: setFindScope.of({ from: sel.from, to: sel.to }) });
+      useFindOptions.setState({ search: "" });
     } else {
       view.dispatch({ effects: setFindScope.of(null) });
-      useFindOptions.setState((o) => ({ search: o.regexp ? text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : text }));
+      if (text.length < MAX_QUERY)
+        useFindOptions.setState((o) => ({ search: o.regexp ? text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : text }));
     }
+  } else if (useFindOptions.getState().search.includes("\n")) {
+    useFindOptions.setState({ search: "" });
   }
   useFindBars.setState((s) => ({ [paneId]: { replace, seq: (s[paneId]?.seq ?? 0) + 1 } }));
+}
+
+/** Show / Hide Replace on the open bar, keeping its query and scope. */
+function setReplaceShown(paneId: string, replace: boolean) {
+  useFindBars.setState((s) => ({ [paneId]: { replace, seq: s[paneId]?.seq ?? 0 } }));
 }
 
 /** ⌘G / ⇧⌘G: next / previous occurrence of the last search, with or without the bar. */
@@ -290,7 +307,7 @@ function FindBarInner({ paneId, replace, seq }: { paneId: string; replace: boole
           title={replace ? "Hide Replace" : "Show Replace"}
           size="small"
           pressed={replace}
-          onClick={() => openFindBar(paneId, !replace)}
+          onClick={() => setReplaceShown(paneId, !replace)}
         />
       </div>
       <IconButton icon="close" title="Close" shortcut="⎋" size="small" className={styles.findClose} onClick={close} />

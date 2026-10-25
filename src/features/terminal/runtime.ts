@@ -7,6 +7,7 @@ export {
   closePane,
   newTab,
   newTabAt,
+  requestClosePane,
   sessionForTerminalId,
   sessionFromElement,
   splitActive,

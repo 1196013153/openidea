@@ -232,6 +232,7 @@ mod tests {
             detected: true,
             is_test: false,
             debug_adapter: None,
+            allow_parallel: false,
         }
     }
 

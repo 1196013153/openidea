@@ -1,15 +1,34 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { getAction, isActionEnabled } from "@/platform/actions";
 import { getContext, setContext } from "@/platform/context";
 import { bindingsFor } from "@/platform/keymap";
 import { IpcError, type BuildEvent, type BuildMessage, type BuildResult } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { menuGroupItems, provideNotificationService, useContributions, type NotificationService } from "@/workbench/contributions";
+import {
+  menuGroupItems,
+  provideEditorService,
+  provideNotificationService,
+  provideToolWindowService,
+  useContributions,
+  type EditorService,
+  type NotificationService,
+  type ToolWindowService,
+} from "@/workbench/contributions";
 import { useTasks } from "@/workbench/tasks";
 import { BuildView } from "./BuildView";
 import { activate } from "./index";
-import { appendOutput, finishSummary, formatDuration, messageFiles, rootChildren, rootNode, MAX_CONSOLE_LINES } from "./model";
+import {
+  appendOutput,
+  findNode,
+  finishSummary,
+  firstError,
+  formatDuration,
+  messageFiles,
+  rootChildren,
+  rootNode,
+  MAX_CONSOLE_LINES,
+} from "./model";
 import { BUILD_TASK_ID, setBuildBackend, startBuild, stopBuild, useBuildRun, type BuildBackend } from "./store";
 
 const err = (path: string | null, line: number, text = "cannot find symbol"): BuildMessage => ({
@@ -30,6 +49,10 @@ describe("build model", () => {
     expect(a.kind === "file" && a.messages.map((m) => m.range?.start.line)).toEqual([2, 9]);
     expect(rootNode("demo", "failed", messages)).toMatchObject({ errors: 2, warnings: 2 });
     expect(messageFiles(messages)).toEqual(["/p/B.java", "/p/A.java"]);
+    const first = firstError(messages)!;
+    expect(first.message.range?.start.line).toBe(9);
+    expect(findNode(messages, first.key)).toEqual(first);
+    expect(firstError([warn("/p/B.java", 3)])).toBeUndefined();
   });
 
   it("formats IDEA's finish summaries", () => {
@@ -37,12 +60,16 @@ describe("build model", () => {
     expect(formatDuration(3000)).toBe("3 s");
     expect(formatDuration(3120)).toBe("3 s 120 ms");
     expect(formatDuration(65_000)).toBe("1 m 5 s");
-    expect(finishSummary({ success: true, errors: 0, warnings: 0, durationMs: 3000 })).toBe("Build completed successfully in 3 s");
+    expect(finishSummary({ success: true, errors: 0, warnings: 0, durationMs: 3000 })).toBe(
+      "Build completed successfully in 3 s",
+    );
     expect(finishSummary({ success: true, errors: 0, warnings: 1, durationMs: 500 })).toBe(
       "Build completed successfully with 1 warning in 500 ms",
     );
     expect(finishSummary({ success: false, errors: 2, warnings: 0, durationMs: 1 })).toBe("Build failed: 2 errors");
-    expect(finishSummary({ success: false, errors: 1, warnings: 2, durationMs: 1 })).toBe("Build failed: 1 error, 2 warnings");
+    expect(finishSummary({ success: false, errors: 1, warnings: 2, durationMs: 1 })).toBe(
+      "Build failed: 1 error, 2 warnings",
+    );
     expect(finishSummary({ success: false, errors: 0, warnings: 0, durationMs: 1 })).toBe("Build failed");
   });
 
@@ -97,9 +124,19 @@ describe("build feature", () => {
   let dispose: () => void;
   let notes: Note[];
   let fake: FakeBackend;
+  let openFile: ReturnType<typeof vi.fn>;
+  let show: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     notes = [];
+    openFile = vi.fn(() => Promise.resolve());
+    show = vi.fn();
+    provideEditorService({
+      openFile,
+      saveAll: () => Promise.resolve(),
+      activePath: () => null,
+    } as unknown as EditorService);
+    provideToolWindowService({ show } as unknown as ToolWindowService);
     provideNotificationService({ notify: (n) => void notes.push(n) });
     fake = new FakeBackend();
     setBuildBackend(fake);
@@ -136,6 +173,7 @@ describe("build feature", () => {
     await act(async () => {});
     expect(getContext()["build.running"]).toBe(true);
     expect(isActionEnabled(getAction("build.buildProject")!)).toBe(false);
+    expect(show).not.toHaveBeenCalled();
     expect(useTasks.getState().tasks.some((t) => t.id === BUILD_TASK_ID && !t.done)).toBe(true);
     const messages = [err("/p/src/A.java", 11), warn("/p/src/B.java", 2)];
     await act(async () => {
@@ -157,6 +195,14 @@ describe("build feature", () => {
     expect(screen.getByText("deprecated")).toBeInTheDocument();
     expect(screen.getByText(":12:5")).toBeInTheDocument();
     expect(notes.at(-1)).toMatchObject({ level: "error", title: "Build failed: 1 error, 1 warning" });
+    // A failure shows the tool window (unfocused), selects the first error and opens it.
+    expect(show).toHaveBeenCalledWith("build", false);
+    expect(useBuildRun.getState().selected).toBe(firstError(messages)!.key);
+    expect(openFile).toHaveBeenCalledWith(
+      "/p/src/A.java",
+      expect.objectContaining({ focus: true, selection: { line: 11, col: 4 } }),
+    );
+    expect(screen.getByRole("document", { name: "Build message" })).toHaveTextContent("cannot find symbol");
     expect(getContext()["build.running"]).toBe(false);
 
     const second = startBuild("rebuild");
@@ -167,6 +213,24 @@ describe("build feature", () => {
       await second;
     });
     expect(notes.at(-1)).toMatchObject({ level: "info", title: "Build completed successfully in 3 s" });
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a message on single click and navigates on F4", async () => {
+    const messages = [err("/p/src/A.java", 11, "first problem"), warn("/p/src/B.java", 2)];
+    const run = startBuild("build");
+    await act(async () => {});
+    await act(async () => {
+      fake.resolve(result(messages, true));
+      await run;
+    });
+    render(<BuildView />);
+    expect(screen.getByRole("log", { name: "Build output" })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByText("deprecated"));
+    expect(openFile).not.toHaveBeenCalled();
+    expect(screen.getByRole("document", { name: "Build message" })).toHaveTextContent("deprecated");
+    fireEvent.keyDown(screen.getByRole("tree"), { key: "F4" });
+    expect(openFile).toHaveBeenCalledWith("/p/src/B.java", expect.objectContaining({ focus: true }));
   });
 
   it("builds the module of the given file and can be stopped", async () => {

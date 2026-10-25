@@ -12,6 +12,8 @@ import { isVirtualUri } from "@/platform/virtualDocs";
 import { editorController, useEditorStatus, useGotoLine } from "../controller";
 import { useDocMeta, useOutline } from "../model/document";
 import { symbolChain } from "./outline";
+import { NavChildrenPopup } from "./NavBarPopup";
+import type { NavSegment } from "./navBar";
 import styles from "./EditorArea.module.css";
 
 function useActiveMeta() {
@@ -24,10 +26,15 @@ interface Crumb {
   label: string;
   icon?: string;
   title: string;
-  run: () => void;
+  /** Clicking lists the segment's children (IDEA navigation bar). */
+  nav?: NavSegment;
+  run?: () => void;
 }
 
-/** IDEA new UI navigation bar in the status bar: project › dirs › file › symbols, with icons. */
+/**
+ * IDEA new UI navigation bar in the status bar: project › dirs › file ›
+ * symbols, with icons; clicking a segment opens a popup of its children.
+ */
 export function Breadcrumbs() {
   const status = useEditorStatus((s) => s.status);
   const project = useProject((s) => s.project);
@@ -35,6 +42,7 @@ export function Breadcrumbs() {
   const line = status?.line ?? 0;
   const col = status?.col ?? 0;
   const chain = useMemo(() => (outline ? symbolChain(outline, line, col) : []), [outline, line, col]);
+  const [popup, setPopup] = useState<{ nav: NavSegment; anchor: HTMLElement } | null>(null);
   if (!status) return null;
   const path = status.path;
   const parent = dirname(path);
@@ -44,7 +52,7 @@ export function Breadcrumbs() {
       label: project.name,
       icon: "module",
       title: project.root,
-      run: () => void executeAction("navigate.selectIn", { path: project.root }),
+      nav: { kind: "dir", path: project.root, label: project.name, root: true },
     });
   if (project && parent !== project.root && parent.startsWith(project.root + "/")) {
     // Every directory from the root to the file, eliding the middle of deep paths.
@@ -67,7 +75,7 @@ export function Breadcrumbs() {
         label,
         icon: "folder",
         title: relativePath(project.root, dir),
-        run: () => void executeAction("navigate.selectIn", { path: dir }),
+        nav: { kind: "dir", path: dir, label },
       });
     }
   }
@@ -77,29 +85,37 @@ export function Breadcrumbs() {
     label: file,
     icon: fileIconName(file),
     title: project ? relativePath(project.root, path) : path,
-    run: () => void executeAction("navigate.selectIn", { path }),
+    nav: { kind: "file", path, label: file },
   });
   for (const item of chain.filter((it, i) => i > 0 || it.name !== stem))
     segments.push({
       label: item.name,
       icon: `symbol-${badgeKind(item.kind)}`,
       title: item.detail ?? item.name,
-      run: () =>
-        void editorController().openFile(path, {
-          selection: { line: item.selection_range.start.line, col: item.selection_range.start.col },
-        }),
+      nav: { kind: "symbol", path, label: item.name, item },
     });
   return (
     <nav className={styles.status} aria-label="Breadcrumbs">
       {segments.map((s, i) => (
         <Fragment key={i}>
           {i > 0 && <Icon name="chevron-right" size={12} className={styles.statusSep} />}
-          <BarButton className={styles.crumbButton} tooltip={s.title} onClick={s.run}>
+          <BarButton
+            className={styles.crumbButton}
+            tooltip={s.title}
+            aria-haspopup={s.nav ? "listbox" : undefined}
+            onClick={(e) => {
+              const nav = s.nav;
+              const anchor = e.currentTarget;
+              if (nav) setPopup((p) => (p?.anchor === anchor ? null : { nav, anchor }));
+              else s.run?.();
+            }}
+          >
             {s.icon && <Icon name={s.icon} size={14} className={styles.crumbIcon} />}
             <span className={styles.crumbLabel}>{s.label}</span>
           </BarButton>
         </Fragment>
       ))}
+      {popup && <NavChildrenPopup segment={popup.nav} anchor={popup.anchor} onClose={() => setPopup(null)} />}
     </nav>
   );
 }

@@ -77,7 +77,11 @@ describe("breakpoint click area", () => {
         doc: "a\nb",
         extensions: [
           lineNumbers(),
-          gutter({ class: "extra", renderEmptyElements: true, lineMarker: (_v, line) => (line.from > 0 ? new Icon() : null) }),
+          gutter({
+            class: "extra",
+            renderEmptyElements: true,
+            lineMarker: (_v, line) => (line.from > 0 ? new Icon() : null),
+          }),
           breakpointGutter(ctx),
         ],
       }),
@@ -90,6 +94,42 @@ describe("breakpoint click area", () => {
     expect(breakpointsOf(ctx.path)).toHaveLength(0);
     down(cells[0]!);
     expect(breakpointsOf(ctx.path)).toHaveLength(1);
+  });
+});
+
+describe("breakpoint gutter clicks", () => {
+  const click = (view: EditorView, init: MouseEventInit) =>
+    view.dom
+      .querySelector(".cm-lineNumbers .cm-gutterElement:not([style*='hidden'])")!
+      .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, ...init }));
+
+  it("⇧-click adds a non-suspending logging breakpoint, ⌥-click a temporary one", () => {
+    localStorage.clear();
+    loadBreakpoints("/proj");
+    const view = makeView("a\nb");
+    click(view, { shiftKey: true });
+    expect(breakpointsOf(ctx.path)[0]).toMatchObject({ line: 0, suspend: false, logHit: true });
+    // Modifier clicks leave an existing breakpoint alone; a plain click removes it.
+    click(view, { altKey: true });
+    click(view, { shiftKey: true });
+    expect(breakpointsOf(ctx.path)).toHaveLength(1);
+    click(view, {});
+    expect(breakpointsOf(ctx.path)).toHaveLength(0);
+    click(view, { altKey: true });
+    expect(breakpointsOf(ctx.path)[0]).toMatchObject({ line: 0, temporary: true });
+  });
+
+  it("middle-click enables / disables an existing breakpoint", () => {
+    localStorage.clear();
+    loadBreakpoints("/proj");
+    const view = makeView("a\nb");
+    click(view, { button: 1 });
+    expect(breakpointsOf(ctx.path)).toHaveLength(0);
+    toggleBreakpoint(ctx.path, 0);
+    click(view, { button: 1 });
+    expect(breakpointsOf(ctx.path)[0]!.enabled).toBe(false);
+    click(view, { button: 1 });
+    expect(breakpointsOf(ctx.path)[0]!.enabled).toBe(true);
   });
 });
 

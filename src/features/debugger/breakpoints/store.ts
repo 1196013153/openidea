@@ -59,6 +59,11 @@ function sanitize(raw: unknown): BreakpointEntry[] {
         logMessage: typeof b.logMessage === "string" ? b.logMessage : null,
         hitCondition: typeof b.hitCondition === "string" ? b.hitCondition : null,
         ...(b.temporary === true ? { temporary: true } : {}),
+        // Before "Suspend" was its own option, a log message meant "log instead of suspending".
+        ...(b.suspend === false || (b.suspend === undefined && typeof b.logMessage === "string" && b.logMessage.trim())
+          ? { suspend: false }
+          : {}),
+        ...(b.logHit === true ? { logHit: true } : {}),
       })),
   );
 }
@@ -111,7 +116,7 @@ export async function syncFile(path: string) {
     list.map((b) => b.id),
   );
   try {
-    const states = await call(commands.debugSetBreakpoints(path, toBackend(list, muted)));
+    const states = await call(commands.debugSetBreakpoints(path, toBackend(list, muted, path)));
     applyStates(path, states);
   } catch (e) {
     console.warn("debugSetBreakpoints failed", e);

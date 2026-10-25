@@ -377,6 +377,22 @@ export class TerminalSession {
     return this.ptyId;
   }
 
+  /**
+   * Whether ending the session would kill something the user started (as IDEA
+   * judges it): a program run instead of a shell always counts;
+   * a shell counts while a command runs in it.
+   */
+  async isBusy(): Promise<boolean> {
+    if (this.snapshot.status !== "running" || this.ptyId === null) return false;
+    const custom = this.opts.command;
+    if (custom && !custom.shell) return true;
+    try {
+      return await call(commands.termIsBusy(this.ptyId));
+    } catch {
+      return false;
+    }
+  }
+
   /** Called when the backend reports the PTY exited. */
   exited(code: number | null) {
     if (this.disposed) return;
@@ -424,6 +440,10 @@ export class TerminalSession {
 
   paste(text: string) {
     this.term.paste(text);
+  }
+
+  clearSelection() {
+    this.term.clearSelection();
   }
 
   copySelection(): boolean {

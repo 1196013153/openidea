@@ -504,6 +504,7 @@ const SMART_KEYS = editorPage({
           key: `${P}.smartKeys.backspaceUnindent`,
           label: "Unindent",
           options: [
+            { value: "autoindent", label: "To proper indent position" },
             { value: "nearest", label: "To nearest indent position" },
             { value: "none", label: "Disabled" },
           ],

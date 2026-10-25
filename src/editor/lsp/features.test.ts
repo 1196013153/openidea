@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { Text } from "@codemirror/state";
 import type { CodeAction } from "@/bindings";
 import { semanticRanges } from "./semantic";
-import { sortCodeActions } from "./intentions";
+import { lineErrorsAwayFromCaret, sortCodeActions } from "./intentions";
 import { splitSignature } from "./signature";
-import { dedupeLocations } from "./navigation";
+import { dedupeLocations, usagesStatusText } from "./navigation";
+import { declarationSummary } from "./markdown";
+import { linkedSpans } from "./rename";
 
 describe("semanticRanges", () => {
   const doc = Text.of(["let mut count = Foo::new();", "const MAX: u32 = 1;"]);
@@ -65,5 +67,56 @@ describe("dedupeLocations", () => {
   it("drops duplicate targets", () => {
     const loc = (path: string, line: number) => ({ path, range: { start: { line, col: 0 }, end: { line, col: 1 } } });
     expect(dedupeLocations([loc("/a", 1), loc("/a", 1), loc("/b", 1)])).toHaveLength(2);
+  });
+});
+
+describe("lineErrorsAwayFromCaret", () => {
+  const p = (from: number, to: number, severity = "error") => ({ from, to, severity });
+
+  it("offers errors elsewhere on the caret line when none is at the caret", () => {
+    expect(lineErrorsAwayFromCaret([p(30, 34), p(12, 15), p(50, 52), p(5, 6, "warning")], 0, 40, 2)).toEqual([p(12, 15), p(30, 34)]);
+  });
+
+  it("offers nothing extra when an error touches the caret", () => {
+    expect(lineErrorsAwayFromCaret([p(0, 3), p(12, 15)], 0, 40, 3)).toEqual([]);
+  });
+});
+
+describe("usagesStatusText", () => {
+  it("reads like IDEA's status bar message", () => {
+    expect(usagesStatusText(1, "'x'", "⇧⌘F7")).toBe(
+      "1 usage of 'x' found (press ⇧⌘F7 again to remove the highlighting, Escape to remove all highlighting)",
+    );
+    expect(usagesStatusText(3, "'x'", null)).toBe("3 usages of 'x' found (Escape to remove all highlighting)");
+  });
+});
+
+describe("declarationSummary", () => {
+  it("takes the first code block of hover markdown", () => {
+    expect(declarationSummary({ kind: "markdown", value: "```ts\nconst x: number\n```\n---\nDocs" })).toEqual({
+      code: "const x: number",
+      language: "ts",
+    });
+  });
+
+  it("falls back to the first paragraph", () => {
+    expect(declarationSummary({ kind: "plaintext", value: "fn main()\n\nmore" })).toEqual({ text: "fn main()" });
+    expect(declarationSummary({ kind: "markdown", value: "  " })).toBeNull();
+  });
+});
+
+describe("linkedSpans", () => {
+  it("keeps other same-name occurrences, sorted and without the primary or overlaps", () => {
+    const spans = [
+      { from: 20, to: 23 },
+      { from: 4, to: 7 },
+      { from: 10, to: 13 },
+      { from: 11, to: 14 },
+      { from: 30, to: 35 },
+    ];
+    expect(linkedSpans(spans, { from: 4, to: 7 }, (s) => s.to - s.from === 3)).toEqual([
+      { from: 10, to: 13 },
+      { from: 20, to: 23 },
+    ]);
   });
 });

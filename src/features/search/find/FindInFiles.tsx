@@ -362,6 +362,8 @@ function FindInFilesDialog() {
       width={820}
       position="top"
       transparentBackdrop
+      // IDEA's Find in Files is a modeless dialog: it survives switching to another app.
+      closeOnDeactivate={false}
       aria-label={s.replace ? "Replace in Files" : "Find in Files"}
       className={styles.dialog}
     >

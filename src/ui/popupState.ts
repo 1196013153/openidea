@@ -61,6 +61,25 @@ export function acquirePopup(): () => void {
   };
 }
 
+/**
+ * Calls `fn` when the app window is deactivated (IDEA cancels popups then).
+ * Focus moving into one of our own frames also blurs the window: ignored.
+ */
+export function onWindowDeactivate(fn: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onBlur = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (!document.hasFocus()) fn();
+    }, 0);
+  };
+  window.addEventListener("blur", onBlur);
+  return () => {
+    clearTimeout(timer);
+    window.removeEventListener("blur", onBlur);
+  };
+}
+
 export function isPopupOpen(): boolean {
   return layers.length + anonymous > 0;
 }

@@ -240,3 +240,37 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Evaluate: a field that grows with ⇧Enter, like IDEA's expression editor. */
+.evalInputRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.evalInput {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--h-field, 28px);
+  padding: 5px 8px;
+  resize: none;
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-control, 4px);
+  background: var(--bg-field, var(--bg-button));
+  box-shadow: inset 0 0 0 1px var(--border-button);
+  color: var(--fg-strong);
+  font-family: var(--font-mono);
+  font-size: var(--fs-ui);
+  line-height: 18px;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.evalInput:focus {
+  box-shadow:
+    inset 0 0 0 1px var(--focus-ring),
+    0 0 0 1px var(--focus-ring);
+}
+.evalInput::placeholder {
+  color: var(--fg-faint);
+}

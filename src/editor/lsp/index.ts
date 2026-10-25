@@ -7,10 +7,11 @@
  */
 import type { Extension } from "@codemirror/state";
 import { registerEditorContribution, type EditorDocContext } from "@/editor/api";
-import { registerOverlay } from "@/workbench/contributions";
+import { registerOverlay, registerStatusItem } from "@/workbench/contributions";
 import { lspDoc } from "./lsp";
 import { hintExtension } from "./hint";
 import { completionExtension } from "./completion";
+import { inplaceRenameExtension } from "./inplaceRename";
 import { diagnosticsExtension, installDiagnosticsEvents } from "./diagnostics";
 import { hoverExtension } from "./hover";
 import { signatureExtension } from "./signature";
@@ -24,7 +25,8 @@ import { installAvailabilityEvents } from "./availability";
 import { registerActionsOnSave, registerFormatOnSave, registerLspActions } from "./actions";
 import { lspTheme } from "./theme";
 import { inspectionWidgetExtension } from "./inspectionWidget";
-import { LspPopups } from "./Popups";
+import { unresolvedReferences } from "./fileReferences";
+import { LspPopups, UsagesStatus } from "./Popups";
 import { prefetchMarkdown } from "./markdown";
 import { registerNavigationActions } from "@/editor/navigation";
 
@@ -38,12 +40,14 @@ export function lspExtensions(ctx: EditorDocContext): Extension[] {
     hoverExtension(),
     signatureExtension(),
     completionExtension(),
+    inplaceRenameExtension(),
     navigationExtension(),
     intentionsExtension(),
     inlayExtension(),
     semanticExtension(),
     usagesLensExtension(),
     autoImportExtension(),
+    unresolvedReferences(),
   ];
 }
 
@@ -53,6 +57,7 @@ export function activate(): () => void {
     installAvailabilityEvents(),
     registerEditorContribution({ id: "lsp", order: 50, extensions: lspExtensions }),
     registerOverlay({ id: "editor-lsp.popups", component: LspPopups }),
+    registerStatusItem({ id: "editor-lsp.usagesStatus", align: "left", priority: 10, component: UsagesStatus }),
     registerLspActions(),
     registerNavigationActions(),
     registerFormatOnSave(),

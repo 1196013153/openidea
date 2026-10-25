@@ -1,17 +1,26 @@
 /** Three-pane merge conflict editor: Yours | Result | Theirs. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { RangeSetBuilder, StateField, type EditorState, type Extension } from "@codemirror/state";
+import { Facet, RangeSetBuilder, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { history, historyKeymap } from "@codemirror/commands";
 import { keymap } from "@codemirror/view";
 import { unifiedMergeView } from "@codemirror/merge";
+import type { MergeSides } from "@/bindings";
+import { useTxTemplate } from "@/platform/i18n";
 import { call, commands } from "@/platform/ipc";
 import { Button, IconButton, Spinner, T } from "@/ui";
 import { editorService, type EditorInput } from "@/workbench/contributions";
 import { languageFor, viewerBase } from "./cm";
 import { confirmDialog } from "./dialogs";
-import { parseConflicts, resolutionText, resolveAll, type ConflictBlock, type Resolution } from "./conflicts";
+import {
+  mergeTitles,
+  parseConflicts,
+  resolutionText,
+  resolveAll,
+  type ConflictBlock,
+  type Resolution,
+} from "./conflicts";
 import { baseName } from "./model";
 import { errorMessage, readWorkingText, runOp, writeFileText } from "./ops";
 import { refreshNow } from "./store";
@@ -20,9 +29,12 @@ import styles from "./MergeEditor.module.css";
 import type { MergeData } from "./mergeKind";
 export { MERGE_KIND, mergeInput, type MergeData } from "./mergeKind";
 
+/** The user's commit is the `>>>>>>>` section (a rebase): "Yours" takes it. */
+const reversedSides = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
+
 function resolveBlock(view: EditorView, block: ConflictBlock, how: Resolution) {
   view.dispatch({
-    changes: { from: block.from, to: block.to, insert: resolutionText(block, how) },
+    changes: { from: block.from, to: block.to, insert: resolutionText(block, how, view.state.facet(reversedSides)) },
     userEvent: "input.resolve",
   });
 }
@@ -75,6 +87,7 @@ function decorate(state: EditorState): { blocks: ConflictBlock[]; deco: Decorati
   const blocks = parseConflicts(state.doc.toString());
   const b = new RangeSetBuilder<Decoration>();
   const doc = state.doc;
+  const [yours, theirs] = state.facet(reversedSides) ? [theirsLine, oursLine] : [oursLine, theirsLine];
   blocks.forEach((blk, i) => {
     b.add(blk.from, blk.from, Decoration.widget({ widget: new ActionsWidget(i, blk), block: true, side: -1 }));
     const endLine = doc.lineAt(Math.max(blk.from, blk.to - 1)).number;
@@ -82,9 +95,9 @@ function decorate(state: EditorState): { blocks: ConflictBlock[]; deco: Decorati
       const line = doc.line(n);
       const deco =
         line.from >= blk.oursFrom && line.from < blk.oursTo
-          ? oursLine
+          ? yours
           : line.from >= blk.theirsFrom && line.from < blk.theirsTo
-            ? theirsLine
+            ? theirs
             : markerLine;
       b.add(line.from, line.from, deco);
     }
@@ -135,6 +148,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
     theirs: string;
     base: string | null;
     working: string;
+    sides: MergeSides;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<Extension | null>(null);
@@ -144,11 +158,13 @@ export function MergeEditor({ input }: { input: EditorInput }) {
   const resultRef = useRef<HTMLDivElement>(null);
   const theirsRef = useRef<HTMLDivElement>(null);
   const resultView = useRef<EditorView | null>(null);
+  const txt = useTxTemplate();
+  const titles = mergeTitles(state?.sides);
 
   const load = useCallback(async () => {
     try {
       const [v, working] = await Promise.all([call(commands.vcsConflictVersions(path)), readWorkingText(path)]);
-      setState({ ours: v.ours ?? "", theirs: v.theirs ?? "", base: v.base, working: working ?? "" });
+      setState({ ours: v.ours ?? "", theirs: v.theirs ?? "", base: v.base, working: working ?? "", sides: v.sides });
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
@@ -183,6 +199,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
         history(),
         keymap.of(historyKeymap),
         lang,
+        reversedSides.of(state.sides.reversed),
         conflictField,
         resultTheme,
         EditorView.updateListener.of((u) => {
@@ -221,7 +238,10 @@ export function MergeEditor({ input }: { input: EditorInput }) {
     const v = resultView.current;
     if (!v) return;
     const text = v.state.doc.toString();
-    v.dispatch({ changes: { from: 0, to: text.length, insert: resolveAll(text, how) }, userEvent: "input.resolve" });
+    v.dispatch({
+      changes: { from: 0, to: text.length, insert: resolveAll(text, how, v.state.facet(reversedSides)) },
+      userEvent: "input.resolve",
+    });
   };
 
   const apply = async () => {
@@ -292,15 +312,11 @@ export function MergeEditor({ input }: { input: EditorInput }) {
         </Button>
       </div>
       <div className={styles.labels}>
-        <span>
-          <T>Yours (current branch)</T>
-        </span>
+        <span>{txt(titles.yours)}</span>
         <span>
           <T>Result</T>
         </span>
-        <span>
-          <T>Theirs (incoming)</T>
-        </span>
+        <span>{txt(titles.theirs)}</span>
       </div>
       {!state || lang === null ? (
         <div className={styles.message}>

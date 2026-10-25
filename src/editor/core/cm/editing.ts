@@ -9,7 +9,6 @@ import {
   insertNewlineAndIndent,
   moveLineDown,
   moveLineUp,
-  toggleComment,
 } from "@codemirror/commands";
 import { selectNextOccurrence, selectSelectionMatches } from "@codemirror/search";
 import { humpLeft, humpRight } from "../model/camelHumps";
@@ -286,22 +285,7 @@ export function selectRange(view: EditorView, range: SelectionRange | { from: nu
 
 // --- comments ------------------------------------------------------------------------
 
-/** ⌘/: toggles line comments; without a selection the caret then moves to the next line, as in IDEA. */
-export const commentLine: Command = (view) => {
-  const before = view.state.selection;
-  const column = before.main.head - view.state.doc.lineAt(before.main.head).from;
-  if (!toggleComment(view)) return false;
-  const sel = view.state.selection;
-  if (before.ranges.length === 1 && before.main.empty && sel.ranges.length === 1) {
-    const line = view.state.doc.lineAt(sel.main.head);
-    if (line.number < view.state.doc.lines) {
-      const next = view.state.doc.line(line.number + 1);
-      const col = Math.min(column, next.length);
-      view.dispatch({ selection: EditorSelection.cursor(next.from + col), scrollIntoView: true, userEvent: "select" });
-    }
-  }
-  return true;
-};
+export { commentLine } from "./comments";
 
 // --- smart keys ------------------------------------------------------------------
 
@@ -381,17 +365,44 @@ export const joinLines: Command = (view) => {
   return true;
 };
 
-/** ⌘⇧U: Toggle Case of the selection (or the word at the caret). */
+/** Escape sequences keep their case: `\n` must not become `\N`. */
+function caseOf(state: EditorState, from: number, to: number, lower: boolean): string {
+  const text = state.sliceDoc(from, to);
+  const conv = (t: string) => (lower ? t.toLowerCase() : t.toUpperCase());
+  const keep: Array<[number, number]> = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (n) => {
+      if (/Escape/.test(n.type.name)) keep.push([Math.max(n.from, from) - from, Math.min(n.to, to) - from]);
+    },
+  });
+  if (!keep.length) return conv(text);
+  let out = "";
+  let pos = 0;
+  for (const [a, b] of keep) {
+    if (a < pos) continue;
+    out += conv(text.slice(pos, a)) + text.slice(a, b);
+    pos = b;
+  }
+  return out + conv(text.slice(pos));
+}
+
+/**
+ * ⌘⇧U: Toggle Case of the selections (the word at a caret, which stays
+ * selected): lower case when any of them has an upper-case letter, else upper.
+ */
 export const toggleCase: Command = (view) => {
   const { state } = view;
   if (state.readOnly) return false;
+  const targets = state.selection.ranges.map((r) => (r.empty ? state.wordAt(r.head) : r));
+  const lower = targets.some((t) => t && state.sliceDoc(t.from, t.to) !== state.sliceDoc(t.from, t.to).toLowerCase());
   const tr = state.changeByRange((r) => {
-    const range = r.empty ? state.wordAt(r.head) : r;
-    if (!range) return { range: r };
-    const text = state.sliceDoc(range.from, range.to);
-    // Mixed or lower case → upper; all upper → lower (as IDEA).
-    const insert = text === text.toUpperCase() ? text.toLowerCase() : text.toUpperCase();
-    return { changes: { from: range.from, to: range.to, insert }, range: r.empty ? r : EditorSelection.range(r.anchor, r.head) };
+    const t = targets[state.selection.ranges.indexOf(r)];
+    if (!t) return { range: r };
+    const insert = caseOf(state, t.from, t.to, lower);
+    const range = r.empty ? EditorSelection.range(t.from, t.from + insert.length) : EditorSelection.range(r.anchor, r.head);
+    return { changes: { from: t.from, to: t.to, insert }, range };
   });
   view.dispatch(state.update(tr, { userEvent: "input.case" }));
   return true;

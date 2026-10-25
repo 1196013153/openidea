@@ -177,8 +177,10 @@ function InlineEditor({ editing, initial, onDone }: { editing: Editing; initial:
           }
         }}
         onBlur={() => {
+          // Like IDEA's New File popup, clicking elsewhere cancels creating; a rename commits.
+          if (editing.kind === "new") return void finish(false);
           const valid = !checkEditingName(value).error && !!value.trim();
-          void finish(valid && (editing.kind === "new" || value !== initial));
+          void finish(valid && value !== initial);
         }}
       />
       {showError && (

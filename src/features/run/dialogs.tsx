@@ -14,11 +14,14 @@ interface Pending {
 
 const useRunDialog = create<{ pending: Pending | null }>(() => ({ pending: null }));
 
-/** IDEA's "Process 'x' Is Running" dialog. Resolves true for Stop and Rerun. */
-export async function confirmRerun(name: string): Promise<boolean> {
+/**
+ * IDEA's "Process 'x' Is Running" dialog, shown when Run starts a configuration
+ * that doesn't allow parallel runs. Resolves true for Stop and Rerun.
+ */
+export async function confirmRerun(name: string, instances = 1): Promise<boolean> {
   const answer = await confirmChecked({
     title: `Process '${name}' Is Running`,
-    message: `Do you want to stop the process '${name}' and run it again?`,
+    message: `'${name}' is not allowed to run in parallel.\nWould you like to stop ${instances > 1 ? `${instances} running instances` : "the running one"}?`,
     ok: "Stop and Rerun",
     checkbox: "Do not ask again",
   });

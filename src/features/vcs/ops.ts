@@ -179,6 +179,7 @@ export async function runRemote(
     // Every repository is tried; the failures are reported together. A pull skips the
     // repositories that have nothing to pull from (detached HEAD, e.g. submodules; no upstream).
     const failures: string[] = [];
+    const updated: UpdatedRange[] = [];
     for (const repo of repos) {
       const name = repos.length > 1 && repo ? repoName(repo) : null;
       if (name) logConsole("info", name);
@@ -190,7 +191,10 @@ export async function runRemote(
         }
       }
       try {
+        const before = op.op === "pull" ? await headCommit(repo) : null;
         await call(commands.vcsRemote(repo, request, op, channel));
+        const after = before ? await headCommit(repo) : null;
+        if (before && after && before !== after) updated.push({ repo, from: before, to: after });
       } catch (e) {
         if (isCancelled(e) || !name) throw e;
         logConsole("err", errorMessage(e));
@@ -199,13 +203,15 @@ export async function runRemote(
     }
     if (failures.length) throw new Error(failures.join("\n"));
     lastRemoteError = null;
-    notifications().notify({
-      group: "vcs",
-      level: "info",
-      key: "vcs.remote",
-      title: `${doneTitle} successful`,
-      body: lastLine && !/%/.test(lastLine) ? lastLine : undefined,
-    });
+    if (op.op === "pull") await notifyUpdated(updated);
+    else
+      notifications().notify({
+        group: "vcs",
+        level: "info",
+        key: "vcs.remote",
+        title: `${doneTitle} successful`,
+        body: lastLine && !/%/.test(lastLine) ? lastLine : undefined,
+      });
     return true;
   } catch (e) {
     const cancelled = isCancelled(e);
@@ -225,6 +231,65 @@ export async function runRemote(
     useVcs.setState({ remoteBusy: null });
     void refreshNow();
   }
+}
+
+interface UpdatedRange {
+  repo: string | null;
+  from: string;
+  to: string;
+}
+
+const headCommit = (repo: string | null) =>
+  call(commands.vcsBranchInfo(repo)).then(
+    (i) => i.headCommit,
+    () => null,
+  );
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** IDEA's Update Project result: "N files updated in M commits" with View Commits. */
+async function notifyUpdated(updated: readonly UpdatedRange[]) {
+  if (!updated.length) {
+    notifications().notify({ group: "vcs", level: "info", key: "vcs.remote", title: "All files are up-to-date" });
+    return;
+  }
+  let files = 0;
+  let commits = 0;
+  await Promise.all(
+    updated.map(async ({ repo, from, to }) => {
+      const [changed, log] = await Promise.all([
+        call(commands.vcsDiffRevisions(repo, from, to)).catch(() => []),
+        call(
+          commands.vcsLog(repo, {
+            branch: null,
+            path: null,
+            author: null,
+            text: null,
+            range: `${from}..${to}`,
+            skip: 0,
+            limit: 0,
+          }),
+        ).catch(() => []),
+      ]);
+      files += changed.length;
+      commits += log.length;
+    }),
+  );
+  notifications().notify({
+    group: "vcs",
+    level: "info",
+    key: "vcs.remote",
+    title: `${plural(files, "file")} updated in ${plural(commits, "commit")}`,
+    actions: [
+      {
+        label: "View Commits",
+        run: () => {
+          const { repo, from, to } = updated.find((u) => u.repo === currentRepo()) ?? updated[0]!;
+          void import("./CompareBranches").then((m) => m.showCommitRange("Update Info", from, to, repo));
+        },
+      },
+    ],
+  });
 }
 
 // ---------------------------------------------------------------------------

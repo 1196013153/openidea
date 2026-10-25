@@ -185,10 +185,15 @@ pub async fn vcs_checkout(
     repo: Option<PathBuf>,
     branch: String,
     create: bool,
-) -> IdeResult<()> {
+    options: Option<ide_vcs::CheckoutOptions>,
+) -> IdeResult<ide_vcs::CheckoutOutcome> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_recorded(repo.as_deref(), Some("Git checkout"), |r| r.checkout(&branch, create)))
-        .await
+    let options = options.unwrap_or_default();
+    blocking(move || {
+        project
+            .with_repo_recorded(repo.as_deref(), Some("Git checkout"), |r| r.checkout_with(&branch, create, &options))
+    })
+    .await
 }
 
 /// New Branch: creates `name` at `start` (HEAD when absent), optionally checking it out.
@@ -231,10 +236,22 @@ pub async fn vcs_delete_branch(
     state: State<'_, AppState>,
     repo: Option<PathBuf>,
     branch: String,
-    force: bool,
+) -> IdeResult<ide_vcs::DeletedBranch> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.delete_branch_restorable(&branch))).await
+}
+
+/// "Restore" of the branch-deleted notification.
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_restore_branch(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    deleted: ide_vcs::DeletedBranch,
 ) -> IdeResult<()> {
     let project = state.project(window.label())?;
-    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.delete_branch(&branch, force))).await
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.restore_branch(&deleted))).await
 }
 
 #[tauri::command]
@@ -336,11 +353,14 @@ pub enum RemoteOp {
     DeleteBranch {
         branch: String,
     },
-    /// Pushes local `branch` (only up to `revision` when set) to its upstream.
+    /// Pushes local `branch` (only up to `revision` when set) to its upstream, or to
+    /// remote branch `target` of the same remote.
     PushBranch {
         branch: String,
         revision: Option<String>,
         force_with_lease: bool,
+        #[serde(default)]
+        target: Option<String>,
     },
     /// Fast-forwards local `branch` (not checked out) to its upstream.
     UpdateBranch {
@@ -373,9 +393,12 @@ pub async fn vcs_remote(
                 r.push_with_tags(force_with_lease, set_upstream, tags, &cancel, &out)
             }
             RemoteOp::DeleteBranch { branch } => r.delete_remote_branch(&branch, &cancel, &out),
-            RemoteOp::PushBranch { branch, revision, force_with_lease } => {
-                r.push_branch(&branch, revision.as_deref(), force_with_lease, &cancel, &out)
-            }
+            RemoteOp::PushBranch { branch, revision, force_with_lease, target } => match target {
+                Some(target) => {
+                    r.push_branch_to(&branch, revision.as_deref(), &target, force_with_lease, &cancel, &out)
+                }
+                None => r.push_branch(&branch, revision.as_deref(), force_with_lease, &cancel, &out),
+            },
             RemoteOp::UpdateBranch { branch } => r.update_branch(&branch, &cancel, &out),
         })
     })
@@ -385,27 +408,16 @@ pub async fn vcs_remote(
     result
 }
 
-#[derive(Serialize, Deserialize, Type)]
-pub struct ConflictVersions {
-    pub base: Option<String>,
-    pub ours: Option<String>,
-    pub theirs: Option<String>,
-}
-
+/// The user's side is `ours` (sides swapped during a rebase, as in IDEA).
 #[tauri::command]
 #[specta::specta]
 pub async fn vcs_conflict_versions(
     window: Window,
     state: State<'_, AppState>,
     path: PathBuf,
-) -> IdeResult<ConflictVersions> {
+) -> IdeResult<ide_vcs::MergeVersions> {
     let project = state.project(window.label())?;
-    blocking(move || {
-        project.with_repo_of(&path, |r| {
-            r.conflict_versions(&path).map(|(base, ours, theirs)| ConflictVersions { base, ours, theirs })
-        })
-    })
-    .await
+    blocking(move || project.with_repo_of(&path, |r| r.merge_versions(&path))).await
 }
 
 #[tauri::command]
@@ -620,6 +632,20 @@ pub async fn vcs_diff_with_worktree(
 ) -> IdeResult<Vec<ChangedFile>> {
     let project = state.project(window.label())?;
     blocking(move || project.with_repo_at(repo.as_deref(), |r| r.diff_with_worktree(&rev))).await
+}
+
+/// Files that differ between two revisions (the "N files updated" of Update Project).
+#[tauri::command]
+#[specta::specta]
+pub async fn vcs_diff_revisions(
+    window: Window,
+    state: State<'_, AppState>,
+    repo: Option<PathBuf>,
+    from: String,
+    to: String,
+) -> IdeResult<Vec<ChangedFile>> {
+    let project = state.project(window.label())?;
+    blocking(move || project.with_repo_at(repo.as_deref(), |r| r.diff_revisions(&from, &to))).await
 }
 
 /// Runs `f` once per repository with the `paths` that belong to it.

@@ -134,8 +134,22 @@ describe("Search Everywhere dialog", () => {
     fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
     fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
     expect(useSearchEverywhere.getState().tab).toBe("text");
-    act(() => showSearchEverywhere("all", { toggleOnRepeat: true }));
+    // Double Shift on another tab switches to All, keeping the query; on All it toggles the scope.
+    fireEvent.change(input, { target: { value: "kept" } });
+    act(() => showSearchEverywhere("all", { query: "selection" }));
+    expect(useSearchEverywhere.getState()).toMatchObject({ tab: "all", query: "kept", includeNonProject: false });
+    act(() => showSearchEverywhere("all"));
     expect(useSearchEverywhere.getState().includeNonProject).toBe(true);
+  });
+
+  it("searches everywhere when nothing is found in the project", async () => {
+    render(<SearchEverywhereOverlay />);
+    act(() => showSearchEverywhere("symbols", { query: "zzz" }));
+    await tick();
+    expect(useSearchEverywhere.getState()).toMatchObject({ includeNonProject: true, notFound: "zzz" });
+    // A query that no longer contains the not-found one narrows back to the project.
+    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "other" } });
+    expect(useSearchEverywhere.getState()).toMatchObject({ includeNonProject: false, notFound: null });
   });
 });
 

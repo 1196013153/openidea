@@ -1,13 +1,30 @@
 /**
- * Back / Forward navigation history (⌘[ / ⌘]), like IDEA's: the current
- * place is continuously updated while the caret moves locally; a file switch
- * or a jump of more than `JUMP_LINES` lines starts a new entry and drops the
- * forward stack.
+ * Back / Forward navigation history (⌘[ / ⌘]), like IDEA's:
+ * `entries[index]` is the current place, kept up to
+ * date while the caret moves. Only a navigation (a file switch, a mouse click,
+ * a jump to a declaration / usage / search result / line …) that changes the
+ * caret line leaves the previous place behind as a back entry and drops the
+ * forward stack; typing, arrows and paging don't. A back entry within
+ * `MERGE_LINES` of the one before it replaces it.
  */
+import type { Transaction } from "@codemirror/state";
 import type { NavigationLocation } from "@/editor/api";
 
-export const JUMP_LINES = 10;
+export const MERGE_LINES = 4;
+
+/** userEvent of in-file navigation commands (method up / down, code block start / end…). */
+export const NAVIGATE_EVENT = "select.navigate";
+
+/** Caret moves that count as navigation: mouse clicks, find, reveals, stripe / sticky-line clicks, navigate commands. */
+export function isNavigation(tr: Transaction): boolean {
+  return ["select.pointer", "select.reveal", "select.search", "select.overview", "select.sticky", NAVIGATE_EVENT].some((e) =>
+    tr.isUserEvent(e),
+  );
+}
 const MAX_ENTRIES = 100;
+
+const samePlace = (a: Omit<NavigationLocation, "time">, b: Omit<NavigationLocation, "time">) =>
+  a.path === b.path && Math.abs(a.line - b.line) < MERGE_LINES;
 
 export class NavigationHistory {
   entries: NavigationLocation[] = [];
@@ -28,18 +45,28 @@ export class NavigationHistory {
     return this.index < this.entries.length - 1;
   }
 
-  /** Records the caret position after a selection change / tab switch. */
-  update(loc: Omit<NavigationLocation, "time">) {
+  /**
+   * Records the caret position. `navigation`: the move came from a navigation
+   * command; a file switch always counts as one.
+   */
+  update(loc: Omit<NavigationLocation, "time">, navigation = false) {
     const entry = { ...loc, time: this.now() };
     const cur = this.current;
-    if (cur && cur.path === loc.path && Math.abs(cur.line - loc.line) <= JUMP_LINES) {
+    if (!cur) {
+      this.entries = [entry];
+      this.index = 0;
+      this.emit();
+      return;
+    }
+    const switched = cur.path !== loc.path;
+    if (!switched && (!navigation || cur.line === loc.line)) {
       this.entries[this.index] = entry;
       return;
     }
+    // The place we leave becomes a back entry, merged with a close one before it.
     this.entries = this.entries.slice(0, this.index + 1);
-    // Revisiting the place we came from shouldn't stutter the history.
-    const prev = this.entries[this.entries.length - 1];
-    if (prev && prev.path === loc.path && prev.line === loc.line) this.entries.pop();
+    const prev = this.entries[this.index - 1];
+    if (prev && samePlace(prev, cur)) this.entries.splice(this.index - 1, 1);
     this.entries.push(entry);
     if (this.entries.length > MAX_ENTRIES) this.entries.splice(0, this.entries.length - MAX_ENTRIES);
     this.index = this.entries.length - 1;

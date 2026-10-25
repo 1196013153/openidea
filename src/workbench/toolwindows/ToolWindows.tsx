@@ -17,23 +17,30 @@ import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
 import { Icon, IconButton, Menu, showContextMenu, tooltipAttrs, type MenuItem, T } from "@/ui";
 import { FOCUSABLE } from "@/ui/popupState";
+import { TabStripRegistry } from "@/ui/Tabs";
 import { useContributions, type ToolWindowAnchor, type ToolWindowContribution } from "../contributions";
 import { useDistractionFree } from "../distractionFree";
 import {
   hideToolWindow,
+  MAX_SPLIT,
+  MIN_SPLIT,
   moveToolWindow,
   placed,
   resetToolWindowPlacements,
   hasStripeButton,
   removeFromStripe,
   setToolWindowSize,
+  setToolWindowSplit,
   showToolWindow,
-  stripeGroupOf,
+  SLOTS,
+  slotOf,
   toggleMaximizeToolWindow,
   toggleToolWindow,
   useToolWindowLayout,
-  type StripeGroup,
+  type SlotRecord,
+  type ToolWindowSlot,
 } from "./store";
+import { contentTabRegistry } from "./content";
 import styles from "./ToolWindows.module.css";
 import { tx } from "@/platform/i18n";
 
@@ -56,14 +63,14 @@ export function useToolWindows(): ToolWindowContribution[] {
   );
 }
 
-/** Visible window per anchor, ignoring ids that aren't registered (yet). */
-export function useEffectiveVisible(windows: ToolWindowContribution[]): Record<ToolWindowAnchor, string | null> {
+/** Visible window per area, ignoring ids that aren't registered (yet) or don't dock there. */
+export function useEffectiveVisible(windows: ToolWindowContribution[]): SlotRecord {
   const visible = useToolWindowLayout((s) => s.visible);
   return useMemo(() => {
-    const out: Record<ToolWindowAnchor, string | null> = { left: null, right: null, bottom: null };
-    for (const a of ["left", "right", "bottom"] as const) {
-      const id = visible[a];
-      if (id && windows.some((w) => w.id === id && w.anchor === a)) out[a] = id;
+    const out = {} as SlotRecord;
+    for (const slot of SLOTS) {
+      const id = visible[slot];
+      out[slot] = id && windows.some((w) => w.id === id && slotOf(w) === slot) ? id : null;
     }
     return out;
   }, [visible, windows]);
@@ -72,25 +79,28 @@ export function useEffectiveVisible(windows: ToolWindowContribution[]): Record<T
 // ---------------------------------------------------------------------------
 // Stripes
 
-const GROUP_LABELS: Array<[StripeGroup, string]> = [
-  ["left-top", "Left Top"],
-  ["left-bottom", "Bottom"],
-  ["right-top", "Right Top"],
-  ["right-bottom", "Right Bottom"],
+/** IDEA's Move To anchors (New UI: no top). */
+const MOVE_TARGETS: Array<[ToolWindowSlot, string]> = [
+  ["left", "Left Top"],
+  ["left-split", "Left Bottom"],
+  ["bottom", "Bottom Left"],
+  ["bottom-split", "Bottom Right"],
+  ["right-split", "Right Bottom"],
+  ["right", "Right Top"],
 ];
 
 /** "Move to" submenu (IDEA: tool window options › Move To). */
 export function moveToMenu(tw: ToolWindowContribution): MenuItem {
-  const current = stripeGroupOf(tw);
+  const current = slotOf(tw);
   return {
     label: "Move To",
     submenu: [
-      ...GROUP_LABELS.map(([group, label]): MenuItem => ({
-        id: group,
+      ...MOVE_TARGETS.map(([slot, label]): MenuItem => ({
+        id: slot,
         label,
-        checked: group === current ? true : undefined,
-        disabled: group === current,
-        run: () => moveToolWindow(tw.id, group),
+        checked: slot === current ? true : undefined,
+        disabled: slot === current,
+        run: () => moveToolWindow(tw.id, slot),
       })),
       { kind: "separator" },
       { label: "Restore Default Layout", run: resetToolWindowPlacements },
@@ -253,7 +263,7 @@ function StripeHandle({
 // Stripe button drag. Pointer events rather than HTML5 drag and drop: with the window's native
 // file drop enabled, the webview never sees dragover / drop for drags that start inside it.
 
-type StripeDrop = { group: StripeGroup; before: string | null };
+type StripeDrop = { slot: ToolWindowSlot; before: string | null };
 
 const useStripeDrag = create<{ id: string | null; drop: StripeDrop | null }>(() => ({ id: null, drop: null }));
 
@@ -262,23 +272,34 @@ const DRAG_THRESHOLD = 4;
 /** Set when a drag ends on its own button, so the click that follows doesn't toggle the window. */
 let dragEnded = false;
 
-/** Drop position under the pointer: a stripe group and the button to insert before (null: at the end). */
+/**
+ * Stripe groups (IDEA New UI): each stripe's upper group holds its side,
+ * primary windows then split ones after a separator; the lower group of the
+ * left stripe holds Bottom Left, that of the right stripe Bottom Right.
+ */
+function lowerSlot(side: StripeSide): ToolWindowSlot {
+  return side === "left" ? "bottom" : "bottom-split";
+}
+
+const middle = (r: DOMRect) => r.top + r.height / 2;
+
+/** Drop position under the pointer: an area and the button to insert before (null: at the end). */
 function stripeDropAt(x: number, y: number): StripeDrop | null {
   const nav = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-stripe-side]");
   const side = nav?.dataset.stripeSide;
   if (!nav || (side !== "left" && side !== "right")) return null;
   const spacer = nav.querySelector<HTMLElement>("[data-stripe-spacer]")?.getBoundingClientRect();
-  const lower = !!spacer && y > spacer.top + spacer.height / 2;
+  const separator = nav.querySelector<HTMLElement>("[data-stripe-separator]")?.getBoundingClientRect();
+  const slot: ToolWindowSlot =
+    spacer && y > middle(spacer) ? lowerSlot(side) : separator && y > middle(separator) ? `${side}-split` : side;
   let before: string | null = null;
-  for (const b of nav.querySelectorAll<HTMLElement>("[data-stripe-button]")) {
-    const r = b.getBoundingClientRect();
-    if (spacer && r.top > spacer.top !== lower) continue;
-    if (y < r.top + r.height / 2) {
+  for (const b of nav.querySelectorAll<HTMLElement>(`[data-stripe-slot="${slot}"] [data-stripe-button]`)) {
+    if (y < middle(b.getBoundingClientRect())) {
       before = b.dataset.stripeButton!;
       break;
     }
   }
-  return { group: `${side}-${lower ? "bottom" : "top"}`, before };
+  return { slot, before };
 }
 
 function startStripeDrag(e: PointerEvent<HTMLButtonElement>, id: string) {
@@ -308,7 +329,7 @@ function startStripeDrag(e: PointerEvent<HTMLButtonElement>, id: string) {
     place(ev.clientX, ev.clientY);
     const drop = stripeDropAt(ev.clientX, ev.clientY);
     const cur = useStripeDrag.getState().drop;
-    if (drop?.group !== cur?.group || drop?.before !== cur?.before) useStripeDrag.setState({ drop });
+    if (drop?.slot !== cur?.slot || drop?.before !== cur?.before) useStripeDrag.setState({ drop });
   };
   const finish = (commit: boolean) => {
     window.removeEventListener("pointermove", onMove);
@@ -321,7 +342,7 @@ function startStripeDrag(e: PointerEvent<HTMLButtonElement>, id: string) {
     useStripeDrag.setState({ id: null, drop: null });
     dragEnded = true;
     setTimeout(() => (dragEnded = false));
-    if (commit && drop && drop.before !== id) moveToolWindow(id, drop.group, drop.before);
+    if (commit && drop && drop.before !== id) moveToolWindow(id, drop.slot, drop.before);
   };
   const onUp = () => finish(true);
   const onCancel = () => finish(false);
@@ -455,38 +476,41 @@ export function ToolWindowStripe({
   showNames = true,
   buttonWidth,
 }: {
-  side: "left" | "right";
+  side: StripeSide;
   windows: ToolWindowContribution[];
-  visible: Record<ToolWindowAnchor, string | null>;
+  visible: SlotRecord;
   /** Tool window names under the icons (IDEA "Show Tool Window Names"). */
   showNames?: boolean;
   /** Button width with names, px. */
   buttonWidth?: number;
 }) {
-  const isActive = (w: ToolWindowContribution) => visible[w.anchor] === w.id;
+  const isActive = (w: ToolWindowContribution) => visible[slotOf(w)] === w.id;
   const stripeButtons = useToolWindowLayout((s) => s.stripeButtons);
   const onStripe = windows.filter((w) => hasStripeButton(w, stripeButtons) || isActive(w));
-  // Left stripe: left windows on top; bottom-anchored windows in the lower group (IDEA new UI).
-  const top = onStripe.filter((w) => stripeGroupOf(w) === `${side}-top`);
-  const bottom = onStripe.filter((w) => stripeGroupOf(w) === `${side}-bottom`);
+  const inSlot = (slot: ToolWindowSlot) => onStripe.filter((w) => slotOf(w) === slot);
+  const primary = inSlot(side);
+  const split = inSlot(`${side}-split`);
+  const lower = inSlot(lowerSlot(side));
   const moreWindows = windows.filter((w) => !onStripe.includes(w));
   const focused = useToolWindowLayout((s) => s.focused);
   const drop = useStripeDrag((s) => s.drop);
+  // While a button is dragged the separator shows even without split windows, as a drop target.
+  const dragging = useStripeDrag((s) => !!s.id);
 
-  const indicator = (group: StripeGroup, before: string | null) =>
-    drop && drop.group === group && drop.before === before ? (
+  const indicator = (slot: ToolWindowSlot, before: string | null) =>
+    drop && drop.slot === slot && drop.before === before ? (
       <div className={styles.stripeDrop} aria-hidden="true" />
     ) : null;
-  const renderGroup = (group: StripeGroup, list: ToolWindowContribution[]) => (
-    <>
+  const renderGroup = (slot: ToolWindowSlot, list: ToolWindowContribution[]) => (
+    <div className={styles.stripeGroup} data-stripe-slot={slot}>
       {list.map((w) => (
         <div key={w.id} className={styles.stripeSlot}>
-          {indicator(group, w.id)}
+          {indicator(slot, w.id)}
           <StripeButton tw={w} active={isActive(w)} focused={focused === w.id} side={side} showName={showNames} />
         </div>
       ))}
-      <div className={styles.stripeSlot}>{indicator(group, null)}</div>
-    </>
+      <div className={styles.stripeSlot}>{indicator(slot, null)}</div>
+    </div>
   );
 
   return (
@@ -503,10 +527,16 @@ export function ToolWindowStripe({
       )}
       onKeyDown={onStripeKeyDown}
     >
-      {renderGroup(`${side}-top`, top)}
+      {renderGroup(side, primary)}
+      {(split.length > 0 || dragging) && (
+        <>
+          <div className={styles.stripeSeparator} data-stripe-separator="" role="separator" />
+          {renderGroup(`${side}-split`, split)}
+        </>
+      )}
       {side === "left" && <StripeMore windows={moreWindows} />}
       <div className={styles.stripeSpacer} data-stripe-spacer="" />
-      {renderGroup(`${side}-bottom`, bottom)}
+      {renderGroup(lowerSlot(side), lower)}
     </nav>
   );
 }
@@ -606,7 +636,9 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
         )}
         {Tabs && (
           <div className={clsx(styles.headerContent, tw.tabsReplaceTitle && styles.headerContentOnly)}>
-            <Tabs id={tw.id} />
+            <TabStripRegistry.Provider value={contentTabRegistry(tw.id)}>
+              <Tabs id={tw.id} />
+            </TabStripRegistry.Provider>
           </div>
         )}
         <div className={styles.headerSpacer} />
@@ -647,55 +679,158 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
   );
 }
 
-function AnchorPanel({
-  anchor,
-  windows,
-  visibleId,
-}: {
-  anchor: ToolWindowAnchor;
-  windows: ToolWindowContribution[];
-  visibleId: string | null;
-}) {
-  const mounted = useToolWindowLayout((s) => s.mounted);
-  const list = windows.filter((w) => w.anchor === anchor && (mounted.has(w.id) || w.id === visibleId));
-  return (
-    <div className={clsx(styles.island, styles.anchor)} data-anchor={anchor}>
-      {list.map((w) => (
-        <ToolWindowView key={w.id} tw={w} hidden={w.id !== visibleId} />
-      ))}
-    </div>
-  );
-}
-
 const MIN: Record<ToolWindowAnchor, number> = { left: 140, right: 160, bottom: 90 };
 const MAXIMIZED: Record<ToolWindowAnchor, string> = { left: "82%", right: "82%", bottom: "88%" };
 /** The editor keeps at least this much room when a tool window is resized (see the grid template). */
 const EDITOR_MIN = { width: 200, height: 60 };
+/** Smallest area when a side is split: stacked (left / right) and side by side (bottom). */
+const SPLIT_MIN = { stacked: 60, sideBySide: 120 };
 const KEY_STEP = 10;
 
+/**
+ * Splitter between the primary and split areas of a side: horizontal on the
+ * left and right (areas stacked), vertical at the bottom (side by side).
+ * Moves CSS variables while dragging; the ratio is stored on release.
+ */
+function SplitHandle({ anchor, hidden }: { anchor: ToolWindowAnchor; hidden: boolean }) {
+  const stacked = anchor !== "bottom";
+  const measure = (el: HTMLElement) => {
+    const side = el.parentElement;
+    const first = el.previousElementSibling as HTMLElement | null;
+    const second = el.nextElementSibling as HTMLElement | null;
+    if (!side || !first || !second) return null;
+    const size = (e: HTMLElement) => (stacked ? e.offsetHeight : e.offsetWidth);
+    const total = size(first) + size(second);
+    if (total <= 0) return null;
+    const min = Math.min(stacked ? SPLIT_MIN.stacked : SPLIT_MIN.sideBySide, total / 2);
+    return { side, first: size(first), total, clamp: (px: number) => Math.min(total - min, Math.max(min, px)) };
+  };
+  const apply = (side: HTMLElement, ratio: number) => {
+    side.style.setProperty("--split-a", String(ratio));
+    side.style.setProperty("--split-b", String(1 - ratio));
+  };
+  const ratioOf = (px: number, total: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, px / total));
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const m = measure(el);
+    if (e.button !== 0 || !m) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const origin = stacked ? e.clientY : e.clientX;
+    const cursor = document.body.style.cursor;
+    document.body.style.cursor = stacked ? "row-resize" : "col-resize";
+    let ratio: number | null = null;
+    const move = (ev: globalThis.PointerEvent) => {
+      ratio = ratioOf(m.clamp(m.first + (stacked ? ev.clientY : ev.clientX) - origin), m.total);
+      apply(m.side, ratio);
+    };
+    const end = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", end);
+      el.removeEventListener("pointercancel", end);
+      document.body.style.cursor = cursor;
+      if (ratio !== null) setToolWindowSplit(anchor, ratio);
+      // Back to the store's value (unchanged when the ratio was clamped to it).
+      apply(m.side, useToolWindowLayout.getState().splits[anchor]);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const dir = (stacked ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"]).indexOf(e.key);
+    const m = measure(e.currentTarget);
+    if (dir < 0 || !m) return;
+    e.preventDefault();
+    setToolWindowSplit(anchor, ratioOf(m.clamp(m.first + (dir ? 1 : -1) * KEY_STEP), m.total));
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation={stacked ? "horizontal" : "vertical"}
+      aria-label={`Resize ${anchor} tool window split`}
+      tabIndex={0}
+      hidden={hidden}
+      className={clsx(styles.gap, styles.splitGap)}
+      data-split-handle={anchor}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
+/**
+ * One side's tool windows: the primary area and the split area, each an
+ * island; with both showing they share the side at the stored ratio.
+ */
+function SidePanel({
+  anchor,
+  windows,
+  visible,
+}: {
+  anchor: ToolWindowAnchor;
+  windows: ToolWindowContribution[];
+  visible: SlotRecord;
+}) {
+  const mounted = useToolWindowLayout((s) => s.mounted);
+  const ratio = useToolWindowLayout((s) => s.splits[anchor]);
+  const area = (slot: ToolWindowSlot, className: string | undefined) => {
+    const visibleId = visible[slot];
+    const list = windows.filter((w) => slotOf(w) === slot && (mounted.has(w.id) || w.id === visibleId));
+    if (!list.length) return null;
+    return (
+      <div className={clsx(styles.island, styles.anchor, className)} data-slot={slot} hidden={!visibleId}>
+        {list.map((w) => (
+          <ToolWindowView key={w.id} tw={w} hidden={w.id !== visibleId} />
+        ))}
+      </div>
+    );
+  };
+  const style = { "--split-a": ratio, "--split-b": 1 - ratio } as CSSProperties;
+  return (
+    <div className={clsx(styles.side, anchor === "bottom" && styles.sideRow)} data-anchor={anchor} style={style}>
+      {area(anchor, styles.areaFirst)}
+      <SplitHandle anchor={anchor} hidden={!visible[anchor] || !visible[`${anchor}-split`]} />
+      {area(`${anchor}-split`, styles.areaSecond)}
+    </div>
+  );
+}
+
+/** Windows shown on side `a`, primary area first. */
+function visibleOn(visible: SlotRecord, a: ToolWindowAnchor): string[] {
+  return [visible[a], visible[`${a}-split`]].filter((id): id is string => !!id);
+}
+
+const sideVisible = (visible: SlotRecord, a: ToolWindowAnchor) => !!(visible[a] || visible[`${a}-split`]);
+
 /** Writes the grid's track variables from the store; the grid itself squeezes tracks when the window is small. */
-function syncTracks(grid: HTMLElement, visible: Record<ToolWindowAnchor, string | null>) {
+function syncTracks(grid: HTMLElement, visible: SlotRecord) {
   const s = useToolWindowLayout.getState();
   for (const a of ["left", "right", "bottom"] as const) {
-    const size = !visible[a] ? "0px" : s.maximized === a ? MAXIMIZED[a] : `${s.sizes[a]}px`;
+    const shown = sideVisible(visible, a);
+    const size = !shown ? "0px" : s.maximized === a ? MAXIMIZED[a] : `${s.sizes[a]}px`;
     grid.style.setProperty(`--tw-${a}`, size);
-    grid.style.setProperty(`--gap-${a}`, visible[a] ? "var(--island-gap)" : "0px");
+    grid.style.setProperty(`--gap-${a}`, shown ? "var(--island-gap)" : "0px");
   }
 }
 
 /**
- * Resize handle in the gap next to an anchor's island. Moves only a CSS variable
+ * Resize handle in the gap next to a side's islands. Moves only a CSS variable
  * while dragging; the remembered size is stored on release.
  */
 function GapHandle({
   anchor,
-  visibleId,
+  visibleIds,
   gridRef,
   editorRef,
   sync,
 }: {
   anchor: ToolWindowAnchor;
-  visibleId: string | null;
+  /** Windows shown on this side (primary and split area). */
+  visibleIds: string[];
   gridRef: RefObject<HTMLDivElement | null>;
   editorRef: RefObject<HTMLDivElement | null>;
   sync: () => void;
@@ -713,7 +848,7 @@ function GapHandle({
   const clamp = (raw: number, max: number) => Math.min(max, Math.max(MIN[anchor], raw));
   const commit = (px: number) => {
     const s = useToolWindowLayout.getState();
-    if (visibleId && s.maximized === anchor) toggleMaximizeToolWindow(visibleId);
+    if (visibleIds[0] && s.maximized === anchor) toggleMaximizeToolWindow(visibleIds[0]);
     setToolWindowSize(anchor, px);
     sync();
   };
@@ -721,7 +856,7 @@ function GapHandle({
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     const grid = gridRef.current;
     const m = measure();
-    if (e.button !== 0 || !grid || !m || !visibleId) return;
+    if (e.button !== 0 || !grid || !m || !visibleIds.length) return;
     // No focus (and so no focus ring) or text selection from a mouse drag.
     e.preventDefault();
     const el = e.currentTarget;
@@ -741,7 +876,7 @@ function GapHandle({
       el.removeEventListener("pointerup", end);
       el.removeEventListener("pointercancel", end);
       document.body.style.cursor = cursor;
-      if (next === 0) hideToolWindow(visibleId);
+      if (next === 0) visibleIds.forEach(hideToolWindow);
       else if (next !== m.size) commit(next);
       else sync();
     };
@@ -765,7 +900,7 @@ function GapHandle({
       aria-orientation={vertical ? "vertical" : "horizontal"}
       aria-label={`Resize ${anchor} tool window`}
       tabIndex={0}
-      hidden={!visibleId}
+      hidden={!visibleIds.length}
       className={styles.gap}
       data-gap={anchor}
       onPointerDown={onPointerDown}
@@ -830,9 +965,13 @@ export function ToolWindowLayout({ editor }: { editor: ReactNode }) {
   const sizes = useToolWindowLayout((s) => s.sizes);
   const maximized = useToolWindowLayout((s) => s.maximized);
   const stripeButtons = useToolWindowLayout((s) => s.stripeButtons);
-  const hasRight = windows.some(
-    (w) => w.anchor === "right" && (hasStripeButton(w, stripeButtons) || visible.right === w.id),
-  );
+  // The right stripe holds the right side's windows and Bottom Right.
+  const hasRight = windows.some((w) => {
+    const slot = slotOf(w);
+    return (
+      (w.anchor === "right" || slot === "bottom-split") && (hasStripeButton(w, stripeButtons) || visible[slot] === w.id)
+    );
+  });
   // While a stripe button is dragged, an empty right stripe shows as a drop target.
   const dragging = useStripeDrag((s) => !!s.id);
   const rightStripe = bars && (hasRight || dragging);
@@ -844,7 +983,13 @@ export function ToolWindowLayout({ editor }: { editor: ReactNode }) {
   useLayoutEffect(sync, [visible, sizes, maximized]);
 
   const gap = (anchor: ToolWindowAnchor) => (
-    <GapHandle anchor={anchor} visibleId={visible[anchor]} gridRef={gridRef} editorRef={editorRef} sync={sync} />
+    <GapHandle
+      anchor={anchor}
+      visibleIds={visibleOn(visible, anchor)}
+      gridRef={gridRef}
+      editorRef={editorRef}
+      sync={sync}
+    />
   );
   return (
     <div
@@ -854,15 +999,15 @@ export function ToolWindowLayout({ editor }: { editor: ReactNode }) {
       {bars && stripe("left")}
       {bars && stripeHandle("left")}
       <div ref={gridRef} className={clsx(styles.grid, widescreen && styles.widescreen)}>
-        <AnchorPanel anchor="left" windows={windows} visibleId={visible.left} />
+        <SidePanel anchor="left" windows={windows} visible={visible} />
         {gap("left")}
         <div ref={editorRef} className={clsx(styles.island, styles.editorIsland)}>
           {editor}
         </div>
         {gap("right")}
-        <AnchorPanel anchor="right" windows={windows} visibleId={visible.right} />
+        <SidePanel anchor="right" windows={windows} visible={visible} />
         {gap("bottom")}
-        <AnchorPanel anchor="bottom" windows={windows} visibleId={visible.bottom} />
+        <SidePanel anchor="bottom" windows={windows} visible={visible} />
       </div>
       {rightStripe && stripeHandle("right")}
       {rightStripe && stripe("right")}

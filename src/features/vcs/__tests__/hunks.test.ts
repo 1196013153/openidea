@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import type { LineHunk } from "@/bindings";
-import { applyRollback, hunkAtLine, hunksOverlapping, nextHunk, prevHunk, rollbackEdit } from "../hunks";
-import { editorHunks, hunkAtPos, hunkField, setHunksEffect } from "../gutter";
+import { applyRollback, hunkAtLine, hunkKeys, hunksOverlapping, nextHunk, prevHunk, rollbackEdit } from "../hunks";
+import { editorHunks, hunkAtPos, hunkField, hunksInSelection, setHunksEffect } from "../gutter";
 
 const h = (kind: LineHunk["kind"], start: number, lines: number, oldStart: number, oldLines: number, oldText: string): LineHunk => ({
   kind,
@@ -146,5 +146,34 @@ describe("change markers in folds", () => {
     state = state.update({ effects: foldEffect.of({ from: state.doc.line(1).to, to: state.doc.line(4).to }) }).state;
     expect(at(state)).toEqual([state.doc.line(1).from]);
     expect(hunkAtPos(state, state.doc.line(1).from)?.kind).toBe("deleted");
+  });
+});
+
+describe("hunkKeys", () => {
+  it("identifies blocks by content, not position", () => {
+    const a = hunkKeys("x\nB\nc\n", [h("modified", 1, 1, 1, 1, "b\n")]);
+    // The same block two lines further down (lines inserted above it) keeps its key.
+    const b = hunkKeys("new\nnew\nx\nB\nc\n", [h("added", 0, 2, 0, 0, ""), h("modified", 3, 1, 1, 1, "b\n")]);
+    expect(b[1]).toBe(a[0]);
+    expect(b[0]).not.toBe(b[1]);
+    // Identical blocks get distinct keys.
+    const twice = hunkKeys("B\nB\n", [h("modified", 0, 1, 0, 1, "b\n"), h("modified", 1, 1, 1, 1, "b\n")]);
+    expect(twice[0]).not.toBe(twice[1]);
+  });
+});
+
+describe("hunksInSelection (Rollback Lines)", () => {
+  const hunks = [h("modified", 1, 1, 1, 1, "b\n"), h("deleted", 3, 0, 3, 1, "d\n"), h("added", 4, 1, 5, 0, "")];
+  const at = (from: number, to = from) => {
+    let state = EditorState.create({ doc: "a\nB\nc\ne\nX\n", extensions: hunkField });
+    state = state.update({ effects: setHunksEffect.of(hunks), selection: EditorSelection.single(from, to) }).state;
+    return hunksInSelection(state).map((x) => x.start);
+  };
+  it("takes the hunks on the caret's line or touched by the selection", () => {
+    expect(at(0)).toEqual([]);
+    expect(at(3)).toEqual([1]);
+    // The deletion's marker is on the line after the removed block.
+    expect(at(7)).toEqual([3]);
+    expect(at(2, 9)).toEqual([1, 3, 4]);
   });
 });

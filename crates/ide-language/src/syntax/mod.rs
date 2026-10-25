@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use tree_sitter::{Language, Parser, Tree};
-pub use web::{CSS_CLASS, CSS_ID, CSS_VARIABLE, WebReference, WebReferenceKind};
+pub use web::{CSS_CLASS, CSS_ID, CSS_VARIABLE, FileReference, WebReference, WebReferenceKind};
 
 /// Texts larger than this are not parsed (minified bundles, generated dumps).
 pub const MAX_PARSE_BYTES: usize = 16 * 1024 * 1024;
@@ -208,6 +208,11 @@ impl Syntax {
     /// The `class` / `id` / `href="#…"` / `var(--…)` reference at `pos`.
     pub fn web_reference_at(&self, lang: &LanguageId, text: &str, pos: Pos) -> Option<WebReference> {
         self.with_web_tree(lang, text, |g, css, tree| web::reference_at(g, css, tree, text, pos)).flatten()
+    }
+
+    /// File paths written in an HTML document or stylesheet (`href`, `src`, `srcset`, `url()`, `@import`).
+    pub fn web_file_references(&self, lang: &LanguageId, text: &str) -> Vec<FileReference> {
+        self.with_web_tree(lang, text, |g, css, tree| web::file_references(g, css, tree, text)).unwrap_or_default()
     }
 
     /// Value ranges of the `id="name"` / `name="name"` attributes in an HTML document.

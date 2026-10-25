@@ -4,8 +4,10 @@
  */
 import { create } from "zustand";
 import { setContext } from "@/platform/context";
+import { t } from "@/platform/i18n";
 import { basename } from "@/platform/project";
 import { workflowSettings } from "@/platform/workflowSettings";
+import { confirm } from "@/workbench/messages";
 import { TerminalSession, type SessionOptions, type SessionSnapshot } from "./session";
 
 export type SplitOrientation = "horizontal" | "vertical";
@@ -136,6 +138,36 @@ export function closeTab(id: string) {
   const rest = tabs.filter((t) => t.id !== id);
   const nextActive = activeTab === id ? (rest[Math.min(index, rest.length - 1)]?.id ?? null) : activeTab;
   useTerminals.setState({ tabs: rest, activeTab: nextActive });
+}
+
+/**
+ * Asks before ending sessions that are running a command, like IDEA
+ * (Terminate / Cancel). Resolves true to go ahead.
+ */
+export async function confirmEndSessions(keys: readonly string[], name: string): Promise<boolean> {
+  const busy = await Promise.all(keys.map((k) => sessions.get(k)?.isBusy() ?? false));
+  if (!busy.some(Boolean)) return true;
+  return confirm({
+    title: t("terminal.close.title", { name }),
+    message: t("terminal.close.message", { name }),
+    ok: t("terminal.close.terminate"),
+  });
+}
+
+/** User-initiated Close Tab: confirms first when a command is running. Resolves true if closed. */
+export async function requestCloseTab(id: string): Promise<boolean> {
+  const tab = useTerminals.getState().tabs.find((x) => x.id === id);
+  if (!tab || !(await confirmEndSessions(tab.panes, tabTitle(tab)))) return false;
+  closeTab(id);
+  return true;
+}
+
+/** User-initiated Close Session (one pane): confirms first when a command is running. */
+export async function requestClosePane(key: string): Promise<boolean> {
+  const tab = useTerminals.getState().tabs.find((x) => x.panes.includes(key));
+  if (!tab || !(await confirmEndSessions([key], tabTitle(tab)))) return false;
+  closePane(key);
+  return true;
 }
 
 export function closeAll() {

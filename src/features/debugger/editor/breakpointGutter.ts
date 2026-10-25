@@ -6,10 +6,11 @@
 import { RangeSet, StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, GutterMarker, ViewPlugin, lineNumberMarkers, type ViewUpdate } from "@codemirror/view";
 import { editorsFor, mirroredChange, remoteChange, useEditorRegistry, type EditorDocContext } from "@/editor/api";
-import { isConditional, mapLines, type BreakpointEntry, type BreakpointStatus } from "../breakpoints/model";
+import { isConditional, mapLines, suspends, type BreakpointEntry, type BreakpointStatus } from "../breakpoints/model";
 import {
   addBreakpoint,
   breakpointsOf,
+  removeBreakpoint,
   setFileBreakpoints,
   updateBreakpoint,
   useBreakpoints,
@@ -45,7 +46,7 @@ export type BreakpointLook =
 export function lookOf(b: BreakpointEntry, status: BreakpointStatus | undefined, muted: boolean, running: boolean) {
   if (!b.enabled || muted) return "disabled";
   if (running && status && !status.verified) return "unverified";
-  if (b.logMessage?.trim()) return "log";
+  if (!suspends(b)) return "log";
   if (isConditional(b)) return "conditional";
   return running && status?.verified ? "verified" : "normal";
 }
@@ -198,29 +199,39 @@ export function breakpointGutter(ctx: EditorDocContext): Extension {
         }
       }
 
+      /**
+       * IDEA's gutter clicks: click toggles; on an empty line ⇧-click adds a non-suspending
+       * logging breakpoint and opens its properties, ⌥-click a temporary one. On an existing
+       * breakpoint only a plain (or ⌘/Ctrl) click removes it; middle-click enables/disables.
+       */
       onMouseDown = (e: MouseEvent) => {
-        if (e.button !== 0 || !inBreakpointArea(e)) return;
+        if ((e.button !== 0 && e.button !== 1) || !inBreakpointArea(e)) return;
         const line = lineAtEvent(this.view, e);
         if (line == null) return;
-        if (!canPlaceBreakpoint(ctx.language) && !breakpointsOf(path).some((b) => b.line === line)) return;
-        e.preventDefault();
         const special = specialAt(path).find((b) => b.line === line);
-        if (special) {
-          if (e.altKey) updateSpecial(special.id, { enabled: !special.enabled });
-          else removeSpecial(special.id);
+        const bp = breakpointsOf(path).find((b) => b.line === line);
+        if (e.button === 1) {
+          if (!special && !bp) return;
+          e.preventDefault();
+          if (special) updateSpecial(special.id, { enabled: !special.enabled });
+          else if (bp) updateBreakpoint(path, bp.id, { enabled: !bp.enabled });
+          return;
+        }
+        if (!canPlaceBreakpoint(ctx.language) && !bp) return;
+        e.preventDefault();
+        if (special || bp) {
+          if (e.shiftKey || e.altKey) return;
+          if (special) removeSpecial(special.id);
+          else removeBreakpoint(path, bp!.id);
           return;
         }
         if (e.altKey) {
-          // ⌥-click enables/disables instead of removing.
-          const bp = breakpointsOf(path).find((b) => b.line === line);
-          if (bp) updateBreakpoint(path, bp.id, { enabled: !bp.enabled });
-          else addBreakpoint(path, line);
+          addBreakpoint(path, line, { temporary: true });
           return;
         }
         if (e.shiftKey) {
-          // ⇧-click: logging breakpoint that doesn't suspend.
-          const bp = breakpointsOf(path).find((b) => b.line === line) ?? addBreakpoint(path, line);
-          openBreakpointPopover(path, bp.id, { x: e.clientX, y: e.clientY }, true);
+          const created = addBreakpoint(path, line, { suspend: false, logHit: true });
+          openBreakpointPopover(path, created.id, { x: e.clientX, y: e.clientY });
           return;
         }
         toggleBreakpointSmart(path, line, ctx.language, this.view.state.doc.toString());

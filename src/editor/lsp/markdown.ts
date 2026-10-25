@@ -68,6 +68,23 @@ export function isEmptyMarkup(m: Markup | null | undefined): boolean {
   return !m || !m.value.trim();
 }
 
+/**
+ * The declaration line(s) of hover documentation, for the brief ⌘-hover info: the first fenced code block, else the first paragraph.
+ */
+export function declarationSummary(m: Markup, maxLines = 6): { code: string; language: string | null } | { text: string } | null {
+  if (m.kind === "markdown") {
+    const fence = /^\s*(```|~~~)[ \t]*([\w+#.-]*)[^\n]*\n([\s\S]*?)\n\s*\1/m.exec(m.value);
+    if (fence && fence[3]!.trim()) {
+      const lines = fence[3]!.replace(/\s+$/, "").split("\n");
+      const code = lines.slice(0, maxLines).join("\n") + (lines.length > maxLines ? "\n…" : "");
+      return { code, language: fence[2] || null };
+    }
+  }
+  const para = m.value.trim().split(/\n\s*\n/)[0]?.trim();
+  if (!para) return null;
+  return { text: para.length > 200 ? `${para.slice(0, 199)}…` : para };
+}
+
 const langCache = new Map<string, LanguageDescription | null>();
 
 function findLanguage(name: string): LanguageDescription | null {

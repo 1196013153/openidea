@@ -1,8 +1,19 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import clsx from "clsx";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useWorkflowSettings } from "@/platform/workflowSettings";
-import { showContextMenu } from "@/ui";
+import { Icon, showContextMenu } from "@/ui";
 import type { ConsoleLine, ConsoleModel, SpanStyle } from "./console";
 import { findOutputLinks, type OutputLink } from "./links";
 import { openTarget, openUrl } from "./navigate";
@@ -62,11 +73,23 @@ const Line = memo(
   (a, b) => a.line === b.line && a.length === b.length && a.cwd === b.cwd,
 );
 
-/** A visible console row: one line, or a fold of consecutive lines (Settings › Console). */
-export type DisplayRow = { kind: "line"; index: number } | { kind: "fold"; start: number; count: number; id: number };
+/** A run of folded lines (Settings › Console › Fold lines that contain). */
+export interface Fold {
+  start: number;
+  count: number;
+  /** Id of the first folded line (stable across trimming). */
+  id: number;
+  expanded: boolean;
+}
 
 /**
- * Folds runs of at least two consecutive output lines that contain one of
+ * A visible console row: one line (carrying the fold of the lines after it, IDEA attaches
+ * the `<N internal lines>` placeholder to the previous line), or a fold with no line before it.
+ */
+export type DisplayRow = { kind: "line"; index: number; fold?: Fold } | { kind: "fold"; fold: Fold };
+
+/**
+ * Folds runs of consecutive output lines (one or more) that contain one of
  * `patterns`; runs whose first line id is in `expanded` stay open.
  */
 export function foldRows(lines: readonly ConsoleLine[], patterns: readonly string[], expanded: ReadonlySet<number>): DisplayRow[] {
@@ -76,19 +99,29 @@ export function foldRows(lines: readonly ConsoleLine[], patterns: readonly strin
     if (patterns.length && matches(lines[i]!)) {
       let j = i + 1;
       while (j < lines.length && matches(lines[j]!)) j++;
-      const id = lines[i]!.id;
-      if (j - i >= 2 && !expanded.has(id)) {
-        rows.push({ kind: "fold", start: i, count: j - i, id });
-        i = j;
-        continue;
-      }
-      for (; i < j; i++) rows.push({ kind: "line", index: i });
+      const fold: Fold = { start: i, count: j - i, id: lines[i]!.id, expanded: expanded.has(lines[i]!.id) };
+      const prev = rows[rows.length - 1];
+      if (prev?.kind === "line") prev.fold = fold;
+      else if (!fold.expanded) rows.push({ kind: "fold", fold });
+      if (fold.expanded) for (; i < j; i++) rows.push({ kind: "line", index: i });
+      i = j;
       continue;
     }
     rows.push({ kind: "line", index: i });
     i++;
   }
   return rows;
+}
+
+/** Typed console input (IDEA: type into the console, Enter sends the line). */
+export interface ConsoleInput {
+  /** Typed, not yet sent. */
+  pending: string;
+  onChange(pending: string): void;
+  /** Sends one line (without the newline). */
+  onSubmit(line: string): void;
+  /** Closes stdin (EOF). */
+  onEof(): void;
 }
 
 export interface ConsoleViewProps {
@@ -100,17 +133,31 @@ export interface ConsoleViewProps {
   /** Directory relative paths in the output resolve against. */
   cwd: string;
   onClear?: () => void;
+  /** Set while the process accepts input. */
+  input?: ConsoleInput;
   "aria-label"?: string;
 }
 
-export function ConsoleView({ model, version, softWrap, follow, onFollowChange, cwd, onClear, ...aria }: ConsoleViewProps) {
+export function ConsoleView({ model, version, softWrap, follow, onFollowChange, cwd, onClear, input, ...aria }: ConsoleViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lines = model.lines;
   const patterns = useWorkflowSettings((s) => s.console.foldPatterns);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` marks in-place appends to `lines`
-  const rows = useMemo(() => foldRows(lines, patterns, expanded), [lines, version, patterns, expanded]);
-  const count = rows.length;
+  const folded = useMemo(() => foldRows(lines, patterns, expanded), [lines, version, patterns, expanded]);
+  // Pending input continues the open line (a prompt), or starts a row of its own.
+  const lastRow = folded[folded.length - 1];
+  const inputInline =
+    !!input && !!model.openLine && lastRow?.kind === "line" && !lastRow.fold && lines[lastRow.index] === model.openLine;
+  const inputRow = !!input && !inputInline;
+  const rows = folded;
+  const count = rows.length + (inputRow ? 1 : 0);
+  const toggleFold = (id: number) =>
+    setExpanded((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const programmatic = useRef(false);
 
   const virtualizer = useVirtualizer({
@@ -120,8 +167,8 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
     overscan: 30,
     getItemKey: (i) => {
       const r = rows[i];
-      if (!r) return i;
-      return r.kind === "fold" ? `f${r.id}` : (lines[r.index]?.id ?? i);
+      if (!r) return "input";
+      return r.kind === "fold" ? `f${r.fold.id}` : (lines[r.index]?.id ?? i);
     },
   });
 
@@ -160,8 +207,55 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
       { label: "Copy All", run: () => void navigator.clipboard?.writeText(model.text()).catch(() => undefined) },
       { kind: "separator" },
       { label: "Clear All", icon: "trash", disabled: !onClear, run: () => onClear?.() },
+      ...(input ? [{ kind: "separator" } as const, { label: "Send EOF", shortcut: "⌃D", run: () => input.onEof() }] : []),
     ]);
   };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!input || e.nativeEvent.isComposing) return;
+    if (e.key === "d" && e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      input.onEof();
+    } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      input.onSubmit(input.pending);
+      input.onChange("");
+    } else if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      input.onChange(e.altKey ? input.pending.replace(/\S*\s*$/, "") : [...input.pending].slice(0, -1).join(""));
+    } else if (e.key.length === 1 && [...e.key].length === 1 && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      input.onChange(input.pending + e.key);
+    }
+  };
+
+  const onPaste = (e: ClipboardEvent) => {
+    if (!input) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    const parts = (input.pending + text).replace(/\r\n?/g, "\n").split("\n");
+    const rest = parts.pop() ?? "";
+    for (const line of parts) input.onSubmit(line);
+    input.onChange(rest);
+  };
+
+  const pendingInput = input && (
+    <span className={styles.userInput}>
+      {input.pending}
+      <span className={styles.inputCaret} aria-hidden />
+    </span>
+  );
+  const foldButton = (fold: Fold, attached: boolean) =>
+    fold.expanded ? (
+      <button type="button" className={styles.foldToggle} title="Collapse folded lines" aria-label="Collapse folded lines" onClick={() => toggleFold(fold.id)}>
+        <Icon name="chevron-up" size={10} />
+      </button>
+    ) : (
+      <button type="button" className={styles.fold} title="Expand folded lines" onClick={() => toggleFold(fold.id)}>
+        {`${attached ? " " : ""}<${fold.count} internal line${fold.count === 1 ? "" : "s"}>`}
+      </button>
+    );
 
   const items = virtualizer.getVirtualItems();
   return (
@@ -174,12 +268,26 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
       tabIndex={0}
       onScroll={onScroll}
       onContextMenu={onContextMenu}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
       data-autofocus=""
     >
       <div className={styles.consoleInner} style={{ height: virtualizer.getTotalSize() }}>
         {items.map((item) => {
           const row = rows[item.index];
-          if (!row) return null;
+          if (!row) {
+            return (
+              <div
+                key={item.key}
+                data-index={item.index}
+                ref={softWrap ? virtualizer.measureElement : undefined}
+                className={styles.line}
+                style={{ transform: `translateY(${item.start}px)`, height: softWrap ? undefined : ROW }}
+              >
+                {pendingInput}
+              </div>
+            );
+          }
           if (row.kind === "fold") {
             return (
               <div
@@ -189,14 +297,7 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
                 className={styles.line}
                 style={{ transform: `translateY(${item.start}px)`, height: softWrap ? undefined : ROW }}
               >
-                <button
-                  type="button"
-                  className={styles.fold}
-                  title="Expand folded lines"
-                  onClick={() => setExpanded((s) => new Set(s).add(row.id))}
-                >
-                  {`<${row.count} internal line${row.count === 1 ? "" : "s"}>`}
-                </button>
+                {foldButton(row.fold, false)}
               </div>
             );
           }
@@ -211,6 +312,8 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
               style={{ transform: `translateY(${item.start}px)`, height: softWrap ? undefined : ROW }}
             >
               <Line line={line} length={line.text.length} cwd={cwd} />
+              {row.fold && foldButton(row.fold, true)}
+              {inputInline && item.index === rows.length - 1 && pendingInput}
             </div>
           );
         })}

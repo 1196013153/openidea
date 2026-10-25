@@ -16,6 +16,7 @@ import {
   promoteTab,
   reopenClosed,
   splitPane,
+  tabOptions,
   togglePin,
   type TabsState,
 } from "./tabs";
@@ -94,14 +95,46 @@ describe("tab model", () => {
     expect(labels(s)).toEqual(["a^", "d"]);
   });
 
-  it("activates the most recently used tab when closing the active one", () => {
+  it("activates the left neighbour when closing the active tab (IDEA default)", () => {
     let s = initialTabsState();
     for (const p of ["a", "b", "c"]) s = open(s, p);
     s = openTab(s, s.activePane, file("a")).state;
     s = openTab(s, s.activePane, file("c")).state;
-    const c = findTab(s, "file:c")!.tab;
-    s = closeTab(s, s.activePane, c.id);
-    expect(active(s)).toBe("a");
+    s = closeTab(s, s.activePane, findTab(s, "file:c")!.tab.id);
+    expect(active(s)).toBe("b");
+    // The first tab has no left neighbour: the right one.
+    s = openTab(s, s.activePane, file("a")).state;
+    s = closeTab(s, s.activePane, findTab(s, "file:a")!.tab.id);
+    expect(active(s)).toBe("b");
+  });
+
+  it("activates the most recently used tab when closing the active one if set", () => {
+    tabOptions.activateOnClose = "mru";
+    try {
+      let s = initialTabsState();
+      for (const p of ["a", "b", "c"]) s = open(s, p);
+      s = openTab(s, s.activePane, file("a")).state;
+      s = openTab(s, s.activePane, file("c")).state;
+      const c = findTab(s, "file:c")!.tab;
+      s = closeTab(s, s.activePane, c.id);
+      expect(active(s)).toBe("a");
+    } finally {
+      tabOptions.activateOnClose = "left";
+    }
+  });
+
+  it("closes the preview tab when a regular tab opens", () => {
+    let s = initialTabsState();
+    s = open(s, "a");
+    s = open(s, "p", { preview: true });
+    s = open(s, "b");
+    expect(labels(s)).toEqual(["a", "b"]);
+    expect(active(s)).toBe("b");
+    expect(s.panes[s.activePane]!.mru).toHaveLength(2);
+    // Reopening an existing regular tab keeps the preview.
+    s = open(s, "q", { preview: true });
+    s = open(s, "a");
+    expect(labels(s)).toEqual(["a", "b", "q*"]);
   });
 
   it("reopens closed tabs at their position, most recent first", () => {
@@ -151,17 +184,19 @@ describe("tab model", () => {
 });
 
 describe("navigation history", () => {
-  it("records file switches and big jumps, merges small moves", () => {
+  it("records file switches and navigations, not plain caret moves", () => {
     let t = 0;
     const h = new NavigationHistory(() => ++t);
     h.update({ path: "a", line: 1, col: 0 });
     h.update({ path: "a", line: 5, col: 2 });
+    // Arrows / paging / typing move the current place, however far.
+    h.update({ path: "a", line: 300, col: 0 });
     expect(h.entries).toHaveLength(1);
-    h.update({ path: "a", line: 100, col: 0 });
+    h.update({ path: "a", line: 100, col: 0 }, true);
     h.update({ path: "b", line: 0, col: 0 });
-    expect(h.entries.map((e) => `${e.path}:${e.line}`)).toEqual(["a:5", "a:100", "b:0"]);
+    expect(h.entries.map((e) => `${e.path}:${e.line}`)).toEqual(["a:300", "a:100", "b:0"]);
     expect(h.back()).toMatchObject({ path: "a", line: 100 });
-    expect(h.back()).toMatchObject({ path: "a", line: 5 });
+    expect(h.back()).toMatchObject({ path: "a", line: 300 });
     expect(h.back()).toBeNull();
     expect(h.forward()).toMatchObject({ path: "a", line: 100 });
     // Navigating somewhere new from the middle drops the forward stack.
@@ -170,6 +205,25 @@ describe("navigation history", () => {
     expect(h.canGoForward()).toBe(false);
     h.removePath("a");
     expect(h.snapshot()).toMatchObject({ index: 0, entries: [{ path: "c" }] });
+  });
+
+  it("a navigation on the same line records nothing", () => {
+    const h = new NavigationHistory();
+    h.update({ path: "a", line: 7, col: 0 });
+    h.update({ path: "a", line: 7, col: 9 }, true);
+    expect(h.entries).toHaveLength(1);
+  });
+
+  it("merges back places less than four lines apart", () => {
+    const h = new NavigationHistory();
+    h.update({ path: "a", line: 10, col: 0 });
+    h.update({ path: "a", line: 50, col: 0 }, true);
+    h.update({ path: "a", line: 12, col: 0 });
+    h.update({ path: "a", line: 80, col: 0 }, true);
+    // a:10 and a:12 are one place: the newer one stays.
+    expect(h.entries.map((e) => e.line)).toEqual([12, 80]);
+    h.update({ path: "a", line: 20, col: 0 }, true);
+    expect(h.entries.map((e) => e.line)).toEqual([12, 80, 20]);
   });
 
   it("arriving at a back target updates it in place", () => {

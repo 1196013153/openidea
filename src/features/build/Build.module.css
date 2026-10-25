@@ -79,7 +79,7 @@
   color: var(--fg);
   background: var(--bg-app);
   -webkit-user-select: text;
-cursor: text;
+  cursor: text;
   -webkit-user-select: text;
   user-select: text;
   outline: none;
@@ -114,4 +114,43 @@ cursor: text;
   width: 30px;
   height: 30px;
   border-radius: 6px;
+}
+.treeHost {
+  display: flex;
+  flex-direction: column;
+}
+.treeHost > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.detail {
+  overflow: auto;
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 20px;
+  color: var(--fg);
+  background: var(--bg-app);
+  -webkit-user-select: text;
+  user-select: text;
+  outline: none;
+}
+.detailLocation {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--link);
+  cursor: pointer;
+  text-align: left;
+}
+.detailLocation:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+.detailText {
+  white-space: pre-wrap;
+  tab-size: 4;
 }

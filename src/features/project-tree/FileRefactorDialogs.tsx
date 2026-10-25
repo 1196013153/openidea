@@ -1,13 +1,23 @@
 /**
- * IDEA's Rename (⇧F6) and Move (F6, drag & drop) dialogs for files and
- * folders, with "Search for references" and "Search in comments and strings".
+ * IDEA's Rename (⇧F6), Move (F6, drag & drop, cut & paste) and Copy (copy &
+ * paste, ⌥ drag) dialogs for files and folders, with "Search for references"
+ * and "Search in comments and strings".
  */
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import type { FileMove } from "@/bindings";
 import { Checkbox, Dialog, Input, Spinner, T } from "@/ui";
 import { runFileRefactoring, type FileRefactorOptions } from "./fileRefactor";
-import { isSameOrInside, joinPath, nameOf, parentOf, relativeTo, splitExtension, validateName } from "./paths";
+import {
+  isSameOrInside,
+  joinPath,
+  nameOf,
+  parentOf,
+  relativeTo,
+  splitExtension,
+  uniqueName,
+  validateName,
+} from "./paths";
 import { useProjectTree } from "./store";
 import styles from "./FileRefactor.module.css";
 
@@ -28,6 +38,16 @@ export type FileRefactorRequest =
       dir?: boolean;
       /** Called after the files moved (tree refresh / reveal). */
       onDone?: (moves: FileMove[]) => void;
+    }
+  | {
+      kind: "copy";
+      paths: string[];
+      /** Initial target folder. */
+      target: string;
+      /** The single copied item is a folder. */
+      dir?: boolean;
+      /** Copies into `target` (`name`: the single item's new name); false keeps the dialog open. */
+      copy: (target: string, name: string | null, openInEditor: boolean) => Promise<boolean>;
     };
 
 const useRequest = create<{ request: (FileRefactorRequest & { seq: number }) | null }>(() => ({ request: null }));
@@ -299,14 +319,133 @@ function MoveDialog({ request }: { request: Extract<FileRefactorRequest, { kind:
   );
 }
 
-/** Overlay contribution rendering the open Rename / Move dialog. */
+const COPY_OPEN_KEY = "openidea.projectTree.copyOpenInEditor";
+
+function CopyDialog({ request }: { request: Extract<FileRefactorRequest, { kind: "copy" }> }) {
+  const root = useProjectTree((s) => s.root) ?? "";
+  const single = request.paths.length === 1 ? request.paths[0]! : null;
+  const [target, setTarget] = useState(request.target);
+  const dest = resolveTarget(target, root);
+  const listing = useProjectTree((s) => s.listings.get(dest));
+  const [name, setName] = useState(() => {
+    const own = single ? nameOf(single) : "";
+    const taken = new Set((useProjectTree.getState().listings.get(request.target) ?? []).map((e) => fold(e.name)));
+    return single ? uniqueName(own, (n) => taken.has(fold(n)), !!request.dir) : "";
+  });
+  const [openInEditor, setOpenInEditor] = useState(() => {
+    try {
+      return localStorage.getItem(COPY_OPEN_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.focus();
+    const stem = request.dir ? name : splitExtension(name)[0];
+    el.setSelectionRange(0, stem.length || name.length);
+    // Only on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const siblings = (listing ?? []).map((e) => e.name);
+  const error = request.paths.some((p) => isSameOrInside(dest, p) && dest !== parentOf(p))
+    ? "Cannot copy a folder into itself"
+    : single
+      ? validateName(name, { siblings, caseInsensitive }).error
+      : null;
+  const subject = single
+    ? `Copy ${request.dir ? "directory" : "file"} '${nameOf(single)}'`
+    : `Copy ${request.paths.length} items`;
+  const submit = async () => {
+    if (busy || error) return;
+    try {
+      localStorage.setItem(COPY_OPEN_KEY, String(openInEditor));
+    } catch {
+      /* storage unavailable */
+    }
+    setBusy(true);
+    const ok = await request.copy(dest, single ? name : null, openInEditor && !request.dir);
+    setBusy(false);
+    if (ok) closeFileRefactorDialog();
+  };
+  return (
+    <Dialog
+      open
+      title="Copy"
+      onClose={closeFileRefactorDialog}
+      width={520}
+      buttons={[
+        { label: "OK", role: "default", disabled: busy || !!error, onClick: () => void submit() },
+        { label: "Cancel", role: "cancel" },
+      ]}
+    >
+      <form
+        className={styles.form}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <div className={styles.subject}>{subject}</div>
+        {single && (
+          <>
+            <label className={styles.fieldLabel} htmlFor="file-copy-name">
+              <T>New name:</T>
+            </label>
+            <Input
+              id="file-copy-name"
+              ref={input}
+              value={name}
+              disabled={busy}
+              invalid={!!error}
+              aria-label="New name"
+              onChange={(e) => setName(e.target.value)}
+            />
+          </>
+        )}
+        <label className={styles.fieldLabel} htmlFor="file-copy-target">
+          <T>To directory:</T>
+        </label>
+        <Input
+          id="file-copy-target"
+          autoFocus={!single}
+          mono
+          value={target}
+          disabled={busy}
+          aria-label="Target directory"
+          onChange={(e) => setTarget(e.target.value)}
+        />
+        <div className={styles.hint}>{relativeTo(root, dest) || (dest === root ? "Project root" : dest)}</div>
+        {error && (
+          <div className={styles.error} role="alert">
+            {error}
+          </div>
+        )}
+        {single && !request.dir && (
+          <div className={styles.options}>
+            <Checkbox label="Open copy in editor" checked={openInEditor} disabled={busy} onChange={setOpenInEditor} />
+          </div>
+        )}
+      </form>
+    </Dialog>
+  );
+}
+
+const fold = (n: string) => (caseInsensitive ? n.toLowerCase() : n);
+
+/** Overlay contribution rendering the open Rename / Move / Copy dialog. */
 export function FileRefactorDialogHost() {
   const request = useRequest((s) => s.request);
   if (!request) return null;
   return request.kind === "rename" ? (
     <RenameDialog key={request.seq} request={request} />
-  ) : (
+  ) : request.kind === "move" ? (
     <MoveDialog key={request.seq} request={request} />
+  ) : (
+    <CopyDialog key={request.seq} request={request} />
   );
 }
 

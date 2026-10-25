@@ -8,7 +8,7 @@ import { onIdeEvent } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { valueTooltip } from "./editor/valueTooltip";
 import { registerEditorContribution } from "@/editor/api";
-import { registerOverlay, registerToolWindow } from "@/workbench/contributions";
+import { registerMenuGroup, registerOverlay, registerToolWindow } from "@/workbench/contributions";
 import { registerDebugActions } from "./actions";
 import { loadBreakpoints } from "./breakpoints/store";
 import { loadExceptionBreakpoints } from "./breakpoints/exceptions";
@@ -16,7 +16,7 @@ import { loadSpecialBreakpoints } from "./breakpoints/special";
 import { breakpointGutter } from "./editor/breakpointGutter";
 import { executionPoint } from "./editor/execution";
 import { onHotCodeReplace } from "./hotswap";
-import { handleDebugEvent, loadWatches, publishContext, resetSessions } from "./state";
+import { handleDebugEvent, isLive, loadWatches, publishContext, resetSessions, stopSession, useDebug } from "./state";
 import { DebuggerOverlays } from "./ui/Overlays";
 
 export function activate(): () => void {
@@ -38,6 +38,15 @@ export function activate(): () => void {
       headerContent: lazyComponent(() => import("./ui/DebugToolWindow").then((m) => m.DebugTabs)),
     }),
     registerOverlay({ id: "debugger", component: DebuggerOverlays }),
+    // Stop (⌘F2) offers the running debug sessions beside run processes.
+    registerMenuGroup({
+      id: "debugger.stop",
+      menus: ["stopProcess"],
+      items: () =>
+        Object.values(useDebug.getState().sessions)
+          .filter((s) => s.parent == null && isLive(s))
+          .map((s) => ({ label: s.name, verbatim: true, icon: "debug", run: () => void stopSession(s.id) })),
+    }),
     registerEditorContribution({
       id: "debugger",
       order: 60,

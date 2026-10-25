@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { terminalKeyAction } from "./keys";
+import { isAllowedIdeShortcut, terminalKeyAction } from "./keys";
 import { matchCounter } from "./FindBar";
 import { buildSearchDecorations } from "./theme";
 import { findTerminalLinks, resolvePath, trimUrl } from "./links";
@@ -131,6 +131,32 @@ describe("terminal keys", () => {
     expect(terminalKeyAction(key({ key: "F12", altKey: true }), false)).toEqual({ kind: "pass" });
     expect(terminalKeyAction(key({ key: "1", metaKey: true }), false)).toEqual({ kind: "pass" });
     expect(terminalKeyAction(key({ key: "a" }), false)).toEqual({ kind: "pass" });
+  });
+
+  it("clears a selection with Escape before sending it", () => {
+    expect(terminalKeyAction(key({ key: "Escape" }), true)).toEqual({ kind: "clearSelection" });
+    expect(terminalKeyAction(key({ key: "Escape", shiftKey: true }), true)).toEqual({ kind: "send", data: "\x1b" });
+  });
+
+  it("lets shortcuts of IDEA's allowed actions reach the IDE", () => {
+    const bindings: Array<[string, string]> = [
+      ["Ctrl+Shift+A", "navigate.findAction"],
+      ["Ctrl+N", "navigate.gotoClass"],
+      ["Ctrl+E", "navigate.recentFiles"],
+      ["Ctrl+K", "vcs.commit"],
+      ["Ctrl+Shift+K", "vcs.push"],
+      ["Shift+Escape", "toolwindow.hideActive"],
+      ["Ctrl+W Ctrl+F", "terminal.find"],
+    ];
+    expect(isAllowedIdeShortcut("Ctrl+Shift+A", bindings)).toBe(true);
+    expect(isAllowedIdeShortcut("Ctrl+N", bindings)).toBe(true);
+    expect(isAllowedIdeShortcut("Ctrl+Shift+K", bindings)).toBe(true);
+    expect(isAllowedIdeShortcut("Shift+Escape", bindings)).toBe(true);
+    expect(isAllowedIdeShortcut("Ctrl+W", bindings)).toBe(true);
+    // Ctrl+E (end of line) and actions outside the list stay with the shell.
+    expect(isAllowedIdeShortcut("Ctrl+E", bindings)).toBe(false);
+    expect(isAllowedIdeShortcut("Ctrl+K", bindings)).toBe(false);
+    expect(isAllowedIdeShortcut("Ctrl+R", bindings)).toBe(false);
   });
 });
 

@@ -44,11 +44,15 @@ import {
 } from "./model";
 import {
   hideSearchEverywhere,
+  onSearchEverywhereQuery,
   pushRecentAction,
   pushSearchHistory,
   searchHistory,
+  selectSearchEverywhereTab,
+  setIncludeNonProject,
   setSearchEverywherePreview,
   useSearchEverywhere,
+  widenSearchEverywhere,
 } from "./store";
 import styles from "./SearchEverywhere.module.css";
 
@@ -133,6 +137,8 @@ function SearchEverywhereDialog() {
     inputRef.current?.select();
   }, [session]);
 
+  useEffect(() => onSearchEverywhereQuery(query), [query]);
+
   const parsed = useMemo(() => parseLocationQuery(searchQuery), [searchQuery]);
   // The All tab interleaves its sources by relevance once there is a query.
   const mix = tab === "all" ? parsed.text : undefined;
@@ -156,7 +162,8 @@ function SearchEverywhereDialog() {
   const setQuery = (value: string) => {
     history.current.pos = -1;
     const c = parseCommand(value);
-    useSearchEverywhere.setState(c?.kind === "run" ? { tab: c.tab, query: c.rest } : { query: value });
+    if (c?.kind === "run") selectSearchEverywhereTab(c.tab, { query: c.rest });
+    else useSearchEverywhere.setState({ query: value });
   };
   const browseHistory = (dir: 1 | -1) => {
     const h = searchHistory(tab);
@@ -179,7 +186,7 @@ function SearchEverywhereDialog() {
   };
   const setTab = (t: SeTab) => {
     history.current.pos = -1;
-    useSearchEverywhere.setState({ tab: t });
+    selectSearchEverywhereTab(t);
     inputRef.current?.focus();
   };
   const cycleTab = (dir: 1 | -1) => {
@@ -202,7 +209,7 @@ function SearchEverywhereDialog() {
       case "section":
         return;
       case "command":
-        useSearchEverywhere.setState({ tab: row.tab, query: "" });
+        selectSearchEverywhereTab(row.tab, { query: "" });
         inputRef.current?.focus();
         return;
       case "more": {
@@ -313,6 +320,18 @@ function SearchEverywhereDialog() {
   const previewTarget = previewOf(activeRow);
   const emptyQuery = !parsed.text.trim();
   const showEmpty = !rows.length && snap && !snap.loading && (!emptyQuery || tab !== "all");
+  // Nothing in the project: retry everywhere (IDEA), unless the user picked the scope.
+  const nothingInProject =
+    !!showEmpty &&
+    !emptyQuery &&
+    !listing &&
+    !includeNonProject &&
+    query === debounced &&
+    snap.query === searchQuery &&
+    snap.tab === tab;
+  useEffect(() => {
+    if (nothingInProject) widenSearchEverywhere(searchQuery);
+  }, [nothingInProject, searchQuery]);
   const canSplit = activeRow?.kind === "file" || activeRow?.kind === "symbol" || activeRow?.kind === "text";
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
@@ -352,7 +371,7 @@ function SearchEverywhereDialog() {
             className={styles.include}
             checked={includeNonProject}
             onChange={(v) => {
-              useSearchEverywhere.setState({ includeNonProject: v });
+              setIncludeNonProject(v);
               inputRef.current?.focus();
             }}
             label="Include non-project items"
@@ -365,9 +384,8 @@ function SearchEverywhereDialog() {
             value={includeNonProject ? "allPlaces" : fileSet}
             options={SE_SCOPES}
             onChange={(v) => {
-              useSearchEverywhere.setState(
-                v === "allPlaces" ? { includeNonProject: true } : { includeNonProject: false, fileSet: v },
-              );
+              if (v === "allPlaces") setIncludeNonProject(true);
+              else setIncludeNonProject(false, { fileSet: v });
               inputRef.current?.focus();
             }}
             aria-label="Search scope"

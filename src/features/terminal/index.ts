@@ -45,7 +45,6 @@ export function activate(): () => void {
       icon: "toolwindow-terminal",
       anchor: "bottom",
       order: 10,
-      secondary: true,
       component: lazyComponent(() => loadTerminalRuntime().then((rt) => rt.TerminalView)),
       headerContent: lazyComponent(() => loadTerminalRuntime().then((rt) => rt.TerminalTabs)),
     }),
@@ -163,11 +162,11 @@ export function activate(): () => void {
           const rt = terminalRuntime();
           const s = rt?.activeSession();
           if (!rt || !s) return;
-          const { tabs } = rt.useTerminals.getState();
-          const last = tabs.length === 1 && tabs[0]!.panes.length === 1;
-          rt.closePane(s.key);
-          if (last) toolWindowService().hide(WINDOW);
-          else focusActiveSoon();
+          void rt.requestClosePane(s.key).then((closed) => {
+            if (!closed) return;
+            if (rt.useTerminals.getState().tabs.length === 0) toolWindowService().hide(WINDOW);
+            else focusActiveSoon();
+          });
         },
       },
     ]),

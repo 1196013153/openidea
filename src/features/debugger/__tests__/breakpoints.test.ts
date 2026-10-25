@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { ChangeSet, EditorState, Text } from "@codemirror/state";
-import { isConditional, makeBreakpoint, mapLines, toBackend, toggleLine } from "../breakpoints/model";
+import { interpolateLog, isConditional, makeBreakpoint, mapLines, toBackend, toggleLine } from "../breakpoints/model";
 import {
   addBreakpoint,
   breakpointsOf,
@@ -82,6 +82,56 @@ describe("breakpoint model", () => {
       { line: 4, condition: null, hitCondition: null, logMessage: null, enabled: false },
     ]);
     expect(toBackend(list, true).every((b) => !b.enabled)).toBe(true);
+  });
+});
+
+describe("suspend and logging (IDEA's independent options)", () => {
+  it("sends non-suspending breakpoints as logpoints with the hit message and the evaluated template", () => {
+    const list = [
+      makeBreakpoint(1, { suspend: false, logHit: true }),
+      makeBreakpoint(2, { suspend: false, logHit: true, logMessage: "i={i}" }),
+      makeBreakpoint(3, { suspend: false }),
+      makeBreakpoint(4, { logHit: true, logMessage: "i={i}" }),
+    ];
+    expect(toBackend(list, false, "/p/a.py")).toEqual([
+      { line: 1, condition: null, hitCondition: null, logMessage: "Breakpoint reached at a.py:2", enabled: true },
+      {
+        line: 2,
+        condition: null,
+        hitCondition: null,
+        logMessage: "Breakpoint reached at a.py:3\ni={i}",
+        enabled: true,
+      },
+      // Logs nothing and never suspends: no DAP equivalent.
+      { line: 3, condition: null, hitCondition: null, logMessage: null, enabled: false },
+      // Suspending breakpoints log from the UI on stop.
+      { line: 4, condition: null, hitCondition: null, logMessage: null, enabled: true },
+    ]);
+  });
+
+  it("interpolates {expressions} in log templates", async () => {
+    const out = await interpolateLog("a={a} b={ b }", async (e) => {
+      if (e === "b") throw new Error("undefined");
+      return e.toUpperCase();
+    });
+    expect(out).toBe("a=A b=<undefined>");
+  });
+
+  it("migrates stored log messages to non-suspending breakpoints", () => {
+    localStorage.setItem(
+      "openidea.debugger.breakpoints:/old",
+      JSON.stringify({
+        files: {
+          "/x": [
+            { id: "a", line: 1, logMessage: "v={v}" },
+            { id: "b", line: 2 },
+          ],
+        },
+      }),
+    );
+    loadBreakpoints("/old");
+    expect(breakpointsOf("/x")[0]).toMatchObject({ suspend: false, logMessage: "v={v}" });
+    expect(breakpointsOf("/x")[1]!.suspend).toBeUndefined();
   });
 });
 

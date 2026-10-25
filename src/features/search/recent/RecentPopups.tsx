@@ -19,6 +19,8 @@ import {
   filterLocations,
   filterRecentFiles,
   initialFileIndex,
+  switcherPaths,
+  switcherSelection,
   switcherToolWindows,
   type RecentFileItem,
 } from "./model";
@@ -27,7 +29,8 @@ import styles from "./RecentPopups.module.css";
 
 export function RecentPopupsOverlay() {
   const open = useRecentPopup((s) => s.open);
-  if (open === "files") return <RecentFilesDialog />;
+  const session = useRecentPopup((s) => s.session);
+  if (open === "files") return <RecentFilesDialog key={session} />;
   if (open === "locations") return <RecentLocationsDialog />;
   return null;
 }
@@ -41,7 +44,7 @@ const afterClose = (fn: () => void) => {
 };
 
 // ---------------------------------------------------------------------------
-// ⌘E — Switcher
+// ⌘E — Recent Files; ⌃⇥ — Switcher (open editors only, no speed search)
 
 function RecentFilesDialog() {
   const editedOnly = useRecentPopup((s) => s.editedOnly);
@@ -51,6 +54,7 @@ function RecentFilesDialog() {
   const root = useProject((s) => s.project?.root ?? null);
   const toolWindows = useContributions((s) => s.toolWindows);
   const [paths, setPaths] = useState<string[] | null>(null);
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const [column, setColumn] = useState<"files" | "tools">("files");
   const [fileIndex, setFileIndex] = useState<number | null>(null);
@@ -60,17 +64,26 @@ function RecentFilesDialog() {
 
   useEffect(() => {
     let alive = true;
+    const openNow = () => maybeEditorService()?.openPaths?.() ?? [];
     call(commands.recentFiles())
-      .then((p) => alive && setPaths(p.map(String)))
-      .catch(() => alive && setPaths([]));
+      .then((p) => {
+        const recent = p.map(String);
+        if (alive) setPaths(switcher ? switcherPaths(recent, openNow()) : recent);
+      })
+      .catch(() => alive && setPaths(switcher ? openNow() : []));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [switcher]);
 
   const files = useMemo(
-    () => filterRecentFiles(paths ?? [], query, { root, edited, editedOnly }),
-    [paths, query, root, edited, editedOnly],
+    () =>
+      filterRecentFiles(
+        (paths ?? []).filter((p) => !removed.has(p)),
+        query,
+        { root, edited, editedOnly },
+      ),
+    [paths, removed, query, root, edited, editedOnly],
   );
   const tools = useMemo(() => switcherToolWindows(toolWindows.values(), !!root, query), [toolWindows, root, query]);
   const fIndex = files.length
@@ -87,16 +100,37 @@ function RecentFilesDialog() {
     if (tw) afterClose(() => toolWindowService().show(tw.id, true));
   };
 
-  // Switcher: each ⌃⇥ moves one row (wrapping); releasing Ctrl opens the selection.
+  // IDEA: Delete closes the selected editor (and drops it from the list) or hides the tool window.
+  const removeSelected = () => {
+    if (effectiveColumn === "tools") {
+      const tw = tools[tIndex]?.tw;
+      if (tw) toolWindowService().hide(tw.id);
+      return;
+    }
+    const item = files[fIndex];
+    if (!item) return;
+    maybeEditorService()?.closePath?.(item.path);
+    if (!switcher) void call(commands.removeRecent(item.path)).catch(() => {});
+    setRemoved((r) => new Set(r).add(item.path));
+    setFileIndex(fIndex);
+  };
+
+  // Switcher: each ⌃⇥ moves one row, past the end into the other column; releasing Ctrl opens the selection.
   const baseIndex = useRef<number | null>(null);
+  const loaded = paths !== null;
   useEffect(() => {
-    if (!switcher || !files.length || query) return;
-    baseIndex.current ??= step < 0 ? 0 : initialFileIndex(files, activePath, "");
-    const n = files.length;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the switcher step is an external event
-    setColumn("files");
-    setFileIndex((((baseIndex.current + step) % n) + n) % n);
-  }, [switcher, step, files, activePath, query]);
+    if (!switcher || !loaded) return;
+    // ⌃⇥ starts on the previous file, ⌃⇧⇥ on the oldest one.
+    baseIndex.current ??= step < 0 ? files.length : Math.max(0, initialFileIndex(files, activePath, ""));
+    const sel = switcherSelection(baseIndex.current, step, files.length, tools.length);
+    if (!sel) return;
+    // The switcher step is an external event (⌃⇥ pressed again).
+    setColumn(sel.column);
+    if (sel.column === "files") setFileIndex(sel.index);
+    else setToolIndex(sel.index);
+    // Only a new ⌃⇥ press moves the selection, not list changes (Delete).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switcher, step, loaded]);
   const selected = effectiveColumn === "files" ? files[fIndex] : undefined;
   const selectedTool = effectiveColumn === "tools" ? tools[tIndex]?.tw : undefined;
   useEffect(() => {
@@ -111,7 +145,7 @@ function RecentFilesDialog() {
     return () => window.removeEventListener("keyup", onKeyUp, true);
   });
 
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       if (effectiveColumn === "files") openFile(files[fIndex], e.shiftKey);
@@ -122,6 +156,12 @@ function RecentFilesDialog() {
       // Normally handled by the global ⌃⇥ binding; kept here for presets without it.
       e.preventDefault();
       cycleSwitcher(e.shiftKey ? -1 : 1);
+      return;
+    }
+    // In Recent Files Backspace edits the speed search text first.
+    if (e.key === "Delete" || (e.key === "Backspace" && !query)) {
+      e.preventDefault();
+      removeSelected();
       return;
     }
     if (e.key === "Tab" || ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !query)) {
@@ -151,40 +191,51 @@ function RecentFilesDialog() {
 
   const recentShortcut = shortcutLabel("navigate.recentFiles");
   const locationsShortcut = shortcutLabel("navigate.recentLocations");
-  const title = editedOnly ? "Recently Edited Files" : "Recent Files";
+  const title = switcher ? "Switcher" : editedOnly ? "Recently Edited Files" : "Recent Files";
   const footerPath = selected?.path ?? (selectedTool ? "" : (root ?? ""));
   return (
-    <Dialog open onClose={hideRecentPopup} width={720} aria-label="Recent Files" className={styles.dialog}>
+    <Dialog open onClose={hideRecentPopup} width={720} aria-label={title} className={styles.dialog}>
       <header className={styles.header}>
-        <span className={styles.title}>{title}</span>
-        <span className={clsx(styles.speed, query && styles.speedActive)}>
-          <Icon name="search" size={14} className={styles.filterIcon} />
-          <input
-            ref={inputRef}
-            data-autofocus
-            className={styles.filter}
-            value={query}
-            spellCheck={false}
-            autoComplete="off"
-            aria-label="Filter recent files"
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setFileIndex(null);
-              setToolIndex(0);
-            }}
-            onKeyDown={onKeyDown}
-          />
+        <span className={styles.title}>
+          <T>{title}</T>
         </span>
-        <Checkbox
-          checked={editedOnly}
-          onChange={() => {
-            showRecentPopup("files");
-            inputRef.current?.focus();
-          }}
-          label={<>Show edited only {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}</>}
-        />
+        {!switcher && (
+          <>
+            <span className={clsx(styles.speed, query && styles.speedActive)}>
+              <Icon name="search" size={14} className={styles.filterIcon} />
+              <input
+                ref={inputRef}
+                data-autofocus
+                className={styles.filter}
+                value={query}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="Filter recent files"
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setFileIndex(null);
+                  setToolIndex(0);
+                }}
+                onKeyDown={onKeyDown}
+              />
+            </span>
+            <Checkbox
+              checked={editedOnly}
+              onChange={() => {
+                showRecentPopup("files");
+                inputRef.current?.focus();
+              }}
+              label={<>Show edited only {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}</>}
+            />
+          </>
+        )}
       </header>
-      <div className={styles.columns}>
+      <div
+        className={styles.columns}
+        tabIndex={switcher ? -1 : undefined}
+        data-autofocus={switcher ? "" : undefined}
+        onKeyDown={switcher ? onKeyDown : undefined}
+      >
         <div className={styles.tools}>
           <List
             items={tools}
@@ -200,16 +251,18 @@ function RecentFilesDialog() {
             aria-label="Tool windows"
             renderItem={(t) => <ToolRow tw={t.tw} indices={t.indices} />}
           />
-          <button
-            type="button"
-            className={styles.locationsLink}
-            onClick={() => afterClose(() => showRecentPopup("locations"))}
-          >
-            <span className={styles.name}>
-              <T>Recent Locations</T>
-            </span>
-            {locationsShortcut && <span className={styles.shortcut}>{locationsShortcut}</span>}
-          </button>
+          {!switcher && (
+            <button
+              type="button"
+              className={styles.locationsLink}
+              onClick={() => afterClose(() => showRecentPopup("locations"))}
+            >
+              <span className={styles.name}>
+                <T>Recent Locations</T>
+              </span>
+              {locationsShortcut && <span className={styles.shortcut}>{locationsShortcut}</span>}
+            </button>
+          )}
         </div>
         <div className={styles.files}>
           <List
@@ -223,9 +276,19 @@ function RecentFilesDialog() {
             onActivate={(f, _i, e) => openFile(f, e.shiftKey)}
             focusable={false}
             rowHeight={24}
-            aria-label="Recent files"
+            aria-label={switcher ? "Open files" : "Recent files"}
             empty={
-              paths && <span>{editedOnly ? "No edited files" : query ? "No matching files" : "No recent files"}</span>
+              paths && (
+                <span>
+                  {switcher
+                    ? "No open files"
+                    : editedOnly
+                      ? "No edited files"
+                      : query
+                        ? "No matching files"
+                        : "No recent files"}
+                </span>
+              )
             }
             renderItem={(f) => <RecentFileRow item={f} current={f.path === activePath} />}
           />

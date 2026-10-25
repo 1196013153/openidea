@@ -245,14 +245,42 @@ export function shortcutLabel(actionId: string): string | undefined {
 // ---------------------------------------------------------------------------
 // Dispatcher
 
-const CHORD_TIMEOUT = 1200;
-const DOUBLE_TAP_MS = 350;
+/** How long IDEA waits for the second stroke of a chord. */
+const CHORD_TIMEOUT = 2000;
+/** IDEA's double-modifier timing: each press/release step. */
+const DOUBLE_TAP_STEP_MS = 300;
+/** A Shift tap this soon after typing another key is part of typing, not a gesture. */
+const DOUBLE_TAP_TYPING_GUARD_MS = 100;
 
 function isPlainTextField(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el || !el.tagName) return false;
   if (el.closest?.(".cm-editor")) return false;
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+}
+
+function isTextTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || !el.tagName) return false;
+  return !!el.closest?.(".cm-editor") || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+}
+
+/**
+ * AltGr (reported as Ctrl+Alt on Windows) typing a character into a text field
+ * or editor, e.g. `}` on a German or `ł` on a Polish layout: the character wins
+ * over a Ctrl+Alt shortcut on the same key, as in IDEA.
+ */
+export function isAltGrTyping(
+  e: Pick<KeyboardEvent, "key" | "code" | "target" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey"> & {
+    getModifierState?: (key: string) => boolean;
+  },
+): boolean {
+  if (isMacHost() || !e.getModifierState?.("AltGraph")) return false;
+  if (e.key !== "Dead" && e.key.length !== 1) return false;
+  if (!isTextTarget(e.target)) return false;
+  // Ctrl+Alt+L on a layout with no AltGr character there still reports `l`: that is a shortcut.
+  const key = strokeOf(e)?.split("+").pop();
+  return e.key === "Dead" || e.key.toUpperCase() !== key;
 }
 
 function runIfEnabled(id: string): boolean {
@@ -264,37 +292,55 @@ function runIfEnabled(id: string): boolean {
 
 /**
  * Installs the global keydown dispatcher (capture phase, so IDE shortcuts win
- * over CodeMirror defaults). Returns an uninstall function.
+ * over CodeMirror defaults). Returns an uninstall function. `now` is the clock
+ * for the double-Shift gesture.
  */
-export function installKeyboardDispatcher(target: Window = window): () => void {
+export function installKeyboardDispatcher(target: Window = window, now: () => number = () => performance.now()): () => void {
   let pending: string[] = [];
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
-  let lastShiftUp = 0;
-  let shiftClean = false;
+  // Double Shift: 0 idle, 1 pressed, 2 released, 3 pressed again; fires on the second release.
+  let shiftStep = 0;
+  let shiftAt = 0;
+  let otherKeyAt = -Infinity;
 
   const reset = () => {
     pending = [];
     clearTimeout(pendingTimer);
   };
+  const resetShift = () => {
+    shiftStep = 0;
+  };
+
+  const onShiftDown = (e: KeyboardEvent) => {
+    const t = now();
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || t - otherKeyAt < DOUBLE_TAP_TYPING_GUARD_MS) return resetShift();
+    if (shiftStep !== 0 && t - shiftAt > DOUBLE_TAP_STEP_MS) resetShift();
+    if (shiftStep === 0 || shiftStep === 2) {
+      shiftStep++;
+      shiftAt = t;
+    } else {
+      resetShift();
+    }
+  };
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (suspended > 0) {
       reset();
-      shiftClean = false;
+      resetShift();
       return;
     }
-    if (e.key === "Shift") {
-      shiftClean = !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey;
-      return;
-    }
-    shiftClean = false;
-    lastShiftUp = 0;
+    if (e.key === "Shift") return onShiftDown(e);
+    resetShift();
+    otherKeyAt = e.key === "Escape" || e.key === "Tab" ? -Infinity : now();
     if (e.isComposing) return;
     const stroke = strokeOf(e);
     if (!stroke) return;
-
-    const hasCommandMod = e.metaKey || e.ctrlKey || e.altKey;
-    if (!hasCommandMod && isPlainTextField(e.target) && !/^(Shift\+)?(F\d{1,2}|Escape)$/.test(stroke)) return;
+    const chord = pending.length > 0;
+    if (!chord) {
+      if (isAltGrTyping(e)) return;
+      const hasCommandMod = e.metaKey || e.ctrlKey || e.altKey;
+      if (!hasCommandMod && isPlainTextField(e.target) && !/^(Shift\+)?(F\d{1,2}|Escape)$/.test(stroke)) return;
+    }
 
     const seq = [...pending, stroke].join(" ");
     const bindings = effectiveBindings();
@@ -319,32 +365,46 @@ export function installKeyboardDispatcher(target: Window = window): () => void {
       pendingTimer = setTimeout(reset, CHORD_TIMEOUT);
       return;
     }
+    // A second stroke that completes no chord is swallowed, as in IDEA, not typed.
+    if (chord) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     reset();
   };
 
   const onKeyUp = (e: KeyboardEvent) => {
-    if (suspended > 0 || e.key !== "Shift" || !shiftClean) return;
-    const now = performance.now();
-    if (lastShiftUp && now - lastShiftUp < DOUBLE_TAP_MS) {
-      lastShiftUp = 0;
-      const target = effectiveBindings().find(([b]) => b === "Shift Shift");
-      if (target) runIfEnabled(target[1]);
-    } else {
-      lastShiftUp = now;
+    if (suspended > 0 || e.key !== "Shift" || shiftStep === 0) return;
+    const t = now();
+    if (e.metaKey || e.ctrlKey || e.altKey || t - shiftAt > DOUBLE_TAP_STEP_MS) return resetShift();
+    if (shiftStep === 1) {
+      shiftStep = 2;
+      shiftAt = t;
+      return;
     }
+    const fire = shiftStep === 3;
+    resetShift();
+    if (!fire) return;
+    const ids = effectiveBindings().filter(([b]) => b === "Shift Shift").map(([, id]) => id);
+    for (const id of ids.reverse()) if (runIfEnabled(id)) return;
   };
+
+  // Shift+click (extend a selection) is not half of a double Shift.
+  const onMouseDown = () => resetShift();
 
   const onBlur = () => {
     reset();
-    lastShiftUp = 0;
+    resetShift();
   };
 
   target.addEventListener("keydown", onKeyDown, true);
   target.addEventListener("keyup", onKeyUp, true);
+  target.addEventListener("mousedown", onMouseDown, true);
   target.addEventListener("blur", onBlur);
   return () => {
     target.removeEventListener("keydown", onKeyDown, true);
     target.removeEventListener("keyup", onKeyUp, true);
+    target.removeEventListener("mousedown", onMouseDown, true);
     target.removeEventListener("blur", onBlur);
   };
 }

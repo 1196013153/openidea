@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatBinding, installKeyboardDispatcher, normalizeBinding, strokeOf, useKeymap } from "./keymap";
+import { formatBinding, installKeyboardDispatcher, isAltGrTyping, normalizeBinding, strokeOf, useKeymap } from "./keymap";
 import { executeAction, registerAction } from "./actions";
+import { usePlatform } from "./platformInfo";
 
 describe("keymap", () => {
   it("normalizes modifier order and case", () => {
@@ -64,6 +65,145 @@ describe("keymap", () => {
       expect(run).not.toHaveBeenCalled();
       expect(await executeAction("t.keyGated")).toBe(true);
       expect(run).toHaveBeenCalledOnce();
+    });
+
+    it("waits 2s for a chord's second stroke and swallows a wrong one", async () => {
+      vi.useFakeTimers();
+      try {
+        const chord = vi.fn();
+        registerAction({ id: "t.chord2", title: "chord2", run: chord });
+        useKeymap.setState({ overrides: { "t.chord2": ["Meta+K Meta+C"] } });
+        uninstall = installKeyboardDispatcher(window);
+        const press = (code: string, init: KeyboardEventInit) => {
+          const e = new KeyboardEvent("keydown", { code, bubbles: true, cancelable: true, ...init });
+          window.dispatchEvent(e);
+          return e;
+        };
+        press("KeyK", { key: "k", metaKey: true });
+        vi.advanceTimersByTime(1900);
+        press("KeyC", { key: "c", metaKey: true });
+        await Promise.resolve();
+        expect(chord).toHaveBeenCalledOnce();
+
+        press("KeyK", { key: "k", metaKey: true });
+        expect(press("KeyX", { key: "x" }).defaultPrevented).toBe(true);
+        // The chord is over: the next stroke is an ordinary key again.
+        expect(press("KeyC", { key: "c", metaKey: true }).defaultPrevented).toBe(false);
+
+        press("KeyK", { key: "k", metaKey: true });
+        vi.advanceTimersByTime(2001);
+        press("KeyC", { key: "c", metaKey: true });
+        await Promise.resolve();
+        expect(chord).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("double Shift", () => {
+    let uninstall = () => {};
+    afterEach(() => uninstall());
+
+    function setup() {
+      const run = vi.fn();
+      registerAction({ id: "t.doubleShift", title: "double shift", run });
+      useKeymap.setState({ overrides: { "t.doubleShift": ["Shift Shift"] } });
+      let t = 1000;
+      uninstall = installKeyboardDispatcher(window, () => t);
+      const at = (ms: number) => (t = ms);
+      const shift = (type: "keydown" | "keyup", ms: number) => {
+        at(ms);
+        window.dispatchEvent(new KeyboardEvent(type, { key: "Shift", code: "ShiftLeft", shiftKey: type === "keydown" }));
+      };
+      const tap = (ms: number, hold = 50) => {
+        shift("keydown", ms);
+        shift("keyup", ms + hold);
+      };
+      return { run, at, shift, tap };
+    }
+
+    it("fires on the second release when every step is within 300ms", async () => {
+      const { run, tap } = setup();
+      tap(1000);
+      tap(1200);
+      await Promise.resolve();
+      expect(run).toHaveBeenCalledOnce();
+    });
+
+    it("ignores slow steps", () => {
+      const { run, tap, shift } = setup();
+      tap(1000);
+      tap(1400);
+      expect(run).not.toHaveBeenCalled();
+      shift("keydown", 2000);
+      shift("keyup", 2400); // held too long
+      tap(2500);
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it("ignores Shift tapped right after typing", () => {
+      const { run, tap, at } = setup();
+      at(990);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "a", code: "KeyA" }));
+      tap(1000);
+      tap(1150);
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it("is cancelled by a click or another key while Shift is held", () => {
+      const { run, tap, shift } = setup();
+      shift("keydown", 1000);
+      window.dispatchEvent(new MouseEvent("mousedown", { shiftKey: true }));
+      shift("keyup", 1100);
+      tap(1200);
+      expect(run).not.toHaveBeenCalled();
+
+      shift("keydown", 3000);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", shiftKey: true }));
+      shift("keyup", 3100);
+      tap(3400);
+      expect(run).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AltGr", () => {
+    let uninstall = () => {};
+    afterEach(() => {
+      uninstall();
+      usePlatform.setState({ os: "macos" });
+      document.body.innerHTML = "";
+    });
+
+    const altGr = (key: string, code: string, target: EventTarget) => {
+      const e = new KeyboardEvent("keydown", { key, code, ctrlKey: true, altKey: true, bubbles: true, cancelable: true });
+      Object.defineProperty(e, "getModifierState", { value: (k: string) => k === "AltGraph" });
+      target.dispatchEvent(e);
+      return e;
+    };
+
+    it("lets AltGr characters reach text fields on Windows / Linux", async () => {
+      usePlatform.setState({ os: "windows" });
+      const run = vi.fn();
+      registerAction({ id: "t.altGr", title: "altGr", run });
+      useKeymap.setState({ overrides: { "t.altGr": ["Ctrl+Alt+0"] } });
+      uninstall = installKeyboardDispatcher(window);
+      const input = document.body.appendChild(document.createElement("textarea"));
+      expect(altGr("}", "Digit0", input).defaultPrevented).toBe(false);
+      await Promise.resolve();
+      expect(run).not.toHaveBeenCalled();
+      // No AltGr character on that key (or not typing): it is the shortcut.
+      altGr("0", "Digit0", input);
+      altGr("}", "Digit0", document.body);
+      await Promise.resolve();
+      expect(run).toHaveBeenCalledTimes(2);
+    });
+
+    it("never applies on macOS, where ⌥ shortcuts type symbols", () => {
+      usePlatform.setState({ os: "macos" });
+      const input = document.createElement("input");
+      const e = { key: "ƒ", code: "KeyF", target: input, metaKey: false, ctrlKey: false, altKey: true, shiftKey: false, getModifierState: () => true };
+      expect(isAltGrTyping(e)).toBe(false);
     });
   });
 });

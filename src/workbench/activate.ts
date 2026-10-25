@@ -25,7 +25,12 @@ import { registerShellActions } from "./shellActions";
 import { TaskStatus } from "./StatusBar";
 import { installTaskEvents } from "./tasks";
 import { installToolWindowActions } from "./toolwindows/actions";
-import { loadToolWindowLayout, setFocusedToolWindow, toolWindowServiceImpl } from "./toolwindows/store";
+import {
+  installToolWindowLayoutSync,
+  loadToolWindowLayout,
+  setFocusedToolWindow,
+  toolWindowServiceImpl,
+} from "./toolwindows/store";
 
 export function activateWorkbench(): () => void {
   provideToolWindowService(toolWindowServiceImpl);
@@ -49,6 +54,7 @@ export function activateWorkbench(): () => void {
     unsubProject,
     registerShellActions(),
     installToolWindowActions(),
+    installToolWindowLayoutSync(),
     installDistractionFree(),
     installFocusTracking(setFocusedToolWindow),
     installTaskEvents(),

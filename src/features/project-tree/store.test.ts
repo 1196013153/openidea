@@ -13,6 +13,7 @@ import {
   useProjectTree,
 } from "./store";
 import { beginNew, commitEditing, copySelection, paste, transfer } from "./operations";
+import { closeFileRefactorDialog, pendingFileRefactorDialog } from "./FileRefactorDialogs";
 
 const ROOT = "/p";
 let fs: MemoryFs;
@@ -140,20 +141,30 @@ describe("file operations", () => {
     expect(childLabels("/p/docs")).toContain("notes");
   });
 
-  it("copies with unique names and moves with cut / paste", async () => {
+  it("pastes copies through the Copy dialog and cut items through the Move dialog", async () => {
     await loadDir(ROOT);
     await loadDir("/p/docs");
     setSelection(new Set(["/p/README.md"]), "/p/README.md");
     copySelection(false);
     await paste(ROOT);
-    expect(fs.nodes.has("/p/README copy.md")).toBe(true);
+    const copy = pendingFileRefactorDialog();
+    expect(copy).toMatchObject({ kind: "copy", paths: ["/p/README.md"], target: ROOT });
+    if (copy?.kind !== "copy") throw new Error("no copy dialog");
+    expect(await copy.copy(ROOT, "NOTES.md", false)).toBe(true);
+    expect(fs.nodes.has("/p/NOTES.md")).toBe(true);
+    // Without a name (several items) copies get a unique name.
+    expect(await transfer(["/p/README.md"], ROOT, "copy")).toBe("/p/README copy.md");
+    closeFileRefactorDialog();
 
     setSelection(new Set(["/p/README.md"]), "/p/README.md");
     copySelection(true);
     await paste("/p/docs");
-    expect(fs.nodes.has("/p/docs/README.md")).toBe(true);
-    expect(fs.nodes.has("/p/README.md")).toBe(false);
+    const move = pendingFileRefactorDialog();
+    expect(move).toMatchObject({ kind: "move", paths: ["/p/README.md"], target: "/p/docs" });
+    if (move?.kind !== "move") throw new Error("no move dialog");
+    move.onDone?.([{ from: "/p/README.md", to: "/p/docs/README.md" }]);
     expect(useProjectTree.getState().clipboard).toBeNull();
+    closeFileRefactorDialog();
   });
 
   it("refuses to move a folder into itself", async () => {

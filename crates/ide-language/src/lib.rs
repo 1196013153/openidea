@@ -13,7 +13,7 @@ mod registry;
 mod syntax;
 pub use registry::LanguageRegistry;
 pub use syntax::{
-    CSS_CLASS, CSS_ID, CSS_VARIABLE, MAX_CACHED_TREES, MAX_PARSE_BYTES, ParsedTree, Syntax, SyntaxCache,
+    CSS_CLASS, CSS_ID, CSS_VARIABLE, FileReference, MAX_CACHED_TREES, MAX_PARSE_BYTES, ParsedTree, Syntax, SyntaxCache,
     SyntaxCacheStats, SyntaxHighlightKind, SyntaxHighlights, TreeError, WebReference, WebReferenceKind,
 };
 

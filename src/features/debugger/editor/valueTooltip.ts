@@ -8,6 +8,9 @@ import { hoverTooltip, type EditorView } from "@codemirror/view";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { activeSession, evaluate } from "../state";
 import { inlineValue } from "../values";
+import { tx } from "@/platform/i18n";
+import { iconMarkup } from "@/ui";
+import { mountValueTree } from "../ui/ValueHintTree";
 import styles from "./editor.module.css";
 
 const BASE_HOVER = 100;
@@ -42,7 +45,8 @@ export function valueTooltip(): Extension {
       if (!session || session.status !== "paused") return null;
       const expr = expressionAt(view, pos);
       if (!expr) return null;
-      if (dbg.valueTooltipDelay > BASE_HOVER) await new Promise((r) => setTimeout(r, dbg.valueTooltipDelay - BASE_HOVER));
+      if (dbg.valueTooltipDelay > BASE_HOVER)
+        await new Promise((r) => setTimeout(r, dbg.valueTooltipDelay - BASE_HOVER));
       let value;
       try {
         value = await evaluate(expr.text, "hover", session);
@@ -56,6 +60,25 @@ export function valueTooltip(): Extension {
         create: () => {
           const dom = document.createElement("div");
           dom.className = styles.valueTooltip!;
+          let tree: { unmount(): void } | null = null;
+          if (value.variablesReference > 0) {
+            // IDEA's value hint: the "+" expands the object into a variables tree in place.
+            const expand = document.createElement("button");
+            expand.type = "button";
+            expand.className = styles.valueExpand!;
+            expand.setAttribute("aria-label", tx("Expand value"));
+            expand.setAttribute("aria-expanded", "false");
+            expand.innerHTML = iconMarkup("chevron-right", 12) ?? "";
+            expand.addEventListener("mousedown", (e) => e.preventDefault());
+            expand.addEventListener("click", () => {
+              if (tree) return;
+              expand.remove();
+              dom.classList.add(styles.valueTooltipTree!);
+              dom.replaceChildren();
+              tree = mountValueTree(dom, expr.text, value, session.id);
+            });
+            dom.append(expand);
+          }
           const name = document.createElement("span");
           name.className = styles.valueName!;
           name.textContent = `${expr.text} = `;
@@ -66,7 +89,7 @@ export function valueTooltip(): Extension {
             type.textContent = `  {${value.typeName}}`;
             dom.append(type);
           }
-          return { dom };
+          return { dom, destroy: () => tree?.unmount() };
         },
       };
     },

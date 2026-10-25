@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileEntry } from "@/bindings";
 import { registerProjectViewRoot } from "@/workbench/contributions";
 
-vi.mock("@/workbench/messages", () => ({ confirm: async () => true }));
+vi.mock("@/workbench/messages", () => ({
+  confirm: async () => true,
+  confirmChecked: async () => ({ checked: false }),
+  ask: async () => ({ button: "cancel", checked: false }),
+}));
 vi.mock("@/editor/refactor", () => ({
   fileUsages: async () => ({ status: "ok", usages: [] }),
   askUsagesDetected: async () => "cancel",

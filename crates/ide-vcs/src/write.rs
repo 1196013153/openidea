@@ -2,7 +2,9 @@
 
 use crate::cli::{self, run};
 use crate::repo::{gx, resolve};
-use crate::{BlameLine, CommitOptions, Repo};
+use crate::{
+    BlameLine, CheckoutMode, CheckoutOptions, CheckoutOutcome, CommitOptions, DeletedBranch, DivergedLocal, Repo,
+};
 use gix::bstr::{BStr, ByteSlice};
 use ide_core::{CancellationToken, IdeError, IdeResult};
 use std::path::{Path, PathBuf};
@@ -247,9 +249,83 @@ pub(crate) fn commit(r: &Repo, message: &str, options: &CommitOptions) -> IdeRes
         args.extend(["-F", "-"]);
         Some(message.as_bytes())
     };
-    run(r.root(), &args, stdin)?;
+    if options.partial.is_empty() {
+        run(r.root(), &args, stdin)?;
+    } else {
+        commit_partial(r, &args, stdin, &options.partial)?;
+    }
     let repo = r.gix()?;
     Ok(repo.head_id().map_err(gx)?.detach().to_string())
+}
+
+/// Removes the temporary index however the partial commit ends.
+struct TempIndex(PathBuf);
+
+impl Drop for TempIndex {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+        let _ = std::fs::remove_file(self.0.with_extension("lock"));
+    }
+}
+
+/// Commits the index with only the chosen hunks of `partial` files, through a copy of the
+/// index (`GIT_INDEX_FILE`), as IDEA's partial commit does: the working tree and the
+/// user's index are left alone except that the partial files' entries end up matching
+/// the new commit.
+fn commit_partial(
+    r: &Repo,
+    commit_args: &[&str],
+    stdin: Option<&[u8]>,
+    partial: &[crate::PartialCommitFile],
+) -> IdeResult<()> {
+    let tmp = TempIndex(r.git_dir.join("openidea-partial-index"));
+    let index = r.git_dir.join("index");
+    if index.exists() {
+        std::fs::copy(&index, &tmp.0)?;
+    }
+    let env = [("GIT_INDEX_FILE", tmp.0.as_os_str())];
+    let mut rels = Vec::new();
+    for file in partial {
+        let rel = r.rel_path(&file.path.0)?;
+        let head = {
+            let repo = r.gix()?;
+            crate::repo::blob_at(&repo, &rel, "HEAD")?
+        }
+        .ok_or_else(|| {
+            IdeError::invalid(format!("{rel}: only changes of a file in HEAD can be committed partially"))
+        })?;
+        let disk = std::fs::read(r.abs_path(&rel))?;
+        if head.contains(&0) || disk.contains(&0) {
+            return Err(IdeError::invalid(format!("{rel}: binary files cannot be committed partially")));
+        }
+        let (head, disk) = (String::from_utf8_lossy(&head), String::from_utf8_lossy(&disk));
+        let hunks = crate::diff::line_hunks(&head, &disk);
+        let mut selected = Vec::new();
+        for want in &file.hunks {
+            let found = hunks.iter().position(|h| {
+                (h.start, h.lines, h.old_start, h.old_lines) == (want.start, want.lines, want.old_start, want.old_lines)
+            });
+            match found {
+                Some(i) => selected.push(i),
+                None => return Err(IdeError::invalid(format!("{rel} changed on disk; review its changes again"))),
+            }
+        }
+        cli::run_env(r.root(), &["--literal-pathspecs", "reset", "-q", "HEAD", "--", &rel], None, &env)?;
+        let patch = crate::diff::build_partial_patch(&rel, &head, &disk, &selected);
+        if !patch.is_empty() {
+            cli::run_env(
+                r.root(),
+                &["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "--recount", "-"],
+                Some(patch.as_bytes()),
+                &env,
+            )?;
+        }
+        rels.push(rel);
+    }
+    cli::run_env(r.root(), commit_args, stdin, &env)?;
+    // The user's index still holds the partial files' previous entries: align them with
+    // the commit so the remaining changes show as unstaged, nothing as staged.
+    run_paths(r, &["reset", "-q", "HEAD"], &rels)
 }
 
 pub(crate) fn checkout(r: &Repo, branch: &str, create: bool) -> IdeResult<()> {
@@ -278,6 +354,128 @@ pub(crate) fn checkout(r: &Repo, branch: &str, create: bool) -> IdeResult<()> {
     // A tag or commit: detached HEAD.
     resolve(&repo, branch)?;
     run(r.root(), &["switch", "--detach", branch], None).map(|_| ())
+}
+
+/// What a checkout of `branch` runs.
+enum SwitchPlan {
+    Switch(Vec<String>),
+    /// `git rebase <remote> <local>`.
+    Rebase {
+        local: String,
+        remote: String,
+    },
+    Ahead {
+        local: String,
+        remote: String,
+    },
+}
+
+fn switch_plan(r: &Repo, branch: &str, create: bool, diverged: Option<DivergedLocal>) -> IdeResult<SwitchPlan> {
+    let args = |a: &[&str]| SwitchPlan::Switch(a.iter().map(|s| s.to_string()).collect());
+    if create {
+        return Ok(args(&["switch", "-c", branch]));
+    }
+    let repo = r.gix()?;
+    let exists = |name: &str| repo.try_find_reference(name).map_err(gx).map(|r| r.is_some());
+    if exists(&format!("refs/heads/{branch}"))? {
+        return Ok(args(&["switch", branch]));
+    }
+    if exists(&format!("refs/remotes/{branch}"))?
+        && let Some((_, name)) = branch.split_once('/')
+    {
+        if !exists(&format!("refs/heads/{name}"))? {
+            return Ok(args(&["switch", "-c", name, "--track", branch]));
+        }
+        // IDEA: a local namesake that is merely behind is fast-forwarded; one with commits
+        // of its own needs the user's choice.
+        let range = format!("{branch}..refs/heads/{name}");
+        let ahead = run(r.root(), &["rev-list", "--count", &range], None)?.stdout_str().trim() != "0";
+        return Ok(match (ahead, diverged) {
+            (true, None) => SwitchPlan::Ahead { local: name.to_string(), remote: branch.to_string() },
+            (true, Some(DivergedLocal::Rebase)) => {
+                SwitchPlan::Rebase { local: name.to_string(), remote: branch.to_string() }
+            }
+            _ => args(&["switch", "-C", name, "--track", branch]),
+        });
+    }
+    // A tag or commit: detached HEAD.
+    resolve(&repo, branch)?;
+    Ok(args(&["switch", "--detach", branch]))
+}
+
+/// Files git refuses to overwrite with local changes, from its error message.
+fn overwritten_files(stderr: &str) -> Option<Vec<String>> {
+    let mut lines =
+        stderr.lines().skip_while(|l| !l.contains("local changes to the following files would be overwritten"));
+    lines.next()?;
+    Some(lines.take_while(|l| l.starts_with('\t')).map(|l| l.trim().to_string()).collect())
+}
+
+pub(crate) fn checkout_with(
+    r: &Repo,
+    branch: &str,
+    create: bool,
+    options: &CheckoutOptions,
+) -> IdeResult<CheckoutOutcome> {
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Err(IdeError::invalid("branch name is empty"));
+    }
+    if branch.starts_with('-') {
+        return Err(IdeError::invalid(format!("invalid revision '{branch}'")));
+    }
+    let mut args = match switch_plan(r, branch, create, options.diverged)? {
+        SwitchPlan::Ahead { local, remote } => return Ok(CheckoutOutcome::LocalBranchAhead { local, remote }),
+        SwitchPlan::Rebase { local, remote } => {
+            let out = cli::run_raw(r.root(), &["rebase", "--autostash", &remote, &local], None)?;
+            if out.code == Some(0) {
+                return Ok(CheckoutOutcome::Done);
+            }
+            let files = unmerged_paths(r)?;
+            if files.is_empty() {
+                return Err(cli::failure(&["rebase"], &out.stderr, &out.stdout, out.code));
+            }
+            return Ok(CheckoutOutcome::Conflicts { files });
+        }
+        SwitchPlan::Switch(args) => args,
+    };
+    if options.mode == CheckoutMode::Force {
+        args.push("--discard-changes".into());
+    }
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = cli::run_raw(r.root(), &argv, None)?;
+    if out.code == Some(0) {
+        return Ok(CheckoutOutcome::Done);
+    }
+    let Some(files) = overwritten_files(&String::from_utf8_lossy(&out.stderr)) else {
+        return Err(cli::failure(&argv, &out.stderr, &out.stdout, out.code));
+    };
+    if options.mode != CheckoutMode::Smart {
+        return Ok(CheckoutOutcome::LocalChanges { files });
+    }
+    // Smart Checkout: stash → switch → unstash, like IDEA.
+    let before = stash_count(r)?;
+    run(r.root(), &["stash", "push", "-q", "-m", &format!("Uncommitted changes before checkout of {branch}")], None)?;
+    if stash_count(r)? == before {
+        return Err(IdeError::invalid("could not save the local changes"));
+    }
+    if let Err(e) = run(r.root(), &argv, None) {
+        run(r.root(), &["stash", "pop", "-q", "--index"], None)?;
+        return Err(e);
+    }
+    let pop = cli::run_raw(r.root(), &["stash", "pop", "-q"], None)?;
+    if pop.code == Some(0) {
+        return Ok(CheckoutOutcome::Done);
+    }
+    let files = unmerged_paths(r)?;
+    if files.is_empty() {
+        return Err(cli::failure(&["stash", "pop"], &pop.stderr, &pop.stdout, pop.code));
+    }
+    Ok(CheckoutOutcome::Conflicts { files })
+}
+
+fn stash_count(r: &Repo) -> IdeResult<usize> {
+    Ok(run(r.root(), &["stash", "list"], None)?.stdout_str().lines().count())
 }
 
 /// Creates `name` at `start` (default HEAD); a remote-tracking start point is tracked.
@@ -340,6 +538,39 @@ pub(crate) fn undo_commit(r: &Repo, commit: &str) -> IdeResult<String> {
 
 pub(crate) fn delete_branch(r: &Repo, branch: &str, force: bool) -> IdeResult<()> {
     run(r.root(), &["branch", if force { "-D" } else { "-d" }, "--", branch], None).map(|_| ())
+}
+
+pub(crate) fn delete_branch_restorable(r: &Repo, branch: &str) -> IdeResult<DeletedBranch> {
+    check_local_branch(r, branch)?;
+    let tip = run(r.root(), &["rev-parse", "--verify", "-q", &format!("refs/heads/{branch}^{{commit}}")], None)?
+        .stdout_str()
+        .trim()
+        .to_string();
+    let upstream =
+        cli::run_raw(r.root(), &["for-each-ref", "--format=%(upstream:short)", &format!("refs/heads/{branch}")], None)?
+            .stdout_str()
+            .trim()
+            .to_string();
+    let out = cli::run_raw(r.root(), &["branch", "-d", "--", branch], None)?;
+    let unmerged = match out.code {
+        Some(0) => false,
+        _ if String::from_utf8_lossy(&out.stderr).contains("not fully merged") => {
+            run(r.root(), &["branch", "-D", "--", branch], None)?;
+            true
+        }
+        code => return Err(cli::failure(&["branch"], &out.stderr, &out.stdout, code)),
+    };
+    Ok(DeletedBranch { name: branch.to_string(), tip, upstream: (!upstream.is_empty()).then_some(upstream), unmerged })
+}
+
+pub(crate) fn restore_branch(r: &Repo, deleted: &DeletedBranch) -> IdeResult<()> {
+    let tip = check_rev(&deleted.tip)?;
+    run(r.root(), &["branch", "--", &deleted.name, tip], None)?;
+    if let Some(upstream) = &deleted.upstream {
+        let target = format!("--set-upstream-to={upstream}");
+        run(r.root(), &["branch", &target, "--", &deleted.name], None)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn rename_branch(r: &Repo, from: &str, to: &str) -> IdeResult<()> {
@@ -479,15 +710,25 @@ pub(crate) fn push_branch(
     r: &Repo,
     branch: &str,
     revision: Option<&str>,
+    target: Option<&str>,
     force_with_lease: bool,
     cancel: &CancellationToken,
     on_output: &dyn Fn(String),
 ) -> IdeResult<()> {
     check_local_branch(r, branch)?;
-    let (remote, target, set_upstream) = match branch_upstream(r, branch) {
+    let (remote, mut name, set_upstream) = match branch_upstream(r, branch) {
         Some((remote, name)) => (remote, name, false),
         None => (push_remote(r)?, branch.to_string(), revision.is_none()),
     };
+    if let Some(t) = target.map(str::trim).filter(|t| !t.is_empty()) {
+        let valid =
+            !t.starts_with('-') && cli::run_raw(r.root(), &["check-ref-format", "--branch", t], None)?.code == Some(0);
+        if !valid {
+            return Err(IdeError::invalid(format!("'{t}' is not a valid branch name")));
+        }
+        name = t.to_string();
+    }
+    let target = name;
     let source = match revision {
         Some(rev) => check_rev(rev)?.to_string(),
         None => format!("refs/heads/{branch}"),

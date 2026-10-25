@@ -13,9 +13,11 @@ export const GROUP_LABEL: Record<GroupId, string> = {
 /**
  * Inclusion of a file in the next commit:
  * `all` – stage everything before committing; `none` – keep out (unstage);
- * `staged` – commit only what is already staged (partially staged files).
+ * `staged` – commit only what is already staged (partially staged files);
+ * `hunks` – commit only the changed blocks not excluded in the diff (IDEA's partial
+ * commit; see `excludedHunks`), through a temporary index.
  */
-export type CheckState = "all" | "none" | "staged";
+export type CheckState = "all" | "none" | "staged" | "hunks";
 
 export interface ChangeNode {
   key: string;
@@ -68,7 +70,7 @@ export function aggregateCheck(files: readonly FileStatus[], checks: ReadonlyMap
   for (const f of files) {
     const c = checkOf(f, checks);
     if (c !== "none") on++;
-    if (c === "staged") partial = true;
+    if (c === "staged" || c === "hunks") partial = true;
   }
   return { checked: on > 0 && on === files.length && !partial, indeterminate: (on > 0 && on < files.length) || partial, on };
 }
@@ -256,6 +258,8 @@ export interface CommitPlan {
   unstage: string[];
   /** Files that end up in the commit. */
   included: FileStatus[];
+  /** Absolute paths of included files committed with only some of their hunks. */
+  partial: string[];
 }
 
 /**
@@ -282,7 +286,7 @@ export function renamedFromPath(fs: FileStatus): string | null {
 
 /** What to stage / unstage so the index holds exactly the included changes. */
 export function planCommit(status: readonly FileStatus[], checks: ReadonlyMap<string, CheckState>): CommitPlan {
-  const plan: CommitPlan = { stage: [], unstage: [], included: [] };
+  const plan: CommitPlan = { stage: [], unstage: [], included: [], partial: [] };
   for (const fs of status) {
     if (!groupOf(fs)) continue;
     const c = checkOf(fs, checks);
@@ -298,9 +302,37 @@ export function planCommit(status: readonly FileStatus[], checks: ReadonlyMap<st
     }
     if (c === "all" && fs.unstaged) plan.stage.push(path);
     if (c === "staged" && !fs.staged) continue;
+    if (c === "hunks") plan.partial.push(path);
     plan.included.push(fs);
   }
   return plan;
+}
+
+/**
+ * Toggling the checkbox of one changed block (`key`, one of `all`) in the diff: the file's
+ * new inclusion and excluded blocks. All blocks back in → `all`; none left → `none`.
+ */
+export function toggledHunk(
+  current: CheckState,
+  excluded: ReadonlySet<string> | undefined,
+  all: readonly string[],
+  key: string,
+): { check: CheckState; excluded: Set<string> } {
+  const out = new Set(
+    current === "none" ? all : current === "hunks" ? [...(excluded ?? [])].filter((k) => all.includes(k)) : [],
+  );
+  if (out.has(key)) out.delete(key);
+  else out.add(key);
+  if (!out.size) return { check: "all", excluded: out };
+  if (all.every((k) => out.has(k))) return { check: "none", excluded: new Set() };
+  return { check: "hunks", excluded: out };
+}
+
+/** Whether a changed block is included, given its file's inclusion. */
+export function hunkIncluded(check: CheckState, excluded: ReadonlySet<string> | undefined, key: string): boolean {
+  if (check === "none") return false;
+  if (check === "hunks") return !excluded?.has(key);
+  return true;
 }
 
 /** Toggling a checkbox: anything included → none; none → all. */

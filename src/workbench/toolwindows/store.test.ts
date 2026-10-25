@@ -14,7 +14,11 @@ import {
   isToolWindowVisible,
   loadToolWindowLayout,
   moveToolWindow,
+  installToolWindowLayoutSync,
   resetToolWindowPlacements,
+  setToolWindowSplit,
+  slotOfId,
+  toggleMaximizeToolWindow,
   sanitizePlacements,
   resetToolWindowLayout,
   setFocusedToolWindow,
@@ -159,9 +163,9 @@ describe("tool window actions", () => {
 });
 
 describe("tool window placement", () => {
-  it("moves a window to another stripe group, keeps it visible and persists", () => {
+  it("moves a window to another area, keeps it visible and persists", () => {
     showToolWindow("structure");
-    moveToolWindow("structure", "right-top");
+    moveToolWindow("structure", "right");
     expect(anchorOf("structure")).toBe("right");
     expect(useToolWindowLayout.getState().visible).toMatchObject({ left: null, right: "structure" });
     expect(getContext()["toolWindow.structure.visible"]).toBe(true);
@@ -172,31 +176,149 @@ describe("tool window placement", () => {
     expect(anchorOf("structure")).toBe("left");
   });
 
-  it("orders windows within the target group", () => {
-    moveToolWindow("terminal", "left-top", "project");
+  it("orders windows within the target area", () => {
+    moveToolWindow("terminal", "left", "project");
     const p = useToolWindowLayout.getState().placements;
-    expect(p.terminal).toMatchObject({ anchor: "left" });
+    expect(p.terminal).toMatchObject({ anchor: "left", split: false });
     expect(p.terminal!.order!).toBeLessThan(p.project!.order!);
-    moveToolWindow("terminal", "left-bottom");
+    moveToolWindow("terminal", "bottom");
     expect(anchorOf("terminal")).toBe("bottom");
   });
 
   it("restores the default layout", () => {
-    moveToolWindow("project", "right-bottom");
-    expect(useToolWindowLayout.getState().placements.project).toMatchObject({ anchor: "right", secondary: true });
+    moveToolWindow("project", "right-split");
+    expect(useToolWindowLayout.getState().placements.project).toMatchObject({ anchor: "right", split: true });
+    expect(slotOfId("project")).toBe("right-split");
     resetToolWindowPlacements();
-    expect(anchorOf("project")).toBe("left");
+    expect(slotOfId("project")).toBe("left");
   });
 
   it("sanitizes stored placements", () => {
-    expect(sanitizePlacements({ a: { anchor: "top" }, b: { anchor: "bottom", order: 5, secondary: 1 }, c: null })).toEqual({
-      b: { anchor: "bottom", order: 5, secondary: true },
+    expect(
+      sanitizePlacements({ a: { anchor: "top" }, b: { anchor: "bottom", order: 5, split: true }, c: null }),
+    ).toEqual({
+      b: { anchor: "bottom", order: 5, split: true },
     });
   });
 });
 
+describe("split areas", () => {
+  beforeEach(() => {
+    disposers.push(
+      registerToolWindow({
+        id: "bookmarks",
+        title: "Bookmarks",
+        icon: "bookmark",
+        anchor: "left",
+        secondary: true,
+        component: Empty,
+      }),
+    );
+  });
+
+  it("shows one window per area, both areas of a side at once", () => {
+    showToolWindow("bookmarks");
+    expect(isToolWindowVisible("project")).toBe(true);
+    expect(isToolWindowVisible("bookmarks")).toBe(true);
+    expect(useToolWindowLayout.getState().visible).toMatchObject({ left: "project", "left-split": "bookmarks" });
+    showToolWindow("structure");
+    expect(isToolWindowVisible("project")).toBe(false);
+    expect(isToolWindowVisible("bookmarks")).toBe(true);
+  });
+
+  it("Move To places a window in any of the six areas", () => {
+    showToolWindow("terminal");
+    moveToolWindow("terminal", "bottom-split");
+    expect(useToolWindowLayout.getState().visible).toMatchObject({ bottom: null, "bottom-split": "terminal" });
+    showToolWindow("problems");
+    expect(isToolWindowVisible("terminal")).toBe(true);
+    expect(isToolWindowVisible("problems")).toBe(true);
+    moveToolWindow("bookmarks", "left");
+    expect(slotOfId("bookmarks")).toBe("left");
+    // An explicit primary placement on its own side overrides the contribution's split default.
+    loadToolWindowLayout("/work/a");
+    expect(slotOfId("bookmarks")).toBe("left");
+    expect(isToolWindowVisible("terminal")).toBe(true);
+  });
+
+  it("keeps the side maximized while its other area shows a window", () => {
+    showToolWindow("bookmarks");
+    toggleMaximizeToolWindow("project");
+    hideToolWindow("bookmarks");
+    expect(useToolWindowLayout.getState().maximized).toBe("left");
+    hideToolWindow("project");
+    expect(useToolWindowLayout.getState().maximized).toBeNull();
+  });
+
+  it("hide all stashes and restores both areas", () => {
+    showToolWindow("bookmarks");
+    hideAllToolWindows();
+    expect(isToolWindowVisible("bookmarks")).toBe(false);
+    hideAllToolWindows();
+    expect(isToolWindowVisible("project")).toBe(true);
+    expect(isToolWindowVisible("bookmarks")).toBe(true);
+  });
+
+  it("persists the split ratio, clamped", () => {
+    setToolWindowSplit("left", 0.3);
+    setToolWindowSplit("bottom", 5);
+    loadToolWindowLayout("/work/a");
+    expect(useToolWindowLayout.getState().splits).toMatchObject({ left: 0.3, bottom: 0.9, right: 0.5 });
+  });
+
+  it("migrates a layout saved with one area per side", () => {
+    localStorage.setItem(
+      "openidea.layout.v1:/work/old",
+      JSON.stringify({
+        visible: { left: "bookmarks", right: "terminal", bottom: "problems" },
+        sizes: { left: 300, right: 300, bottom: 200 },
+        placements: {
+          // Old "Right Bottom" stripe group: now the Right Bottom area.
+          terminal: { anchor: "right", secondary: true, order: 10 },
+          // Renumbered in the old bottom group with the contribution's flag: meaningless there.
+          problems: { anchor: "bottom", secondary: true, order: 20 },
+          bookmarks: { anchor: "left", order: 30 },
+        },
+      }),
+    );
+    loadToolWindowLayout("/work/old");
+    expect(slotOfId("terminal")).toBe("right-split");
+    expect(slotOfId("problems")).toBe("bottom");
+    expect(slotOfId("bookmarks")).toBe("left-split");
+    expect(isToolWindowVisible("bookmarks")).toBe(true);
+    expect(isToolWindowVisible("terminal")).toBe(true);
+    expect(isToolWindowVisible("problems")).toBe(true);
+    expect(useToolWindowLayout.getState().sizes.left).toBe(300);
+    showToolWindow("project");
+    expect(JSON.parse(localStorage.getItem("openidea.layout.v1:/work/old")!)).toMatchObject({
+      v: 2,
+      visible: { left: "project", "left-split": "bookmarks", "right-split": "terminal" },
+    });
+  });
+
+  it("moves a late-registered window recorded in the wrong area to its own", () => {
+    const sync = installToolWindowLayoutSync();
+    localStorage.setItem("openidea.layout.v1:/work/late", JSON.stringify({ visible: { left: "late" } }));
+    loadToolWindowLayout("/work/late");
+    expect(useToolWindowLayout.getState().visible.left).toBe("late");
+    disposers.push(
+      registerToolWindow({ id: "late", title: "Late", icon: "x", anchor: "left", secondary: true, component: Empty }),
+    );
+    expect(useToolWindowLayout.getState().visible).toMatchObject({ left: null, "left-split": "late" });
+    expect(getContext()["toolWindow.late.visible"]).toBe(true);
+    sync();
+  });
+});
+
 describe("stripe buttons", () => {
-  const find = { id: "find", title: "Find", icon: "search", anchor: "bottom" as const, component: Empty, stripe: "onUse" as const };
+  const find = {
+    id: "find",
+    title: "Find",
+    icon: "search",
+    anchor: "bottom" as const,
+    component: Empty,
+    stripe: "onUse" as const,
+  };
   const buttons = () => useToolWindowLayout.getState().stripeButtons;
 
   it("adds an on-use window's button when opened and removes it on Hide, persisted per project", () => {

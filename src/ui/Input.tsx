@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, type InputHTMLAttributes, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 import clsx from "clsx";
 import { Icon, type IconName } from "./icons";
 import { IconButton } from "./Button";
@@ -74,6 +74,8 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
   ref,
 ) {
   const tx = useTx();
+  // A multi-line query (e.g. Find over a multi-line selection) is shown as such.
+  const lines = value.split("\n").length;
   return (
     <div
       className={clsx(
@@ -81,24 +83,42 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
         variant === "framed" && styles.framed,
         size === "large" && styles.large,
         invalid && styles.invalid,
+        lines > 1 && styles.multiline,
         className,
       )}
       data-invalid={invalid || undefined}
     >
       {leadingIcon && <Icon name={leadingIcon} size={size === "large" ? 15 : 14} className={styles.leading} />}
-      <input
-        ref={ref}
-        className={styles.searchInput}
-        value={value}
-        spellCheck={false}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        aria-invalid={invalid || undefined}
-        placeholder={tx(placeholder)}
-        onChange={(e) => onChange(e.target.value)}
-        {...rest}
-      />
+      {lines > 1 ? (
+        <textarea
+          ref={ref as unknown as Ref<HTMLTextAreaElement>}
+          className={clsx(styles.searchInput, styles.searchArea)}
+          rows={Math.min(lines, 5)}
+          value={value}
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          aria-invalid={invalid || undefined}
+          placeholder={tx(placeholder)}
+          onChange={(e) => onChange(e.target.value)}
+          {...(rest as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+        />
+      ) : (
+        <input
+          ref={ref}
+          className={styles.searchInput}
+          value={value}
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          aria-invalid={invalid || undefined}
+          placeholder={tx(placeholder)}
+          onChange={(e) => onChange(e.target.value)}
+          {...rest}
+        />
+      )}
       {trailing}
       {clearable && value && (
         <IconButton icon="close" title="Clear" size="small" iconSize={12} tabIndex={-1} onClick={() => onChange("")} />

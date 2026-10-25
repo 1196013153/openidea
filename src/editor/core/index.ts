@@ -37,6 +37,8 @@ export function activate(): void | (() => void) {
     activeCursor: () => ctrl.activeCursor(),
     saveAll: () => ctrl.saveAll(),
     focus: () => ctrl.focus(),
+    openPaths: () => ctrl.openPaths(),
+    closePath: (path) => ctrl.closePath(path),
   });
   _provideDocumentAttacher((path) => attachDocument(ctrl.manager, path));
   const disposers = [

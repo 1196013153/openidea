@@ -102,7 +102,7 @@ pub struct BreadcrumbsSettings {
 
 impl Default for BreadcrumbsSettings {
     fn default() -> Self {
-        Self { show: false, placement: "bottom".into(), disabled_languages: Vec::new() }
+        Self { show: true, placement: "bottom".into(), disabled_languages: Vec::new() }
     }
 }
 
@@ -130,10 +130,10 @@ impl Default for CompletionSettings {
             case_sensitivity: "first".into(),
             auto_popup: true,
             insert_on_special_keys: false,
-            show_documentation: true,
+            show_documentation: false,
             documentation_delay: 500,
             parameter_info: true,
-            parameter_info_delay: 300,
+            parameter_info_delay: 1000,
         }
     }
 }
@@ -192,9 +192,9 @@ impl Default for EditorTabsSettings {
             show_close_button: true,
             preview_tab: true,
             open_at_end: false,
-            tab_limit: 10,
-            closing_policy: "unchanged".into(),
-            activate_on_close: "mru".into(),
+            tab_limit: 30,
+            closing_policy: "lru".into(),
+            activate_on_close: "left".into(),
         }
     }
 }
@@ -214,7 +214,7 @@ pub struct SmartKeysSettings {
     /// Reformat on paste: `none` | `indentBlock` | `indentEachLine`.
     pub reformat_on_paste: String,
     pub smart_indent: bool,
-    /// Backspace › Unindent: `nearest` indent position | `none`.
+    /// Backspace › Unindent: `autoindent` (proper indent position) | `nearest` indent position | `none`.
     pub backspace_unindent: String,
 }
 
@@ -226,10 +226,10 @@ impl Default for SmartKeysSettings {
             pair_brackets: true,
             pair_quotes: true,
             surround_selection: true,
-            tab_out_of_pair: false,
+            tab_out_of_pair: true,
             reformat_on_paste: "indentBlock".into(),
             smart_indent: true,
-            backspace_unindent: "nearest".into(),
+            backspace_unindent: "autoindent".into(),
         }
     }
 }
@@ -314,6 +314,12 @@ pub struct LanguageCodeStyle {
     pub indent: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hard_wrap_at: Option<u32>,
+    /// Comment Code › Line comment at first column.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_comment_at_first_column: Option<bool>,
+    /// Comment Code › Add a space at line comment start.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_comment_add_space: Option<bool>,
 }
 
 /// Editor › Code Style (General tab + per-language overrides).

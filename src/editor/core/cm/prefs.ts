@@ -26,6 +26,8 @@ import {
 import type { EditorExtras } from "@/platform/editorSettings";
 import { openideaHighlightStyle } from "./highlight";
 import { cursorHumpLeft, cursorHumpRight, deleteHumpBackward, deleteHumpForward, selectHumpLeft, selectHumpRight } from "./editing";
+import { enterInLineComment, lineCommentStyle, type LineCommentStyle } from "./comments";
+import { smartBackspace, smartBackspaceApplies, tabOut } from "./smartKeys";
 
 // --- soft wraps ---------------------------------------------------------------
 
@@ -335,23 +337,6 @@ const centerCaret = EditorState.transactionExtender.of((tr) => {
 
 // --- smart keys ----------------------------------------------------------------
 
-const CLOSERS = new Set([")", "]", "}", '"', "'", "`"]);
-
-const tabOut = keymap.of([
-  {
-    key: "Tab",
-    run: (view) => {
-      const sel = view.state.selection;
-      if (sel.ranges.some((r) => !r.empty)) return false;
-      const next = (r: { head: number }) => view.state.sliceDoc(r.head, r.head + 1);
-      if (!sel.ranges.every((r) => CLOSERS.has(next(r)) && !/^\s*$/.test(view.state.doc.lineAt(r.head).text.slice(0, r.head - view.state.doc.lineAt(r.head).from))))
-        return false;
-      view.dispatch({ selection: EditorSelection.create(sel.ranges.map((r) => EditorSelection.cursor(r.head + 1)), sel.mainIndex), userEvent: "select" });
-      return true;
-    },
-  },
-]);
-
 const OPENERS: Record<string, true> = { "(": true, "[": true, "{": true, '"': true, "'": true, "`": true };
 
 /** Typing a bracket / quote over a selection replaces it instead of wrapping it. */
@@ -379,6 +364,10 @@ export interface PrefsOptions {
   readOnly: boolean;
   /** Distraction Free Mode: no right margin / visual guides beside the centred column. */
   distractionFree?: boolean;
+  /** Language id of the document (per-language smart-key behaviour). */
+  language?: string;
+  /** Code Style › Comment Code of the document's language. */
+  commentStyle?: LineCommentStyle;
 }
 
 export function caretExtension(prefs: EditorExtras): Extension {
@@ -414,7 +403,8 @@ export function prefsExtension(o: PrefsOptions): Extension {
   const brackets = [...(k.pairBrackets ? ["(", "[", "{"] : []), ...(k.pairQuotes ? ["'", '"'] : [])];
   out.push(Prec.highest(EditorState.languageData.of(() => [{ closeBrackets: { brackets } }])));
   if (!k.surroundSelection) out.push(Prec.highest(noSurround));
-  if (k.tabOutOfPair) out.push(Prec.highest(tabOut));
+  if (k.tabOutOfPair) out.push(tabOut);
+  if (o.commentStyle) out.push(lineCommentStyle.of(o.commentStyle));
 
   const keys = [];
   if (k.camelHumps)
@@ -429,8 +419,10 @@ export function prefsExtension(o: PrefsOptions): Extension {
       { key: "Home", run: cursorLineStart, shift: selectLineStart, preventDefault: true },
       { mac: "Mod-ArrowLeft", run: cursorLineStart, shift: selectLineStart, preventDefault: true },
     );
+  if (!o.readOnly) keys.push({ key: "Enter", run: enterInLineComment });
   if (!k.smartIndent) keys.push({ key: "Enter", run: insertNewlineKeepIndent });
   if (k.backspaceUnindent === "none") keys.push({ key: "Backspace", run: deleteCharBackwardStrict });
+  else if (smartBackspaceApplies(k.backspaceUnindent, o.language)) keys.push({ key: "Backspace", run: smartBackspace });
   if (keys.length) out.push(Prec.high(keymap.of(keys)));
   return out;
 }
