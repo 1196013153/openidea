@@ -1,3 +1,5 @@
+import { redo, undo } from "@codemirror/commands";
+import { EditorView } from "@codemirror/view";
 import type { Action } from "@/platform/actions";
 import { t } from "@/platform/i18n";
 import { call, commands, isTauri, type UpdateInfo } from "@/platform/ipc";
@@ -77,11 +79,20 @@ function notifyUpdate(update: UpdateInfo) {
 
 /**
  * Edit menu items on Windows/Linux (macOS uses native roles). They act on the
- * focused element like the native commands would; CodeMirror handles the
- * resulting `beforeinput` history events itself.
+ * focused element like the native commands would. Undo / Redo in an editor go
+ * to its own history: the native stack misses programmatic edits (templates,
+ * completion, refactorings).
  */
-function editCommand(command: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll") {
+export function editCommand(command: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll") {
   return () => {
+    if (command === "undo" || command === "redo") {
+      const focused = document.activeElement;
+      const view = focused instanceof HTMLElement ? EditorView.findFromDOM(focused) : null;
+      if (view) {
+        (command === "undo" ? undo : redo)(view);
+        return;
+      }
+    }
     if (command === "paste" && navigator.clipboard?.readText) {
       void navigator.clipboard.readText().then((text) => document.execCommand("insertText", false, text));
       return;
