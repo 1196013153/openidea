@@ -120,6 +120,11 @@ fn merge_with_options_and_rebase_onto() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     git(dir, &["init", "-q"], None);
+    // Repo operations spawn their own Git commands, so command-local `-c`
+    // options in the helper do not supply their committer identity.
+    git(dir, &["config", "user.name", "Test"], None);
+    git(dir, &["config", "user.email", "t@example.com"], None);
+    git(dir, &["config", "commit.gpgsign", "false"], None);
     let base = commit(dir, "a.txt", "base", 1000);
     git(dir, &["checkout", "-q", "-b", "feature"], None);
     let f1 = commit(dir, "f.txt", "f1", 2000);
