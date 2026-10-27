@@ -5,7 +5,9 @@ use ide_core::event::ServerStatus;
 use ide_core::{CancellationToken, DocId, IdeEvent, LanguageId, Pos};
 use ide_jsonrpc::{Handler, Peer};
 use ide_language::{LanguageConfig, LanguageRegistry, LanguageServerConfig};
-use ide_lsp::{LaunchError, Launcher, LspManager, ProcessLauncher};
+#[cfg(unix)]
+use ide_lsp::{LaunchError, Launcher};
+use ide_lsp::{LspManager, ProcessLauncher};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::path::PathBuf;
