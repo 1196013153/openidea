@@ -252,6 +252,27 @@ async fn server_to_client_request() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn requests_start_after_the_notifications_before_them() {
+    // `seen` answers with the notifications handled so far; handling one is slow.
+    struct Server(Recorder);
+    impl Handler for Server {
+        fn on_notification(&self, method: &str, params: Value) {
+            std::thread::sleep(Duration::from_millis(20));
+            self.0.on_notification(method, params)
+        }
+        fn on_request(&self, _: &str, _: Value) -> Result<Value, (i64, String)> {
+            Ok(json!(self.0.notifications.lock().len()))
+        }
+    }
+    let (client, _server) = pair(Arc::new(NoopHandler), Arc::new(Server(Recorder::default())));
+    for n in 1..=5 {
+        client.notify("open", n).unwrap();
+        let seen: usize = client.request("seen", (), None).await.unwrap();
+        assert_eq!(seen, n);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slow_handler_does_not_block_responses() {
     // The client handles a slow server→client request while its own request completes.
     let (client, server) = pair(Arc::new(Recorder::default()), Arc::new(Recorder::default()));

@@ -931,15 +931,6 @@ impl Task {
                     .collect()
             })
             .unwrap_or_default();
-        // The tool call it is about arrives as a notification on another thread: let it land first.
-        if let Some(tool) = params.pointer("/toolCall/toolCallId").and_then(Value::as_str) {
-            for _ in 0..20 {
-                if self.state.lock().timeline.has_tool(tool) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        }
         let (tx, rx) = std::sync::mpsc::channel();
         let entry = self.push_entry(AgentEntry::Permission { id, title, options: options.clone(), chosen: None });
         self.permissions.lock().insert(id, tx);

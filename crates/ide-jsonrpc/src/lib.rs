@@ -202,7 +202,10 @@ pub mod codes {
 ///
 /// Calls run on blocking-capable threads, never on the reader task, so a slow
 /// handler cannot stall response delivery. Notifications are delivered one at
-/// a time in arrival order; requests run concurrently.
+/// a time in arrival order; requests run concurrently, each once every
+/// notification that arrived before it has been handled. So `on_notification`
+/// must not wait for the remote side (a response to our request may depend on
+/// its request to us, which would then never start); hand such work to a task.
 pub trait Handler: Send + Sync + 'static {
     fn on_notification(&self, method: &str, params: Value);
     /// Respond to a server→client request (e.g. `workspace/configuration`).

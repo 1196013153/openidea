@@ -37,10 +37,6 @@ impl Timeline {
         t
     }
 
-    pub fn has_tool(&self, id: &str) -> bool {
-        self.tools.contains_key(id)
-    }
-
     pub fn push(&mut self, entry: AgentEntry) -> usize {
         self.entries.push(entry);
         self.entries.len() - 1
