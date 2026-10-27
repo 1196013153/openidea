@@ -29,6 +29,8 @@ export interface ListProps<T> {
   onContextMenu?: (item: T, index: number, e: MouseEvent) => void;
   rowHeight?: number;
   sectionHeight?: number;
+  /** Height of a given section row (e.g. thin separators), else `sectionHeight`. */
+  sectionHeightOf?: (item: T) => number | undefined;
   /** `false` when an external input drives navigation (rows still respond to the mouse). */
   focusable?: boolean;
   /** Move the active row with the pointer (popup choosers). */
@@ -109,6 +111,7 @@ export function List<T>({
   onContextMenu,
   rowHeight = 24,
   sectionHeight = 24,
+  sectionHeightOf,
   focusable = true,
   hoverSelects = false,
   empty,
@@ -127,7 +130,7 @@ export function List<T>({
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (isSection?.(items[i]!) ? sectionHeight : rowHeight),
+    estimateSize: (i) => (isSection?.(items[i]!) ? (sectionHeightOf?.(items[i]!) ?? sectionHeight) : rowHeight),
     overscan,
     getItemKey: (i) => getKey(items[i]!, i),
   });

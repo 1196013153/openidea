@@ -507,6 +507,11 @@ impl Repo {
     pub fn branch_info(&self) -> IdeResult<BranchInfo> {
         refs::branch_info(self)
     }
+    /// Current branch (short name; `None` when detached) and HEAD commit, without
+    /// upstream tracking (cheap enough to call for every repository on each refresh).
+    pub fn head(&self) -> IdeResult<(Option<String>, Option<String>)> {
+        refs::head(&self.gix()?)
+    }
     /// Merge / rebase / cherry-pick… in progress (cheap: no ref walking).
     pub fn operation(&self) -> IdeResult<Option<String>> {
         Ok(refs::operation(&self.gix()?))

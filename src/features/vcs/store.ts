@@ -17,6 +17,11 @@ import { useProject } from "@/platform/project";
 import { setFileDecorations } from "@/workbench/contributions";
 import { effectiveKind, repoLabel, rootOf, statusDecorations, stripSlash } from "./model";
 
+export interface RepoHead {
+  head: string | null;
+  headCommit: string | null;
+}
+
 export interface VcsState {
   /** The open project is a git repository. */
   available: boolean;
@@ -25,6 +30,8 @@ export interface VcsState {
   roots: string[];
   /** Root → merge / rebase / cherry-pick / revert in progress there. */
   operations: Record<string, string>;
+  /** Root → its current branch (`head` null when detached) and HEAD commit. */
+  heads: Record<string, RepoHead>;
   /** The selected repository's root (branch widget, log, push…). */
   repo: string | null;
   status: FileStatus[];
@@ -50,6 +57,7 @@ const initial: VcsState = {
   root: null,
   roots: [],
   operations: {},
+  heads: {},
   repo: null,
   status: [],
   statusLoaded: false,
@@ -107,6 +115,12 @@ export function selectRepo(root: string): Promise<void> {
   if (useVcs.getState().repo === root) return Promise.resolve();
   useVcs.setState({ repo: root, branches: [], branchesLoaded: false, stashes: [], stashesLoaded: false });
   return refreshNow();
+}
+
+/** Selects `root` and loads its branches, so branch operations act on it. */
+export async function focusRepo(root: string): Promise<void> {
+  await selectRepo(root);
+  if (!useVcs.getState().branchesLoaded) await loadBranches();
 }
 
 export function conflictedFiles(status: readonly FileStatus[] = useVcs.getState().status): FileStatus[] {
@@ -180,7 +194,8 @@ export function refreshNow(): Promise<void> {
       // `null` (before the first refresh) is the primary repository, listed first.
       const shown = s.repo && roots.includes(s.repo) ? s.repo : (roots[0] ?? null);
       const repo = attentionRepo(shown, s.operations, operations) ?? shown;
-      useVcs.setState({ operations });
+      const heads = Object.fromEntries(vcsRoots.map((r) => [r.root, { head: r.head, headCommit: r.headCommit }]));
+      useVcs.setState({ operations, heads });
       if (repo !== s.repo || roots.join("\n") !== s.roots.join("\n")) useVcs.setState({ roots, repo });
       applyStatus(status, branch);
       useVcs.setState({ branches, stashes, error: null });

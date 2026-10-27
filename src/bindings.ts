@@ -5150,6 +5150,10 @@ export type VcsRoot = {
 	root: IpcPath,
 	/**  Merge / rebase / cherry-pick / revert in progress. */
 	operation: string | null,
+	/**  Current branch; `None` when HEAD is detached (or unreadable). */
+	head: string | null,
+	/**  HEAD commit; `None` before the first commit. */
+	headCommit: string | null,
 };
 
 /**  Version Control (main page) and its sub-pages. */
