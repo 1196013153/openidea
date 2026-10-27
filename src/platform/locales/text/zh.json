@@ -1301,7 +1301,6 @@
   "Open project in": "打开项目的位置",
   "Open to the Side": "在侧边打开",
   "OpenSSH config and authentication agent": "OpenSSH 配置和身份验证代理",
-  "Opening": "正在打开",
   "Opening Policy": "打开策略",
   "Opening folders requires the desktop app": "打开文件夹需要桌面应用",
   "Opening projects requires the desktop app": "打开项目需要桌面应用",
@@ -4160,5 +4159,6 @@
   "Installing the IDE backend on the host…": "正在主机上安装 IDE 后端…",
   "Starting the IDE backend…": "正在启动 IDE 后端…",
   "Opening the project…": "正在打开项目…",
-  "Cannot load agent tasks": "无法加载智能体任务"
+  "Cannot load agent tasks": "无法加载智能体任务",
+  "Opening {name}…": "正在打开 {name}…"
 }
