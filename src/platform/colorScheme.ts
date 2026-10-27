@@ -9,14 +9,11 @@
  */
 import tokensCss from "@/styles/tokens.css?raw";
 import type { TextAttributesOverride } from "./editorSettings";
+import { BUILTIN_THEMES, isBuiltinTheme, themeKind, type BuiltinThemeId } from "./themes";
 
-export type SchemeId = "light" | "dark" | "dark-hc";
+export type SchemeId = BuiltinThemeId;
 
-export const SCHEMES: ReadonlyArray<{ id: SchemeId; name: string }> = [
-  { id: "light", name: "Islands Light" },
-  { id: "dark", name: "Islands Dark" },
-  { id: "dark-hc", name: "High Contrast" },
-];
+export const SCHEMES: ReadonlyArray<{ id: SchemeId; name: string }> = BUILTIN_THEMES.map((t) => ({ id: t.id, name: t.label }));
 
 export interface AttributeDef {
   id: string;
@@ -167,7 +164,8 @@ function blocks(css: string): Array<{ selectors: string[]; decls: Vars }> {
 function themeSelectors(id: SchemeId): string[] {
   if (id === "light") return [':root[data-theme="light"]'];
   if (id === "dark-hc") return [':root[data-theme="dark-hc"]', ':root[data-theme="dark"][data-contrast="high"]'];
-  return [':root[data-theme="dark"]'];
+  if (id === "dark") return [':root[data-theme="dark"]'];
+  return [`:root[data-theme="${themeKind(id)}"]`, ":root[data-color-theme]", `:root[data-color-theme="${id}"]`];
 }
 
 let source: string = tokensCss;
@@ -205,13 +203,14 @@ export function schemeTokens(id: SchemeId, css: string = source): Vars {
 
 /** The scheme the editor shows for `setting` under the current theme. */
 export function effectiveScheme(setting: string | undefined, root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null): SchemeId {
-  if (setting === "light" || setting === "dark" || setting === "dark-hc") return setting;
+  if (isBuiltinTheme(setting)) return setting;
   return themeScheme(root);
 }
 
 /** Scheme belonging to the active IDE theme (`data-theme` / `data-contrast`). */
 export function themeScheme(root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null): SchemeId {
   if (!root) return "light";
+  if (isBuiltinTheme(root.dataset.colorTheme)) return root.dataset.colorTheme;
   if (root.dataset.theme === "light") return "light";
   return root.dataset.contrast === "high" || root.dataset.theme === "dark-hc" ? "dark-hc" : "dark";
 }

@@ -195,10 +195,10 @@ export function activate(): () => void {
       terminalRuntime()?.applyThemeToAll();
       terminalRuntime()?.applyThemeToEmbedded();
     });
-    // A plugin theme switch keeps data-theme when both themes share a light / dark base.
+    // A palette or plugin theme switch keeps data-theme when both themes share a light / dark base.
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-contrast", "data-plugin-theme", "style"],
+      attributeFilter: ["data-theme", "data-contrast", "data-color-theme", "data-plugin-theme", "style"],
     });
     disposers.push(() => observer.disconnect());
   }

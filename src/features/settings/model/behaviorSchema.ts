@@ -4,11 +4,13 @@
  * `ide-core::settings` defaults; validation never throws.
  */
 
+import { BUILTIN_THEME_IDS, type BuiltinThemeId } from "@/platform/themes";
+
 export type Antialiasing = "subpixel" | "greyscale" | "none";
 export type OpenProjectIn = "ask" | "new" | "same";
 export type NotificationDisplay = "balloon" | "sticky" | "none";
 /** Themes selectable as "preferred" when syncing with the OS. */
-export type ConcreteTheme = "light" | "dark" | "dark-hc";
+export type ConcreteTheme = BuiltinThemeId;
 
 export interface AppearanceExtras {
   syncWithOs: boolean;
@@ -102,7 +104,7 @@ const int = (v: unknown, d: number, { min, max }: { min: number; max: number }) 
   typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(max, Math.max(min, v))) : d;
 
 const AA: readonly Antialiasing[] = ["subpixel", "greyscale", "none"];
-const CONCRETE: readonly ConcreteTheme[] = ["light", "dark", "dark-hc"];
+const CONCRETE = BUILTIN_THEME_IDS;
 const DISPLAYS: readonly NotificationDisplay[] = ["balloon", "sticky", "none"];
 
 export function validateAppearanceExtras(raw: unknown): AppearanceExtras {

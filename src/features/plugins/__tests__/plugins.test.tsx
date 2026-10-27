@@ -144,8 +144,8 @@ describe("store", () => {
 
   it("selects and clears a plugin theme", async () => {
     await refreshPlugins();
-    await selectPluginTheme("theme-solarized", "solarized-dark");
-    expect(usePlugins.getState().activeTheme?.theme.id).toBe("solarized-dark");
+    await selectPluginTheme("theme-harbor-night", "harbor-night");
+    expect(usePlugins.getState().activeTheme?.theme.id).toBe("harbor-night");
     await selectPluginTheme(null, null);
     expect(usePlugins.getState().activeTheme).toBeNull();
   });
@@ -238,8 +238,8 @@ describe("PluginsPage", () => {
     await waitFor(() => expect(screen.getByRole("checkbox", { name: "Enable Hello" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Run Hello: Insert Date" })).toBeDisabled();
 
-    await user.click(within(list).getByText("Solarized Themes"));
-    await user.click(screen.getByRole("button", { name: "Apply theme Solarized Dark" }));
+    await user.click(within(list).getByText("Harbor Night Theme"));
+    await user.click(screen.getByRole("button", { name: "Apply theme Harbor Night" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Use Default Theme" })).toBeInTheDocument());
 
     await user.type(screen.getByLabelText("Filter plugins"), "toy");
@@ -309,7 +309,7 @@ describe("catalog helpers", () => {
     expect(catalogState(entry, [plugin({ id: "hello", version: "0.0.9" })])).toBe("update");
     expect(catalogState(entry, [plugin({ id: "hello", version: "0.1.0" })])).toBe("installed");
     expect(catalogState(entry, [plugin({ id: "hello", source: "dev" })])).toBe("dev");
-    expect(filterCatalog(sampleCatalog(), "solarized").map((c) => c.id)).toEqual(["theme-solarized"]);
+    expect(filterCatalog(sampleCatalog(), "harbor").map((c) => c.id)).toEqual(["theme-harbor-night"]);
   });
 
   it("disables and re-enables all downloaded plugins, leaving dev plugins alone", async () => {

@@ -9,6 +9,7 @@ mod logging;
 mod menu;
 mod shell_env;
 mod state;
+mod theme_frame;
 mod windows;
 
 use state::AppState;

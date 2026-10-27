@@ -11,8 +11,6 @@ code at all.
 plugins/
 ├─ build.sh                 # builds Rust plugins into components
 ├─ hello/                   # Rust plugin: two commands
-├─ theme-solarized/         # manifest-only: Solarized Light / Dark themes
-├─ theme-one/               # manifest-only: One Light / Dark themes
 └─ language-toy/            # manifest-only: a language definition
 ```
 
@@ -171,10 +169,10 @@ never affected.
 
 ```json
 {
-  "id": "solarized-dark",
-  "name": "Solarized Dark",
+  "id": "harbor-night",
+  "name": "Harbor Night",
   "kind": "dark",
-  "tokens": { "--bg-app": "#002b36", "--accent": "#268bd2", "--syn-keyword": "#859900" }
+  "tokens": { "--bg-app": "#14171c", "--accent": "#2b9e93", "--syn-keyword": "#e0a46e" }
 }
 ```
 

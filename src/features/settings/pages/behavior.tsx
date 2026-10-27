@@ -29,13 +29,11 @@ import type { PageSpec } from "./spec";
 import styles from "./Behavior.module.css";
 import { useT } from "@/platform/i18n";
 
+import { BUILTIN_THEMES } from "@/platform/themes";
+
 export const APPEARANCE_GROUP = "Appearance & Behavior";
 
-const THEMES: SelectOption<ConcreteTheme>[] = [
-  { value: "light", label: "Islands Light" },
-  { value: "dark", label: "Islands Dark" },
-  { value: "dark-hc", label: "High Contrast" },
-];
+const THEMES: SelectOption<ConcreteTheme>[] = BUILTIN_THEMES.map((t) => ({ value: t.id, label: t.label }));
 
 /** Checkbox bound to a key, optionally disabled. */
 function BoundToggle({ k, label, hint, disabled }: { k: string; label: string; hint?: ReactNode; disabled?: boolean }) {
@@ -500,7 +498,7 @@ export const BEHAVIOR_PAGES: PageSpec[] = [
           {
             kind: "custom",
             label: "Theme",
-            keywords: ["Sync with OS", "Islands Light", "Islands Dark", "High Contrast", "preferred theme"],
+            keywords: ["Sync with OS", ...BUILTIN_THEMES.map((t) => t.label), "preferred theme"],
             component: ThemeRow,
           },
           {

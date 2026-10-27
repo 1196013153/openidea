@@ -108,16 +108,38 @@ describe("mermaid in the markdown preview", () => {
     expect(ids.size).toBe(2);
   });
 
+  it("re-renders when switching between built-in palette themes of the same light / dark base", async () => {
+    const root = document.documentElement;
+    const previous = root.dataset.colorTheme;
+    const changed = vi.fn();
+    const off = subscribeTheme(changed);
+    try {
+      root.dataset.colorTheme = "one-dark";
+      const firstKey = themeKey();
+      await renderMermaidIn(preview(SEQ)).done;
+      root.dataset.colorTheme = "solarized-dark";
+      await Promise.resolve();
+      expect(changed).toHaveBeenCalled();
+      expect(themeKey()).not.toBe(firstKey);
+      await renderMermaidIn(preview(SEQ)).done;
+      expect(m.render).toHaveBeenCalledTimes(2);
+    } finally {
+      off();
+      if (previous === undefined) delete root.dataset.colorTheme;
+      else root.dataset.colorTheme = previous;
+    }
+  });
+
   it("re-renders when switching between plugin themes of the same light / dark base", async () => {
     const root = document.documentElement;
     const changed = vi.fn();
     const off = subscribeTheme(changed);
     try {
       root.dataset.theme = "dark";
-      root.dataset.pluginTheme = "theme-one/one-dark";
+      root.dataset.pluginTheme = "acme-themes/night";
       const firstKey = themeKey();
       await renderMermaidIn(preview(SEQ)).done;
-      root.dataset.pluginTheme = "theme-solarized/solarized-dark";
+      root.dataset.pluginTheme = "acme-themes/dusk";
       await Promise.resolve();
       expect(changed).toHaveBeenCalled();
       expect(themeKey()).not.toBe(firstKey);

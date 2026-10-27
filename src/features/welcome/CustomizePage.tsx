@@ -13,14 +13,11 @@ import { notifications } from "@/workbench/contributions";
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from "@/workbench/theme";
 import { reopenEnabled, setReopenPreference, useSession } from "./session";
 import styles from "./Welcome.module.css";
+import { BUILTIN_THEMES, isBuiltinTheme, type BuiltinThemeId } from "@/platform/themes";
 
-type Theme = "light" | "dark" | "dark-hc";
+type Theme = BuiltinThemeId;
 
-export const THEME_OPTIONS: SelectOption<Theme>[] = [
-  { value: "light", label: "Islands Light" },
-  { value: "dark", label: "Islands Dark" },
-  { value: "dark-hc", label: "High Contrast" },
-];
+export const THEME_OPTIONS: SelectOption<Theme>[] = BUILTIN_THEMES.map((t) => ({ value: t.id, label: t.label }));
 
 const DEFAULT_UI_FONT_SIZE = 13;
 const DEFAULT_UI_FONT = "Inter";
@@ -52,7 +49,7 @@ interface AppearanceView {
 /** The values Customize shows, from (possibly partial / legacy) settings. */
 export function customizeView(settings: ReturnType<typeof useProject.getState>["settings"]): AppearanceView {
   const a = (settings?.appearance ?? {}) as Record<string, unknown>;
-  const theme = a.theme === "dark" || a.theme === "dark-hc" ? a.theme : "light";
+  const theme = isBuiltinTheme(a.theme) ? a.theme : "light";
   const custom = a.useCustomFont === true;
   const size = typeof a.uiFontSize === "number" ? a.uiFontSize : DEFAULT_UI_FONT_SIZE;
   return {

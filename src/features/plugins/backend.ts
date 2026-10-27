@@ -76,35 +76,21 @@ function ensureSubscribed() {
 // ---------------------------------------------------------------------------
 // Browser simulation: the bundled sample plugins, with `hello` implemented in JS.
 
-const SOLARIZED: ActiveTheme["theme"][] = [
+// templates/theme-plugin, abridged.
+const SAMPLE_THEMES: ActiveTheme["theme"][] = [
   {
-    id: "solarized-light",
-    name: "Solarized Light",
-    kind: "light",
-    tokens: {
-      "--bg-app": "#fdf6e3",
-      "--bg-island": "#fdf6e3",
-      "--bg-frame": "#eee8d5",
-      "--bg-elev": "#eee8d5",
-      "--fg": "#657b83",
-      "--accent": "#268bd2",
-      "--syn-keyword": "#859900",
-      "--syn-string": "#2aa198",
-    },
-  },
-  {
-    id: "solarized-dark",
-    name: "Solarized Dark",
+    id: "harbor-night",
+    name: "Harbor Night",
     kind: "dark",
     tokens: {
-      "--bg-app": "#002b36",
-      "--bg-island": "#002b36",
-      "--bg-frame": "#073642",
-      "--bg-elev": "#073642",
-      "--fg": "#839496",
-      "--accent": "#268bd2",
-      "--syn-keyword": "#859900",
-      "--syn-string": "#2aa198",
+      "--bg-app": "#14171c",
+      "--bg-island": "#14171c",
+      "--bg-frame": "#1f252e",
+      "--bg-elev": "#1b2027",
+      "--fg": "#c9d1dc",
+      "--accent": "#2b9e93",
+      "--syn-keyword": "#e0a46e",
+      "--syn-string": "#9ccc7a",
     },
   },
 ];
@@ -140,14 +126,14 @@ function samplePlugins(): PluginInfo[] {
     },
     {
       ...base,
-      id: "theme-solarized",
-      name: "Solarized Themes",
+      id: "theme-harbor-night",
+      name: "Harbor Night Theme",
       version: "1.0.0",
-      description: "Solarized Light and Solarized Dark: Ethan Schoonover's Solarized palette.",
-      path: "~/Library/Application Support/ai.l0ng.openidea/plugins/theme-solarized",
+      description: "Example dark theme: slate surfaces, a teal accent and a warm syntax palette.",
+      path: "~/Library/Application Support/ai.l0ng.openidea/plugins/theme-harbor-night",
       status: "static",
       hasCode: false,
-      themes: SOLARIZED.map(({ id, name, kind }) => ({ id, name, kind })),
+      themes: SAMPLE_THEMES.map(({ id, name, kind }) => ({ id, name, kind })),
     },
     {
       ...base,
@@ -201,7 +187,7 @@ export function createMemoryPluginsBackend(
   const activeTheme = (): ActiveTheme | null => {
     if (!theme) return null;
     const p = plugins.find((x) => x.id === theme?.pluginId);
-    const t = SOLARIZED.find((x) => x.id === theme?.themeId);
+    const t = SAMPLE_THEMES.find((x) => x.id === theme?.themeId);
     if (!p?.enabled || !t) return null;
     return { pluginId: p.id, theme: t };
   };
