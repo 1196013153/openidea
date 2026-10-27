@@ -312,6 +312,7 @@ async fn run_remote(
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn config(command: &str, args: &[&str], cwd: Option<&str>) -> RunConfig {
         RunConfig {
             id: "c".into(),
