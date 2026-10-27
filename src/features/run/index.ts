@@ -65,6 +65,7 @@ import {
   stopSession,
   useRun,
 } from "./store";
+import { tx } from "@/platform/i18n";
 
 function hasProject() {
   return !!useProject.getState().project;
@@ -117,7 +118,7 @@ async function debugConfig(config: RunConfig, chain: readonly string[] = []) {
     group: "run",
     level: "warning",
     title: "Debugger is not available",
-    body: `Running '${config.name}' without the debugger.`,
+    body: tx`Running '${config.name}' without the debugger.`,
     key: "run-no-debugger",
   });
   await startRun(config, undefined, undefined, { prepared: true });

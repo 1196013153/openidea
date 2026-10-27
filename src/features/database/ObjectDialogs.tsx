@@ -38,6 +38,7 @@ import {
 } from "./store";
 import { openTableData } from "./treeActions";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 /** Read-only SQL with the editor's syntax colours (IDEA's dialog Preview pane). */
 function SqlPreview({ sql, label = "Preview" }: { sql: string; label?: string }) {
@@ -287,7 +288,7 @@ function ModifyTableDialog(props: ModifyProps) {
     <Dialog
       open
       onClose={closeDialog}
-      title={`Modify Table ${table}`}
+      title={tx`Modify Table ${table}`}
       width={440}
       buttons={[{ label: "Cancel", role: "cancel" }]}
     >

@@ -1,5 +1,5 @@
 /** What the Services toolbar, context menu and `docker.*` actions do with a node of a connection. */
-import { txTemplate } from "@/platform/i18n";
+import { tx, txTemplate } from "@/platform/i18n";
 import type { PruneTarget } from "@/platform/ipc";
 import { executeAction } from "@/platform/actions";
 import type { MenuItem } from "@/ui";
@@ -47,6 +47,24 @@ function composeAction(conn: string, n: Extract<ServiceNode, { kind: "compose" }
   return composeOp(conn, n.project, first?.composeFiles ?? [], first?.composeWorkingDir ?? null, op).then(() => undefined);
 }
 
+function deleteQuestion(kind: "container" | "image" | "volume" | "network", label: string, running: boolean) {
+  switch (kind) {
+    case "container":
+      return {
+        title: "Delete Container",
+        message: running
+          ? tx`Delete container '${label}'? It is running and will be stopped.`
+          : tx`Delete container '${label}'?`,
+      };
+    case "image":
+      return { title: "Delete Image", message: tx`Delete image '${label}'?` };
+    case "volume":
+      return { title: "Delete Volume", message: tx`Delete volume '${label}'?` };
+    case "network":
+      return { title: "Delete Network", message: tx`Delete network '${label}'?` };
+  }
+}
+
 export async function remove(t: DockerTarget | null) {
   if (!t || !canRemove(t)) return;
   const n = t.node;
@@ -54,7 +72,7 @@ export async function remove(t: DockerTarget | null) {
   if (n.kind === "compose") {
     const ok = await confirm({
       title: "Compose Down",
-      message: `Stop and remove the containers and networks of '${label}'?`,
+      message: tx`Stop and remove the containers and networks of '${label}'?`,
       ok: "Down",
     });
     if (ok) await composeAction(t.conn, n, "down");
@@ -64,8 +82,7 @@ export async function remove(t: DockerTarget | null) {
   const what = n.kind;
   const running = n.kind === "container" && isRunning(n.container);
   const answer = await confirmChecked({
-    title: `Delete ${what[0]!.toUpperCase()}${what.slice(1)}`,
-    message: `Delete ${what} '${label}'?${running ? " It is running and will be stopped." : ""}`,
+    ...deleteQuestion(what, label, running),
     ok: "Delete",
     checkbox: n.kind === "image" ? "Force (also untag / remove when used by stopped containers)" : undefined,
   });
@@ -105,6 +122,23 @@ export async function prunePrompt(conn: string, target: PruneTarget) {
   if (!entry) return;
   const ok = await confirm({ title: txTemplate(`Prune ${entry[1]}`), message: entry[2], ok: "Prune" });
   if (ok) await prune(conn, target);
+}
+
+function pruneLabel(target: PruneTarget): string {
+  switch (target) {
+    case "containers":
+      return tx("Prune Unused Containers…");
+    case "images":
+      return tx("Prune Dangling Images…");
+    case "allImages":
+      return tx("Prune Unused Images…");
+    case "volumes":
+      return tx("Prune Unused Volumes…");
+    case "networks":
+      return tx("Prune Unused Networks…");
+    case "system":
+      return tx("Prune Everything Unused…");
+  }
 }
 
 export function pruneMenu(conn: string): MenuItem[] {
@@ -155,7 +189,7 @@ export function nodeMenu(t: DockerTarget): MenuItem[] {
   if (n.kind === "group") {
     const target: PruneTarget = n.group === "containers" ? "containers" : n.group === "images" ? "images" : n.group === "volumes" ? "volumes" : "networks";
     items.push({
-      label: txTemplate(`Prune ${n.group === "images" ? "Dangling Images" : `Unused ${n.group[0]!.toUpperCase()}${n.group.slice(1)}`}…`),
+      label: pruneLabel(target),
       run: () => void prunePrompt(conn, target),
     });
   }

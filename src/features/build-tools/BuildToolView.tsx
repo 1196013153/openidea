@@ -43,6 +43,7 @@ import {
   useBuild,
 } from "./store";
 import styles from "./BuildTools.module.css";
+import { tx } from "@/platform/i18n";
 
 export function MavenView() {
   return <BuildToolView tool="maven" />;
@@ -292,8 +293,8 @@ function BuildToolView({ tool }: { tool: BuildTool }) {
     const config = isRunnable(node) && model ? nodeConfig(nodes.filter(isRunnable), model) : null;
     if (config) {
       items.push(
-        { label: `Run '${config.name}'`, icon: "run", run: () => runConfig(config, "run") },
-        { label: `Debug '${config.name}'`, icon: "debug", run: () => runConfig(config, "debug") },
+        { label: tx`Run '${config.name}'`, icon: "run", run: () => runConfig(config, "run") },
+        { label: tx`Debug '${config.name}'`, icon: "debug", run: () => runConfig(config, "debug") },
         { kind: "separator" },
       );
       if (node.kind === "runConfig")
@@ -318,7 +319,7 @@ function BuildToolView({ tool }: { tool: BuildTool }) {
       const file = node.project.buildFile;
       if (file)
         items.push({
-          label: `Open ${file.split("/").pop()}`,
+          label: tx`Open ${file.split("/").pop()}`,
           icon: "file-gradle",
           run: () => void editorService().openFile(`${root}/${file}`),
         });

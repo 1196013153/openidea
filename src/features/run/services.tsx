@@ -9,7 +9,7 @@ import { create } from "zustand";
 import { executeAction } from "@/platform/actions";
 import type { RunConfig } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { useT, useTxTemplate } from "@/platform/i18n";
+import { tx, useT, useTxTemplate } from "@/platform/i18n";
 import { Button, EmptyState, T } from "@/ui";
 import type { MenuItem } from "@/ui";
 import {
@@ -120,7 +120,7 @@ export function runServiceItems(
       key: TYPE_PREFIX + kind,
       label: kindLabel(kind),
       icon: configIcon({ kind, isTest: false }),
-      detail: running ? `${running} running` : undefined,
+      detail: running ? tx`${running} running` : undefined,
       children,
     };
   });

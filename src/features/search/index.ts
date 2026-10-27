@@ -43,6 +43,7 @@ import { RecentPopupsOverlay } from "./recent/RecentPopups";
 import { cycleSwitcher, hideRecentPopup, showRecentPopup } from "./recent/store";
 import { FileStructureOverlay, useFileStructurePopup } from "./structure/StructureView";
 import { useOutline, useStructureOptions } from "./structure/store";
+import { tx } from "@/platform/i18n";
 
 /** Single-line editor selection, used to prefill search fields. */
 function editorSelectionText(): string | null {
@@ -452,7 +453,7 @@ export function activate(): void | (() => void) {
       ...[..."0123456789"].flatMap((d) => [
         {
           id: `navigate.toggleBookmark${d}`,
-          title: `Toggle Bookmark ${d}`,
+          title: tx`Toggle Bookmark ${d}`,
           category: "Bookmarks",
           when: "projectOpen && textEditorActive",
           run: () => {
@@ -462,7 +463,7 @@ export function activate(): void | (() => void) {
         },
         {
           id: `navigate.gotoBookmark${d}`,
-          title: `Go to Bookmark ${d}`,
+          title: tx`Go to Bookmark ${d}`,
           category: "Bookmarks",
           when: "projectOpen",
           run: () => {

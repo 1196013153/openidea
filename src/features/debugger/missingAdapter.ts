@@ -5,11 +5,11 @@
 import { IpcError } from "@/platform/ipc";
 
 /** Adapters the tools installer can provide (adapter id → tool name). */
-const INSTALLABLE: Record<string, { tool: string; label: string }> = {
-  debugpy: { tool: "debugpy", label: "debugpy" },
-  "js-debug": { tool: "js-debug", label: "the JavaScript debugger (vscode-js-debug)" },
-  delve: { tool: "delve", label: "Delve" },
-  codelldb: { tool: "codelldb", label: "CodeLLDB" },
+const INSTALLABLE: Record<string, { tool: string; title: string }> = {
+  debugpy: { tool: "debugpy", title: "debugpy is not installed" },
+  "js-debug": { tool: "js-debug", title: "The JavaScript debugger (vscode-js-debug) is not installed" },
+  delve: { tool: "delve", title: "Delve is not installed" },
+  codelldb: { tool: "codelldb", title: "CodeLLDB is not installed" },
 };
 
 export interface MissingAdapter {
@@ -25,14 +25,14 @@ export function missingAdapter(adapter: string, e: unknown): MissingAdapter | nu
   if (adapter === "debugpy" && e.message.startsWith("debugpy is not installed")) {
     return {
       tool: entry.tool,
-      title: "debugpy is not installed",
+      title: entry.title,
       body: `${e.message}. OpenIDEA can install a private copy that every Python interpreter uses for debugging.`,
     };
   }
   if (!e.message.startsWith(`debug adapter \`${adapter}\` not found`)) return null;
   return {
     tool: entry.tool,
-    title: `${entry.label[0]!.toUpperCase()}${entry.label.slice(1)} is not installed`,
+    title: entry.title,
     body: e.message,
   };
 }

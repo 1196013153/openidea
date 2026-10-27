@@ -5,6 +5,7 @@ import { Checkbox, T } from "@/ui";
 import { POSTFIX_GROUPS, POSTFIX_TEMPLATES } from "../postfix/model";
 import { setPostfixTemplateEnabled, updatePostfixSettings, usePostfixSettings } from "../postfix/store";
 import styles from "./Settings.module.css";
+import { tx } from "@/platform/i18n";
 
 export function PostfixPage() {
   const settings = usePostfixSettings();
@@ -59,7 +60,7 @@ export function PostfixPage() {
               checked={!disabled.has(t.id)}
               disabled={!settings.enabled}
               onChange={(v) => setPostfixTemplateEnabled(t.id, v)}
-              aria-label={`Enable .${t.key}`}
+              aria-label={tx`Enable .${t.key}`}
             />
             <span className={styles.mono}>.{t.key}</span>
             <span className={styles.itemDetail}>{t.description}</span>

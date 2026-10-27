@@ -25,6 +25,7 @@ import { ask, confirmChecked } from "@/workbench/messages";
 import { openPopup, type PreviewOccurrence } from "@/editor/lsp/popupStore";
 import { cannotPerform } from "./catalog";
 import { cancelled, languageName } from "./query";
+import { tx } from "@/platform/i18n";
 
 // ---------------------------------------------------------------------------
 // Deletion range (pure)
@@ -269,11 +270,19 @@ export function usagesMessage(
 ): { message: string; detail: string } {
   const n = usages.length;
   const files = new Set(usages.map((u) => u.path)).size;
-  const noun = n === 1 ? "usage that is" : "usages that are";
-  return {
-    message: `${n} ${n === 1 ? "usage" : "usages"} found`,
-    detail: `${subject} ${plural ? "have" : "has"} ${n} ${noun} not safe to delete${files > 1 ? ` (in ${files} files)` : ""}.`,
-  };
+  const where = files > 1 ? tx` (in ${files} files)` : "";
+  let detail: string;
+  if (plural)
+    detail =
+      n === 1
+        ? tx`${subject} have ${n} usage that is not safe to delete${where}.`
+        : tx`${subject} have ${n} usages that are not safe to delete${where}.`;
+  else
+    detail =
+      n === 1
+        ? tx`${subject} has ${n} usage that is not safe to delete${where}.`
+        : tx`${subject} has ${n} usages that are not safe to delete${where}.`;
+  return { message: n === 1 ? tx`${n} usage found` : tx`${n} usages found`, detail };
 }
 
 /** IDEA's "Usages Detected" question; resolves "cancel" when dismissed. */
@@ -391,7 +400,7 @@ function previewTextOccurrences(
   });
   openPopup({
     kind: "preview",
-    title: `Safe Delete ${target.kind.toLowerCase()} '${target.name}'`,
+    title: tx`Safe Delete ${target.kind} '${target.name}'`,
     summary: {
       files: 1,
       occurrences: occurrences.length,
@@ -436,7 +445,7 @@ export async function safeDelete(view: EditorView): Promise<void> {
     // IDEA always confirms first; usages are searched after OK.
     const confirmed = await confirmChecked({
       title: "Safe Delete",
-      message: `Delete ${target.kind.toLowerCase()} '${target.name}'?`,
+      message: tx`Delete ${target.kind} '${target.name}'?`,
       ok: "OK",
       checkbox: "Search in comments and strings",
       checked: searchInComments,
@@ -453,7 +462,7 @@ export async function safeDelete(view: EditorView): Promise<void> {
     ]);
     if (view.state.doc !== docBefore) return;
     if (usages.length) {
-      const answer = await askUsagesDetected(`${target.kind} '${target.name}'`, usages);
+      const answer = await askUsagesDetected(tx`${target.kind} '${target.name}'`, usages);
       if (answer === "view") viewUsages(target.name, usages);
       else if (answer === "delete") applyDeletion(view, docBefore, target, comments);
       else view.focus();

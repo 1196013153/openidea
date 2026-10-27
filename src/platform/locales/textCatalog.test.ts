@@ -14,9 +14,14 @@
  *   - a `TEXT_PROPS` property of an object literal (`{ label: "…" }`): actions, menu
  *     items, select options, dialogs, notifications, settings pages, tool windows;
  *   - the text arguments of `showHint` and `showError`.
- * Template literals (`Cannot open ${path}`) are checked only where the text is
- * matched against `{name}` templates (`txTemplate`, hints, notification titles);
- * elsewhere the lookup is exact and they cannot be translated as written.
+ * Text built at runtime is written with the `tx` tag (`` tx`Cannot open ${path}` ``),
+ * which looks up `"Cannot open {path}"`; untagged template literals are checked
+ * where the text is matched against `{name}` templates (`txTemplate`, hints,
+ * notification titles). Elsewhere the lookup is exact, so an untagged template
+ * literal can never be translated: it fails here unless `TEMPLATES_AS_WRITTEN` lists
+ * it. Tagged or matched text must not splice in English words to be read as part of
+ * the sentence (`${kind.toLowerCase()}`, `${n === 1 ? "" : "s"}`): those need one
+ * text per variant.
  *
  * Not seen: text kept in a variable or built by a helper before it reaches `tx`,
  * and text sent by the backend. Their entries count as used (not stale) as long as
@@ -70,9 +75,7 @@ const UNCHECKED_FILES = new Set([
 ]);
 
 /** Entries for text the code assembles from parts, which no literal spells out. */
-const BUILT_AT_RUNTIME = new Set([
-  "Unused Containers", // `Unused ${group}` in services/ops.ts
-]);
+const BUILT_AT_RUNTIME = new Set<string>([]);
 
 /** Text that stays as written in every locale: names, code, formats, shortcuts. */
 const UNTRANSLATED = new Set<string>([
@@ -188,10 +191,25 @@ const UNTRANSLATED = new Set<string>([
   "text",
 ]);
 
+/**
+ * Template literals that reach an exact lookup on purpose: the text around the
+ * values is code or a format that reads the same in every locale.
+ */
+const TEMPLATES_AS_WRITTEN = new Set<string>([
+  "{name} (#[cfg(test)])", // Rust attribute after a module name
+  "HEAD ({renamedFrom})", // Git revision and a path
+]);
+
+/**
+ * How a text is found in a catalog: as written (`exact`), by matching `{name}`
+ * templates (`pattern`, see `txTemplate`), or by its literal parts (`shape`, the `tx` tag).
+ */
+type Match = "exact" | "pattern" | "shape";
+
 interface Use {
   text: string;
   at: string;
-  template: boolean;
+  match: Match;
 }
 
 function walk(dir: string, accept: (path: string) => boolean, out: string[] = []): string[] {
@@ -237,21 +255,41 @@ const unwrap = (e: ts.Expression): ts.Expression => (ts.isParenthesizedExpressio
 function templateTexts(node: ts.TemplateExpression): string[] {
   let out = [node.head.text];
   for (const span of node.templateSpans) {
-    const e = unwrap(span.expression);
-    let parts: string[];
-    if (
-      ts.isConditionalExpression(e) &&
-      ts.isStringLiteralLike(unwrap(e.whenTrue)) &&
-      ts.isStringLiteralLike(unwrap(e.whenFalse))
-    )
-      parts = [(unwrap(e.whenTrue) as ts.StringLiteralLike).text, (unwrap(e.whenFalse) as ts.StringLiteralLike).text];
-    else {
-      const words = span.expression.getText().match(/[A-Za-z_]\w*/g) ?? ["value"];
-      parts = [`{${words[words.length - 1]}}`];
-    }
+    const branches = stringBranches(span.expression);
+    const parts = branches ?? [placeholder(span.expression)];
     out = out.flatMap((head) => parts.map((part) => head + part + span.literal.text));
   }
   return out;
+}
+
+/** Text of a `tx` tag as it looks it up: every `${expr}` is a placeholder. */
+function tagText(node: ts.TemplateLiteral): string {
+  if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  return node.head.text + node.templateSpans.map((s) => placeholder(s.expression) + s.literal.text).join("");
+}
+
+function placeholder(e: ts.Expression): string {
+  const words = e.getText().match(/[A-Za-z_]\w*/g) ?? ["value"];
+  return `{${words[words.length - 1]}}`;
+}
+
+/** The branches of `c ? "a" : "b"`. */
+function stringBranches(expr: ts.Expression): string[] | undefined {
+  const e = unwrap(expr);
+  if (!ts.isConditionalExpression(e)) return undefined;
+  const [a, b] = [unwrap(e.whenTrue), unwrap(e.whenFalse)];
+  return ts.isStringLiteralLike(a) && ts.isStringLiteralLike(b) ? [a.text, b.text] : undefined;
+}
+
+/** A value that changes the case of English text, to splice it into a sentence. */
+function changesCase(expr: ts.Expression): boolean {
+  let found = false;
+  const visit = (n: ts.Node) => {
+    if (ts.isPropertyAccessExpression(n) && /^to(Lower|Upper)Case$/.test(n.name.text)) found = true;
+    ts.forEachChild(n, visit);
+  };
+  visit(expr);
+  return found;
 }
 
 /** `{anything}` → `{}`, so templates compare regardless of placeholder names. */
@@ -339,10 +377,16 @@ interface Scan {
   translated: Use[];
   /** Every string literal and JSX text, in shape form. */
   literals: Set<string>;
+  /** Template literals that reach an exact lookup, which can never match them. */
+  untranslatable: Use[];
+  /** Translated templates that splice English words into the sentence. */
+  spliced: Use[];
 }
 
 function scanTypeScript(): Scan {
   const translated: Use[] = [];
+  const untranslatable: Use[] = [];
+  const spliced: Use[] = [];
   const literals = new Set<string>();
   const files = walk(`${ROOT}src`, (p) => /\.tsx?$/.test(p) && !isTest(p) && !p.endsWith("/bindings.ts"));
   for (const file of files) {
@@ -360,7 +404,17 @@ function scanTypeScript(): Scan {
     for (const m of source.matchAll(/(?:const|let)\s+(\w+)\s*=\s*useTx(Template)?\(\)/g))
       (m[2] ? template : exact).add(m[1]!);
     const checked = !UNCHECKED_FILES.has(path);
+    const where = (node: ts.Node) => `${path}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1}`;
     const visit = (node: ts.Node) => {
+      if (checked && ts.isTaggedTemplateExpression(node) && ts.isIdentifier(node.tag) && exact.has(node.tag.text)) {
+        const use: Use = { text: tagText(node.template), at: where(node), match: "shape" };
+        translated.push(use);
+        if (
+          ts.isTemplateExpression(node.template) &&
+          node.template.templateSpans.some((s) => stringBranches(s.expression) || changesCase(s.expression))
+        )
+          spliced.push(use);
+      }
       let texts: string[] | undefined;
       if (ts.isStringLiteral(node) && ts.isJsxAttribute(node.parent)) texts = [decodeEntities(node.text)];
       else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) texts = [node.text];
@@ -372,17 +426,22 @@ function scanTypeScript(): Scan {
           literals.add(shape(text.trim()));
         }
         const sink = checked ? sinkOf(node, exact, template) : undefined;
-        // A template literal only matches a catalog entry where templates are looked up.
-        if (sink && (sink === "template" || !ts.isTemplateExpression(node))) {
-          const at = `${path}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1}`;
-          for (const text of texts) translated.push({ text, at, template: ts.isTemplateExpression(node) });
+        if (sink) {
+          const at = where(node);
+          if (!ts.isTemplateExpression(node)) for (const text of texts) translated.push({ text, at, match: "exact" });
+          else if (sink === "exact") for (const text of texts) untranslatable.push({ text, at, match: "exact" });
+          else {
+            for (const text of texts) translated.push({ text, at, match: "pattern" });
+            if (node.templateSpans.some((s) => changesCase(s.expression)))
+              spliced.push({ text: texts[0]!, at, match: "pattern" });
+          }
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(sf);
   }
-  return { translated, literals };
+  return { translated, literals, untranslatable, spliced };
 }
 
 /** String literals of the Rust crates and language definitions (backend messages). */
@@ -423,19 +482,41 @@ function templatePatterns(catalog: Record<string, string>): RegExp[] {
     });
 }
 
+const report = (uses: Use[]) =>
+  [...new Map(uses.map((u) => [u.at, u.text]))].map(([at, text]) => `${at}  ${JSON.stringify(text)}`);
+
+it("passes no template literal UI text to an exact lookup; tag it as tx`…`", () => {
+  expect(
+    report(scan.untranslatable.filter(({ text }) => needsTranslation(text) && !TEMPLATES_AS_WRITTEN.has(text))),
+  ).toEqual([]);
+});
+
+it("translates built text as whole sentences, one per variant", () => {
+  expect(report(scan.spliced)).toEqual([]);
+});
+
 describe.each(Object.keys(catalogs))("source-text catalog %s", (locale) => {
   const catalog = catalogs[locale]!;
   const patterns = templatePatterns(catalog);
+  const shapes = new Set(Object.keys(catalog).map(shape));
   const has = (text: string) => Object.hasOwn(catalog, text);
   // Placeholders of the source stand for any text, as the runtime values would.
   const matchesTemplate = (text: string) => patterns.some((p) => p.test(text.replace(/\{[^{}]*\}/g, "\u0001")));
+  const found = ({ text, match }: Use) =>
+    has(text) || (match === "pattern" && matchesTemplate(text)) || (match === "shape" && shapes.has(shape(text)));
 
   it("translates every literal UI text", () => {
     const missing = new Map<string, string>();
-    for (const { text, at, template } of scan.translated)
-      if (!has(text) && !(template && matchesTemplate(text)) && needsTranslation(text) && !missing.has(text))
-        missing.set(text, at);
+    for (const use of scan.translated)
+      if (!found(use) && needsTranslation(use.text) && !missing.has(use.text)) missing.set(use.text, use.at);
     expect([...missing].map(([text, at]) => `${at}  ${JSON.stringify(text)}`)).toEqual([]);
+  });
+
+  it("has one entry per template, whatever its placeholder names", () => {
+    const byShape = new Map<string, string[]>();
+    for (const key of Object.keys(catalog))
+      if (/\{\w+\}/.test(key)) byShape.set(shape(key), [...(byShape.get(shape(key)) ?? []), key]);
+    expect([...byShape.values()].filter((keys) => keys.length > 1)).toEqual([]);
   });
 
   it("has no entries whose text no longer appears in the source", () => {

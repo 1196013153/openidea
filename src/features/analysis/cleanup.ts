@@ -11,6 +11,7 @@ import { maybeEditorService, notifications } from "@/workbench/contributions";
 import { confirm } from "@/workbench/messages";
 import { removeTask, upsertTask } from "@/workbench/tasks";
 import { changedFiles, currentFile, type ScopeChoice } from "./scope";
+import { tx } from "@/platform/i18n";
 
 export interface CleanupOptions {
   fixAll: boolean;
@@ -97,7 +98,7 @@ export async function runCodeCleanup(choice: ScopeChoice, options: CleanupOption
   }
   if (
     files.length > CONFIRM_ABOVE &&
-    !(await confirm({ title: "Code Cleanup", message: `Clean up ${files.length} files?`, ok: "Clean Up" }))
+    !(await confirm({ title: "Code Cleanup", message: tx`Clean up ${files.length} files?`, ok: "Clean Up" }))
   )
     return;
   const editors = maybeEditorService();

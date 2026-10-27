@@ -60,6 +60,7 @@ import { branchFolderKeys, branchGroupKeys, buildBranchTree, filterBranchTree, t
 import { chooseDateRange, chooseMany, promptText } from "./dialogs";
 import { buildFileTree, dirKeys, type FileTreeNode } from "./fileTree";
 import styles from "./GitLog.module.css";
+import { tx } from "@/platform/i18n";
 
 const ROW = 22;
 const LANE = 12;
@@ -577,7 +578,7 @@ export function commitMenu(c: Commit, selection: Commit[] = [c]): MenuItem[] {
       kind: "action",
       action: "vcs.log.rebaseOntoCommit",
       arg: c,
-      label: `Rebase '${head ?? "HEAD"}' onto Selected Commit`,
+      label: tx`Rebase '${head ?? "HEAD"}' onto Selected Commit`,
       disabled: !head,
     },
     { kind: "action", action: "vcs.log.newBranch", arg: c },

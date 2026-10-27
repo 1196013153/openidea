@@ -157,7 +157,7 @@ export function Composer(props: ComposerProps) {
     for (const file of picked) {
       if (!file.type.startsWith("image/")) continue;
       if (file.size > MAX_IMAGE_BYTES) {
-        notifications().notify({ level: "warning", title: "Image too large", body: `${file.name} is over 5 MB.` });
+        notifications().notify({ level: "warning", title: "Image too large", body: tx`${file.name} is over 5 MB.` });
         continue;
       }
       const reader = new FileReader();

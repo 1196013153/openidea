@@ -631,7 +631,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
               onClose={() => setTitleOpen(false)}
               anchor={titleRef}
               items={titleItems}
-              aria-label={titleMenu ? `${tx(tw.title)} views` : `${tx(tw.title)} view options`}
+              aria-label={titleMenu ? tx`${tw.title} views` : tx`${tw.title} view options`}
             />
           </>
         ) : (
@@ -674,7 +674,7 @@ function ToolWindowView({ tw, hidden }: { tw: ToolWindowContribution; hidden: bo
           anchor={moreRef}
           items={more}
           placement="bottom-end"
-          aria-label={`${tx(tw.title)} options`}
+          aria-label={tx`${tw.title} options`}
         />
       </header>
       <div className={styles.body} data-toolwindow-body="">

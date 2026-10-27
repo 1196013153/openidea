@@ -7,6 +7,7 @@ import type { RunConfig } from "@/platform/ipc";
 import { commandLine, configIcon, groupConfigs } from "./configs";
 import { canDeleteConfig, CURRENT_FILE, deleteConfig, saveTemporary, selectConfig, startRun, useRun } from "./store";
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 type Row =
   | { type: "section"; key: string; label: string }
@@ -281,7 +282,7 @@ function ConfigChooser() {
                       icon="run"
                       size="small"
                       iconSize={11}
-                      title={`Run '${c.name}'`}
+                      title={tx`Run '${c.name}'`}
                       tabIndex={-1}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -292,7 +293,7 @@ function ConfigChooser() {
                       icon="debug"
                       size="small"
                       iconSize={13}
-                      title={`Debug '${c.name}'`}
+                      title={tx`Debug '${c.name}'`}
                       tabIndex={-1}
                       onClick={(e) => {
                         e.stopPropagation();

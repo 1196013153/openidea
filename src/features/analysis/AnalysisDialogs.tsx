@@ -28,6 +28,7 @@ import {
   type StructuralForm,
 } from "./structural";
 import styles from "./Analysis.module.css";
+import { tx } from "@/platform/i18n";
 
 function InspectCodeDialog({ onClose }: { onClose: () => void }) {
   const [scope, setScope] = useState<ScopeChoice>(() => defaultScope());
@@ -363,7 +364,7 @@ function ReplacePreviewDialog({ files, onClose }: { files: StructuralFile[]; onC
                 <Checkbox
                   checked={!excluded.has(key)}
                   onChange={(on) => toggle(key, on)}
-                  aria-label={`Replace in ${f.relPath}:${m.range.start.line + 1}`}
+                  aria-label={tx`Replace in ${f.relPath}:${m.range.start.line + 1}`}
                 />
                 <div className={styles.previewBody}>
                   <span className={styles.previewWhere}>

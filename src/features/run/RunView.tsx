@@ -28,6 +28,7 @@ import {
 import { TestTreeView, formatDuration } from "./TestTreeView";
 import { StackTracePanel, closeStackTrace, useStackTraces, type StackTraceTab } from "./stackTrace";
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 function failed(s: RunSession): boolean {
   return s.status === "failed" || (s.status === "finished" && s.exitCode !== 0 && !s.stopped);
@@ -81,7 +82,7 @@ function SessionPanel({ session }: { session: RunSession }) {
           cwd={cwd}
           onData={(data) => writeTerminal(session.id, data)}
           onResize={(cols, rows) => resizeTerminal(session.id, cols, rows)}
-          aria-label={`${session.config.name} terminal`}
+          aria-label={tx`${session.config.name} terminal`}
         />
       ) : (
         <ConsoleView
@@ -102,7 +103,7 @@ function SessionPanel({ session }: { session: RunSession }) {
                 }
               : undefined
           }
-          aria-label={`${session.config.name} output`}
+          aria-label={tx`${session.config.name} output`}
         />
       )}
     </div>
@@ -196,7 +197,7 @@ function sessionItems(sessions: readonly RunSession[]): TabItem[] {
     closable: true,
     tooltip:
       s.status === "finished"
-        ? `Finished in ${formatDuration((s.endedAt ?? s.startedAt) - s.startedAt)}, exit code ${s.exitCode ?? "?"}`
+        ? tx`Finished in ${formatDuration((s.endedAt ?? s.startedAt) - s.startedAt)}, exit code ${s.exitCode ?? "?"}`
         : undefined,
   }));
 }

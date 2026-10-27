@@ -44,6 +44,7 @@ import { FindBar } from "./FindBar";
 import { EditorBanners, VirtualBanner } from "./Banner";
 import { CodeBreadcrumbs } from "./StatusItems";
 import styles from "./EditorArea.module.css";
+import { tx } from "@/platform/i18n";
 
 export function EditorAreaView() {
   const layout = useTabs((s) => s.layout);
@@ -343,7 +344,7 @@ function PaneContent({ paneId, tab }: { paneId: string; tab: Tab }) {
     );
   }
   const kind = kinds.get(tab.input.kind);
-  if (!kind) return <EmptyState icon="file" title={`No editor for “${tab.input.kind}”`} />;
+  if (!kind) return <EmptyState icon="file" title={tx`No editor for “${tab.input.kind}”`} />;
   const Component = kind.component;
   return (
     <div className={styles.kind} data-editor-focus="" tabIndex={-1} key={tab.id}>

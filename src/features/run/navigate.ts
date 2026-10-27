@@ -3,6 +3,7 @@ import { call, commands, isTauri, nextRequestId } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { editorService, notifications } from "@/workbench/contributions";
 import { joinPath, type FileTarget } from "./links";
+import { tx } from "@/platform/i18n";
 
 async function exists(path: string): Promise<boolean> {
   const slash = path.lastIndexOf("/");
@@ -99,7 +100,7 @@ export async function openTarget(target: FileTarget, cwd: string, focus = true):
       group: "run",
       level: "info",
       title: "No sources for this class",
-      body: `${target.className.split("$")[0]} is not part of the project, and no library sources are available for it.`,
+      body: tx`${target.className.split("$")[0]!} is not part of the project, and no library sources are available for it.`,
       key: "run-link",
     });
     return;

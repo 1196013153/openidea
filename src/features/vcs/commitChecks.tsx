@@ -15,6 +15,7 @@ import { baseName, relTo } from "./model";
 import { logConsole } from "./ops";
 import { currentRepo, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 // ---------------------------------------------------------------------------
 // Diagnostics seen per file (Analyze code)
@@ -249,12 +250,12 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
     }
     const { errors, warnings, files: n } = problemCounts(existing);
     if (errors + warnings > 0) {
-      const parts = [errors && plural(errors, "error"), warnings && plural(warnings, "warning")]
-        .filter(Boolean)
-        .join(" and ");
+      const errorCount = errors === 1 ? tx`${errors} error` : tx`${errors} errors`;
+      const warningCount = warnings === 1 ? tx`${warnings} warning` : tx`${warnings} warnings`;
+      const found = !warnings ? errorCount : !errors ? warningCount : tx`${errorCount} and ${warningCount}`;
       problems.push({
         title: "Code analysis",
-        text: `${parts} found in ${plural(n, "file")}`,
+        text: n === 1 ? tx`${found} found in ${n} file` : tx`${found} found in ${n} files`,
         details: {
           label: "Review",
           run: () => {

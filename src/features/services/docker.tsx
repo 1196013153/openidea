@@ -14,7 +14,7 @@ import type {
   DockerObject,
   DockerRegistry,
 } from "@/platform/ipc";
-import { useTx, useTxTemplate } from "@/platform/i18n";
+import { tx, useTx, useTxTemplate } from "@/platform/i18n";
 import { call, commands, isCancelled, nextRequestId } from "@/platform/ipc";
 import { Button, EmptyState, IconButton, Spinner, Tabs, Toggle, T } from "@/ui";
 import type { MenuItem } from "@/ui";
@@ -168,7 +168,7 @@ async function removeConnectionPrompt(c: DockerConnection) {
   if (
     await confirm({
       title: "Remove Docker Connection",
-      message: `Remove the connection '${c.name}' from Services?`,
+      message: tx`Remove the connection '${c.name}' from Services?`,
       ok: "Remove",
     })
   )
@@ -179,7 +179,7 @@ async function removeRegistryPrompt(r: DockerRegistry) {
   if (
     await confirm({
       title: "Remove Docker Registry",
-      message: `Remove the registry '${r.name}' and its saved password?`,
+      message: tx`Remove the registry '${r.name}' and its saved password?`,
       ok: "Remove",
     })
   )

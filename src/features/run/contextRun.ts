@@ -32,6 +32,7 @@ import { runWithExecutor } from "./executors";
 import { goModulePath, loadGoModules } from "./goModules";
 import { toolEnv } from "./runtimes";
 import { adoptTemporary, loadConfigs, modifyTemporary, startRun, useRun } from "./store";
+import { tx } from "@/platform/i18n";
 
 const CONTENT_LIMIT = 400_000;
 
@@ -180,7 +181,7 @@ export function choiceItems(choices: readonly Produced[], debug: boolean): MenuI
     { kind: "header", label: debug ? "Choose configuration to debug" : "Choose configuration to run" },
     ...choices.map(
       (p): MenuItem => ({
-        label: `${debug ? "Debug" : "Run"} '${p.name}'`,
+        label: debug ? tx`Debug '${p.name}'` : tx`Run '${p.name}'`,
         verbatim: true,
         icon: debug ? "debug" : "run",
         shortcut: p.detail,
@@ -316,10 +317,10 @@ export function contextMenuItems(menu: ContextMenuId, ctx: MenuGroupContext): Me
   if (!p) return [];
   const arg: ContextArg = { path, line, dir, content: dir ? undefined : input.content };
   return [
-    { kind: "action", action: "run.runContext", arg, label: `Run '${p.name}'`, icon: "run" },
+    { kind: "action", action: "run.runContext", arg, label: tx`Run '${p.name}'`, icon: "run" },
     // Like IDEA, Debug only where a debugger can run it.
     ...(p.debug || p.config?.debugAdapter || p.missing
-      ? ([{ kind: "action", action: "run.debugContext", arg, label: `Debug '${p.name}'`, icon: "debug" }] as MenuItem[])
+      ? ([{ kind: "action", action: "run.debugContext", arg, label: tx`Debug '${p.name}'`, icon: "debug" }] as MenuItem[])
       : []),
     {
       label: "More Run/Debug",

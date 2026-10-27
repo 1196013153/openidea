@@ -41,6 +41,7 @@ import {
 } from "./model";
 import { scanProject, scanScope, updateTodoSettings, useTodoSettings, useTodos } from "./store";
 import styles from "./TodoView.module.css";
+import { tx } from "@/platform/i18n";
 
 type Tab = "project" | "file" | "scope" | "changes";
 
@@ -224,7 +225,7 @@ function ChangelistBar() {
         aria-label="Changelist"
         className={styles.scopeSelect}
         value={value}
-        options={lists.map((l) => ({ value: l.id, label: l.name, detail: `${l.files.length} file${l.files.length === 1 ? "" : "s"}` }))}
+        options={lists.map((l) => ({ value: l.id, label: l.name, detail: l.files.length === 1 ? tx`${l.files.length} file` : tx`${l.files.length} files` }))}
         onChange={(id) => useTodoView.setState({ changelist: id })}
       />
     </div>

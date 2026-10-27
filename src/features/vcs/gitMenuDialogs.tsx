@@ -12,6 +12,7 @@ import { confirmDialog, openDialog } from "./dialogs";
 import { errorMessage, runOp, runRemote, saveAll } from "./ops";
 import { currentRepo, loadBranches, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 // --- shared -----------------------------------------------------------------
 
@@ -153,7 +154,7 @@ function PullDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog
       open
-      title={`Pull to ${info?.head ?? "HEAD"}`}
+      title={tx`Pull to ${info?.head ?? "HEAD"}`}
       onClose={onClose}
       width={460}
       buttons={[
@@ -231,7 +232,7 @@ function MergeDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog
       open
-      title={`Merge into ${head ?? "HEAD"}`}
+      title={tx`Merge into ${head ?? "HEAD"}`}
       onClose={onClose}
       width={460}
       buttons={[
@@ -253,7 +254,7 @@ function MergeDialog({ onClose }: { onClose: () => void }) {
           <Input
             aria-label="Commit message"
             value={message}
-            placeholder={branch ? `Merge branch '${branch}' into ${head ?? "HEAD"}` : ""}
+            placeholder={branch ? tx`Merge branch '${branch}' into ${head ?? "HEAD"}` : ""}
             onChange={(e) => setMessage(e.target.value)}
           />
         )}
@@ -391,7 +392,7 @@ function RemotesDialog({ onClose }: { onClose: () => void }) {
     if (!selected) return;
     const ok = await confirmDialog({
       title: "Remove Remote",
-      message: `Remove remote '${selected}'? Its remote-tracking branches are deleted.`,
+      message: tx`Remove remote '${selected}'? Its remote-tracking branches are deleted.`,
       okLabel: "Remove",
       danger: true,
     });
@@ -535,7 +536,7 @@ function WorktreesDialog({ onClose }: { onClose: () => void }) {
     if (!current || current.main) return;
     const ok = await confirmDialog({
       title: "Remove Worktree",
-      message: `Remove the worktree at ${current.path}? Its folder is deleted.`,
+      message: tx`Remove the worktree at ${current.path}? Its folder is deleted.`,
       okLabel: "Remove",
       danger: true,
     });
@@ -545,7 +546,7 @@ function WorktreesDialog({ onClose }: { onClose: () => void }) {
     } catch (e) {
       const force = await confirmDialog({
         title: "Remove Worktree",
-        message: `${errorMessage(e)}\n\nRemove it anyway, discarding its changes?`,
+        message: tx`${errorMessage(e)}\n\nRemove it anyway, discarding its changes?`,
         okLabel: "Force Remove",
         danger: true,
       });

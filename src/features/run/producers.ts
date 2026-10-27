@@ -16,6 +16,7 @@ import { applicationConfig, jvmModuleDir } from "./application";
 import { formatArgs } from "./configs";
 import { contextConfig, fileRole, projectPython, testBasesFor, testConfigFor } from "./context";
 import { detectRunTargets, targetConfig, targetLanguage, type RunTarget } from "./targets";
+import { tx } from "@/platform/i18n";
 
 export interface LocatedTool {
   path: string | null;
@@ -300,7 +301,7 @@ const LANGUAGE_NAMES: Partial<Record<ScriptLanguage, string>> = {
 function missing(lang: ScriptLanguage, file: string, tools: string[]): Missing {
   const what = LANGUAGE_NAMES[lang] ?? tools[0] ?? lang;
   return {
-    title: `Cannot run '${file}'`,
+    title: tx`Cannot run '${file}'`,
     body: `${what} was not found (looked for ${tools.map((t) => `\`${t}\``).join(", ")}). ${INSTALL[lang] ?? ""}`.trim(),
   };
 }
@@ -421,7 +422,7 @@ function jsRuntime(lang: "js" | "ts", env: ToolEnv, s: FileSite): Produced {
     name,
     scope: "file",
     missing: {
-      title: `Cannot run '${name}'`,
+      title: tx`Cannot run '${name}'`,
       body:
         `Running TypeScript needs Node.js 22.6+ (type stripping), tsx or ts-node. ${found}` +
         "Upgrade Node.js (https://nodejs.org), or install tsx: `npm install -D tsx` (or `npm install -g tsx`).",

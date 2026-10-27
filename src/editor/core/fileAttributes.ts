@@ -8,11 +8,12 @@ import { basename } from "@/platform/project";
 import { notifications } from "@/workbench/contributions";
 import { confirm } from "@/workbench/messages";
 import type { DocModel } from "./model/document";
+import { tx } from "@/platform/i18n";
 
 export function readOnlyQuestion(name: string, readOnly: boolean) {
   return readOnly
-    ? { title: "Make File Writable", message: `'${name}' is read-only. Make it writable?`, confirm: "Make Writable" }
-    : { title: "Make File Read-only", message: `Make '${name}' read-only?`, confirm: "Make Read-only" };
+    ? { title: "Make File Writable", message: tx`'${name}' is read-only. Make it writable?`, confirm: "Make Writable" }
+    : { title: "Make File Read-only", message: tx`Make '${name}' read-only?`, confirm: "Make Read-only" };
 }
 
 /** Applies the toggle without asking. Returns the new read-only state, or null on failure. */

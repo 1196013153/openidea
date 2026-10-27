@@ -11,6 +11,7 @@ import { notifications } from "@/workbench/contributions";
 import { applyThemeAttributes, currentThemeId, syncWindowBackground, windowBackgroundHex } from "@/workbench/theme";
 import { pluginsBackend } from "./backend";
 import { refreshPlugins, runPluginCommand, usePlugins } from "./store";
+import { tx } from "@/platform/i18n";
 
 export const pluginActionId = (pluginId: string, commandId: string) => `plugin.${pluginId}.${commandId}`;
 
@@ -25,7 +26,7 @@ export function pluginActions(plugins: readonly PluginInfo[]): Action[] {
         category: c.category ?? p.name,
         icon: "package",
         keywords: ["plugin", p.name, p.id],
-        description: `From plugin ${p.name}`,
+        description: tx`From plugin ${p.name}`,
         run: async ({ arg }) => {
           await runPluginCommand(p.id, c.id, typeof arg === "string" ? arg : null);
         },

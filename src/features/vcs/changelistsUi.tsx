@@ -19,6 +19,7 @@ import { useCommit } from "./commitStore";
 import { confirmDialog, openDialog } from "./dialogs";
 import { useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 interface FormValue {
   name: string;
@@ -159,7 +160,10 @@ export async function deleteChangelist(id: string) {
   if (count) {
     const ok = await confirmDialog({
       title: "Delete Changelist",
-      message: `Changelist '${list.name}' contains ${count} change${count === 1 ? "" : "s"}. They will be moved to '${activeList(state).name}'. Delete the changelist?`,
+      message:
+        count === 1
+          ? tx`Changelist '${list.name}' contains ${count} change. It will be moved to '${activeList(state).name}'. Delete the changelist?`
+          : tx`Changelist '${list.name}' contains ${count} changes. They will be moved to '${activeList(state).name}'. Delete the changelist?`,
       okLabel: "Delete",
       danger: true,
     });
@@ -247,7 +251,7 @@ function MoveDialog({ paths, onClose }: { paths: readonly string[]; onClose: () 
           disabled={mode !== "existing"}
           aria-label="Existing changelist"
           onChange={setTarget}
-          options={others.map((l) => ({ value: l.id, label: l.id === state.active ? `${l.name} (active)` : l.name }))}
+          options={others.map((l) => ({ value: l.id, label: l.id === state.active ? tx`${l.name} (active)` : l.name }))}
         />
         <label className={styles.radioRow}>
           <input type="radio" name="target" checked={mode === "new"} onChange={() => setMode("new")} />

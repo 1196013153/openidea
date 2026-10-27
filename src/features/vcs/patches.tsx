@@ -11,6 +11,7 @@ import { FileChecklist, defaultChangeFiles, reportApply } from "./shelf";
 import { activeList, useChangelists } from "./changelists";
 import { useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 export type PatchOrigin = { kind: "changes"; files: FileStatus[] } | { kind: "commits"; commits: Commit[] };
 
@@ -213,7 +214,7 @@ function ApplyPatchDialog({ patch, source, onClose }: { patch: string; source: s
   return (
     <Dialog
       open
-      title={`Apply Patch: ${source}`}
+      title={tx`Apply Patch: ${source}`}
       onClose={onClose}
       width={600}
       footerStart={

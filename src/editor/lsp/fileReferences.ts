@@ -14,6 +14,7 @@ import { call, commands, isTauri, onIdeEvent, type PathCompletion } from "@/plat
 import { fileIconName, folderIconName } from "@/ui";
 import { setFileDiagnostics } from "./diagnostics";
 import { docOf, lspDoc } from "./lsp";
+import { tx } from "@/platform/i18n";
 
 // --- completion ---------------------------------------------------------------
 
@@ -118,7 +119,7 @@ export function unresolvedReferences(): Extension {
           refs.map((r) => ({
             range: r.range,
             severity: "warning",
-            message: `Cannot resolve file '${r.value}'`,
+            message: tx`Cannot resolve file '${r.value}'`,
             source: doc.language === "html" || doc.language === "vue" || doc.language === "svelte" ? "HTML" : "CSS",
             code: null,
           })),

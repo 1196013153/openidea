@@ -17,7 +17,7 @@ import {
   type DbSslMode,
   type DbTxMode,
 } from "@/platform/ipc";
-import { useTx, useTxTemplate } from "@/platform/i18n";
+import { tx, useTx, useTxTemplate } from "@/platform/i18n";
 import { Button, Checkbox, Dialog, IconButton, Input, Select, Tabs, T, type SelectOption } from "@/ui";
 import { colorVar, connectRemedy, fileSourceName, newSourceId, parseSourceUrl, sshLabel } from "./model";
 import { closeDialog, loadDatabases, loadSchemas, saveSource, useDatabase } from "./store";
@@ -224,7 +224,7 @@ function SecondsOption({
         <Input
           className={styles.secondsInput}
           inputMode="numeric"
-          aria-label={`${label} (seconds)`}
+          aria-label={tx`${label} (seconds)`}
           disabled={!on}
           value={draft}
           onChange={(e) => {
@@ -243,14 +243,18 @@ function SecondsOption({
 
 /** Schemas tab: "All …" or a choice of names and `*` / `?` patterns. */
 function NamePicker({
-  title,
+  allLabel,
+  addLabel,
   all,
   chosen,
   known,
   onAll,
   onChosen,
 }: {
-  title: string;
+  /** "All databases" */
+  allLabel: string;
+  /** Accessible name of the pattern input. */
+  addLabel: string;
   all: boolean;
   chosen: string[];
   known: string[];
@@ -266,7 +270,7 @@ function NamePicker({
   };
   return (
     <div className={styles.namePicker}>
-      <Checkbox checked={all} onChange={onAll} label={`All ${title}`} />
+      <Checkbox checked={all} onChange={onAll} label={allLabel} />
       {!all && (
         <div className={styles.nameList}>
           {names.map((n) => (
@@ -282,7 +286,7 @@ function NamePicker({
               className={styles.fill}
               value={pattern}
               placeholder="Name or pattern, e.g. app_*"
-              aria-label={`Add ${title} pattern`}
+              aria-label={addLabel}
               onChange={(e) => setPattern(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !isImeKey(e.nativeEvent)) {
@@ -401,7 +405,7 @@ export function SourceDialog({
     setTest(null);
     try {
       const v = await call(commands.dbTest(effective(), password ?? null, sshOn ? (sshSecret ?? null) : null));
-      setTest({ ok: true, text: `Succeeded: ${v}` });
+      setTest({ ok: true, text: tx`Succeeded: ${v}` });
     } catch (e) {
       const text = e instanceof Error ? e.message : String(e);
       const trust = e instanceof IpcError && connectRemedy(e.kind, e.message) === "trustHostKey";
@@ -802,7 +806,8 @@ export function SourceDialog({
       <div className={styles.formWide}>
         {postgres && (
           <NamePicker
-            title="databases"
+            allLabel={tx("All databases")}
+            addLabel={tx("Add databases pattern")}
             all={intro.allDatabases !== false}
             chosen={intro.databases ?? []}
             known={knownDbs}
@@ -811,7 +816,8 @@ export function SourceDialog({
           />
         )}
         <NamePicker
-          title={s.driver === "mysql" ? "schemas (databases)" : "schemas"}
+          allLabel={s.driver === "mysql" ? tx("All schemas (databases)") : tx("All schemas")}
+          addLabel={s.driver === "mysql" ? tx("Add schemas (databases) pattern") : tx("Add schemas pattern")}
           all={intro.allSchemas !== false}
           chosen={intro.schemas ?? []}
           known={knownSchemas}
@@ -921,7 +927,7 @@ export function SourceDialog({
     <Dialog
       open
       onClose={closeDialog}
-      title={initial ? `Data Source: ${initial.name}` : "New Data Source"}
+      title={initial ? tx`Data Source: ${initial.name}` : "New Data Source"}
       width={640}
       footerStart={
         <Button onClick={() => void runTest()} disabled={busy || !valid}>

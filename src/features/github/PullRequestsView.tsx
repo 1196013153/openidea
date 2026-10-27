@@ -35,6 +35,7 @@ import {
 import { addComment, checkoutPullRequest, openCommentLocation, openFileDiff, openUrl, submitReview } from "./ops";
 import { cancelBusy, loadDetails, refreshAll, select, setQuery, useGithub, type DetailTab } from "./store";
 import styles from "./Github.module.css";
+import { tx } from "@/platform/i18n";
 
 const STATES: Array<{ value: PrStateFilter; label: string }> = [
   { value: "open", label: "Open" },
@@ -515,9 +516,9 @@ function Details() {
         aria-label="Pull request"
         items={[
           { id: "overview", label: "Overview" },
-          { id: "files", label: `Files ${pr.files.length}` },
-          { id: "commits", label: `Commits ${pr.commits.length}` },
-          { id: "conversation", label: `Conversation ${pr.timeline.length + comments.length}` },
+          { id: "files", label: tx`Files ${pr.files.length}` },
+          { id: "commits", label: tx`Commits ${pr.commits.length}` },
+          { id: "conversation", label: tx`Conversation ${pr.timeline.length + comments.length}` },
         ]}
       />
       {tab === "overview" && <Overview pr={pr} />}

@@ -10,6 +10,7 @@ import { useProject } from "@/platform/project";
 import { notifications, registerEditorBanner } from "@/workbench/contributions";
 import { promptInput } from "@/workbench/inputDialogs";
 import { showNewProject } from "./NewProject";
+import { tx } from "@/platform/i18n";
 
 /** localStorage prefixes of IDE-level state exported with the settings (templates, macros, layouts). */
 export const EXPORTED_STORAGE = [
@@ -93,7 +94,7 @@ async function renameProject() {
     initial: project.name,
     okLabel: "Rename",
     validate: () => null,
-    hint: `Leave empty to use the folder name (${folder}).`,
+    hint: tx`Leave empty to use the folder name (${folder}).`,
   });
   if (name === null) return;
   try {

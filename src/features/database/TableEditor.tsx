@@ -29,6 +29,7 @@ import {
 import { openDialog, sourceById, withConnection } from "./store";
 import type { TableRef } from "./tableInput";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 const PAGE_SIZES = ["100", "500", "1000", "5000"];
 
@@ -306,7 +307,7 @@ export function TableEditor({ input }: { input: EditorInput }) {
       ) : (
         <div className={styles.fill}>
           <DataView
-            aria-label={`${ref.table} data`}
+            aria-label={tx`${ref.table} data`}
             columns={gridColumns}
             rowCount={rowCount}
             fixedRows={loaded}

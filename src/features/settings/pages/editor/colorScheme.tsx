@@ -21,6 +21,7 @@ import { Row, Select } from "../../components/Form";
 import { useSetting } from "../../components/context";
 import { editorPage } from "./kit";
 import styles from "./Editor.module.css";
+import { tx } from "@/platform/i18n";
 
 type Overrides = Record<string, Record<string, TextAttributesOverride>>;
 
@@ -238,7 +239,7 @@ function ColorInput({
       <Input
         mono
         className={styles.swatchInput}
-        aria-label={`${label} hex`}
+        aria-label={tx`${label} hex`}
         value={draft ?? value}
         invalid={draft !== null && !HEX_COLOR.test(draft)}
         onChange={(e) => {

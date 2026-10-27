@@ -21,6 +21,7 @@ import {
   type ProfileOverrides,
   type SeenCode,
 } from "@/platform/inspections";
+import { tx } from "@/platform/i18n";
 
 export interface InspectionNode {
   /** Unique in the tree (a server serving several languages appears under each). */
@@ -45,14 +46,16 @@ function serverNode(group: string, server: string, codes: readonly SeenCode[], l
     key: `${group}/${id}`,
     id,
     name: server,
-    description: `Problems the ${server} language server reports${languages ? ` in ${languages} files` : ""}. Severity "As reported" keeps the level the server assigns; a code below can override it.`,
+    description: languages
+      ? tx`Problems the ${server} language server reports in ${languages} files. Severity "As reported" keeps the level the server assigns; a code below can override it.`
+      : tx`Problems the ${server} language server reports. Severity "As reported" keeps the level the server assigns; a code below can override it.`,
     children: [...codes]
       .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
       .map((c) => ({
         key: `${group}/${codeInspectionId(id, c.code)}`,
         id: codeInspectionId(id, c.code),
         name: c.code,
-        description: `${server} problems with code ${c.code}${c.source && c.source !== server ? ` (${c.source})` : ""}.${c.sample ? `\n\nExample: ${c.sample}` : ""}`,
+        description: codeDescription(server, c),
         children: [],
       })),
   };
@@ -269,4 +272,12 @@ export function deleteProfile(s: InspectionSettingsValid, id: ProfileId): Inspec
   delete rest[key];
   const profile = s.profile === id ? (level === "project" ? "project" : "default") : s.profile;
   return { ...s, [field]: rest, profile };
+}
+
+function codeDescription(server: string, { code, source, sample }: SeenCode): string {
+  const what =
+    source && source !== server
+      ? tx`${server} problems with code ${code} (${source}).`
+      : tx`${server} problems with code ${code}.`;
+  return sample ? tx`${what}\n\nExample: ${sample}` : what;
 }

@@ -29,6 +29,7 @@ import {
   renameRisks,
   type LocalRenamePlan,
 } from "./syntaxFallback";
+import { tx } from "@/platform/i18n";
 
 async function applyEdit(view: EditorView, edit: WorkspaceEdit) {
   try {
@@ -83,7 +84,7 @@ export async function startRename(view: EditorView) {
     openPopup({
       kind: "rename",
       anchor: caretAnchor(view, from),
-      title: `Rename '${oldName}'`,
+      title: tx`Rename '${oldName}'`,
       initial,
       onSubmit: (newName) => void finishRename(view, doc, pos, oldName, newName),
     });
@@ -99,7 +100,7 @@ export async function startRename(view: EditorView) {
   startInplaceRename(view, {
     primary: { from, to },
     others,
-    hint: keys ? `Press ${keys} to show dialog with more options` : "Rename in place: ↵ to finish, Esc to cancel",
+    hint: keys ? tx`Press ${keys} to show dialog with more options` : "Rename in place: ↵ to finish, Esc to cancel",
     commit: (newName) => void commitInplace(view, doc, pos, oldName, newName),
     dialog,
   });
@@ -223,7 +224,7 @@ async function finishRename(view: EditorView, doc: EditorDocContext, pos: Pos, o
   }
   openPopup({
     kind: "preview",
-    title: `Rename '${oldName}' to '${newName}'`,
+    title: tx`Rename '${oldName}' to '${newName}'`,
     summary,
     confirmLabel: "Do Refactor",
     onConfirm: () => void applyEdit(view, edit),
@@ -265,7 +266,7 @@ async function startSyntaxRename(view: EditorView, doc: EditorDocContext, pos: P
   openPopup({
     kind: "rename",
     anchor: caretAnchor(view, rangeToOffsets(view.state.doc, (at ?? plan.occurrences[0]!).range).from),
-    title: `Rename '${plan.symbol.name}'`,
+    title: tx`Rename '${plan.symbol.name}'`,
     initial: plan.symbol.name,
     note: `${SYNTAX_NOTE}: local occurrences only`,
     onSubmit: (newName) => void commitSyntaxRename(view, doc, plan, newName),
@@ -315,7 +316,7 @@ export async function commitSyntaxRename(view: EditorView, doc: EditorDocContext
   });
   openPopup({
     kind: "preview",
-    title: `Rename '${oldName}' to '${newName}'`,
+    title: tx`Rename '${oldName}' to '${newName}'`,
     summary: {
       files: 1,
       occurrences: occurrences.length,

@@ -27,6 +27,7 @@ import { showCompareBranches } from "./CompareBranches";
 import { showDiffWithWorkingTree } from "./operations";
 import type { CommonBranch } from "./repoBranches";
 import { focusRepo } from "./store";
+import { tx } from "@/platform/i18n";
 
 export function branchMenu(b: Branch, current: string | null, done: () => void = () => {}): MenuItem[] {
   const run = (fn: () => unknown) => () => {
@@ -48,7 +49,7 @@ export function branchMenu(b: Branch, current: string | null, done: () => void =
   };
   if (b.current) {
     return [
-      { label: `New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch()) },
+      { label: tx`New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch()) },
       { kind: "separator" },
       { label: "Update", icon: "git-pull", run: run(() => executeAction("vcs.update")) },
       { label: "Push…", icon: "git-push", run: run(() => executeAction("vcs.push")) },
@@ -60,15 +61,15 @@ export function branchMenu(b: Branch, current: string | null, done: () => void =
   }
   const items: MenuItem[] = [
     { label: "Checkout", run: run(() => checkoutBranch(b.name)) },
-    { label: `New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch(b.name)) },
-    ...(current ? [{ label: `Checkout and Rebase onto '${cur}'`, run: run(() => checkoutAndRebase(b.name)) }] : []),
+    { label: tx`New Branch from '${b.name}'…`, icon: "branch", run: run(() => newBranch(b.name)) },
+    ...(current ? [{ label: tx`Checkout and Rebase onto '${cur}'`, run: run(() => checkoutAndRebase(b.name)) }] : []),
     { kind: "separator" },
-    { label: `Compare with '${cur}'`, icon: "diff", run: run(() => showCompareBranches(b.name)) },
+    { label: tx`Compare with '${cur}'`, icon: "diff", run: run(() => showCompareBranches(b.name)) },
     { label: "Show Diff with Working Tree", run: run(() => showDiffWithWorkingTree(b.name)) },
     history,
     { kind: "separator" },
-    { label: `Rebase '${cur}' onto '${b.name}'`, run: run(() => rebaseOnto(b.name)) },
-    { label: `Merge '${b.name}' into '${cur}'`, run: run(() => mergeIntoCurrent(b.name)) },
+    { label: tx`Rebase '${cur}' onto '${b.name}'`, run: run(() => rebaseOnto(b.name)) },
+    { label: tx`Merge '${b.name}' into '${cur}'`, run: run(() => mergeIntoCurrent(b.name)) },
   ];
   if (!b.remote)
     items.push(
@@ -98,7 +99,7 @@ export function tagMenu(tag: string, done: () => void = () => {}): MenuItem[] {
   };
   return [
     { label: "Checkout", run: run(() => checkoutDetached(tag, tag)) },
-    { label: `New Branch from '${tag}'…`, icon: "branch", run: run(() => newBranch(tag)) },
+    { label: tx`New Branch from '${tag}'…`, icon: "branch", run: run(() => newBranch(tag)) },
     { kind: "separator" },
     { label: "Compare with Current", icon: "diff", run: run(() => showCompareBranches(tag)) },
     { label: "Show Diff with Working Tree", run: run(() => showDiffWithWorkingTree(tag)) },
@@ -113,7 +114,7 @@ export function commonBranchMenu(b: CommonBranch, roots: readonly string[], done
     void fn();
   };
   const newFrom: MenuItem = {
-    label: `New Branch from '${b.name}'…`,
+    label: tx`New Branch from '${b.name}'…`,
     icon: "branch",
     run: run(() => newBranchInRepos(roots, b.name)),
   };
@@ -128,8 +129,8 @@ export function commonBranchMenu(b: CommonBranch, roots: readonly string[], done
     { label: "Checkout", run: run(() => checkoutInRepos(b.name, roots)) },
     newFrom,
     { kind: "separator" },
-    { label: `Rebase Current onto '${b.name}'`, run: run(() => rebaseInRepos(b.name, roots)) },
-    { label: `Merge '${b.name}' into Current`, run: run(() => mergeInRepos(b.name, roots)) },
+    { label: tx`Rebase Current onto '${b.name}'`, run: run(() => rebaseInRepos(b.name, roots)) },
+    { label: tx`Merge '${b.name}' into Current`, run: run(() => mergeInRepos(b.name, roots)) },
   ];
   if (!b.remote)
     items.push(

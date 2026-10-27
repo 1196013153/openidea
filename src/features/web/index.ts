@@ -19,6 +19,7 @@ import {
   useBrowsers,
   useWebPreview,
 } from "./browsers";
+import { tx } from "@/platform/i18n";
 
 interface OpenArg {
   path?: string;
@@ -105,7 +106,7 @@ export function activate(): () => void {
             kind: "action",
             action: "web.openInBrowser",
             arg: { path },
-            label: `Open '${basename(path)}' in Browser`,
+            label: tx`Open '${basename(path)}' in Browser`,
             icon: "web",
           },
         ];

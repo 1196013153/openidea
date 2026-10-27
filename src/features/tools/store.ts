@@ -6,6 +6,7 @@ import { isCancelled, nextRequestId } from "@/platform/ipc";
 import { notifications } from "@/workbench/contributions";
 import { upsertTask } from "@/workbench/tasks";
 import { toolsBackend } from "./backend";
+import { tx } from "@/platform/i18n";
 
 export const SETTINGS_PAGE_ID = "languages.servers";
 const MAX_LOG_LINES = 400;
@@ -99,19 +100,19 @@ export function installTool(name: string, opts: { notificationKey?: string } = {
   const taskId = `tools:${name}`;
   const key = opts.notificationKey ?? `tools-install-${name}`;
   useTools.setState((s) => ({ jobs: { ...s.jobs, [name]: { request, lines: [], fraction: null, message: null } } }));
-  upsertTask({ id: taskId, title: `Installing ${display}`, message: null, fraction: null, done: false });
+  upsertTask({ id: taskId, title: tx`Installing ${display}`, message: null, fraction: null, done: false });
 
   const p = (async () => {
     try {
       const info = await toolsBackend().install(name, request, (e) => {
         if (e.type === "line") {
           patchJob(name, (j) => ({ ...j, lines: [...j.lines, e.text].slice(-MAX_LOG_LINES), message: e.text }));
-          upsertTask({ id: taskId, title: `Installing ${display}`, message: e.text, fraction: null, done: false });
+          upsertTask({ id: taskId, title: tx`Installing ${display}`, message: e.text, fraction: null, done: false });
         } else {
           patchJob(name, (j) => ({ ...j, fraction: e.fraction, message: e.message }));
           upsertTask({
             id: taskId,
-            title: `Installing ${display}`,
+            title: tx`Installing ${display}`,
             message: e.message,
             fraction: e.fraction,
             done: false,
@@ -127,7 +128,7 @@ export function installTool(name: string, opts: { notificationKey?: string } = {
         group: "tools",
         level: "info",
         title: `${info.displayName} installed`,
-        body: info.version ? `Version ${info.version}` : undefined,
+        body: info.version ? tx`Version ${info.version}` : undefined,
         key,
       });
       // Shared packages (e.g. vscode-langservers-extracted) change sibling rows too.
@@ -150,7 +151,7 @@ export function installTool(name: string, opts: { notificationKey?: string } = {
       });
       return null;
     } finally {
-      upsertTask({ id: taskId, title: `Installing ${display}`, message: null, fraction: 1, done: true });
+      upsertTask({ id: taskId, title: tx`Installing ${display}`, message: null, fraction: 1, done: true });
       running.delete(name);
     }
   })();

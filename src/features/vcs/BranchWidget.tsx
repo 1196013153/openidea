@@ -36,6 +36,7 @@ import {
 } from "./repoBranches";
 import { currentRepo, focusRepo, loadBranches, repoName, useVcs } from "./store";
 import styles from "./BranchWidget.module.css";
+import { tx } from "@/platform/i18n";
 
 export const useBranchesPopup = create<{ open: boolean }>(() => ({ open: false }));
 export const showBranchesPopup = () => useBranchesPopup.setState({ open: true });
@@ -263,8 +264,8 @@ function BranchesPanel({ onClose, actions: baseActions, root, fallback, onBack }
     if (!el) return;
     setMenuFor(
       row.type === "branch"
-        ? { items: scoped(branchMenu(row.branch, current, closeAll)), label: `Branch ${row.branch.name}`, el }
-        : { items: scoped(tagMenu(row.tag, closeAll)), label: `Tag ${row.tag}`, el },
+        ? { items: scoped(branchMenu(row.branch, current, closeAll)), label: tx`Branch ${row.branch.name}`, el }
+        : { items: scoped(tagMenu(row.tag, closeAll)), label: tx`Tag ${row.tag}`, el },
     );
   };
 
@@ -499,12 +500,12 @@ function MultiRepoPanel({ onClose }: { onClose: () => void }) {
     }
     setRepoMenu(null);
     if (row.type === "common") {
-      setMenuFor({ items: commonBranchMenu(row.branch, roots, closeAll), label: `Branch ${row.branch.name}`, el });
+      setMenuFor({ items: commonBranchMenu(row.branch, roots, closeAll), label: tx`Branch ${row.branch.name}`, el });
     } else if (row.type === "branch") {
       const items = inRepo(row.repo.root, branchMenu(row.branch, row.repo.head, closeAll));
-      setMenuFor({ items, label: `Branch ${row.branch.name} of ${row.repo.name}`, el });
+      setMenuFor({ items, label: tx`Branch ${row.branch.name} of ${row.repo.name}`, el });
     } else if (row.type === "tag") {
-      setMenuFor({ items: inRepo(row.repo.root, tagMenu(row.tag, closeAll)), label: `Tag ${row.tag}`, el });
+      setMenuFor({ items: inRepo(row.repo.root, tagMenu(row.tag, closeAll)), label: tx`Tag ${row.tag}`, el });
     }
   };
   const setOpen = (key: string, open: boolean) =>
@@ -625,7 +626,7 @@ function MultiRepoPanel({ onClose }: { onClose: () => void }) {
           placement="right-start"
           offset={2}
           autoFocus={repoMenu.focus}
-          aria-label={`Branches of ${repoName(repoMenu.root)}`}
+          aria-label={tx`Branches of ${repoName(repoMenu.root)}`}
           onClose={closeRepoMenu}
           className={styles.popup}
         >

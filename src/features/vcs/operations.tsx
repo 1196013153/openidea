@@ -16,6 +16,7 @@ import { runGitOperation, runOp } from "./ops";
 import { reloadLog, useGitLog } from "./logStore";
 import { conflictedFiles, currentRepo, currentRepoRoot, refreshNow, repoOf, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 // ---------------------------------------------------------------------------
 // Operation in progress
@@ -70,10 +71,23 @@ function notInProgress(expected: InProgress | null) {
   notifications().notify({
     group: "vcs",
     level: "info",
-    title: expected
-      ? `No ${OP_NOUN[expected].toLowerCase()} in progress`
-      : "No merge, rebase, cherry-pick or revert in progress",
+    title: expected ? noneInProgress(expected) : "No merge, rebase, cherry-pick or revert in progress",
   });
+}
+
+function noneInProgress(op: InProgress): string {
+  switch (op) {
+    case "rebase":
+      return tx("No rebase in progress");
+    case "merge":
+      return tx("No merge in progress");
+    case "cherry-pick":
+      return tx("No cherry-pick in progress");
+    case "revert":
+      return tx("No revert in progress");
+    case "am":
+      return tx("No patch application in progress");
+  }
 }
 
 /**
@@ -306,7 +320,7 @@ export function validateTagName(name: string, existing: readonly string[] = []):
 export async function newTagOn(commit: Commit) {
   const existing = await call(commands.vcsTags(currentRepo())).catch(() => [] as string[]);
   const r = await promptText({
-    title: `Create New Tag On ${short(commit.id)}`,
+    title: tx`Create New Tag On ${short(commit.id)}`,
     label: "Enter the name of new tag:",
     mono: true,
     okLabel: "Create",
@@ -456,7 +470,11 @@ function ChangesBetweenDialog({ from, to, onClose }: { from: Revision; to: Revis
   return (
     <Dialog
       open
-      title={`Changes between ${from.label} and ${to ? to.label : "Local Working Tree"}`}
+      title={
+        to
+          ? tx`Changes between ${from.label} and ${to.label}`
+          : tx`Changes between ${from.label} and Local Working Tree`
+      }
       onClose={onClose}
       width={620}
       buttons={[

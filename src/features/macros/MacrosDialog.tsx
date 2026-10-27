@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { create } from "zustand";
 import { executeAction, getAction } from "@/platform/actions";
-import { t } from "@/platform/i18n";
+import { t, tx } from "@/platform/i18n";
 import { BarButton, Button, Dialog, Icon, List, T } from "@/ui";
 import { confirm } from "@/workbench/messages";
 import { promptInput } from "@/workbench/inputDialogs";
@@ -60,7 +60,7 @@ function EditMacrosDialog({ onClose }: { onClose: () => void }) {
   };
   const remove = async () => {
     if (!macro) return;
-    if (await confirm({ title: "Delete Macro", message: `Delete the macro '${macro.name}'?`, ok: "Delete", icon: "warning" }))
+    if (await confirm({ title: "Delete Macro", message: tx`Delete the macro '${macro.name}'?`, ok: "Delete", icon: "warning" }))
       deleteMacro(macro.name);
   };
 

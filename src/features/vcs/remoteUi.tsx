@@ -341,7 +341,7 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
   return (
     <Dialog
       open
-      title={head ? `Push Commits to ${upstream ?? "remote"}` : "Push"}
+      title={head ? tx`Push Commits to ${upstream ?? "remote"}` : "Push"}
       onClose={onClose}
       width={620}
       footerStart={
@@ -453,7 +453,7 @@ async function confirmForcePush(target: string): Promise<boolean> {
   if (target && silentForcePushTargets().includes(target)) return true;
   const r = await ask({
     title: "Force Push",
-    body: `You're going to force push to '${target}'. It may overwrite commits at the remote. Are you sure you want to proceed?`,
+    body: tx`You're going to force push to '${target}'. It may overwrite commits at the remote. Are you sure you want to proceed?`,
     icon: "warning",
     checkbox: target ? "Don't warn about this target" : undefined,
     buttons: [{ id: "force", label: "Force Push", primary: true }],

@@ -85,7 +85,7 @@ export function RunWidget() {
               size="large"
               iconSize={16}
               className={clsx(styles.widgetButton, styles.widgetFilled, styles.widgetFilledRun)}
-              title={`Rerun '${compoundRunning.length && selected ? selected.name : target.config.name}'`}
+              title={tx`Rerun '${compoundRunning.length && selected ? selected.name : target.config.name}'`}
               shortcut={shortcutLabel("run.run")}
               onClick={() => (compoundRunning.length && selected ? void startRun(selected) : rerunSession(target.id))}
             />
@@ -96,10 +96,10 @@ export function RunWidget() {
               className={clsx(styles.widgetButton, styles.widgetFilled, styles.widgetFilledStop)}
               title={
                 compoundRunning.length && selected
-                  ? `Stop '${selected.name}'`
+                  ? tx`Stop '${selected.name}'`
                   : running.length > 1
-                    ? `Stop (${running.length} running)`
-                    : `Stop '${target.config.name}'`
+                    ? tx`Stop (${running.length} running)`
+                    : tx`Stop '${target.config.name}'`
               }
               shortcut={shortcutLabel("run.stop")}
               onClick={() =>
@@ -155,8 +155,8 @@ export function RunWidget() {
               title={
                 selected
                   ? debugOnly
-                    ? `'${selected.name}' can only be debugged`
-                    : `Run '${selected.name}'`
+                    ? tx`'${selected.name}' can only be debugged`
+                    : tx`Run '${selected.name}'`
                   : currentFile
                     ? "Run Current File"
                     : "Run"
@@ -170,7 +170,7 @@ export function RunWidget() {
               size="large"
               iconSize={18}
               className={styles.widgetButton}
-              title={selected ? `Debug '${selected.name}'` : currentFile ? "Debug Current File" : "Debug"}
+              title={selected ? tx`Debug '${selected.name}'` : currentFile ? "Debug Current File" : "Debug"}
               shortcut={shortcutLabel("run.debug")}
               disabled={!selected && !currentFile}
               onClick={() => void executeAction("run.debug")}

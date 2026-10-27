@@ -116,7 +116,7 @@ function layoutActions(): Action[] {
       when: "toolWindowLayoutsSaved",
       run: async () => {
         const name = await pick("Delete Layout");
-        if (name && (await confirm({ title: "Delete Layout", message: `Delete the layout '${name}'?`, ok: "Delete", icon: "warning" })))
+        if (name && (await confirm({ title: "Delete Layout", message: tx`Delete the layout '${name}'?`, ok: "Delete", icon: "warning" })))
           deleteLayout(name);
       },
     },

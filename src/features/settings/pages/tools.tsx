@@ -19,6 +19,7 @@ import { selectPage, setQuery } from "../model/staging";
 import type { PageSpec } from "./spec";
 import { BoundToggle, Grid, Indented, PageLink, TableEditor } from "./workflowControls";
 import styles from "./Workflow.module.css";
+import { tx } from "@/platform/i18n";
 
 export const TOOLS_GROUP = "Tools";
 
@@ -468,7 +469,7 @@ function ExternalToolsEditor() {
               onMouseDown={() => setSelected(t.id)}
             >
               <Checkbox
-                aria-label={`Enable ${t.name}`}
+                aria-label={tx`Enable ${t.name}`}
                 checked={t.enabled}
                 onChange={(on) => setTools(tools.map((x) => (x.id === t.id ? { ...x, enabled: on } : x)))}
               />

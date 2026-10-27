@@ -28,6 +28,7 @@ import {
 } from "./rebasePlan";
 import { currentRepo, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 const short = (id: string) => id.slice(0, 8);
 
@@ -147,7 +148,7 @@ export async function dropCommits(commits: Commit[]) {
     return refuse("Cannot drop commits", "At least one commit of the branch must be kept");
   const ok = await confirmDialog({
     title: "Drop Commits",
-    message: `Drop ${commits.length} commits from the current branch? Their changes are removed.`,
+    message: tx`Drop ${commits.length} commits from the current branch? Their changes are removed.`,
     okLabel: "Drop",
     danger: true,
   });
@@ -167,7 +168,7 @@ async function dropCommit(commit: Commit) {
     return refuse("Cannot drop commit", "It is the only commit of the branch");
   const ok = await confirmDialog({
     title: "Drop Commit",
-    message: `Drop commit ${short(commit.id)} “${commit.summary}” from the current branch? Its changes are removed.`,
+    message: tx`Drop commit ${short(commit.id)} “${commit.summary}” from the current branch? Its changes are removed.`,
     okLabel: "Drop",
     danger: true,
   });
@@ -293,7 +294,7 @@ function InteractiveRebaseDialog({ range, onClose }: { range: RebaseRange; onClo
   return (
     <Dialog
       open
-      title={`Rebasing ${range.commits.length} commit${range.commits.length === 1 ? "" : "s"}${range.base ? ` onto ${short(range.base)}` : " from the root"}`}
+      title={rebaseTitle(range.commits.length, range.base && short(range.base))}
       onClose={onClose}
       width={720}
       footerStart={problem ? <span className={styles.error}>{problem}</span> : undefined}
@@ -311,7 +312,7 @@ function InteractiveRebaseDialog({ range, onClose }: { range: RebaseRange; onClo
             <Select<RebaseAction>
               value={r.action}
               options={ACTIONS}
-              aria-label={`Action for ${short(r.commit.id)}`}
+              aria-label={tx`Action for ${short(r.commit.id)}`}
               className={styles.rebaseAction}
               onChange={(action) => update(i, { action })}
             />
@@ -353,4 +354,9 @@ function InteractiveRebaseDialog({ range, onClose }: { range: RebaseRange; onClo
       <div style={{ height: 12 }} />
     </Dialog>
   );
+}
+
+function rebaseTitle(n: number, onto: string | null): string {
+  if (onto) return n === 1 ? tx`Rebasing ${n} commit onto ${onto}` : tx`Rebasing ${n} commits onto ${onto}`;
+  return n === 1 ? tx`Rebasing ${n} commit from the root` : tx`Rebasing ${n} commits from the root`;
 }

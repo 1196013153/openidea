@@ -10,6 +10,7 @@ import { showCommitRange } from "./CompareBranches";
 import { confirmDialog, promptText } from "./dialogs";
 import { runOp, runRemote, saveAll } from "./ops";
 import { conflictedFiles, currentRepo, refreshNow, repoName, useVcs } from "./store";
+import { tx } from "@/platform/i18n";
 
 const recentKey = () => `openidea.vcs.recentBranches:${useVcs.getState().root ?? ""}`;
 
@@ -50,7 +51,7 @@ async function askSmartCheckout(files: readonly string[]): Promise<CheckoutOptio
   const list = files.slice(0, 20).join("\n") + (files.length > 20 ? "\n…" : "");
   const r = await ask({
     title: "Git Checkout Problem",
-    body: `Your local changes to the following files would be overwritten by checkout:\n${list}\n\nSmart Checkout can stash the changes, checkout and unstash them after that.`,
+    body: tx`Your local changes to the following files would be overwritten by checkout:\n${list}\n\nSmart Checkout can stash the changes, checkout and unstash them after that.`,
     icon: "warning",
     width: 520,
     buttons: [
@@ -105,8 +106,8 @@ async function performCheckout(
       case "localBranchAhead": {
         const { local, remote } = outcome;
         const r = await ask({
-          title: `Checkout ${remote}`,
-          body: `Local branch '${local}' has commits that do not exist in '${remote}'. Rebase '${local}' onto '${remote}', or drop local commits?`,
+          title: tx`Checkout ${remote}`,
+          body: tx`Local branch '${local}' has commits that do not exist in '${remote}'. Rebase '${local}' onto '${remote}', or drop local commits?`,
           buttons: [
             { id: "rebase", label: "Rebase onto Remote", primary: true },
             { id: "reset", label: "Drop Local Commits" },
@@ -145,7 +146,7 @@ export async function checkoutBranch(name: string) {
 export async function newBranch(from?: string) {
   const suggestion = from ? (from.includes("/") ? shortRemoteName(from) : `${from}-copy`) : "";
   const r = await promptText({
-    title: from ? `Create New Branch from ${from}` : "Create New Branch",
+    title: from ? tx`Create New Branch from ${from}` : "Create New Branch",
     label: "New branch name:",
     initial: from && from.includes("/") && !validateBranchName(suggestion) ? suggestion : "",
     mono: true,
@@ -218,7 +219,7 @@ export async function rebaseOnto(branch: string) {
 
 export async function renameBranch(name: string) {
   const r = await promptText({
-    title: `Rename Branch ${name}`,
+    title: tx`Rename Branch ${name}`,
     label: "New branch name:",
     initial: name,
     mono: true,
@@ -290,7 +291,7 @@ export async function deleteBranch(name: string) {
 export async function deleteRemoteBranch(name: string) {
   const ok = await confirmDialog({
     title: "Delete Remote Branch",
-    message: `Delete branch '${shortRemoteName(name)}' on the remote? The remote-tracking branch '${name}' is removed as well.`,
+    message: tx`Delete branch '${shortRemoteName(name)}' on the remote? The remote-tracking branch '${name}' is removed as well.`,
     okLabel: "Delete",
     danger: true,
   });
@@ -354,8 +355,8 @@ export async function checkoutInRepos(name: string, roots: readonly string[]) {
 /** New Branch in every repository of `roots` (from HEAD or `from`), checked out by default. */
 export async function newBranchInRepos(roots: readonly string[], from?: string) {
   const r = await promptText({
-    title: from ? `Create New Branch from ${from}` : "Create New Branch",
-    label: `New branch name (in ${roots.length} repositories):`,
+    title: from ? tx`Create New Branch from ${from}` : "Create New Branch",
+    label: tx`New branch name (in ${roots.length} repositories):`,
     initial: from?.includes("/") ? shortRemoteName(from) : "",
     mono: true,
     okLabel: "Create",
@@ -409,7 +410,7 @@ export async function rebaseInRepos(branch: string, roots: readonly string[]) {
 export async function deleteInRepos(name: string, roots: readonly string[]) {
   const ok = await confirmDialog({
     title: "Delete Branch",
-    message: `Delete branch '${name}' in ${roots.length} repositories? Unmerged commits are discarded.`,
+    message: tx`Delete branch '${name}' in ${roots.length} repositories? Unmerged commits are discarded.`,
     okLabel: "Delete",
     danger: true,
   });

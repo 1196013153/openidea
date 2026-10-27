@@ -14,6 +14,7 @@ import { KIND_COLOR, baseName, dirName, effectiveKind, relTo, rootOf, stripSlash
 import { logConsole, runOp, saveAll } from "./ops";
 import { currentRepo, loadStashes, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 export function firstLine(message: string): string {
   return (
@@ -230,7 +231,7 @@ function RollbackDialog({ files, onClose }: { files: FileStatus[]; onClose: () =
           return (
             <div key={f.path} className={styles.fileRow}>
               <Checkbox
-                aria-label={`Include ${baseName(f.path)}`}
+                aria-label={tx`Include ${baseName(f.path)}`}
                 checked={selected.has(f.path)}
                 onChange={(v) =>
                   setSelected((s) => {
@@ -366,10 +367,10 @@ export interface UnstashOptions {
 export function unstashTitles(o: UnstashOptions): { title: string; success: string } {
   const ref = `stash@{${o.index}}`;
   if (o.branch)
-    return { title: `Unstash ${ref} as branch ${o.branch}`, success: `Unstashed ${ref} on branch ${o.branch}` };
+    return { title: tx`Unstash ${ref} as branch ${o.branch}`, success: `Unstashed ${ref} on branch ${o.branch}` };
   return o.pop
-    ? { title: `Pop ${ref}`, success: `Unstashed ${ref}` }
-    : { title: `Apply ${ref}`, success: `Applied ${ref}` };
+    ? { title: tx`Pop ${ref}`, success: `Unstashed ${ref}` }
+    : { title: tx`Apply ${ref}`, success: `Applied ${ref}` };
 }
 
 export async function unstash(o: UnstashOptions) {
@@ -455,7 +456,9 @@ function UnstashDialog({ initial, onClose }: { initial: number; onClose: () => v
 export async function dropStash(index: number, message: string) {
   const ok = await confirmDialog({
     title: "Drop Stash",
-    message: `Drop stash@{${index}}${message ? ` “${message}”` : ""}? This cannot be undone.`,
+    message: message
+      ? tx`Drop ${`stash@{${index}}`} “${message}”? This cannot be undone.`
+      : tx`Drop ${`stash@{${index}}`}? This cannot be undone.`,
     okLabel: "Drop",
     danger: true,
   });

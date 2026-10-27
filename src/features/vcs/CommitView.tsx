@@ -464,7 +464,7 @@ function ChangesPanel() {
                     <CheckMark
                       checked={agg.checked}
                       indeterminate={agg.indeterminate}
-                      label={`Include ${n.label} in commit`}
+                      label={tx`Include ${n.label} in commit`}
                       onToggle={() => toggle(selected.has(n.key) && selected.size > 1 ? selectedNodes() : [n])}
                     />
                     {n.type === "group" ? null : (
