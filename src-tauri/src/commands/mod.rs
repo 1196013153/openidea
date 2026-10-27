@@ -11,6 +11,7 @@ pub mod app;
 pub mod build;
 pub mod bytes;
 pub mod caches;
+pub mod clipboard;
 pub mod coverage;
 pub mod db;
 pub mod debug;
@@ -69,6 +70,9 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         fs::fs_delete,
         fs::fs_copy,
         fs::fs_read_text,
+        clipboard::clipboard_file_list,
+        clipboard::clipboard_has_files,
+        clipboard::clipboard_set_file_list,
         doc::doc_open,
         doc::doc_open_virtual,
         doc::doc_close,

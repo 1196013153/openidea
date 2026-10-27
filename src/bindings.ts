@@ -80,6 +80,15 @@ export const commands = {
 	 *  definition). Prefers the unsaved buffer when the file is open.
 	 */
 	fsReadText: (path: string) => typedError<string, IdeError>(__TAURI_INVOKE("fs_read_text", { path })),
+	/**  Absolute paths on the clipboard, empty when it holds no file list. */
+	clipboardFileList: () => typedError<string[], IdeError>(__TAURI_INVOKE("clipboard_file_list")),
+	/**  Whether the clipboard holds files: cheap, for the Paste item's enabled state. */
+	clipboardHasFiles: () => __TAURI_INVOKE<boolean>("clipboard_has_files"),
+	/**
+	 *  Replaces the clipboard with `paths`, so Explorer can paste them. Best-effort:
+	 *  false when the clipboard stayed busy; the caller keeps working either way.
+	 */
+	clipboardSetFileList: (paths: string[]) => typedError<boolean, IdeError>(__TAURI_INVOKE("clipboard_set_file_list", { paths })),
 	/**
 	 *  Opens a document. Async: reading and decoding a large file must not block
 	 *  the main thread (synchronous commands run on it).
