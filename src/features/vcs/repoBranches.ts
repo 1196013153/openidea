@@ -1,6 +1,7 @@
 /** Branches popup model for a project with several repositories (pure). */
 import type { Branch } from "@/bindings";
 import { fuzzyMatch } from "@/ui/match";
+import { rootOf } from "./model";
 import { isFavoriteBranch, MAX_RECENT, sortLocal, sortRemote, type PopupAction } from "./branches";
 
 export interface RepoEntry {
@@ -23,6 +24,19 @@ export function repoColorIndex(index: number): number {
 export function repoHeadLabel(r: Pick<RepoEntry, "head" | "headCommit">): string {
   if (r.head) return r.head;
   return r.headCommit ? r.headCommit.slice(0, 8) : "No commits";
+}
+
+/**
+ * The current repository, shown by the branch widget and the lower part of the Branches
+ * popup: the one holding the active editor's file, else the selected one, else the first.
+ */
+export function currentRepoFor(
+  activePath: string | null,
+  roots: readonly string[],
+  selected: string | null,
+): string | null {
+  const ofFile = activePath ? rootOf(activePath, roots) : null;
+  return ofFile ?? (selected && roots.includes(selected) ? selected : null) ?? roots[0] ?? null;
 }
 
 /**

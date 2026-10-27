@@ -3,6 +3,7 @@ import type { Branch } from "@/bindings";
 import {
   buildMultiRepoRows,
   commonBranches,
+  currentRepoFor,
   DEFAULT_EXPANDED,
   repoColorIndex,
   repoHeadLabel,
@@ -70,6 +71,30 @@ const summary = (rows: RepoRow[]) =>
         return `${"  ".repeat(r.depth)}tag ${r.tag}`;
     }
   });
+
+describe("currentRepoFor (shared by the widget and the popup)", () => {
+  const roots = ["/p", "/p/ology-collect", "/p/ology-collect/sub", "/p/ology-gateway"];
+  it.each([
+    [
+      "the innermost repository of the active file",
+      "/p/ology-collect/src/A.java",
+      "/p/ology-gateway",
+      "/p/ology-collect",
+    ],
+    ["a nested repository's file", "/p/ology-collect/sub/x.ts", null, "/p/ology-collect/sub"],
+    ["the project's own repository", "/p/README.md", "/p/ology-gateway", "/p"],
+    ["no active file: the selected repository", null, "/p/ology-gateway", "/p/ology-gateway"],
+    ["a file outside every repository: the selected one", "/elsewhere/a.txt", "/p/ology-gateway", "/p/ology-gateway"],
+    ["a selected repository that is gone: the first", null, "/gone", "/p"],
+    ["nothing selected: the first", null, null, "/p"],
+  ])("%s", (_name, active, selected, expected) => {
+    expect(currentRepoFor(active, roots, selected)).toBe(expected);
+  });
+
+  it("is null without repositories", () => {
+    expect(currentRepoFor("/p/a", [], null)).toBeNull();
+  });
+});
 
 describe("widgetShowsRepo", () => {
   it.each([

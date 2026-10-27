@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import clsx from "clsx";
 import { create } from "zustand";
-import type { Branch } from "@/bindings";
+import type { Branch, BranchInfo } from "@/bindings";
 import { executeAction } from "@/platform/actions";
 import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
-import { maybeEditorService } from "@/workbench/contributions";
+import { useEditorRegistry } from "@/editor/api";
 import {
   BarButton,
   HighlightedText,
@@ -26,6 +26,7 @@ import { loadFavoriteBranches, recentBranches, toggleFavoriteBranch, useFavorite
 import { inProgress, operationTitle, type InProgress } from "./operations";
 import {
   buildMultiRepoRows,
+  currentRepoFor,
   DEFAULT_EXPANDED,
   repoHeadLabel,
   toggleExpanded,
@@ -33,7 +34,7 @@ import {
   type RepoEntry,
   type RepoRow,
 } from "./repoBranches";
-import { currentRepo, focusRepo, loadBranches, repoName, repoOf, useVcs } from "./store";
+import { currentRepo, focusRepo, loadBranches, repoName, useVcs } from "./store";
 import styles from "./BranchWidget.module.css";
 
 export const useBranchesPopup = create<{ open: boolean }>(() => ({ open: false }));
@@ -45,17 +46,29 @@ export function headLabel(branch: { head: string | null; headCommit: string | nu
   return branch.headCommit ? branch.headCommit.slice(0, 8) : "No commits";
 }
 
+/** The current repository (see `currentRepoFor`): the widget and the popup show the same one. */
+function useCurrentRepo(): string | null {
+  const path = useEditorRegistry((s) => s.active?.ctx.path ?? null);
+  return useVcs((s) => currentRepoFor(path, s.roots, s.repo));
+}
+
 export function BranchWidget() {
   const available = useVcs((s) => s.available);
-  const branch = useVcs((s) => s.branch);
+  const selected = useVcs((s) => s.branch);
   const count = useVcs((s) => s.roots.length);
-  // Several repositories on different branches: the widget names the selected one.
-  const repo = useVcs((s) =>
-    s.repo && widgetShowsRepo(s.roots.map((r) => ({ head: s.heads[r]?.head ?? null }))) ? repoName(s.repo) : null,
-  );
+  const current = useCurrentRepo();
+  // Several repositories on different branches: the widget names the current one.
+  const diverged = useVcs((s) => widgetShowsRepo(s.roots.map((r) => ({ head: s.heads[r]?.head ?? null }))));
+  // The current repository is not the selected one: its HEAD from the last scan (no upstream).
+  const other = useVcs((s) => (diverged && current && current !== s.repo ? (s.heads[current] ?? null) : null));
+  const otherOp = useVcs((s) => (current ? (s.operations[current] ?? null) : null));
   const open = useBranchesPopup((s) => s.open);
   const ref = useRef<HTMLButtonElement>(null);
-  if (!available || !branch) return null;
+  if (!available || !selected) return null;
+  const repo = diverged && current ? repoName(current) : null;
+  const branch: BranchInfo = other
+    ? { head: other.head, headCommit: other.headCommit, upstream: null, ahead: 0, behind: 0, operation: otherOp }
+    : selected;
   const op = branch.operation ? ` (${branch.operation})` : "";
   const sync = [
     branch.behind > 0 ? `${branch.behind} incoming` : "",
@@ -382,12 +395,6 @@ function saveExpanded(expanded: ReadonlySet<string>) {
   }
 }
 
-/** The repository of the active file, else the selected one, else the first. */
-function contextRepo(roots: readonly string[]): string | null {
-  const path = maybeEditorService()?.activePath();
-  return (path ? repoOf(path, roots) : null) ?? currentRepo() ?? roots[0] ?? null;
-}
-
 /**
  * Branches popup of a project with several repositories: actions; the repositories,
  * each opening its own branches (on hover or →); then the branches they all have
@@ -399,7 +406,7 @@ function MultiRepoPanel({ onClose }: { onClose: () => void }) {
   const operations = useVcs((s) => s.operations);
   const version = useVcs((s) => s.version);
   const favorites = useFavoriteBranches((s) => s.names);
-  const [current] = useState(() => contextRepo(roots));
+  const current = useCurrentRepo();
   const [recent] = useState(recentBranches);
   const [tags, setTags] = useState<string[]>([]);
   const [query, setQuery] = useState("");
