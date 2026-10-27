@@ -17,6 +17,7 @@ import { call, commands, isTauri } from "@/platform/ipc";
 import { isPopupOpen, lazyComponent } from "@/ui";
 import { loadSettings, useProject } from "@/platform/project";
 import { provideSettingsSearchIndex, registerOverlay } from "@/workbench/contributions";
+import { windowBackgroundHex } from "@/workbench/theme";
 import { LazySettingsDialog, loadBuiltinPages, unloadBuiltinPages } from "./dialog/LazySettingsDialog";
 import {
   closeSettings,
@@ -85,8 +86,7 @@ function settingsActions(open: (page?: string, newProjects?: boolean) => void): 
 async function showSettings(page?: string, newProjects = false) {
   if (isTauri()) {
     try {
-      const frame = getComputedStyle(document.documentElement).getPropertyValue("--bg-frame").trim();
-      await call(commands.windowOpenSettings(page ?? null, newProjects, frame || null));
+      await call(commands.windowOpenSettings(page ?? null, newProjects, windowBackgroundHex()));
       return;
     } catch (e) {
       console.warn("settings window unavailable, using the dialog", e);

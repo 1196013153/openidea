@@ -332,6 +332,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         plugin::plugin_run_command,
         plugin::plugin_set_active_file,
         plugin::plugin_set_theme,
+        plugin::plugin_set_theme_frame,
         perf::app_metrics,
         perf::clear_caches,
         analysis::inspect_code,

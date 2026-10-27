@@ -230,11 +230,21 @@ pub fn frame_color(appearance: &AppearanceSettings, os_dark: bool) -> Color {
     }
 }
 
+/// A `#rgb` / `#rrggbb` / `#rrggbbaa` colour sent by the UI (Tauri's own parser).
+fn hex_color(hex: &str) -> Option<Color> {
+    serde_json::from_value(serde_json::Value::String(hex.to_owned())).ok()
+}
+
 /// Builds a project window painted in the saved theme's frame colour, so it
 /// doesn't flash the light default before its page (and splash) loads.
 fn build_project_window(app: &AppHandle, mut config: WindowConfig) -> IdeResult<WebviewWindow> {
-    let appearance = app.try_state::<AppState>().map(|s| s.global_settings.effective().appearance);
-    if let Some(a) = &appearance {
+    let state = app.try_state::<AppState>();
+    let appearance = state.as_ref().map(|s| s.global_settings.effective().appearance);
+    // A plugin theme replaces the built-in one in either OS mode; the UI records its resolved frame.
+    let plugin_frame = state.as_ref().and_then(|s| s.plugins.startup_frame()).and_then(|c| hex_color(&c));
+    if let Some(color) = plugin_frame {
+        config.background_color = Some(color);
+    } else if let Some(a) = &appearance {
         config.background_color = Some(frame_color(a, false));
     }
     let window = WebviewWindowBuilder::from_config(app, &config)
@@ -242,7 +252,7 @@ fn build_project_window(app: &AppHandle, mut config: WindowConfig) -> IdeResult<
         .map_err(|e| IdeError::internal(format!("cannot create window: {e}")))?;
     apply_zoom(app, &window);
     // "Sync with OS" needs the OS mode, known once the window exists.
-    if let Some(a) = appearance.filter(|a| a.sync_with_os || a.theme == "system")
+    if let Some(a) = appearance.filter(|a| plugin_frame.is_none() && (a.sync_with_os || a.theme == "system"))
         && window.theme().is_ok_and(|t| t == Theme::Dark)
     {
         let _ = window.set_background_color(Some(frame_color(&a, true)));
@@ -418,7 +428,7 @@ pub fn open_settings_window(
     config.fullscreen = false;
     config.drag_drop_enabled = false;
     // macOS shows a child window as soon as it is attached, before the page loads: paint the theme's frame colour.
-    if let Some(color) = background.and_then(|c| serde_json::from_value(serde_json::Value::String(c)).ok()) {
+    if let Some(color) = background.as_deref().and_then(hex_color) {
         config.background_color = Some(color);
     }
     windows.set_launch(&label, Launch { project: None, settings_page: page, new_projects });
@@ -463,6 +473,19 @@ mod tests {
         a.sync_with_os = true;
         assert_eq!(frame_color(&a, false), Color(0xe9, 0xea, 0xee, 0xff));
         assert_eq!(frame_color(&a, true), Color(0x26, 0x28, 0x2c, 0xff));
+    }
+
+    #[test]
+    fn frame_colours_from_the_ui_parse_as_hex() {
+        for (hex, expected) in [
+            ("#eaeaeb", Color(0xea, 0xea, 0xeb, 0xff)),
+            ("#21252b", Color(0x21, 0x25, 0x2b, 0xff)),
+            ("#8040bfcc", Color(0x80, 0x40, 0xbf, 0xcc)),
+            ("#fff", Color(0xff, 0xff, 0xff, 0xff)),
+        ] {
+            assert_eq!(hex_color(hex), Some(expected), "{hex}");
+        }
+        assert_eq!(hex_color("hsl(220, 13%, 15%)"), None);
     }
 
     #[test]

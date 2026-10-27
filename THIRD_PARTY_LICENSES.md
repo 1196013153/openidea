@@ -100,6 +100,17 @@ c → cpp, php_only), node names adapted to the bundled grammar versions
 definitions re-kinded as `field` / `method`, and missing scopes, definitions and
 references added; each file's header notes its changes.
 
+## Theme plugin palettes
+
+The sample theme plugins port MIT-licensed palettes; each package's `LICENSE`
+holds the full notice and source revisions:
+
+- `plugins/theme-solarized/`: [Solarized](https://github.com/altercation/solarized),
+  Copyright (c) 2011 Ethan Schoonover.
+- `plugins/theme-one/`: Atom [One Light](https://github.com/atom/one-light-syntax) /
+  [One Dark](https://github.com/atom/one-dark-syntax) syntax themes, Copyright (c) 2016
+  GitHub Inc., and their UI themes, Copyright (c) 2014 GitHub Inc.
+
 ---
 
 Apache License

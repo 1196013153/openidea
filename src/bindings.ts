@@ -699,6 +699,11 @@ export const commands = {
 	theme: ThemeDef,
 } | null, IdeError>(__TAURI_INVOKE("plugin_set_theme", { pluginId, themeId })),
 	/**
+	 *  The UI reports the selected plugin theme's resolved frame colour (`#rrggbb[aa]`),
+	 *  which new windows open in before their page loads.
+	 */
+	pluginSetThemeFrame: (color: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("plugin_set_theme_frame", { color })),
+	/**
 	 *  Snapshot of process memory and subsystem sizes, summed over all projects.
 	 *  Async: the process walk runs on the blocking pool, not the main thread.
 	 */

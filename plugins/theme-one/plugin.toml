@@ -1,0 +1,17 @@
+# Contribution-only theme plugin: no code, just theme and editor scheme files.
+id = "theme-one"
+name = "One Themes"
+version = "1.0.0"
+description = "One Light and One Dark: the Atom One palettes by GitHub for the UI, the editor and the terminal."
+authors = ["bghtyu <3931591+bghtyu@users.noreply.github.com>", "GitHub Inc. (Atom One palettes)"]
+homepage = "https://github.com/atom/one-dark-syntax"
+change-notes = "1.0.0 — One Light and One Dark: UI, editor colour scheme and terminal ANSI colours."
+openidea-api = "0.1"
+
+[[contributes.themes]]
+path = "themes/one-light.theme.json"
+editor-scheme = "themes/one-light.scheme.json"
+
+[[contributes.themes]]
+path = "themes/one-dark.theme.json"
+editor-scheme = "themes/one-dark.scheme.json"
