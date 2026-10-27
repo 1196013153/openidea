@@ -60,14 +60,26 @@ impl RemoteCommand {
 
 /// `s` with the path `root` replaced by `remote` where it appears as a whole path
 /// (followed by a separator or the end of a path), not as the prefix of a longer name.
+/// The rest of a Windows path after the root takes `/` separators too.
 fn replace_root(s: &str, root: &str, remote: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(i) = rest.find(root) {
-        let after = &rest[i + root.len()..];
+        let mut after = &rest[i + root.len()..];
         let whole = after.chars().next().is_none_or(|c| !(c.is_alphanumeric() || matches!(c, '_' | '-' | '.')));
         out.push_str(&rest[..i]);
-        out.push_str(if whole { remote } else { root });
+        if whole {
+            out.push_str(remote);
+            if root.contains('\\') {
+                let end = after
+                    .find(|c: char| c.is_whitespace() || matches!(c, ';' | ',' | '"' | '\''))
+                    .unwrap_or(after.len());
+                out.push_str(&after[..end].replace('\\', "/"));
+                after = &after[end..];
+            }
+        } else {
+            out.push_str(root);
+        }
         rest = after;
     }
     out.push_str(rest);
@@ -317,6 +329,8 @@ mod tests {
         }
     }
 
+    // Unix paths are not absolute on Windows (`tests/remote.rs` runs there).
+    #[cfg(unix)]
     #[test]
     fn maps_interpreters_paths_and_folders() {
         let target = RunTarget { python: "/opt/py/bin/python".into(), ..Default::default() };
@@ -348,5 +362,6 @@ mod tests {
     fn maps_the_root_only_as_a_whole_path() {
         assert_eq!(replace_root("/work/proj2/x:/work/proj/y", "/work/proj", "/srv"), "/work/proj2/x:/srv/y");
         assert_eq!(replace_root("/work/proj", "/work/proj", "/srv"), "/srv");
+        assert_eq!(replace_root(r"C:\p\src/a.py C:\p2", r"C:\p", "/srv"), r"/srv/src/a.py C:\p2");
     }
 }

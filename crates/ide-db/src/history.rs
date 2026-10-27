@@ -52,7 +52,9 @@ impl HistoryStore {
         let mut all = self.read();
         let entries = all.entry(self.project.clone()).or_default().entry(source.to_owned()).or_default();
         entries.retain(|e| e.text != text);
-        entries.insert(0, HistoryEntry { text: text.to_owned(), time });
+        // By time, newest first: statements are recorded off the async threads, in any order.
+        let at = entries.iter().position(|e| e.time <= time).unwrap_or(entries.len());
+        entries.insert(at, HistoryEntry { text: text.to_owned(), time });
         entries.truncate(MAX_ENTRIES);
         self.write(&all)
     }
