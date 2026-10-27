@@ -16,7 +16,10 @@ let outline: Answer<OutlineItem[]> = ok([]);
 let references: Answer<Location[]> = ok([]);
 const lspGoto = vi.fn(async () => goto());
 const docOutline = vi.fn(async () => outline());
-const lspReferences = vi.fn(async () => references());
+const lspReferences = vi.fn(async () => {
+  const r = references();
+  return r.status === "ok" ? { status: "ok" as const, data: { locations: r.data, incomplete: null } } : r;
+});
 const lspCodeActions = vi.fn(async () => ({ status: "ok", data: [] }));
 const lspApplyCodeAction = vi.fn(async () => ({ status: "ok", data: null }));
 const docOpen = vi.fn(async (path: string) => ({ status: "ok", data: { id: 99, path } }));

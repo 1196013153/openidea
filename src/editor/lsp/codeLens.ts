@@ -9,7 +9,7 @@ import { EditorSelection, MapMode, StateEffect, StateField, type Extension, type
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { codeLenses, type CodeLens } from "@/editor/api";
 import { executeAction } from "@/platform/actions";
-import { commands, type OutlineItem, type SymbolKind } from "@/platform/ipc";
+import { commands, nextRequestId, type OutlineItem, type SymbolKind } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { debounce, docOf, isUnavailable, lspRequest } from "./lsp";
 import { posToOffset } from "./positions";
@@ -166,7 +166,9 @@ class UsagesLensPlugin {
         await Promise.all(
           todo.slice(i, i + CONCURRENCY).map(async (t) => {
             try {
-              const refs = await lspRequest(() => commands.lspReferences(doc.doc, { line: t.line, col: t.col }, false));
+              const { locations: refs } = await lspRequest(() =>
+                commands.lspReferences(nextRequestId(), doc.doc, { line: t.line, col: t.col }, false, true),
+              );
               this.cache.set(key(t), refs.length);
             } catch (e) {
               if (isUnavailable(e)) unavailable = true;

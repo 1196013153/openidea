@@ -75,8 +75,12 @@ impl ClientHandler {
                 _ => return,
             }
         };
+        let ended = matches!(&event, IdeEvent::Task { done: true, .. });
         mgr.sink().emit(event);
         self.server.refresh_busy_status(mgr.sink());
+        if ended {
+            self.server.progress_ended();
+        }
     }
 
     fn publish_diagnostics(&self, mgr: &LspManager, params: Value) {
@@ -88,6 +92,10 @@ impl ClientHandler {
             }
         };
         let Some(path) = uri_to_path(params.uri.as_str()) else { return };
+        // Files opened only for a request (references search) are not the user's problems.
+        if self.server.suppresses_diagnostics(&path) {
+            return;
+        }
         let conv = mgr.conv(self.encoding());
         let items = params
             .diagnostics

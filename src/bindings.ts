@@ -287,7 +287,12 @@ export const commands = {
 	 *  language server returned a non-`file:` URI for. Cached per project.
 	 */
 	lspVirtualDocument: (uri: string) => typedError<VirtualDocument, IdeError>(__TAURI_INVOKE("lsp_virtual_document", { uri })),
-	lspReferences: (doc: DocId, pos: Pos, includeDeclaration: boolean) => typedError<Location[], IdeError>(__TAURI_INVOKE("lsp_references", { doc, pos, includeDeclaration })),
+	/**
+	 *  References of the symbol at `pos`. `project_wide` also searches project files
+	 *  outside the language server's analysis scope; bulk scans over many symbols
+	 *  leave it off. Cancel with `cancel_request(request)`.
+	 */
+	lspReferences: (request: RequestId, doc: DocId, pos: Pos, includeDeclaration: boolean, projectWide: boolean) => typedError<References, IdeError>(__TAURI_INVOKE("lsp_references", { request, doc, pos, includeDeclaration, projectWide })),
 	lspDocumentHighlights: (doc: DocId, pos: Pos) => typedError<Highlight[], IdeError>(__TAURI_INVOKE("lsp_document_highlights", { doc, pos })),
 	lspWorkspaceSymbols: (request: RequestId, query: string) => typedError<WorkspaceSymbol[], IdeError>(__TAURI_INVOKE("lsp_workspace_symbols", { request, query })),
 	lspCodeActions: (doc: DocId, range: Range, only: string[]) => typedError<CodeAction[], IdeError>(__TAURI_INVOKE("lsp_code_actions", { doc, range, only })),
@@ -4174,6 +4179,18 @@ export type RecentProject = {
 	/**  Current git branch when last opened, shown on the welcome screen. */
 	branch: string | null,
 };
+
+export type References = {
+	locations: Location[],
+	incomplete: ReferencesIncomplete | null,
+};
+
+/**  Why a references search may have missed usages. */
+export type ReferencesIncomplete = 
+/**  A language server was still indexing. */
+"indexing" | 
+/**  More project files mention the name than were checked. */
+"tooManyFiles";
 
 export type Remote = {
 	name: string,

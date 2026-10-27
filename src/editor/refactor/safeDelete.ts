@@ -13,7 +13,7 @@
 import type { EditorView } from "@codemirror/view";
 import type { Text } from "@codemirror/state";
 import type { LocalSymbol, Location, OutlineItem, Pos, Range, SyntaxNode } from "@/bindings";
-import { call, commands, isCancelled, isTauri } from "@/platform/ipc";
+import { call, commands, isCancelled, isTauri, nextRequestId } from "@/platform/ipc";
 import { executeAction } from "@/platform/actions";
 import { basename } from "@/platform/project";
 import { editorsFor, whenSynced, type EditorDocContext } from "@/editor/api";
@@ -252,7 +252,7 @@ async function findUsages(ctx: EditorDocContext, target: SafeDeleteTarget): Prom
     comparePos(range.start, target.range.end) > 0;
   if (target.local)
     return target.local.references.filter((r) => outside(ctx.path, r)).map((range) => ({ path: ctx.path, range }));
-  const refs = await lspRequest(() => commands.lspReferences(ctx.doc, target.at, false));
+  const { locations: refs } = await lspRequest(() => commands.lspReferences(nextRequestId(), ctx.doc, target.at, false, true));
   return refs.filter((l) => outside(l.path, l.range));
 }
 
@@ -517,7 +517,8 @@ export async function fileUsages(paths: readonly string[], signal?: AbortSignal)
           if (signal?.aborted) return;
           let refs: Location[];
           try {
-            refs = await lspRequest(() => commands.lspReferences(doc, item.selection_range.start, false));
+            // Every symbol of every file: the server's own scope (a project search each would be too slow).
+            refs = (await lspRequest(() => commands.lspReferences(nextRequestId(), doc, item.selection_range.start, false, false))).locations;
           } catch (e) {
             if (isUnavailable(e)) {
               reason = errorText(e);
