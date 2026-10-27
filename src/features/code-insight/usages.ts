@@ -1,7 +1,7 @@
 /** Find Usages (⌥F7 → "usages" tool window) and Show Usages (⌥⌘F7 → popup). */
 import { create } from "zustand";
-import type { Location } from "@/bindings";
-import { commands, isCancelled } from "@/platform/ipc";
+import type { Location, ReferencesIncomplete, RequestId } from "@/bindings";
+import { commands, isCancelled, nextRequestId } from "@/platform/ipc";
 import { toolWindowService } from "@/workbench/contributions";
 import {
   caretContext,
@@ -119,6 +119,7 @@ export function pinUsageTab(id: number, pinned: boolean) {
 }
 
 export function closeUsageTab(id: number) {
+  cancelSearch(id);
   useUsages.setState((s) => {
     const i = s.tabs.findIndex((t) => t.id === id);
     const tabs = s.tabs.filter((t) => t.id !== id);
@@ -153,15 +154,25 @@ interface FetchedUsages {
   note: string | null;
 }
 
+/** Why the server's answer may miss usages, for the results' note. */
+export function incompleteNote(reason: ReferencesIncomplete, word: string | null): string {
+  if (reason === "indexing") return "May be incomplete: the language server is still indexing";
+  return `May be incomplete: too many files mention ${word ? `'${word}'` : "the name"} to search them all`;
+}
+
 /**
- * The server's references; when it is not ready or fails, the syntax fallback
- * (an empty server answer is respected). Without a fallback the server error stands.
+ * The server's references across the project (files outside its analysis scope
+ * included); when it is not ready or fails, the syntax fallback (an empty server
+ * answer is respected). Without a fallback the server error stands.
+ * Cancel with `commands.cancelRequest(request)`.
  */
-export async function fetchUsages(c: CaretContext): Promise<FetchedUsages> {
+export async function fetchUsages(c: CaretContext, request: RequestId = nextRequestId()): Promise<FetchedUsages> {
   let locs: Location[];
   let note: string | null = null;
   try {
-    locs = await lspRequest(() => commands.lspReferences(c.doc, { line: c.line, col: c.col }, false));
+    const refs = await lspRequest(() => commands.lspReferences(request, c.doc, { line: c.line, col: c.col }, false, true));
+    locs = refs.locations;
+    if (refs.incomplete) note = incompleteNote(refs.incomplete, c.word);
   } catch (e) {
     if (isCancelled(e)) throw e;
     let fb = null;
@@ -179,8 +190,22 @@ export async function fetchUsages(c: CaretContext): Promise<FetchedUsages> {
   return { groups: groupUsages(locs, files), note };
 }
 
+/** In-flight server requests: of tool window searches by search id, and of the popup. */
+const inflight = new Map<number, RequestId>();
+let popupRequest: RequestId | null = null;
+
+function cancelSearch(id: number) {
+  const request = inflight.get(id);
+  if (request === undefined) return;
+  inflight.delete(id);
+  void commands.cancelRequest(request).catch(() => {});
+}
+
 /** The window switched projects: results (and in-flight searches) of the previous one are dropped. */
 export function resetUsages() {
+  for (const id of [...inflight.keys()]) cancelSearch(id);
+  if (popupRequest !== null) void commands.cancelRequest(popupRequest).catch(() => {});
+  popupRequest = null;
   useUsages.setState({ tabs: [], active: null });
   useUsagesPopup.setState({ open: false, symbol: null, groups: [], note: null });
 }
@@ -195,15 +220,22 @@ export async function findUsages() {
     const id = ++searchSeq;
     const base = { id, symbol: c.word, rerun: () => void run(id) };
     const loading = { ...base, loading: true, groups: [], error: null, note: null };
+    if (prev !== null) cancelSearch(prev);
     if (prev === null || !replaceUsageTab(prev, loading)) openUsageTab(loading);
     toolWindowService().show("usages");
+    const request = nextRequestId();
+    inflight.set(id, request);
     try {
-      const { groups, note } = await fetchUsages(c);
+      const { groups, note } = await fetchUsages(c, request);
       replaceUsageTab(id, { ...base, loading: false, groups, error: null, note });
     } catch (e) {
+      // Cancelled here (closed tab, rerun): a newer state already replaced it.
+      if (isCancelled(e) && !inflight.has(id)) return;
       const message = e instanceof Error ? e.message : String(e);
       if (!replaceUsageTab(id, { ...base, loading: false, groups: [], error: message, note: null })) return;
       reportError(e);
+    } finally {
+      if (inflight.get(id) === request) inflight.delete(id);
     }
   };
   await run(null);
@@ -232,11 +264,15 @@ export async function showUsagesPopup() {
     hint("Open a file to show usages");
     return;
   }
+  if (popupRequest !== null) void commands.cancelRequest(popupRequest).catch(() => {});
+  const request = nextRequestId();
+  popupRequest = request;
   try {
-    const { groups, note } = await fetchUsages(c);
+    const { groups, note } = await fetchUsages(c, request);
     const total = usageCount(groups);
     if (!total) {
-      hint(c.word ? `No usages of '${c.word}' found` : "No usages found");
+      const none = c.word ? `No usages of '${c.word}' found` : "No usages found";
+      hint(note ? `${none}. ${note}` : none);
       return;
     }
     if (total === 1) {
@@ -249,5 +285,7 @@ export async function showUsagesPopup() {
     useUsagesPopup.setState({ open: true, anchor: caretPoint(), symbol: c.word, groups, note });
   } catch (e) {
     reportError(e);
+  } finally {
+    if (popupRequest === request) popupRequest = null;
   }
 }

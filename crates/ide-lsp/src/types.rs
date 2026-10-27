@@ -322,3 +322,20 @@ pub struct FileRenameEdits {
     /// Servers that failed; their references are not updated.
     pub errors: Vec<String>,
 }
+
+/// Why a references search may have missed usages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum ReferencesIncomplete {
+    /// A language server was still indexing.
+    Indexing,
+    /// More project files mention the name than were checked.
+    TooManyFiles,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct References {
+    pub locations: Vec<Location>,
+    pub incomplete: Option<ReferencesIncomplete>,
+}

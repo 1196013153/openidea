@@ -13,6 +13,7 @@ mod handler;
 mod inspect;
 pub mod jdtls;
 mod launch;
+mod scope;
 mod server;
 mod tcp;
 mod text;
@@ -23,6 +24,7 @@ mod virtual_doc;
 
 pub use inspect::{FileInspection, InspectHost, InspectOptions};
 pub use launch::{LaunchError, Launcher, ProcessLauncher, search_path};
+pub use scope::{CandidateFiles, CandidateFn, CandidateQuery, MAX_CANDIDATES};
 pub use uri::{is_virtual_uri, path_to_uri_string, uri_target, uri_to_path};
 
 use caps::{ServerCaps, SyncKind};
@@ -143,6 +145,7 @@ pub struct LspManager {
     docs: Mutex<HashMap<DocId, DocState>>,
     apply_edit_hook: RwLock<Option<ApplyEditHook>>,
     config_hook: RwLock<Option<ConfigHook>>,
+    candidates_hook: RwLock<Option<Arc<CandidateFn>>>,
     shutting_down: AtomicBool,
     /// `window/showMessage` texts already surfaced; servers repeat them on every restart/reconfigure.
     shown_messages: Mutex<HashSet<(String, String)>>,
@@ -180,6 +183,19 @@ fn rpc_err(server: &str, method: &str, e: RpcError) -> IdeError {
         RpcError::Timeout => IdeError::new(ErrorKind::Protocol, format!("{server}: {method} timed out")),
         RpcError::Server { message, .. } => IdeError::new(ErrorKind::Protocol, format!("{server}: {message}")),
         RpcError::Protocol(m) => IdeError::new(ErrorKind::Protocol, format!("{server}: {m}")),
+    }
+}
+
+/// Sends the user's `didOpen` for `path`, closing a transient copy of the file
+/// first (one a references search opened).
+fn user_did_open(server: &Server, run: &Running, path: &Path, uri: &lsp::Uri, params: Value) {
+    if server.take_transient(path, run.generation)
+        && let Err(e) = run.peer.notify("textDocument/didClose", json!({ "textDocument": { "uri": uri } }))
+    {
+        tracing::debug!("{}: didClose: {e}", server.name);
+    }
+    if let Err(e) = run.peer.notify("textDocument/didOpen", params) {
+        tracing::debug!("{}: didOpen: {e}", server.name);
     }
 }
 
@@ -235,6 +251,7 @@ impl LspManager {
             docs: Mutex::new(HashMap::new()),
             apply_edit_hook: RwLock::new(None),
             config_hook: RwLock::new(None),
+            candidates_hook: RwLock::new(None),
             shutting_down: AtomicBool::new(false),
             shown_messages: Mutex::new(HashSet::new()),
             virtual_origins: Mutex::new(HashMap::new()),
@@ -299,10 +316,8 @@ impl LspManager {
                     }
                     let mut attached = Attached { server: server.clone(), opened_gen: None };
                     if let Some(run) = server.running() {
-                        if run.caps.read().open_close
-                            && let Err(e) = run.peer.notify("textDocument/didOpen", d.did_open_params())
-                        {
-                            tracing::debug!("{}: didOpen: {e}", server.name);
+                        if run.caps.read().open_close {
+                            user_did_open(&server, &run, &d.path, &d.uri, d.did_open_params());
                         }
                         attached.opened_gen = Some(run.generation);
                     }
@@ -481,6 +496,7 @@ impl LspManager {
         for (id, title) in server.take_progress() {
             self.sink.emit(ide_core::IdeEvent::Task { id, title, message: None, fraction: None, done: true });
         }
+        server.progress_ended();
         for path in server.take_diagnostic_paths() {
             self.sink.emit(ide_core::IdeEvent::Diagnostics {
                 path: path.into(),
@@ -596,10 +612,8 @@ impl LspManager {
             let params = state.did_open_params();
             for a in &mut state.servers {
                 if let Some(run) = a.server.running() {
-                    if run.caps.read().open_close
-                        && let Err(e) = run.peer.notify("textDocument/didOpen", params.clone())
-                    {
-                        tracing::debug!("{}: didOpen: {e}", a.server.name);
+                    if run.caps.read().open_close {
+                        user_did_open(&a.server, &run, &state.path, &state.uri, params.clone());
                     }
                     a.opened_gen = Some(run.generation);
                 }
@@ -945,40 +959,61 @@ impl LspManager {
         out.finish(Vec::new())
     }
 
-    pub async fn references(&self, doc: DocId, pos: Pos, include_declaration: bool) -> IdeResult<Vec<Location>> {
+    /// References of the symbol at `pos`. With `project_wide`, files outside
+    /// the servers' analysis scope that mention the name are opened for the
+    /// search (see [`scope`]); without, only what the servers analyse counts
+    /// (cheap, for bulk scans over many symbols).
+    pub async fn references(
+        &self,
+        doc: DocId,
+        pos: Pos,
+        include_declaration: bool,
+        project_wide: bool,
+        cancel: CancellationToken,
+    ) -> IdeResult<References> {
         let (snap, targets) = self.doc_targets(doc, "find references", |c| c.has("referencesProvider")).await?;
         let requests = targets.iter().map(|t| {
-            let mut params = snap.pos_params(t, pos);
-            params["context"] = json!({ "includeDeclaration": include_declaration });
+            let (snap, cancel) = (&snap, &cancel);
             async move {
-                (
-                    t,
-                    self.call::<_, Option<Vec<lsp::Location>>>(
-                        t,
-                        "textDocument/references",
-                        params,
-                        None,
-                        LONG_TIMEOUT,
-                    )
-                    .await,
-                )
+                let query = || async move {
+                    let mut params = snap.pos_params(t, pos);
+                    params["context"] = json!({ "includeDeclaration": include_declaration });
+                    let locs: Option<Vec<lsp::Location>> =
+                        self.call(t, "textDocument/references", params, Some(cancel), LONG_TIMEOUT).await?;
+                    let conv = self.conv(t.enc());
+                    Ok(locs.unwrap_or_default().iter().filter_map(|l| conv.location(l)).collect::<Vec<Location>>())
+                };
+                let files =
+                    |v: &Vec<Location>| v.iter().filter(|l| l.uri.is_none()).map(|l| l.path.to_path_buf()).collect();
+                let result = if project_wide {
+                    self.widened(snap, t, pos, cancel, query, files).await
+                } else {
+                    query().await.map(|first| {
+                        let empty = first.is_empty();
+                        scope::Widened::only(first, empty, &t.server)
+                    })
+                };
+                (t, result)
             }
         });
         let mut out = Outcome::new();
         for (t, r) in join_all(requests).await {
             match r {
-                Ok(locs) => {
-                    let conv = self.conv(t.enc());
-                    let locs: Vec<Location> =
-                        locs.unwrap_or_default().iter().filter_map(|l| conv.location(l)).collect();
+                Ok(w) => {
+                    let acc = out.value.get_or_insert_with(References::default);
+                    let locs: Vec<Location> = w.first.into_iter().chain(w.second.into_iter().flatten()).collect();
                     self.note_virtual(&t.server, locs.iter().map(|l| l.uri.as_deref()));
-                    out.value.get_or_insert_with(Vec::new).extend(locs);
+                    acc.locations.extend(locs);
+                    acc.incomplete = acc.incomplete.or(w.incomplete);
                 }
                 Err(e) => out.fail(e),
             }
         }
-        let mut v = out.finish(Vec::new())?;
-        convert::dedup_locations(&mut v);
+        if cancel.is_cancelled() {
+            return Err(IdeError::cancelled());
+        }
+        let mut v = out.finish(References::default())?;
+        convert::dedup_locations(&mut v.locations);
         Ok(v)
     }
 
@@ -1208,13 +1243,29 @@ impl LspManager {
         })
     }
 
+    /// Renames across the project: like [`Self::references`], files outside the
+    /// server's analysis scope that mention the name are opened for the request.
     pub async fn rename(&self, doc: DocId, pos: Pos, new_name: String) -> IdeResult<WorkspaceEdit> {
         let (snap, targets) = self.doc_targets(doc, "rename", |c| c.has("renameProvider")).await?;
         let t = &targets[0];
-        let mut params = snap.pos_params(t, pos);
-        params["newName"] = json!(new_name);
-        let r: Option<lsp::WorkspaceEdit> = self.call(t, "textDocument/rename", params, None, LONG_TIMEOUT).await?;
-        Ok(r.map(|e| convert::workspace_edit(&self.conv(t.enc()), e)).unwrap_or_default())
+        let query = || async {
+            let mut params = snap.pos_params(t, pos);
+            params["newName"] = json!(new_name);
+            let r: Option<lsp::WorkspaceEdit> = self.call(t, "textDocument/rename", params, None, LONG_TIMEOUT).await?;
+            Ok(r.map(|e| convert::workspace_edit(&self.conv(t.enc()), e)).unwrap_or_default())
+        };
+        let files = |e: &WorkspaceEdit| {
+            e.files
+                .iter()
+                .filter_map(|f| match f {
+                    ide_core::FileEdit::Edit { path, .. } => Some(path.to_path_buf()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let w = self.widened(&snap, t, pos, &CancellationToken::new(), query, files).await?;
+        // The second edit covers the first: its files stay analysed.
+        Ok(w.second.unwrap_or(w.first))
     }
 
     // ---- file operations (`workspace/willRenameFiles`, `workspace/didRenameFiles`) ----
@@ -1263,16 +1314,17 @@ impl LspManager {
 
     /// Some servers (tsserver) only answer for files of a loaded project: when
     /// `t` has no document open, one moved file of its languages is opened for the request.
-    fn open_for_file_op(&self, t: &Target, moves: &[(PathBuf, PathBuf, bool)]) -> Option<lsp::Uri> {
+    fn open_for_file_op(&self, t: &Target, moves: &[(PathBuf, PathBuf, bool)]) -> scope::TransientFiles<'_> {
+        let mut opened = scope::TransientFiles::empty(self, t);
         if !t.caps().open_close {
-            return None;
+            return opened;
         }
-        let docs = self.docs.lock();
-        let busy = docs
-            .values()
-            .any(|d| d.servers.iter().any(|a| a.server.id == t.server.id && a.opened_gen == Some(t.run.generation)));
+        let busy =
+            self.docs.lock().values().any(|d| {
+                d.servers.iter().any(|a| a.server.id == t.server.id && a.opened_gen == Some(t.run.generation))
+            });
         if busy {
-            return None;
+            return opened;
         }
         let languages = t.server.languages();
         let candidate =
@@ -1287,14 +1339,10 @@ impl LspManager {
                 continue;
             }
             let Ok(text) = std::fs::read_to_string(&file) else { continue };
-            let uri = uri::path_to_uri(&file);
-            let params =
-                json!({ "textDocument": { "uri": uri, "languageId": language.as_str(), "version": 0, "text": text } });
-            if t.run.peer.notify("textDocument/didOpen", params).is_ok() {
-                return Some(uri);
-            }
+            opened.hold(&file, &language, &text);
+            break;
         }
-        None
+        opened
     }
 
     /// Asks the servers for the edits that keep references intact when files or
@@ -1320,9 +1368,7 @@ impl LspManager {
             let opened = self.open_for_file_op(&t, &moves);
             let r: IdeResult<Option<lsp::WorkspaceEdit>> =
                 self.call(&t, "workspace/willRenameFiles", params, Some(&cancel), LONG_TIMEOUT).await;
-            if let Some(uri) = opened {
-                let _ = t.run.peer.notify("textDocument/didClose", json!({ "textDocument": { "uri": uri } }));
-            }
+            drop(opened);
             match r {
                 Ok(Some(edit)) => out.edit.files.extend(convert::workspace_edit(&self.conv(t.enc()), edit).files),
                 Ok(None) => {}
@@ -1519,32 +1565,46 @@ impl LspManager {
         let items: Option<Vec<lsp::CallHierarchyItem>> =
             self.call(t, "textDocument/prepareCallHierarchy", snap.pos_params(t, pos), None, DEFAULT_TIMEOUT).await?;
         let items = items.filter(|i| !i.is_empty()).ok_or_else(no_hierarchy_target)?;
-        let mut out = Vec::new();
-        for item in items {
-            let params = json!({ "item": item });
-            match direction {
-                HierarchyDirection::Incoming => {
-                    let calls: Option<Vec<lsp::CallHierarchyIncomingCall>> =
-                        self.call(t, "callHierarchy/incomingCalls", params, None, LONG_TIMEOUT).await?;
-                    let conv = self.conv(t.enc());
-                    for c in calls.unwrap_or_default() {
-                        let (path, _) = uri_target(c.from.uri.as_str());
-                        let ranges = c.from_ranges.iter().map(|r| conv.range(&path, *r)).collect();
-                        out.extend(convert::call_item(&conv, &c.from, ranges));
+        let query = || async {
+            let mut out = Vec::new();
+            for item in &items {
+                let params = json!({ "item": item });
+                match direction {
+                    HierarchyDirection::Incoming => {
+                        let calls: Option<Vec<lsp::CallHierarchyIncomingCall>> =
+                            self.call(t, "callHierarchy/incomingCalls", params, None, LONG_TIMEOUT).await?;
+                        let conv = self.conv(t.enc());
+                        for c in calls.unwrap_or_default() {
+                            let (path, _) = uri_target(c.from.uri.as_str());
+                            let ranges = c.from_ranges.iter().map(|r| conv.range(&path, *r)).collect();
+                            out.extend(convert::call_item(&conv, &c.from, ranges));
+                        }
                     }
-                }
-                HierarchyDirection::Outgoing => {
-                    let calls: Option<Vec<lsp::CallHierarchyOutgoingCall>> =
-                        self.call(t, "callHierarchy/outgoingCalls", params, None, LONG_TIMEOUT).await?;
-                    let conv = self.conv(t.enc());
-                    let (src, _) = uri_target(item.uri.as_str());
-                    for c in calls.unwrap_or_default() {
-                        let ranges = c.from_ranges.iter().map(|r| conv.range(&src, *r)).collect();
-                        out.extend(convert::call_item(&conv, &c.to, ranges));
+                    HierarchyDirection::Outgoing => {
+                        let calls: Option<Vec<lsp::CallHierarchyOutgoingCall>> =
+                            self.call(t, "callHierarchy/outgoingCalls", params, None, LONG_TIMEOUT).await?;
+                        let conv = self.conv(t.enc());
+                        let (src, _) = uri_target(item.uri.as_str());
+                        for c in calls.unwrap_or_default() {
+                            let ranges = c.from_ranges.iter().map(|r| conv.range(&src, *r)).collect();
+                            out.extend(convert::call_item(&conv, &c.to, ranges));
+                        }
                     }
                 }
             }
-        }
+            Ok(out)
+        };
+        let out = match direction {
+            // Callers are references: they may sit in files outside the server's scope.
+            HierarchyDirection::Incoming => {
+                let files = |v: &Vec<HierarchyItem>| {
+                    v.iter().filter(|i| i.uri.is_none()).map(|i| i.path.to_path_buf()).collect()
+                };
+                let w = self.widened(&snap, t, pos, &CancellationToken::new(), query, files).await?;
+                w.second.unwrap_or(w.first)
+            }
+            HierarchyDirection::Outgoing => query().await?,
+        };
         self.note_virtual(&t.server, out.iter().map(|i| i.uri.as_deref()));
         Ok(out)
     }

@@ -442,6 +442,12 @@ impl AppState {
             content_watchers: Mutex::new(content_watchers),
             _scratch_watcher: scratch_watcher,
         });
+        {
+            let weak = Arc::downgrade(&project);
+            project.lsp.set_candidates_hook(Box::new(move |q, cancel| {
+                weak.upgrade().map(|p| p.reference_candidates(q, cancel)).unwrap_or_default()
+            }));
+        }
         self.projects.write().insert(window.to_owned(), project.clone());
         Ok(project)
     }
@@ -607,6 +613,33 @@ impl Project {
             }
         }
         out
+    }
+
+    /// Project files of `q.languages` under `q.root` containing `q.word` as a whole
+    /// word (unsaved buffers included; excluded roots, ignored names and
+    /// `.gitignore`d files skipped): the files a references search opens on its server.
+    pub fn reference_candidates(
+        &self,
+        q: &ide_lsp::CandidateQuery,
+        cancel: &CancellationToken,
+    ) -> ide_lsp::CandidateFiles {
+        if !q.root.starts_with(&self.root) {
+            return ide_lsp::CandidateFiles::default();
+        }
+        let query = ide_search::WordQuery {
+            word: q.word.clone(),
+            dir: q.root.clone(),
+            exclude: self.search_excludes(),
+            limit: q.limit,
+        };
+        let filter = |rel: &str| q.languages.contains(&self.languages.detect(&self.root.join(rel), None));
+        match ide_search::files_with_word(&self.root, &query, Some(&filter), &|p| self.documents.text_of(p), cancel) {
+            Ok(found) => ide_lsp::CandidateFiles { files: found.files, limit_hit: found.limit_hit },
+            Err(e) => {
+                tracing::debug!("reference candidates: {}", e.message);
+                ide_lsp::CandidateFiles::default()
+            }
+        }
     }
 
     /// `files.exclude`, the ignored names and the effective excluded roots (user-marked and detected).
