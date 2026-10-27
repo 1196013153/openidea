@@ -31,7 +31,7 @@ import { spellingExtension } from "./spelling";
 import { DocumentationWindow, LspPopups, UsagesStatus } from "./Popups";
 import { DOCUMENTATION_WINDOW } from "./docs";
 import { prefetchMarkdown } from "./markdown";
-import { registerNavigationActions } from "@/editor/navigation";
+import { implementationGutter, registerNavigationActions } from "@/editor/navigation";
 
 export function lspExtensions(ctx: EditorDocContext): Extension[] {
   return [
@@ -61,6 +61,8 @@ export function activate(): () => void {
     installDiagnosticsEvents(),
     installAvailabilityEvents(),
     registerEditorContribution({ id: "lsp", order: 50, extensions: lspExtensions }),
+    // After the run icons (order 55), as their own gutter column.
+    registerEditorContribution({ id: "lsp.lineMarkers", order: 56, extensions: implementationGutter }),
     // After the templates (order 90): live template / postfix expansion keeps ⇥ first.
     registerEditorContribution({ id: "lsp.parameterTab", order: 95, extensions: () => parameterTabKeys }),
     registerOverlay({ id: "editor-lsp.popups", component: LspPopups }),

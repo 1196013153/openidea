@@ -7,7 +7,7 @@ import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { forEachDiagnostic } from "@codemirror/lint";
 import { commands, isCancelled, type CodeAction } from "@/platform/ipc";
-import { whenSynced } from "@/editor/api";
+import { contributedIntentions, whenSynced } from "@/editor/api";
 import { shortcutLabel } from "@/platform/keymap";
 import { debounce, docOf, isUnavailable, lspRequest, reportLspError } from "./lsp";
 import { offsetsToRange } from "./positions";
@@ -207,8 +207,8 @@ export function withInspectionControls(view: EditorView, items: ListPopupItem[])
 /** ⌥↵ */
 export async function showIntentions(view: EditorView) {
   try {
-    // Typo fixes come first and need no language server.
-    const local = spellingIntentions(view);
+    // Typo fixes and feature-contributed actions come first and need no language server.
+    const local: ListPopupItem[] = [...spellingIntentions(view), ...contributedIntentions(view)];
     let actions: CodeAction[] = [];
     let failure: { error: unknown } | null = null;
     try {
@@ -338,20 +338,21 @@ const bulbPlugin = ViewPlugin.fromClass(
       if (!doc || doc.readOnly || !this.view.dom.isConnected) return;
       const state = this.view.state;
       const typoFix = spellingIntentions(this.view).length > 0;
+      const local = typoFix || contributedIntentions(this.view).length > 0;
       const backoff = serverBackoff.active(doc.doc);
-      if (backoff && !typoFix) return;
+      if (backoff && !local) return;
       let actions: CodeAction[] = [];
       if (!backoff) {
         try {
           actions = await fetchIntentions(this.view);
         } catch (e) {
           if (isUnavailable(e)) serverBackoff.mark(doc.doc);
-          if (!typoFix) return;
+          if (!local) return;
         }
       }
       if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
       const line = state.doc.lineAt(state.selection.main.head).number;
-      const any = actions.length > 0 || typoFix;
+      const any = actions.length > 0 || local;
       this.view.dispatch({
         effects: setBulb.of(any ? { line, quickFix: typoFix || actions.some(isQuickFix) } : null),
       });

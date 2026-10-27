@@ -66,6 +66,23 @@ pub async fn lsp_goto(host: &Host, window: &str, doc: DocId, pos: Pos, kind: Got
     host.project(window)?.lsp.goto(doc, pos, kind).await
 }
 
+/// Implementations of the symbols at `positions`, one list per position (the
+/// editor's "is implemented / overridden" gutter markers). Cancel with
+/// `cancel_request(request)`.
+pub async fn lsp_implementations(
+    host: &Host,
+    window: &str,
+    request: RequestId,
+    doc: DocId,
+    positions: Vec<Pos>,
+) -> IdeResult<Vec<Vec<Location>>> {
+    let lsp = host.project(window)?.lsp.clone();
+    let cancel = host.begin_request(request);
+    let result = lsp.implementations(doc, &positions, cancel).await;
+    host.end_request(request);
+    result
+}
+
 /// Contents of a virtual document (library class, decompiled code) that a
 /// language server returned a non-`file:` URI for. Cached per project.
 pub async fn lsp_virtual_document(host: &Host, window: &str, uri: String) -> IdeResult<VirtualDocument> {
@@ -274,6 +291,9 @@ pub(crate) fn register(d: &mut Dispatcher) {
         "lsp_goto",
         |c| async move { lsp_goto(&c.host, &c.window, c.arg("doc")?, c.arg("pos")?, c.arg("kind")?).await },
     );
+    d.add("lsp_implementations", |c| async move {
+        lsp_implementations(&c.host, &c.window, c.arg("request")?, c.arg("doc")?, c.arg("positions")?).await
+    });
     d.add("lsp_virtual_document", |c| async move { lsp_virtual_document(&c.host, &c.window, c.arg("uri")?).await });
     d.add("lsp_references", |c| async move {
         lsp_references(

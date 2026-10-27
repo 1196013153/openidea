@@ -1,7 +1,16 @@
 /** Agent tasks of the open project, mirrored from `ide-agent` through `agentSubscribe`. */
 import { Channel } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
-import type { AgentChange, AgentEntry, AgentEvent, AgentProvider, AgentTask, Isolation } from "@/bindings";
+import type {
+  AgentChange,
+  AgentCommand,
+  AgentEntry,
+  AgentEvent,
+  AgentProvider,
+  AgentTask,
+  Isolation,
+} from "@/bindings";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { editorService, notifications } from "@/workbench/contributions";
 import { canSend, emptyDraft, toPrompt, type ComposerDraft, type FileRef } from "./composerModel";
@@ -210,6 +219,34 @@ function scheduleChanges(task: string) {
 async function refreshProviders() {
   const providers = await call(commands.agentProviders()).catch(() => null);
   if (providers) useAgents.setState({ providers });
+}
+
+export const NO_COMMANDS: readonly AgentCommand[] = [];
+
+/**
+ * Slash commands to complete: what the agent offered (`offered`; fetched again when it
+ * changes) plus, for Claude Code, the skills and custom commands on disk. Without `task`,
+ * those of the project.
+ */
+export function useAgentCommands(
+  provider: string | undefined,
+  task: string | null,
+  offered: readonly AgentCommand[],
+): readonly AgentCommand[] {
+  const [found, setFound] = useState<{ for: unknown[]; list: readonly AgentCommand[] } | null>(null);
+  useEffect(() => {
+    if (!provider || !isTauri()) return;
+    let alive = true;
+    call(commands.agentCommands(provider, task))
+      .then((list) => alive && setFound({ for: [provider, task, offered], list }))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [provider, task, offered]);
+  // Until the list for these arguments arrives, what the agent offered.
+  const current = found && found.for[0] === provider && found.for[1] === task && found.for[2] === offered;
+  return current ? found.list : offered;
 }
 
 export function openTask(task: string) {

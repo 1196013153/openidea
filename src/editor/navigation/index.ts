@@ -173,3 +173,5 @@ export function registerNavigationActions(): () => void {
     editorAction("navigate.previousMethod", "Previous Method", (v) => gotoMethod(v, -1)),
   ]);
 }
+
+export { implementationGutter } from "./implementationGutter";

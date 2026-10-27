@@ -56,6 +56,11 @@ export const commands = {
 	/**  Streams the project's agent events to this window; returns every task. */
 	agentSubscribe: (onEvent: Channel<AgentEvent>) => typedError<AgentTask[], IdeError>(__TAURI_INVOKE("agent_subscribe", { onEvent })),
 	agentProviders: () => typedError<AgentProvider[], IdeError>(__TAURI_INVOKE("agent_providers")),
+	/**
+	 *  Slash commands to complete for `provider` in `task`'s directory, or in the project
+	 *  before a task exists (skills and custom commands on disk included).
+	 */
+	agentCommands: (provider: string, task: string | null) => typedError<AgentCommand[], IdeError>(__TAURI_INVOKE("agent_commands", { provider, task })),
 	agentEntries: (task: string) => typedError<AgentEntry[], IdeError>(__TAURI_INVOKE("agent_entries", { task })),
 	agentCreate: (request: NewAgentTask) => typedError<AgentTask, IdeError>(__TAURI_INVOKE("agent_create", { request })),
 	/**  Sends a message; while the agent works it is queued, or with `now` it interrupts the turn. */
@@ -282,6 +287,12 @@ export const commands = {
 	activeParameter: number,
 } | null, IdeError>(__TAURI_INVOKE("lsp_signature_help", { doc, pos })),
 	lspGoto: (doc: DocId, pos: Pos, kind: GotoKind) => typedError<Location[], IdeError>(__TAURI_INVOKE("lsp_goto", { doc, pos, kind })),
+	/**
+	 *  Implementations of the symbols at `positions`, one list per position (the
+	 *  editor's "is implemented / overridden" gutter markers). Cancel with
+	 *  `cancel_request(request)`.
+	 */
+	lspImplementations: (request: RequestId, doc: DocId, positions: Pos[]) => typedError<Location[][], IdeError>(__TAURI_INVOKE("lsp_implementations", { request, doc, positions })),
 	/**
 	 *  Contents of a virtual document (library class, decompiled code) that a
 	 *  language server returned a non-`file:` URI for. Cached per project.

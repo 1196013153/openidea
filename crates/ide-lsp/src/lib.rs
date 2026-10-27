@@ -29,6 +29,7 @@ pub use uri::{is_virtual_uri, path_to_uri_string, uri_target, uri_to_path};
 
 use caps::{ServerCaps, SyncKind};
 use convert::{Conv, lsp_range};
+use futures::StreamExt;
 use futures::future::join_all;
 use ide_core::error::ErrorKind;
 use ide_core::{
@@ -228,6 +229,18 @@ impl<T> Outcome<T> {
     }
 }
 
+/// Implementation requests of one line-marker pass in flight at once.
+const IMPLEMENTATION_CONCURRENCY: usize = 4;
+
+fn goto_method(kind: GotoKind) -> (&'static str, &'static str, &'static str) {
+    match kind {
+        GotoKind::Definition => ("textDocument/definition", "definitionProvider", "go to definition"),
+        GotoKind::Declaration => ("textDocument/declaration", "declarationProvider", "go to declaration"),
+        GotoKind::TypeDefinition => ("textDocument/typeDefinition", "typeDefinitionProvider", "go to type definition"),
+        GotoKind::Implementation => ("textDocument/implementation", "implementationProvider", "go to implementation"),
+    }
+}
+
 impl LspManager {
     pub fn new(project_root: PathBuf, languages: Arc<LanguageRegistry>, sink: SharedSink) -> Arc<Self> {
         Self::with_launcher(project_root, languages, sink, Arc::new(ProcessLauncher))
@@ -406,6 +419,10 @@ impl LspManager {
             }
             Err(e) => {
                 tracing::warn!("{}: initialize failed: {e}", server.name);
+                if matches!(e, RpcError::Closed) {
+                    // The server is exiting: let it, so the crash report has its exit code and last output.
+                    let _ = tokio::time::timeout(Duration::from_secs(3), peer.closed()).await;
+                }
                 peer.kill();
                 // Treated like a crash so transient failures retry with backoff.
                 self.spawn_supervisor(server, generation, peer);
@@ -921,25 +938,54 @@ impl LspManager {
     }
 
     pub async fn goto(&self, doc: DocId, pos: Pos, kind: GotoKind) -> IdeResult<Vec<Location>> {
-        let (method, cap, feature) = match kind {
-            GotoKind::Definition => ("textDocument/definition", "definitionProvider", "go to definition"),
-            GotoKind::Declaration => ("textDocument/declaration", "declarationProvider", "go to declaration"),
-            GotoKind::TypeDefinition => {
-                ("textDocument/typeDefinition", "typeDefinitionProvider", "go to type definition")
-            }
-            GotoKind::Implementation => {
-                ("textDocument/implementation", "implementationProvider", "go to implementation")
-            }
-        };
+        let (method, cap, feature) = goto_method(kind);
         let (snap, targets) = self.doc_targets(doc, feature, |c| c.has(cap)).await?;
+        self.goto_in(&snap, &targets, method, pos, None).await
+    }
+
+    /// Implementations of the symbols at each of `positions` (gutter line
+    /// markers), one list per position in order. A position whose request
+    /// fails gets an empty list; when every one fails, the first error is
+    /// returned (an unavailable server is not "no implementations").
+    pub async fn implementations(
+        &self,
+        doc: DocId,
+        positions: &[Pos],
+        cancel: CancellationToken,
+    ) -> IdeResult<Vec<Vec<Location>>> {
+        let (method, cap, feature) = goto_method(GotoKind::Implementation);
+        let (snap, targets) = self.doc_targets(doc, feature, |c| c.has(cap)).await?;
+        let requests = positions.iter().copied().map(|pos| {
+            let (snap, targets, cancel) = (&snap, &targets, &cancel);
+            async move { self.goto_in(snap, targets, method, pos, Some(cancel)).await }
+        });
+        let results: Vec<IdeResult<Vec<Location>>> =
+            futures::stream::iter(requests).buffered(IMPLEMENTATION_CONCURRENCY).collect().await;
+        if cancel.is_cancelled() {
+            return Err(IdeError::cancelled());
+        }
+        if !results.is_empty() && results.iter().all(Result::is_err) {
+            return Err(results.into_iter().find_map(Result::err).expect("all failed"));
+        }
+        Ok(results.into_iter().map(Result::unwrap_or_default).collect())
+    }
+
+    async fn goto_in(
+        &self,
+        snap: &DocSnap,
+        targets: &[Target],
+        method: &str,
+        pos: Pos,
+        cancel: Option<&CancellationToken>,
+    ) -> IdeResult<Vec<Location>> {
         let mut out = Outcome::new();
-        for t in &targets {
+        for t in targets {
             match self
                 .call::<_, Option<lsp::GotoDefinitionResponse>>(
                     t,
                     method,
                     snap.pos_params(t, pos),
-                    None,
+                    cancel,
                     DEFAULT_TIMEOUT,
                 )
                 .await
