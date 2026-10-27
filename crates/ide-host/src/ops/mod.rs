@@ -2,6 +2,7 @@
 //! remote server ([`crate::rpc`]): each takes the [`Host`], the calling window
 //! and the command's arguments, and streams through [`Emit`] callbacks.
 
+pub mod agent;
 pub mod analysis;
 pub mod build;
 pub mod bytes;
@@ -55,6 +56,7 @@ impl<T> Clone for Channel<T> {
 
 /// Registers the commands of every module with the remote server.
 pub fn register_all(d: &mut crate::rpc::Dispatcher) {
+    agent::register(d);
     lsp::register(d);
     nav::register(d);
     refactor::register(d);

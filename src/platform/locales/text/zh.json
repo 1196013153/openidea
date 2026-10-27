@@ -4159,5 +4159,6 @@
   "Downloading the IDE backend…": "正在下载 IDE 后端…",
   "Installing the IDE backend on the host…": "正在主机上安装 IDE 后端…",
   "Starting the IDE backend…": "正在启动 IDE 后端…",
-  "Opening the project…": "正在打开项目…"
+  "Opening the project…": "正在打开项目…",
+  "Cannot load agent tasks": "无法加载智能体任务"
 }
