@@ -7,8 +7,13 @@ import {
   checkoutAndRebase,
   checkoutBranch,
   checkoutDetached,
+  checkoutInRepos,
   deleteBranch,
+  deleteInRepos,
   deleteRemoteBranch,
+  mergeInRepos,
+  newBranchInRepos,
+  rebaseInRepos,
   loadFavoriteBranches,
   mergeIntoCurrent,
   newBranch,
@@ -20,6 +25,8 @@ import {
 } from "./branchOps";
 import { showCompareBranches } from "./CompareBranches";
 import { showDiffWithWorkingTree } from "./operations";
+import type { CommonBranch } from "./repoBranches";
+import { focusRepo } from "./store";
 
 export function branchMenu(b: Branch, current: string | null, done: () => void = () => {}): MenuItem[] {
   const run = (fn: () => unknown) => () => {
@@ -97,4 +104,57 @@ export function tagMenu(tag: string, done: () => void = () => {}): MenuItem[] {
     { label: "Show Diff with Working Tree", run: run(() => showDiffWithWorkingTree(tag)) },
     { label: "Show History", icon: "history", run: run(() => executeAction("vcs.showLog", { branch: tag })) },
   ];
+}
+
+/** Entries for a branch common to all repositories: each acts in every one of `roots`. */
+export function commonBranchMenu(b: CommonBranch, roots: readonly string[], done: () => void = () => {}): MenuItem[] {
+  const run = (fn: () => unknown) => () => {
+    done();
+    void fn();
+  };
+  const newFrom: MenuItem = {
+    label: `New Branch from '${b.name}'…`,
+    icon: "branch",
+    run: run(() => newBranchInRepos(roots, b.name)),
+  };
+  if (b.current)
+    return [
+      newFrom,
+      { kind: "separator" },
+      { label: "Update", icon: "git-pull", run: run(() => executeAction("vcs.update")) },
+      { label: "Push…", icon: "git-push", run: run(() => executeAction("vcs.push")) },
+    ];
+  const items: MenuItem[] = [
+    { label: "Checkout", run: run(() => checkoutInRepos(b.name, roots)) },
+    newFrom,
+    { kind: "separator" },
+    { label: `Rebase Current onto '${b.name}'`, run: run(() => rebaseInRepos(b.name, roots)) },
+    { label: `Merge '${b.name}' into Current`, run: run(() => mergeInRepos(b.name, roots)) },
+  ];
+  if (!b.remote)
+    items.push(
+      { kind: "separator" },
+      { label: "Delete", danger: true, icon: "trash", run: run(() => deleteInRepos(b.name, roots)) },
+    );
+  return items;
+}
+
+/** `items` acting on repository `root`: it is selected (with its branches loaded) before each entry runs. */
+export function inRepo(root: string, items: MenuItem[]): MenuItem[] {
+  return items.map((item): MenuItem => {
+    if (item.kind === "separator" || item.kind === "header") return item;
+    if (item.kind === "action")
+      return {
+        label: item.label ?? item.action,
+        icon: item.icon,
+        disabled: item.disabled,
+        run: () => void focusRepo(root).then(() => executeAction(item.action, item.arg)),
+      };
+    const run = item.run;
+    return {
+      ...item,
+      run: run && (() => void focusRepo(root).then(run)),
+      submenu: item.submenu && inRepo(root, item.submenu),
+    };
+  });
 }

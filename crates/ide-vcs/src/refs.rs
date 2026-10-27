@@ -30,6 +30,11 @@ pub(crate) fn branch_info(r: &Repo) -> IdeResult<BranchInfo> {
     Ok(info)
 }
 
+pub(crate) fn head(repo: &gix::Repository) -> IdeResult<(Option<String>, Option<String>)> {
+    let name = repo.head_name().map_err(gx)?.map(|n| to_string(n.as_ref().shorten()));
+    Ok((name, repo.head_id().ok().map(|id| id.to_string())))
+}
+
 pub(crate) fn operation(repo: &gix::Repository) -> Option<String> {
     use gix::state::InProgress::*;
     let op = match repo.state()? {

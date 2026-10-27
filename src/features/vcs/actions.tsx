@@ -6,7 +6,7 @@ import { Menu, type MenuItem } from "@/ui";
 import { editorService, maybeEditorService, notifications, toolWindowService } from "@/workbench/contributions";
 import { annotationsShown, toggleAnnotations } from "./blame";
 import { showBranchesPopup } from "./BranchWidget";
-import { checkoutRevision, newBranch } from "./branchOps";
+import { checkoutRevision, newBranch, newBranchInRepos } from "./branchOps";
 import {
   addToVcs,
   commitChanges,
@@ -401,7 +401,11 @@ export function registerVcsActions(): () => void {
       category: "Git",
       icon: "plus",
       when: VCS,
-      run: () => void newBranch(),
+      // `{ repos }` (Branches popup with several repositories): in each of them.
+      run: ({ arg }) => {
+        const repos = (arg as { repos?: unknown } | undefined)?.repos;
+        void (Array.isArray(repos) && repos.length ? newBranchInRepos(repos as string[]) : newBranch());
+      },
     },
     {
       id: "vcs.checkoutRevision",

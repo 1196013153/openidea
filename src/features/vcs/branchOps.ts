@@ -9,7 +9,7 @@ import { isFavoriteBranch, pushRecent, shortRemoteName } from "./branches";
 import { showCommitRange } from "./CompareBranches";
 import { confirmDialog, promptText } from "./dialogs";
 import { runOp, runRemote, saveAll } from "./ops";
-import { conflictedFiles, currentRepo, refreshNow, useVcs } from "./store";
+import { conflictedFiles, currentRepo, refreshNow, repoName, useVcs } from "./store";
 
 const recentKey = () => `openidea.vcs.recentBranches:${useVcs.getState().root ?? ""}`;
 
@@ -68,18 +68,23 @@ async function askSmartCheckout(files: readonly string[]): Promise<CheckoutOptio
  * to rebase that branch onto the remote or drop its commits (one that is only behind is
  * fast-forwarded). Resolves true once switched.
  */
-async function performCheckout(rev: string, success: () => string): Promise<boolean> {
+async function performCheckout(
+  rev: string,
+  success: () => string,
+  repo: string | null = currentRepo(),
+  quiet = false,
+): Promise<boolean> {
   await saveAll();
   let options: CheckoutOptions = { mode: "normal", diverged: null };
   for (;;) {
     const opts = options;
-    const outcome = await runOp(`Checkout ${rev}`, () => call(commands.vcsCheckout(currentRepo(), rev, false, opts)));
+    const outcome = await runOp(`Checkout ${rev}`, () => call(commands.vcsCheckout(repo, rev, false, opts)));
     if (!outcome) return false;
     // `success` may name the branch now checked out.
     if (outcome.kind === "done" || outcome.kind === "conflicts") await refreshNow();
     switch (outcome.kind) {
       case "done":
-        notifications().notify({ group: "vcs", level: "info", title: success() });
+        if (!quiet) notifications().notify({ group: "vcs", level: "info", title: success() });
         return true;
       case "conflicts":
         notifications().notify({
@@ -316,6 +321,109 @@ export async function updateBranch(name: string) {
   await runRemote({ op: "updateBranch", branch: name }, `${name} ← ${b.upstream}`);
 }
 
+// --- several repositories ----------------------------------------------------
+
+/** "in 3 repositories", or "in 2 of 3 repositories" when some were left out. */
+function inRepos(done: number, total: number): string {
+  return done === total ? `in ${total} repositories` : `in ${done} of ${total} repositories`;
+}
+
+/**
+ * Runs `step` in each repository in turn, stopping at the first one that fails (its
+ * error is reported by `step`), then reports how many repositories it was done in.
+ */
+async function eachRepo(roots: readonly string[], step: (root: string) => Promise<boolean>, title: string) {
+  let done = 0;
+  for (const root of roots) {
+    if (!(await step(root))) break;
+    done++;
+  }
+  await refreshNow();
+  if (done) notifications().notify({ group: "vcs", level: "info", title: `${title} ${inRepos(done, roots.length)}` });
+}
+
+/** Checks out `name` (local, or remote: its local namesake) in every repository of `roots`. */
+export async function checkoutInRepos(name: string, roots: readonly string[]) {
+  const label = useVcs.getState().branches.some((b) => b.remote && b.name === name) ? shortRemoteName(name) : name;
+  const previous = useVcs.getState().branch?.head;
+  await eachRepo(roots, (root) => performCheckout(name, () => "", root, true), `Checked out ${label}`);
+  rememberBranch(previous);
+  rememberBranch(useVcs.getState().branch?.head);
+}
+
+/** New Branch in every repository of `roots` (from HEAD or `from`), checked out by default. */
+export async function newBranchInRepos(roots: readonly string[], from?: string) {
+  const r = await promptText({
+    title: from ? `Create New Branch from ${from}` : "Create New Branch",
+    label: `New branch name (in ${roots.length} repositories):`,
+    initial: from?.includes("/") ? shortRemoteName(from) : "",
+    mono: true,
+    okLabel: "Create",
+    validate: validateBranchName,
+    checkbox: { label: "Checkout branch", initial: true },
+  });
+  if (!r) return;
+  const name = r.value.trim();
+  if (r.checked) await saveAll();
+  await eachRepo(
+    roots,
+    async (root) =>
+      (await runOp(`Create branch ${name}`, () => call(commands.vcsCreateBranch(root, name, from ?? null, r.checked)), {
+        refresh: false,
+      })) !== undefined,
+    r.checked ? `Created and checked out ${name}` : `Created branch ${name}`,
+  );
+}
+
+/** Merges `branch` into the current branch of every repository of `roots`; stops on conflicts. */
+export async function mergeInRepos(branch: string, roots: readonly string[]) {
+  await saveAll();
+  await eachRepo(
+    roots,
+    async (root) =>
+      (await runOp(`Merge ${branch} (${repoName(root)})`, () => call(commands.vcsMerge(root, branch)), {
+        refresh: false,
+        errorActions: conflictActions,
+        onError: openConflictsInstead,
+      })) !== undefined,
+    `Merged ${branch}`,
+  );
+}
+
+/** Rebases the current branch of every repository of `roots` onto `branch`; stops on conflicts. */
+export async function rebaseInRepos(branch: string, roots: readonly string[]) {
+  await saveAll();
+  await eachRepo(
+    roots,
+    async (root) =>
+      (await runOp(`Rebase onto ${branch} (${repoName(root)})`, () => call(commands.vcsRebase(root, branch)), {
+        refresh: false,
+        errorActions: conflictActions,
+        onError: openConflictsInstead,
+      })) !== undefined,
+    `Rebased onto ${branch}`,
+  );
+}
+
+/** Deletes local branch `name` in every repository of `roots`. */
+export async function deleteInRepos(name: string, roots: readonly string[]) {
+  const ok = await confirmDialog({
+    title: "Delete Branch",
+    message: `Delete branch '${name}' in ${roots.length} repositories? Unmerged commits are discarded.`,
+    okLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
+  await eachRepo(
+    roots,
+    async (root) =>
+      (await runOp(`Delete branch ${name} (${repoName(root)})`, () => call(commands.vcsDeleteBranch(root, name)), {
+        refresh: false,
+      })) !== undefined,
+    `Deleted branch ${name}`,
+  );
+}
+
 // --- favorites ---------------------------------------------------------------
 
 const favoritesKey = () => `openidea.vcs.favoriteBranches:${useVcs.getState().root ?? ""}`;
@@ -341,7 +449,12 @@ export function toggleFavoriteBranch(b: Branch) {
   loadFavoriteBranches();
   const stored = useFavoriteBranches.getState().names;
   // First edit: start from the defaults that are currently shown.
-  const base = stored ?? useVcs.getState().branches.filter((x) => isFavoriteBranch(x, null)).map((x) => x.name);
+  const base =
+    stored ??
+    useVcs
+      .getState()
+      .branches.filter((x) => isFavoriteBranch(x, null))
+      .map((x) => x.name);
   const names = base.includes(b.name) ? base.filter((n) => n !== b.name) : [...base, b.name];
   useFavoriteBranches.setState({ names });
   try {

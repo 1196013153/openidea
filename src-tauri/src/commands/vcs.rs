@@ -41,6 +41,10 @@ pub struct VcsRoot {
     pub root: ide_core::IpcPath,
     /// Merge / rebase / cherry-pick / revert in progress.
     pub operation: Option<String>,
+    /// Current branch; `None` when HEAD is detached (or unreadable).
+    pub head: Option<String>,
+    /// HEAD commit; `None` before the first commit.
+    pub head_commit: Option<String>,
 }
 
 /// The project's repositories, the primary one first.
@@ -53,7 +57,10 @@ pub fn vcs_roots(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<Vc
     all.sort_by_key(|r| Some(r.root()) != primary.as_deref());
     Ok(all
         .into_iter()
-        .map(|r| VcsRoot { root: r.root().to_path_buf().into(), operation: r.operation().ok().flatten() })
+        .map(|r| {
+            let (head, head_commit) = r.head().unwrap_or_default();
+            VcsRoot { root: r.root().to_path_buf().into(), operation: r.operation().ok().flatten(), head, head_commit }
+        })
         .collect())
 }
 
