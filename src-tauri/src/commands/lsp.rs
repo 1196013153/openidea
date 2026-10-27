@@ -94,6 +94,25 @@ pub async fn lsp_goto(
     project!(window, state).lsp.goto(doc, pos, kind).await
 }
 
+/// Implementations of the symbols at `positions`, one list per position (the
+/// editor's "is implemented / overridden" gutter markers). Cancel with
+/// `cancel_request(request)`.
+#[tauri::command]
+#[specta::specta]
+pub async fn lsp_implementations(
+    window: Window,
+    state: State<'_, AppState>,
+    request: RequestId,
+    doc: DocId,
+    positions: Vec<Pos>,
+) -> IdeResult<Vec<Vec<Location>>> {
+    let lsp = project!(window, state).lsp.clone();
+    let cancel = state.begin_request(request);
+    let result = lsp.implementations(doc, &positions, cancel).await;
+    state.end_request(request);
+    result
+}
+
 /// Contents of a virtual document (library class, decompiled code) that a
 /// language server returned a non-`file:` URI for. Cached per project.
 #[tauri::command]

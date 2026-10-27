@@ -143,6 +143,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         lsp::lsp_hover,
         lsp::lsp_signature_help,
         lsp::lsp_goto,
+        lsp::lsp_implementations,
         lsp::lsp_virtual_document,
         lsp::lsp_references,
         lsp::lsp_document_highlights,

@@ -63,4 +63,25 @@ describe("Super Method", () => {
     // jdtls names methods with their parameters.
     expect(await superMethods("/Foo.java", { line: 0, col: 4 }, "a() : void", deps)).toHaveLength(1);
   });
+
+  it("prefers the overload with the same signature", async () => {
+    const base: HierarchyItem = {
+      name: "Base",
+      kind: "class",
+      detail: null,
+      path: "/Base.java",
+      range: r(0, 10),
+      selectionRange: { start: { line: 0, col: 4 }, end: { line: 0, col: 8 } },
+      fromRanges: [],
+    };
+    const deps = {
+      supertypes: async (path: string) => (path === "/Foo.java" ? [base] : []),
+      outline: async () => [item("Base", "class", 0, 10, [item("eat(String)", "method", 2, 2), item("eat(int)", "method", 4, 4)])],
+    };
+    const lines = async (name: string) => (await superMethods("/Foo.java", { line: 0, col: 4 }, name, deps)).map((l) => l.range.start.line);
+    expect(await lines("eat(int)")).toEqual([4]);
+    // Without a matching signature (or without signatures at all), every overload.
+    expect(await lines("eat(T)")).toEqual([2, 4]);
+    expect(await lines("eat")).toEqual([2, 4]);
+  });
 });

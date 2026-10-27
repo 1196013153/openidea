@@ -60,8 +60,11 @@ export function memberAt(outline: readonly OutlineItem[], caret: Pos): CaretMemb
 /** `beta(int)` (jdtls) and `beta` name the same method. */
 export const baseName = (name: string) => name.replace(/\s*[(<].*$/, "");
 
-/** Methods named `name` directly inside the type declared at `item` (its outline node found by position). */
-export function methodsInType(outline: readonly OutlineItem[], item: HierarchyItem, name: string): OutlineItem[] {
+/** `beta(int) : void` (jdtls) is the signature `beta(int)`; plain names stay as they are. */
+const signature = (name: string) => name.replace(/\s*:.*$/, "");
+
+/** The outline node of the type declared at `item` (found by position). */
+export function typeOf(outline: readonly OutlineItem[], item: HierarchyItem): OutlineItem | null {
   const at = item.selectionRange.start;
   const find = (items: readonly OutlineItem[]): OutlineItem | null => {
     for (const i of items) {
@@ -71,9 +74,20 @@ export function methodsInType(outline: readonly OutlineItem[], item: HierarchyIt
     }
     return null;
   };
-  const type = find(outline);
+  return find(outline);
+}
+
+/**
+ * Methods named `name` directly inside the type declared at `item`: the
+ * overload with the same signature when the server names them with one
+ * (`eat(String)`), else every method of that name.
+ */
+export function methodsInType(outline: readonly OutlineItem[], item: HierarchyItem, name: string): OutlineItem[] {
+  const type = typeOf(outline, item);
   const bare = baseName(name);
-  return type ? type.children.filter((c) => METHODS.has(c.kind) && baseName(c.name) === bare) : [];
+  const named = type ? type.children.filter((c) => METHODS.has(c.kind) && baseName(c.name) === bare) : [];
+  const exact = named.filter((c) => signature(c.name) === signature(name));
+  return exact.length ? exact : named;
 }
 
 export interface SuperDeps {
@@ -81,13 +95,20 @@ export interface SuperDeps {
   outline: (path: string) => Promise<OutlineItem[]>;
 }
 
-/** Super methods of `method` (a member of the type at `typePos`), searching up to `depth` levels of supertypes. */
-export async function superMethods(path: string, typePos: Pos, method: string, deps: SuperDeps, depth = 3): Promise<Location[]> {
+export interface SuperMethod {
+  location: Location;
+  /** The supertype declaring it. */
+  owner: HierarchyItem;
+  method: OutlineItem;
+}
+
+/** Super methods of `method` (a member of the type at `typePos`), with their declaring types, nearest level first. */
+export async function superMethodTargets(path: string, typePos: Pos, method: string, deps: SuperDeps, depth = 3): Promise<SuperMethod[]> {
   let level: Array<{ path: string; pos: Pos }> = [{ path, pos: typePos }];
   const seen = new Set<string>();
   for (let d = 0; d < depth && level.length; d++) {
     const next: Array<{ path: string; pos: Pos }> = [];
-    const found: Location[] = [];
+    const found: SuperMethod[] = [];
     for (const t of level) {
       const supers = await deps.supertypes(t.path, t.pos).catch(() => [] as HierarchyItem[]);
       for (const s of supers) {
@@ -95,7 +116,8 @@ export async function superMethods(path: string, typePos: Pos, method: string, d
         if (seen.has(key)) continue;
         seen.add(key);
         const methods = methodsInType(await deps.outline(s.path).catch(() => [] as OutlineItem[]), s, method);
-        if (methods.length) for (const m of methods) found.push({ path: s.path, range: m.selection_range });
+        if (methods.length)
+          for (const m of methods) found.push({ location: { path: s.path, range: m.selection_range }, owner: s, method: m });
         else next.push({ path: s.path, pos: s.selectionRange.start });
       }
     }
@@ -103,4 +125,9 @@ export async function superMethods(path: string, typePos: Pos, method: string, d
     level = next;
   }
   return [];
+}
+
+/** Super methods of `method` (a member of the type at `typePos`), searching up to `depth` levels of supertypes. */
+export async function superMethods(path: string, typePos: Pos, method: string, deps: SuperDeps, depth = 3): Promise<Location[]> {
+  return (await superMethodTargets(path, typePos, method, deps, depth)).map((s) => s.location);
 }
