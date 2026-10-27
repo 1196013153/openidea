@@ -246,6 +246,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         run::run_test_reports,
         build::build_model,
         build::build_sync,
+        build::maven_dependency_declaration,
+        build::maven_exclude_dependency,
         build::build_run,
         java::java_resolve_launch,
         java::java_debug_server,

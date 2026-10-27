@@ -7,14 +7,23 @@ import { registerActions } from "@/platform/actions";
 import { setContext } from "@/platform/context";
 import { onIdeEvent, type BuildModel, type BuildTool } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { registerOverlay, registerRunAnythingProvider, registerToolWindow } from "@/workbench/contributions";
+import {
+  registerEditorKind,
+  registerMenuGroup,
+  registerOverlay,
+  registerRunAnythingProvider,
+  registerToolWindow,
+} from "@/workbench/contributions";
+import { lazyComponent } from "@/ui";
 import { GradleView, MavenView } from "./BuildToolView";
 import { ExecutePopupHost } from "./ExecutePopup";
 import { buildToolsRunAnything } from "./runAnything";
 import { expandableKeys, gradleChildren, gradleRoots, mavenChildren, mavenRoots } from "./model";
 import {
+  ANALYZER_KIND,
   cancelSync,
   loadModel,
+  openAnalyzer,
   resetBuild,
   setExpanded,
   syncTool,
@@ -43,6 +52,19 @@ function expandAll(tool: BuildTool) {
 
 function openExecute(tool: BuildTool) {
   useBuild.setState({ executeOpen: tool });
+}
+
+/** Project-relative `pom` of a Maven project from an action argument: `{ pom }`, or `{ path }` of a pom.xml. */
+function analyzerPom(arg: unknown): string | null {
+  const { model, root, current } = useBuild.getState();
+  const projects = model?.maven?.projects ?? [];
+  const a = (arg ?? {}) as { pom?: unknown; path?: unknown };
+  if (typeof a.pom === "string") return a.pom;
+  if (typeof a.path === "string" && root) {
+    const rel = a.path.startsWith(`${root}/`) ? a.path.slice(root.length + 1) : a.path;
+    if (projects.some((p) => p.pom === rel)) return rel;
+  }
+  return current.maven ?? null;
 }
 
 const synced = new Set<string>();
@@ -85,6 +107,27 @@ export function activate(): () => void {
   const disposers: Array<() => void> = [
     registerOverlay({ id: "build-tools.execute", component: ExecutePopupHost }),
     registerRunAnythingProvider(buildToolsRunAnything),
+    registerEditorKind({
+      kind: ANALYZER_KIND,
+      component: lazyComponent(() => import("./DependencyAnalyzer").then((m) => m.DependencyAnalyzer)),
+      title: () => "Dependency Analyzer",
+      icon: () => "build-dependencies",
+      restorable: true,
+    }),
+    // pom.xml in the editor, its tab and the project view: Analyze Dependencies of that module.
+    registerMenuGroup({
+      id: "maven.analyzeDependencies",
+      menus: ["editor", "editorTab", "projectView"],
+      order: 30,
+      items: (_menu, { paths, dirs }) => {
+        const path = paths.length === 1 && !dirs?.[0] ? paths[0]! : null;
+        if (!path || !path.endsWith("/pom.xml")) return [];
+        const { model, root } = useBuild.getState();
+        const pom = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
+        if (!pom || !model?.maven?.projects.some((p) => p.pom === pom)) return [];
+        return [{ kind: "action", action: "maven.analyzeDependencies", arg: { pom }, label: "Analyze Dependencies…" }];
+      },
+    }),
     useBuild.subscribe((s, prev) => {
       if (s.model !== prev.model || s.root !== prev.root) apply(s.root ? s.model : null, registered);
     }),
@@ -129,6 +172,16 @@ export function activate(): () => void {
         when: MAVEN_WHEN,
         keywords: ["maven", "mvn", "goal", "run anything"],
         run: () => openExecute("maven"),
+      },
+      {
+        id: "maven.analyzeDependencies",
+        title: "Analyze Dependencies…",
+        description: "Shows a Maven module's dependency tree, version conflicts and where each library comes from",
+        category: "Maven",
+        icon: "build-dependencies",
+        when: MAVEN_WHEN,
+        keywords: ["maven", "dependency", "dependencies", "conflict", "tree", "exclude", "analyzer"],
+        run: ({ arg }) => openAnalyzer(analyzerPom(arg)),
       },
       {
         id: "maven.toggleOffline",

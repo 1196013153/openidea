@@ -22,7 +22,7 @@ import {
 } from "@/platform/ipc";
 import { downloadJdkActions } from "@/platform/jdk";
 import { useProject } from "@/platform/project";
-import { notifications } from "@/workbench/contributions";
+import { editorService, notifications } from "@/workbench/contributions";
 import { removeTask, upsertTask } from "@/workbench/tasks";
 import { profilesList, type GradleRunOptions, type MavenRunOptions } from "./model";
 
@@ -232,6 +232,7 @@ export function cancelSync(tool: BuildTool) {
 
 export function resetBuild() {
   generation++;
+  useAnalyzer.setState({ pom: null });
   for (const tool of ["maven", "gradle"] as const) {
     cancelSync(tool);
     removeTask(`build-sync:${tool}`);
@@ -268,4 +269,18 @@ export function setExpanded(tool: BuildTool, expanded: Set<string>) {
 
 export function setCurrentProject(tool: BuildTool, id: string | undefined) {
   if (useBuild.getState().current[tool] !== id) useBuild.setState((s) => ({ current: { ...s.current, [tool]: id } }));
+}
+
+// ---------------------------------------------------------------------------
+// Dependency Analyzer (an editor tab)
+
+export const ANALYZER_KIND = "maven.dependencyAnalyzer";
+
+/** Module the Dependency Analyzer shows (`pom`, project-relative); `null` = the first one. */
+export const useAnalyzer = create<{ pom: string | null }>(() => ({ pom: null }));
+
+/** Opens (or focuses) the Dependency Analyzer tab, showing the module `pom` when given. */
+export async function openAnalyzer(pom: string | null) {
+  if (pom) useAnalyzer.setState({ pom });
+  await editorService().openInput({ kind: ANALYZER_KIND, key: ANALYZER_KIND, data: {} }, { focus: true });
 }

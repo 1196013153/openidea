@@ -1,12 +1,19 @@
 //! A small, forgiving XML element reader for POM files: elements, text and
 //! CDATA; attributes, comments, processing instructions and DOCTYPEs are
 //! skipped. Namespace prefixes are dropped (`<x:project>` → `project`).
+//! Elements keep their byte offsets in the source, for edits ([`crate::pom_edit`]).
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Element {
     pub name: String,
     pub text: String,
     pub children: Vec<Element>,
+    /// Byte offset of the start tag's `<`.
+    pub start: usize,
+    /// Byte offset of the end tag's `<` (`end` for an empty or unclosed element).
+    pub inner_end: usize,
+    /// Byte offset just past the end tag (past the start tag for `<empty/>`).
+    pub end: usize,
 }
 
 impl Element {
@@ -76,6 +83,7 @@ fn local(name: &str) -> String {
 pub fn parse(text: &str) -> Option<Element> {
     let mut stack: Vec<Element> = vec![Element::default()];
     let mut rest = text;
+    let at = |rest: &str| text.len() - rest.len();
     while !rest.is_empty() {
         let Some(lt) = rest.find('<') else {
             decode_entities(rest, &mut stack.last_mut()?.text);
@@ -98,13 +106,19 @@ pub fn parse(text: &str) -> Option<Element> {
         } else if let Some(body) = tag.strip_prefix("</") {
             let end = body.find('>').unwrap_or(body.len());
             let name = local(body[..end].trim());
-            if let Some(at) = stack.iter().rposition(|e| e.name == name).filter(|&i| i > 0) {
-                while stack.len() > at {
-                    let done = stack.pop()?;
+            let close_start = at(tag);
+            rest = body.get(end + 1..).unwrap_or("");
+            let close_end = at(rest);
+            if let Some(i) = stack.iter().rposition(|e| e.name == name).filter(|&i| i > 0) {
+                while stack.len() > i {
+                    let mut done = stack.pop()?;
+                    // Elements closed implicitly by an outer end tag end where it starts.
+                    let matched = stack.len() == i;
+                    done.inner_end = close_start;
+                    done.end = if matched { close_end } else { close_start };
                     stack.last_mut()?.children.push(done);
                 }
             }
-            rest = body.get(end + 1..).unwrap_or("");
         } else {
             // Start or empty tag; skip quoted attribute values when looking for `>`.
             let bytes = tag.as_bytes();
@@ -124,17 +138,22 @@ pub fn parse(text: &str) -> Option<Element> {
             let empty = inner.ends_with('/');
             let inner = inner.trim_end_matches('/');
             let name_end = inner.find(|c: char| c.is_whitespace()).unwrap_or(inner.len());
-            let el = Element { name: local(&inner[..name_end]), ..Element::default() };
+            let start = at(tag);
+            rest = tag.get(i + 1..).unwrap_or("");
+            let after = at(rest);
+            let el =
+                Element { name: local(&inner[..name_end]), start, inner_end: after, end: after, ..Element::default() };
             if empty {
                 stack.last_mut()?.children.push(el);
             } else {
                 stack.push(el);
             }
-            rest = tag.get(i + 1..).unwrap_or("");
         }
     }
     while stack.len() > 1 {
-        let done = stack.pop()?;
+        let mut done = stack.pop()?;
+        done.inner_end = text.len();
+        done.end = text.len();
         stack.last_mut()?.children.push(done);
     }
     stack.pop()?.children.into_iter().next()
@@ -165,6 +184,22 @@ mod tests {
         let items: Vec<String> = root.list("list", "item").iter().map(|e| e.text.clone()).collect();
         assert_eq!(items, ["1", "2"]);
         assert_eq!(root.children_named("name").count(), 1);
+    }
+
+    #[test]
+    fn element_offsets() {
+        let doc = "<a>\n  <b>x</b><c/>\n</a>";
+        let root = parse(doc).unwrap();
+        assert_eq!((root.start, root.inner_end, root.end), (0, doc.len() - 4, doc.len()));
+        let b = root.child("b").unwrap();
+        assert_eq!(&doc[b.start..b.end], "<b>x</b>");
+        assert_eq!(&doc[b.start..b.inner_end], "<b>x");
+        let c = root.child("c").unwrap();
+        assert_eq!(&doc[c.start..c.end], "<c/>");
+        let broken = parse("<a><b>x</a>").unwrap();
+        let b = broken.child("b").unwrap();
+        assert_eq!((b.inner_end, b.end), (7, 7));
+        assert_eq!(broken.end, 11);
     }
 
     #[test]

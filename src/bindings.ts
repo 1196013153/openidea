@@ -478,6 +478,14 @@ export const commands = {
 	 *  Returns the refreshed model; a failed build is reported in its `syncError`.
 	 */
 	buildSync: (tool: BuildTool, request: RequestId, offline: boolean, profiles: string[], onProgress: Channel<SyncProgress>) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("build_sync", { tool, request, offline, profiles, onProgress })),
+	/**  Where the direct dependency `dependency` of the Maven module `pom` is declared. */
+	mavenDependencyDeclaration: (pom: string, dependency: ArtifactKey) => typedError<Location, IdeError>(__TAURI_INVOKE("maven_dependency_declaration", { pom, dependency })),
+	/**
+	 *  Adds an `<exclusion>` of `exclusion` to the declaration of the direct dependency
+	 *  `dependency` of the Maven module `pom`, through the open document when there is one
+	 *  (saved). Returns the declaration; nothing changes when it already excludes it.
+	 */
+	mavenExcludeDependency: (pom: string, dependency: ArtifactKey, exclusion: ArtifactKey) => typedError<Location, IdeError>(__TAURI_INVOKE("maven_exclude_dependency", { pom, dependency, exclusion })),
 	/**
 	 *  Build › Build Project / Rebuild Project / Build Module (`file`: a file or folder of the
 	 *  module) / Build Artifacts, streaming the console and messages on `on_event`; cancellable
@@ -1100,6 +1108,12 @@ export type ApplyOutcome = {
 	applied: string[],
 	/**  Repository-relative paths left with conflicts (index stages for the merge UI). */
 	conflicts: string[],
+};
+
+/**  `groupId:artifactId` of a dependency. */
+export type ArtifactKey = {
+	groupId: string,
+	artifactId: string,
 };
 
 export type AttachKind = "java" | "node" | "python" | "go" | "native";
@@ -3512,6 +3526,12 @@ export type MavenDependency = {
 	optional: boolean,
 	/**  Transitive dependencies (only after a sync). */
 	children: MavenDependency[],
+	/**  Why Maven left this occurrence out of the resolved graph (`dependency:tree -Dverbose`). */
+	omitted?: Omission | null,
+	/**  The version that won when `omitted` is `Conflict`. */
+	conflictWith?: string | null,
+	/**  The version requested before `<dependencyManagement>` replaced it. */
+	managedFrom?: string | null,
 };
 
 export type MavenModel = {
@@ -3722,6 +3742,15 @@ export type NotificationSettings = {
 };
 
 export type NotifyLevel = "info" | "warning" | "error";
+
+/**  Why a dependency occurrence is not part of the resolved graph. */
+export type Omission = 
+/**  Another occurrence of the same version is nearer the root. */
+"duplicate" | 
+/**  Another version is nearer the root (or declared first) and wins. */
+"conflict" | 
+/**  The artifact depends on itself through this path. */
+"cycle";
 
 /**  How `open_project_window` satisfied the request. */
 export type OpenOutcome = 

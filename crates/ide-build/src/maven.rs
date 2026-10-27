@@ -130,6 +130,37 @@ pub struct MavenDependency {
     pub optional: bool,
     /// Transitive dependencies (only after a sync).
     pub children: Vec<MavenDependency>,
+    /// Why Maven left this occurrence out of the resolved graph (`dependency:tree -Dverbose`).
+    #[serde(default)]
+    #[specta(optional)]
+    pub omitted: Option<Omission>,
+    /// The version that won when `omitted` is `Conflict`.
+    #[serde(default)]
+    #[specta(optional)]
+    pub conflict_with: Option<String>,
+    /// The version requested before `<dependencyManagement>` replaced it.
+    #[serde(default)]
+    #[specta(optional)]
+    pub managed_from: Option<String>,
+}
+
+impl MavenDependency {
+    /// Part of the resolved graph (not a verbose-tree placeholder for an omitted occurrence).
+    pub fn resolved(&self) -> bool {
+        self.omitted.is_none()
+    }
+}
+
+/// Why a dependency occurrence is not part of the resolved graph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum Omission {
+    /// Another occurrence of the same version is nearer the root.
+    Duplicate,
+    /// Another version is nearer the root (or declared first) and wins.
+    Conflict,
+    /// The artifact depends on itself through this path.
+    Cycle,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -871,7 +902,7 @@ pub(crate) fn load_with_repo(root: &Path, local_repo: Option<PathBuf>) -> MavenM
                 classifier: d.classifier.clone(),
                 scope: d.scope.clone().or_else(|| managed_scope(d)).unwrap_or_else(|| "compile".into()),
                 optional: d.optional,
-                children: Vec::new(),
+                ..MavenDependency::default()
             })
             .collect();
 
@@ -968,7 +999,7 @@ pub fn parse_effective_pom(text: &str) -> Vec<(String, Vec<MavenPlugin>, Vec<Mav
                     classifier: d.classifier.clone(),
                     scope: d.scope.clone().unwrap_or_else(|| "compile".into()),
                     optional: d.optional,
-                    children: Vec::new(),
+                    ..MavenDependency::default()
                 })
                 .collect();
             (format!("{group}:{}", raw.artifact_id), plugins, deps)
@@ -976,13 +1007,16 @@ pub fn parse_effective_pom(text: &str) -> Vec<(String, Vec<MavenPlugin>, Vec<Mav
         .collect()
 }
 
-/// `g:a:type[:classifier]:version[:scope]` from a `dependency:tree` line.
+/// `g:a:type[:classifier]:version[:scope]` from a `dependency:tree` line, with the
+/// `-Dverbose` annotations: `(g:a:jar:1:compile - omitted for conflict with 2)`,
+/// `g:a:jar:1:compile (version managed from 0.9)`, `(optional)`.
 fn parse_coords(s: &str) -> Option<MavenDependency> {
     let s = s.trim();
-    let (coords, extra) = match s.find(" (") {
-        Some(i) => (&s[..i], &s[i..]),
-        None => (s, ""),
+    let (s, wrapped) = match s.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
+        Some(inner) => (inner, true),
+        None => (s, false),
     };
+    let (coords, notes) = s.split_once(' ').unwrap_or((s, ""));
     let parts: Vec<&str> = coords.split(':').collect();
     let (g, a, t, c, v, scope) = match parts.as_slice() {
         [g, a, t, v] => (g, a, t, None, v, None),
@@ -990,16 +1024,35 @@ fn parse_coords(s: &str) -> Option<MavenDependency> {
         [g, a, t, c, v, s] => (g, a, t, Some(*c), v, Some(*s)),
         _ => return None,
     };
-    Some(MavenDependency {
+    let mut dep = MavenDependency {
         group_id: (*g).to_owned(),
         artifact_id: (*a).to_owned(),
         version: Some((*v).to_owned()),
         kind: (*t).to_owned(),
         classifier: c.map(|c| (*c).to_owned()),
         scope: scope.unwrap_or("compile").to_owned(),
-        optional: extra.contains("optional"),
-        children: Vec::new(),
-    })
+        ..MavenDependency::default()
+    };
+    let notes = notes.replace(['(', ')'], ";").replace(" - ", ";");
+    for note in notes.split(';').map(|n| n.trim().trim_start_matches("- ").trim()) {
+        if note == "optional" {
+            dep.optional = true;
+        } else if let Some(winner) = note.strip_prefix("omitted for conflict with ") {
+            dep.omitted = Some(Omission::Conflict);
+            dep.conflict_with = Some(winner.trim().to_owned());
+        } else if note == "omitted for duplicate" {
+            dep.omitted = Some(Omission::Duplicate);
+        } else if note == "omitted for cycle" {
+            dep.omitted = Some(Omission::Cycle);
+        } else if let Some(from) = note.strip_prefix("version managed from ") {
+            dep.managed_from = Some(from.trim().to_owned());
+        }
+    }
+    // A parenthesised line is always an omitted occurrence, even with an unknown reason.
+    if wrapped && dep.omitted.is_none() {
+        dep.omitted = Some(Omission::Duplicate);
+    }
+    Some(dep)
 }
 
 fn insert_at(list: &mut Vec<MavenDependency>, depth: usize, dep: MavenDependency) {
@@ -1326,5 +1379,83 @@ mod tests {
             (Some("linux"), Some("1.0"), true)
         );
         assert_eq!(trees[2].1[0].scope, "compile");
+    }
+
+    /// `mvn org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree -Dverbose` on a project
+    /// whose libraries ask for different commons-lang3 / commons-text / guava versions.
+    #[test]
+    fn verbose_dependency_tree_output() {
+        let trees = parse_dependency_tree(include_str!("../testdata/dependency-tree-verbose.txt"));
+        assert_eq!(trees.len(), 1);
+        let (key, deps) = &trees[0];
+        assert_eq!(key, "demo:conflict-demo");
+        let direct: Vec<&str> = deps.iter().map(|d| d.artifact_id.as_str()).collect();
+        assert_eq!(direct, ["hamcrest-core", "commons-text", "commons-configuration2", "guava", "guice", "junit"]);
+        assert!(deps.iter().all(MavenDependency::resolved));
+
+        let config = &deps[2].children;
+        let lang3 = &config[0];
+        assert_eq!(
+            (lang3.artifact_id.as_str(), lang3.version.as_deref(), lang3.omitted, lang3.conflict_with.as_deref()),
+            ("commons-lang3", Some("3.14.0"), Some(Omission::Conflict), Some("3.12.0"))
+        );
+        assert_eq!(lang3.scope, "compile");
+        let logging = &config[2];
+        assert_eq!(
+            (logging.version.as_deref(), logging.managed_from.as_deref(), logging.omitted),
+            (Some("1.2"), Some("1.3.0"), None)
+        );
+        let guava = &deps[4].children[2];
+        assert_eq!((guava.version.as_deref(), guava.conflict_with.as_deref()), (Some("30.1-jre"), Some("32.1.3-jre")));
+        let hamcrest = &deps[5].children[0];
+        assert_eq!((hamcrest.omitted, hamcrest.scope.as_str()), (Some(Omission::Duplicate), "test"));
+        assert_eq!(deps[1].children[0].omitted, None, "the winning commons-lang3");
+    }
+
+    #[test]
+    fn verbose_annotations() {
+        // (line, omitted, conflict winner, managed from, optional)
+        type Case<'a> = (&'a str, Option<Omission>, Option<&'a str>, Option<&'a str>, bool);
+        let cases: &[Case] = &[
+            ("(g:a:jar:1:compile - omitted for cycle)", Some(Omission::Cycle), None, None, false),
+            (
+                "(g:a:jar:1:compile - version managed from 0.9; omitted for duplicate)",
+                Some(Omission::Duplicate),
+                None,
+                Some("0.9"),
+                false,
+            ),
+            ("g:a:jar:1:compile (optional)", None, None, None, true),
+            (
+                "(g:a:jar:1:runtime (optional) - omitted for conflict with 2)",
+                Some(Omission::Conflict),
+                Some("2"),
+                None,
+                true,
+            ),
+            (
+                "(g:a:jar:1:compile - scope updated from runtime; omitted for duplicate)",
+                Some(Omission::Duplicate),
+                None,
+                None,
+                false,
+            ),
+            (
+                "g:a:jar:1:compile (version managed from 0.9; scope managed from runtime)",
+                None,
+                None,
+                Some("0.9"),
+                false,
+            ),
+        ];
+        for (line, omitted, winner, managed, optional) in cases {
+            let d = parse_coords(line).unwrap();
+            assert_eq!(
+                (d.omitted, d.conflict_with.as_deref(), d.managed_from.as_deref(), d.optional),
+                (*omitted, *winner, *managed, *optional),
+                "{line}"
+            );
+            assert_eq!((d.group_id.as_str(), d.version.as_deref()), ("g", Some("1")), "{line}");
+        }
     }
 }

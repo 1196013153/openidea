@@ -8,12 +8,13 @@
 pub mod compile;
 pub mod gradle;
 pub mod maven;
+pub mod pom_edit;
 mod process;
 mod sync;
 mod xml;
 
 pub use gradle::{GradleModel, GradleProject, GradleTask};
-pub use maven::{MavenDependency, MavenModel, MavenPlugin, MavenProfile, MavenProject};
+pub use maven::{MavenDependency, MavenModel, MavenPlugin, MavenProfile, MavenProject, Omission};
 pub use sync::{SyncOptions, SyncProgress, sync_gradle, sync_maven};
 
 use serde::{Deserialize, Serialize};
@@ -69,6 +70,10 @@ pub fn dependency_coordinates(root: &Path, model: &BuildModel) -> Vec<Dependency
         let modules: std::collections::HashSet<String> = m.projects.iter().map(MavenProject::key).collect();
         let mut stack: Vec<&MavenDependency> = m.projects.iter().flat_map(|p| &p.dependencies).collect();
         while let Some(d) = stack.pop() {
+            // Omitted occurrences (conflict losers, duplicates) are not on any classpath.
+            if !d.resolved() {
+                continue;
+            }
             stack.extend(&d.children);
             let Some(version) = d.version.as_deref().filter(|v| !v.is_empty() && !v.contains("${")) else {
                 continue;
@@ -150,7 +155,19 @@ mod tests {
                     artifact_id: "app".into(),
                     dependencies: vec![
                         dep("me", "core", Some("1"), vec![]),
-                        dep("org.b", "y", Some("2"), vec![dep("org.c", "z", Some("3"), vec![])]),
+                        dep(
+                            "org.b",
+                            "y",
+                            Some("2"),
+                            vec![
+                                dep("org.c", "z", Some("3"), vec![]),
+                                MavenDependency {
+                                    omitted: Some(Omission::Conflict),
+                                    conflict_with: Some("3".into()),
+                                    ..dep("org.c", "z", Some("1"), vec![])
+                                },
+                            ],
+                        ),
                         dep("org.d", "unresolved", Some("${v}"), vec![]),
                     ],
                     ..Default::default()
