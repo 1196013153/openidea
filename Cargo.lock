@@ -4096,6 +4096,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "ide-host"
+version = "0.1.15"
+dependencies = [
+ "dirs 6.0.0",
+ "dunce",
+ "ide-analysis",
+ "ide-build",
+ "ide-core",
+ "ide-coverage",
+ "ide-dap",
+ "ide-db",
+ "ide-http",
+ "ide-index",
+ "ide-jsonrpc",
+ "ide-language",
+ "ide-lsp",
+ "ide-remote",
+ "ide-run",
+ "ide-sdk",
+ "ide-search",
+ "ide-spell",
+ "ide-ssh",
+ "ide-syntax",
+ "ide-terminal",
+ "ide-text",
+ "ide-tools",
+ "ide-vcs",
+ "ide-vfs",
+ "ide-workspace",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "specta",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ide-http"
 version = "0.1.15"
 dependencies = [
@@ -4350,6 +4390,7 @@ name = "ide-ssh"
 version = "0.1.15"
 dependencies = [
  "dirs 6.0.0",
+ "flate2",
  "ide-core",
  "parking_lot",
  "russh",
@@ -5906,6 +5947,7 @@ dependencies = [
 name = "openidea"
 version = "0.1.15"
 dependencies = [
+ "blake3",
  "dirs 6.0.0",
  "dunce",
  "ide-analysis",
@@ -5917,8 +5959,10 @@ dependencies = [
  "ide-db",
  "ide-docker",
  "ide-github",
+ "ide-host",
  "ide-http",
  "ide-index",
+ "ide-jsonrpc",
  "ide-language",
  "ide-lsp",
  "ide-plugin",

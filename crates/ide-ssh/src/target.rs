@@ -175,7 +175,8 @@ mod tests {
     fn builds_openssh_arguments() {
         let t = SshTarget { host: "box".into(), user: "me".into(), port: Some(2200), ..Default::default() };
         assert_eq!(openssh_args(&t), ["-p", "2200", "me@box"]);
-        let t = SshTarget { host: "box".into(), auth: SshAuth::KeyPair, key_file: "/k/id".into(), ..Default::default() };
+        let t =
+            SshTarget { host: "box".into(), auth: SshAuth::KeyPair, key_file: "/k/id".into(), ..Default::default() };
         assert_eq!(openssh_args(&t), ["-i", "/k/id", "-o", "IdentitiesOnly=yes", "box"]);
     }
 }

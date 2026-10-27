@@ -42,7 +42,17 @@ pub fn parent(path: &str) -> Option<&str> {
 }
 
 fn mode_string(mode: u32) -> String {
-    let bits = [(0o400, 'r'), (0o200, 'w'), (0o100, 'x'), (0o40, 'r'), (0o20, 'w'), (0o10, 'x'), (0o4, 'r'), (0o2, 'w'), (0o1, 'x')];
+    let bits = [
+        (0o400, 'r'),
+        (0o200, 'w'),
+        (0o100, 'x'),
+        (0o40, 'r'),
+        (0o20, 'w'),
+        (0o10, 'x'),
+        (0o4, 'r'),
+        (0o2, 'w'),
+        (0o1, 'x'),
+    ];
     bits.iter().map(|&(b, c)| if mode & b != 0 { c } else { '-' }).collect()
 }
 

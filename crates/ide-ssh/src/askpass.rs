@@ -105,7 +105,13 @@ impl AskpassServer {
     }
 }
 
-fn serve(stream: TcpStream, id: u64, token: &str, pending: &Pending, on_prompt: &(dyn Fn(AskpassPrompt) + Send + Sync)) {
+fn serve(
+    stream: TcpStream,
+    id: u64,
+    token: &str,
+    pending: &Pending,
+    on_prompt: &(dyn Fn(AskpassPrompt) + Send + Sync),
+) {
     let mut line = String::new();
     let Ok(mut reader) = stream.try_clone().map(BufReader::new) else { return };
     if reader.read_line(&mut line).is_err() {
@@ -134,7 +140,9 @@ fn random_token() -> String {
     (0..2)
         .map(|_| {
             let mut h = RandomState::new().build_hasher();
-            h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+            h.write_u128(
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(),
+            );
             format!("{:016x}", h.finish())
         })
         .collect()
@@ -181,9 +189,7 @@ mod tests {
     fn round_trips_a_prompt() {
         let seen: Arc<Mutex<Option<AskpassPrompt>>> = Arc::default();
         let s = seen.clone();
-        let server = Arc::new(
-            AskpassServer::start("helper".into(), Arc::new(move |p| *s.lock() = Some(p))).unwrap(),
-        );
+        let server = Arc::new(AskpassServer::start("helper".into(), Arc::new(move |p| *s.lock() = Some(p))).unwrap());
         let port = server.port;
         let token = server.token.clone();
         let client = std::thread::spawn(move || {

@@ -4,9 +4,7 @@
 
 use russh::server::{self, Auth, ChannelOpenHandle, Msg, Server as _, Session};
 use russh::{Channel, ChannelId};
-use russh_sftp::protocol::{
-    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode, Version,
-};
+use russh_sftp::protocol::{Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode, Version};
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -71,7 +69,12 @@ impl server::Handler for Conn {
         Ok(())
     }
 
-    async fn exec_request(&mut self, channel: ChannelId, data: &[u8], session: &mut Session) -> Result<(), Self::Error> {
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
         let (out, code) = (self.exec)(&String::from_utf8_lossy(data));
         session.channel_success(channel)?;
         session.data(channel, out.into_bytes())?;
@@ -81,7 +84,12 @@ impl server::Handler for Conn {
         Ok(())
     }
 
-    async fn subsystem_request(&mut self, channel: ChannelId, name: &str, session: &mut Session) -> Result<(), Self::Error> {
+    async fn subsystem_request(
+        &mut self,
+        channel: ChannelId,
+        name: &str,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
         let Some(ch) = self.channels.lock().await.remove(&channel).filter(|_| name == "sftp") else {
             session.channel_failure(channel)?;
             return Ok(());
@@ -144,7 +152,13 @@ impl russh_sftp::server::Handler for Sftp {
         Ok(Name { id, files: vec![File::dummy(p)] })
     }
 
-    async fn open(&mut self, id: u32, filename: String, pflags: OpenFlags, _attrs: FileAttributes) -> Result<Handle, Self::Error> {
+    async fn open(
+        &mut self,
+        id: u32,
+        filename: String,
+        pflags: OpenFlags,
+        _attrs: FileAttributes,
+    ) -> Result<Handle, Self::Error> {
         let path = self.local(&filename);
         let file = std::fs::OpenOptions::new()
             .read(pflags.contains(OpenFlags::READ))

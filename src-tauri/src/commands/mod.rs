@@ -43,6 +43,15 @@ pub mod window;
 
 use tauri_specta::collect_commands;
 
+/// A Tauri channel as the shared implementation's streaming argument.
+pub(crate) fn sender<T: tauri::ipc::IpcResponse + Send + Sync + 'static>(
+    channel: tauri::ipc::Channel<T>,
+) -> ide_host::ops::Channel<T> {
+    ide_host::ops::Channel::new(move |v| {
+        let _ = channel.send(v);
+    })
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new().commands(collect_commands![
         app::app_info,
@@ -379,6 +388,10 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         deploy::remote_delete,
         deploy::remote_mkdir,
         deploy::remote_rename,
+        crate::remote_dev::remote_connect,
+        crate::remote_dev::remote_current,
+        crate::remote_dev::remote_disconnect,
+        crate::remote_dev::remote_invoke,
         db::db_test,
         db::db_connected,
         db::db_connect,

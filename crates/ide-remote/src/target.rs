@@ -58,7 +58,9 @@ fn file_name(program: &str) -> &str {
 /// The target's interpreter for a local interpreter executable, if it is one.
 fn interpreter<'a>(program: &str, target: &'a RunTarget) -> Option<&'a str> {
     let name = file_name(program).trim_end_matches(".exe").to_ascii_lowercase();
-    let pick = |configured: &'a str, default: &'a str| Some(if configured.trim().is_empty() { default } else { configured.trim() });
+    let pick = |configured: &'a str, default: &'a str| {
+        Some(if configured.trim().is_empty() { default } else { configured.trim() })
+    };
     if name == "python" || name.starts_with("python3") || name == "python2" {
         pick(&target.python, "python3")
     } else if name == "node" {
@@ -79,7 +81,9 @@ pub fn remote_command(config: &RunConfig, target: &RunTarget, root: &Path, remot
         }
         s.replace(&root_str, remote_root.trim_end_matches('/')).replace('\\', "/")
     };
-    let map_text = |s: &str| -> String { if root_str.is_empty() { s.to_owned() } else { s.replace(&root_str, remote_root.trim_end_matches('/')) } };
+    let map_text = |s: &str| -> String {
+        if root_str.is_empty() { s.to_owned() } else { s.replace(&root_str, remote_root.trim_end_matches('/')) }
+    };
     let cwd = match config.cwd.as_ref().map(|p| p.to_path_buf()) {
         Some(dir) if dir.is_absolute() => match dir.strip_prefix(root) {
             Ok(rel) => join(remote_root, &crate::mapping::posix(rel)),
@@ -91,7 +95,13 @@ pub fn remote_command(config: &RunConfig, target: &RunTarget, root: &Path, remot
     let env = config.env.iter().map(|(k, v)| (k.clone(), map_text(v))).collect();
     let command = config.command.trim();
     if config.args.is_empty() && command.contains(char::is_whitespace) {
-        return RemoteCommand { program: String::new(), args: Vec::new(), cwd, env, shell_line: Some(map_text(command)) };
+        return RemoteCommand {
+            program: String::new(),
+            args: Vec::new(),
+            cwd,
+            env,
+            shell_line: Some(map_text(command)),
+        };
     }
     let program = match interpreter(command, target) {
         Some(remote) => remote.to_owned(),
@@ -143,10 +153,17 @@ impl RemoteRuns {
 
     /// Starts `config` on the target; returns at once (synchronisation and the
     /// remote process follow in the background, reported as output).
-    pub fn start(&self, start: RemoteStart, config: &RunConfig, sink: SharedSink, on_output: Box<dyn Fn(OutputChunk) + Send + Sync>) -> RunInfo {
+    pub fn start(
+        &self,
+        start: RemoteStart,
+        config: &RunConfig,
+        sink: SharedSink,
+        on_output: Box<dyn Fn(OutputChunk) + Send + Sync>,
+    ) -> RunInfo {
         let id = RunId::next();
         let pty = config.extras.emulate_terminal;
-        let info = RunInfo { id, config_id: config.id.clone(), name: config.name.clone(), pid: None, running: true, pty };
+        let info =
+            RunInfo { id, config_id: config.id.clone(), name: config.name.clone(), pid: None, running: true, pty };
         let run = Arc::new(RemoteRun {
             info: Mutex::new(info.clone()),
             process: Mutex::new(None),
@@ -196,7 +213,8 @@ impl RemoteRuns {
 
     /// `INT`, then `KILL` (closing the channel) after `grace`.
     pub fn stop(&self, id: RunId, grace: std::time::Duration) -> IdeResult<()> {
-        let run = self.runs.lock().get(&id).cloned().ok_or_else(|| IdeError::not_found(format!("no such run: {id}")))?;
+        let run =
+            self.runs.lock().get(&id).cloned().ok_or_else(|| IdeError::not_found(format!("no such run: {id}")))?;
         run.stopping.store(true, Ordering::Release);
         run.cancel.cancel();
         let Some(process) = run.process.lock().clone() else { return Ok(()) };
@@ -212,14 +230,21 @@ impl RemoteRuns {
     }
 
     fn process(&self, id: RunId) -> IdeResult<(Arc<RemoteProcess>, tokio::runtime::Handle)> {
-        let run = self.runs.lock().get(&id).cloned().ok_or_else(|| IdeError::not_found(format!("no such run: {id}")))?;
+        let run =
+            self.runs.lock().get(&id).cloned().ok_or_else(|| IdeError::not_found(format!("no such run: {id}")))?;
         let process = run.process.lock().clone();
         let process = process.ok_or_else(|| IdeError::unavailable("the remote process has not started yet"))?;
         Ok((process, run.runtime.clone()))
     }
 }
 
-async fn run_remote(run: &RemoteRun, start: RemoteStart, command: RemoteCommand, pty: bool, on_output: OutputFn) -> IdeResult<Option<u32>> {
+async fn run_remote(
+    run: &RemoteRun,
+    start: RemoteStart,
+    command: RemoteCommand,
+    pty: bool,
+    on_output: OutputFn,
+) -> IdeResult<Option<u32>> {
     on_output(OutputChunk::System { text: format!("[{}] {}\n", start.target.name, start.session.label()) });
     if let Some(sync) = start.sync {
         tokio::select! {
@@ -283,7 +308,10 @@ mod tests {
         assert_eq!(c.args, ["-u", "/home/me/proj/src/main.py"]);
         assert_eq!(c.cwd, "/home/me/proj/src");
         assert_eq!(c.env["DATA"], "/home/me/proj/data");
-        assert_eq!(c.line(), "cd /home/me/proj/src && exec env DATA=/home/me/proj/data /opt/py/bin/python -u /home/me/proj/src/main.py");
+        assert_eq!(
+            c.line(),
+            "cd /home/me/proj/src && exec env DATA=/home/me/proj/data /opt/py/bin/python -u /home/me/proj/src/main.py"
+        );
 
         let c = remote_command(&config("npm run dev", &[], None), &target, root, "/home/me/proj");
         assert_eq!(c.line(), "cd /home/me/proj && npm run dev");

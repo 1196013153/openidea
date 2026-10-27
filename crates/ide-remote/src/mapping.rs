@@ -38,8 +38,7 @@ impl Mappings {
                 let local = if local.is_empty() { project_root.to_path_buf() } else { project_root.join(local) };
                 // Relative to the server root, with or without a leading `/`.
                 let deployment = m.deployment.trim().trim_start_matches("./").trim_matches('/');
-                let remote =
-                    if deployment.is_empty() { remote_root.to_owned() } else { join(remote_root, deployment) };
+                let remote = if deployment.is_empty() { remote_root.to_owned() } else { join(remote_root, deployment) };
                 (local, remote.trim_end_matches('/').to_owned(), m.web.trim().trim_matches('/').to_owned())
             })
             .collect();
@@ -47,7 +46,11 @@ impl Mappings {
             entries.push((project_root.to_path_buf(), remote_root.trim_end_matches('/').to_owned(), String::new()));
         }
         entries.sort_by_key(|(l, _, _)| std::cmp::Reverse(l.components().count()));
-        Self { root: project_root.to_path_buf(), entries, web_url: server.web_url.trim().trim_end_matches('/').to_owned() }
+        Self {
+            root: project_root.to_path_buf(),
+            entries,
+            web_url: server.web_url.trim().trim_end_matches('/').to_owned(),
+        }
     }
 
     pub fn project_root(&self) -> &Path {
@@ -92,7 +95,8 @@ impl Mappings {
         }
         self.entries.iter().find_map(|(l, _, web)| {
             let rel = posix(local.strip_prefix(l).ok()?);
-            let path = [web.as_str(), rel.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("/");
+            let path =
+                [web.as_str(), rel.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("/");
             Some(if path.is_empty() { format!("{}/", self.web_url) } else { format!("{}/{path}", self.web_url) })
         })
     }
@@ -139,7 +143,10 @@ impl Excludes {
     pub fn remote(&self, path: &str) -> bool {
         let path = path.trim_end_matches('/');
         path.rsplit('/').next().is_some_and(|n| self.name(n))
-            || self.remote.iter().any(|r| path == r || path.strip_prefix(r.as_str()).is_some_and(|x| x.starts_with('/')))
+            || self
+                .remote
+                .iter()
+                .any(|r| path == r || path.strip_prefix(r.as_str()).is_some_and(|x| x.starts_with('/')))
     }
 }
 
@@ -184,7 +191,8 @@ mod tests {
 
     #[test]
     fn excludes_names_and_remote_paths() {
-        let settings = DeploymentSettings { exclude: vec![".git;*.pyc".into(), "node_modules".into()], ..Default::default() };
+        let settings =
+            DeploymentSettings { exclude: vec![".git;*.pyc".into(), "node_modules".into()], ..Default::default() };
         let x = Excludes::new(&settings, &server(vec![]), "/srv");
         assert!(x.local(Path::new("src/.git/config")));
         assert!(x.local(Path::new("a/b.pyc")));

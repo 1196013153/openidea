@@ -91,10 +91,7 @@ pub async fn deploy_compare(
 ) -> IdeResult<Vec<SyncEntry>> {
     let project = state.project(window.label())?;
     let token = state.begin_request(request);
-    let r = state
-        .remote
-        .compare(&project.settings.effective(), &project.root, server.as_deref(), &path.to_path_buf(), token)
-        .await;
+    let r = state.remote.compare(&project.settings.effective(), &project.root, server.as_deref(), &path, token).await;
     state.end_request(request);
     r
 }
@@ -131,7 +128,7 @@ pub async fn deploy_info(
     server: Option<String>,
 ) -> IdeResult<Option<DeployedPath>> {
     let project = state.project(window.label())?;
-    state.remote.deployed(&project.settings.effective(), &project.root, server.as_deref(), &path.to_path_buf()).await
+    state.remote.deployed(&project.settings.effective(), &project.root, server.as_deref(), &path).await
 }
 
 /// Remote Host tool window: the server root of `server`, resolved on the host.
@@ -163,7 +160,7 @@ pub async fn remote_open(state: State<'_, AppState>, ssh: String, path: String) 
 #[tauri::command]
 #[specta::specta]
 pub fn remote_of(state: State<'_, AppState>, path: IpcPath) -> Option<(String, String)> {
-    state.remote.remote_of(&path.to_path_buf())
+    state.remote.remote_of(&path)
 }
 
 #[tauri::command]

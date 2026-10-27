@@ -36,7 +36,8 @@ pub fn command_line(cwd: Option<&str>, env: &BTreeMap<String, String>, program: 
     s
 }
 
-fn tilde_quote(path: &str) -> String {
+/// [`quote`], except that a leading `~/` stays open to tilde expansion.
+pub fn tilde_quote(path: &str) -> String {
     match path.strip_prefix("~/") {
         Some(rest) => format!("~/{}", quote(rest)),
         None if path == "~" => "~".into(),

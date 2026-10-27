@@ -98,7 +98,13 @@ impl RemoteService {
         };
         let map = Mappings::new(server, root, &remote_root);
         let exclude = Excludes::new(&settings.deployment, server, &remote_root);
-        let d = Deployment { fs: &fs, map: &map, exclude: &exclude, preserve_time: settings.deployment.preserve_timestamps, cancel };
+        let d = Deployment {
+            fs: &fs,
+            map: &map,
+            exclude: &exclude,
+            preserve_time: settings.deployment.preserve_timestamps,
+            cancel,
+        };
         let out = f(&d).await;
         fs.close().await;
         Ok(out)
@@ -130,12 +136,26 @@ impl RemoteService {
         self.with_deployment(settings, root, &server, cancel, async |d| d.download(paths, progress).await).await
     }
 
-    pub async fn delete_remote(&self, settings: &Settings, root: &Path, server_id: Option<&str>, paths: &[PathBuf]) -> IdeResult<TransferReport> {
+    pub async fn delete_remote(
+        &self,
+        settings: &Settings,
+        root: &Path,
+        server_id: Option<&str>,
+        paths: &[PathBuf],
+    ) -> IdeResult<TransferReport> {
         let server = server(settings, server_id)?;
-        self.with_deployment(settings, root, &server, CancellationToken::new(), async |d| d.delete_remote(paths).await).await
+        self.with_deployment(settings, root, &server, CancellationToken::new(), async |d| d.delete_remote(paths).await)
+            .await
     }
 
-    pub async fn compare(&self, settings: &Settings, root: &Path, server_id: Option<&str>, path: &Path, cancel: CancellationToken) -> IdeResult<Vec<SyncEntry>> {
+    pub async fn compare(
+        &self,
+        settings: &Settings,
+        root: &Path,
+        server_id: Option<&str>,
+        path: &Path,
+        cancel: CancellationToken,
+    ) -> IdeResult<Vec<SyncEntry>> {
         let server = server(settings, server_id)?;
         self.with_deployment(settings, root, &server, cancel, async |d| d.compare(path).await).await?
     }
@@ -154,11 +174,21 @@ impl RemoteService {
     }
 
     /// Where `path` is deployed on `server_id` (or the default server).
-    pub async fn deployed(&self, settings: &Settings, root: &Path, server_id: Option<&str>, path: &Path) -> IdeResult<Option<DeployedPath>> {
+    pub async fn deployed(
+        &self,
+        settings: &Settings,
+        root: &Path,
+        server_id: Option<&str>,
+        path: &Path,
+    ) -> IdeResult<Option<DeployedPath>> {
         let server = server(settings, server_id)?;
         let name = server.name.clone();
         self.with_deployment(settings, root, &server, CancellationToken::new(), async |d| {
-            d.map.remote(path).map(|remote_path| DeployedPath { server: name, remote_path, web_url: d.map.web_url(path) })
+            d.map.remote(path).map(|remote_path| DeployedPath {
+                server: name,
+                remote_path,
+                web_url: d.map.web_url(path),
+            })
         })
         .await
     }
@@ -189,7 +219,9 @@ impl RemoteService {
         let r = fs.download(remote, &local).await;
         fs.close().await;
         r?;
-        self.edits.lock().insert(local.clone(), RemoteEdit { ssh_config: ssh_config.to_owned(), remote: remote.to_owned() });
+        self.edits
+            .lock()
+            .insert(local.clone(), RemoteEdit { ssh_config: ssh_config.to_owned(), remote: remote.to_owned() });
         Ok(local)
     }
 
@@ -234,14 +266,24 @@ impl RemoteService {
             .await;
             return Some(r);
         }
-        if settings.deployment.auto_upload == AutoUpload::Never || settings.deployment.default_server.is_empty() || !path.starts_with(root) {
+        if settings.deployment.auto_upload == AutoUpload::Never
+            || settings.deployment.default_server.is_empty()
+            || !path.starts_with(root)
+        {
             return None;
         }
-        Some(self.upload(settings, root, None, &[path.to_path_buf()], CancellationToken::new(), &mut |_, _, _| {}).await)
+        Some(
+            self.upload(settings, root, None, &[path.to_path_buf()], CancellationToken::new(), &mut |_, _, _| {}).await,
+        )
     }
 
     /// After files were deleted locally: their remote copies too (automatic upload + Delete remote files).
-    pub async fn on_deleted(&self, settings: &Settings, root: &Path, paths: &[PathBuf]) -> Option<IdeResult<TransferReport>> {
+    pub async fn on_deleted(
+        &self,
+        settings: &Settings,
+        root: &Path,
+        paths: &[PathBuf],
+    ) -> Option<IdeResult<TransferReport>> {
         let d = &settings.deployment;
         if d.auto_upload == AutoUpload::Never || !d.delete_remote || d.default_server.is_empty() {
             return None;
@@ -265,7 +307,10 @@ impl RemoteService {
         let session = self.ssh.session(&target.ssh_config).await?;
         let fs = RemoteFs::new(session.sftp().await?);
         let folder = if target.project_root.trim().is_empty() {
-            format!("~/{}", root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into()))
+            format!(
+                "~/{}",
+                root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into())
+            )
         } else {
             target.project_root.clone()
         };
@@ -286,14 +331,25 @@ impl RemoteService {
                     let server = DeploymentServer { root_path: remote_root.clone(), ..Default::default() };
                     let map = Mappings::new(&server, &root, &remote_root);
                     let exclude = Excludes::new(&deployment, &server, &remote_root);
-                    let d = Deployment { fs: &fs, map: &map, exclude: &exclude, preserve_time: true, cancel: CancellationToken::new() };
+                    let d = Deployment {
+                        fs: &fs,
+                        map: &map,
+                        exclude: &exclude,
+                        preserve_time: true,
+                        cancel: CancellationToken::new(),
+                    };
                     let mut progress = |_: &str, _: usize, _: usize| {};
                     let report = d.push_changes(&root, &mut progress).await;
                     fs.close().await;
                     let report = report?;
-                    out(OutputChunk::System { text: format!("Uploaded {} changed file(s) to {remote_root}\n", report.files) });
+                    out(OutputChunk::System {
+                        text: format!("Uploaded {} changed file(s) to {remote_root}\n", report.files),
+                    });
                     match report.errors.first() {
-                        Some(e) => Err(IdeError::new(ide_core::error::ErrorKind::Io, format!("upload of {} failed: {}", e.path, e.message))),
+                        Some(e) => Err(IdeError::new(
+                            ide_core::error::ErrorKind::Io,
+                            format!("upload of {} failed: {}", e.path, e.message),
+                        )),
                         None => Ok(()),
                     }
                 })

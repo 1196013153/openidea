@@ -14,7 +14,11 @@ pub(crate) fn apply_ssh_settings(state: &AppState) {
 /// Test Connection: connects with `config` as edited (not necessarily saved).
 #[tauri::command]
 #[specta::specta]
-pub async fn ssh_test(state: State<'_, AppState>, config: SshConfiguration, secret: Option<String>) -> IdeResult<String> {
+pub async fn ssh_test(
+    state: State<'_, AppState>,
+    config: SshConfiguration,
+    secret: Option<String>,
+) -> IdeResult<String> {
     let ssh = state.ssh.clone();
     ssh.test(&config, secret).await
 }

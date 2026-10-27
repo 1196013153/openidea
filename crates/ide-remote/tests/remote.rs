@@ -27,7 +27,13 @@ async fn env() -> Env {
     std::fs::write(project.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
     let port = ide_ssh::testing::sshd(server_root.clone(), Arc::new(|cmd| (format!("ran: {cmd}"), 0))).await;
     let files = SshFiles { known_hosts: tmp.path().join("known_hosts"), config: None };
-    let target = SshTarget { host: "127.0.0.1".into(), port: Some(port), user: "dev".into(), auth: SshAuth::Password, key_file: String::new() };
+    let target = SshTarget {
+        host: "127.0.0.1".into(),
+        port: Some(port),
+        user: "dev".into(),
+        auth: SshAuth::Password,
+        key_file: String::new(),
+    };
     let session = match Session::connect(&target, Some("secret"), &files).await {
         Err(ide_ssh::ConnectError::UnknownHostKey(k)) => {
             k.trust(&files.known_hosts).unwrap();
@@ -62,7 +68,7 @@ async fn uploads_compares_syncs_and_downloads() {
     let exclude = Excludes::new(&settings, &server, "/srv");
     let d = Deployment { fs: &fs, map: &map, exclude: &exclude, preserve_time: true, cancel: CancellationToken::new() };
 
-    let report = d.upload(&[env.project.clone()], &mut no_progress()).await;
+    let report = d.upload(std::slice::from_ref(&env.project), &mut no_progress()).await;
     assert_eq!((report.files, report.errors.len()), (2, 0), "{report:?}");
     assert_eq!(std::fs::read_to_string(env.server_root.join("srv/app/src/main.py")).unwrap(), "print('hi')\n");
     assert!(!env.server_root.join("srv/app/.git").exists(), ".git is excluded by name");
@@ -121,7 +127,8 @@ impl ide_core::EventSink for Sink {
 async fn runs_a_configuration_on_a_target() {
     let env = env().await;
     let runs = RemoteRuns::new();
-    let target = RunTarget { id: "t".into(), name: "box".into(), python: "/usr/bin/python3".into(), ..Default::default() };
+    let target =
+        RunTarget { id: "t".into(), name: "box".into(), python: "/usr/bin/python3".into(), ..Default::default() };
     let config = RunConfig {
         id: "main".into(),
         name: "main".into(),
@@ -151,7 +158,9 @@ async fn runs_a_configuration_on_a_target() {
         &config,
         sink.clone() as SharedSink,
         Box::new(move |chunk| match chunk {
-            OutputChunk::Stdout { text } | OutputChunk::Stderr { text } | OutputChunk::System { text } => out.lock().push_str(&text),
+            OutputChunk::Stdout { text } | OutputChunk::Stderr { text } | OutputChunk::System { text } => {
+                out.lock().push_str(&text)
+            }
         }),
     );
     assert!(runs.contains(info.id));
@@ -164,10 +173,7 @@ async fn runs_a_configuration_on_a_target() {
     let events = sink.0.lock().clone();
     assert!(matches!(events.as_slice(), [IdeEvent::RunExited { code: Some(0), .. }]), "{events:?}");
     let text = output.lock().clone();
-    assert!(
-        text.contains("ran: cd /home/dev/demo && exec /usr/bin/python3 /home/dev/demo/src/main.py"),
-        "{text}"
-    );
+    assert!(text.contains("ran: cd /home/dev/demo && exec /usr/bin/python3 /home/dev/demo/src/main.py"), "{text}");
     assert!(text.contains("Process finished with exit code 0"), "{text}");
     assert!(!runs.list()[0].running);
 }

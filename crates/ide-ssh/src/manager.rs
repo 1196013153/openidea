@@ -52,7 +52,12 @@ impl SshManager {
         let old = std::mem::replace(&mut *self.configs.write(), configs.clone());
         for o in old {
             match configs.iter().find(|c| c.id == o.id) {
-                Some(n) if n.host == o.host && n.port == o.port && n.user == o.user && n.auth == o.auth && n.key_file == o.key_file => {}
+                Some(n)
+                    if n.host == o.host
+                        && n.port == o.port
+                        && n.user == o.user
+                        && n.auth == o.auth
+                        && n.key_file == o.key_file => {}
                 Some(_) => {
                     self.sessions.lock().remove(&o.id);
                 }
@@ -155,7 +160,11 @@ impl SshManager {
         let session = self.connect(&config.id, &SshTarget::from(config), secret.as_deref()).await?;
         let out = session.exec("uname -srm 2>/dev/null || ver", None).await?;
         let os = out.stdout_str().trim().to_owned();
-        Ok(if os.is_empty() { format!("Connected to {}", session.label()) } else { format!("Connected to {}: {os}", session.label()) })
+        Ok(if os.is_empty() {
+            format!("Connected to {}", session.label())
+        } else {
+            format!("Connected to {}: {os}", session.label())
+        })
     }
 
     /// Trusts the host key that failed the last connection under `key` (adds it to `known_hosts`).

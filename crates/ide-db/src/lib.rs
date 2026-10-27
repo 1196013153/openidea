@@ -20,6 +20,7 @@ pub use sql::{CellValue, DbRowEdit, SortKey};
 
 use history::HistoryStore;
 use ide_core::{CancellationToken, IdeError, IdeResult, error::ErrorKind};
+use ide_ssh::{SshManager, SshTarget, Tunnel};
 use parking_lot::Mutex;
 use secrets::SecretStore;
 use serde::{Deserialize, Serialize};
@@ -28,7 +29,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use ide_ssh::{SshManager, SshTarget, Tunnel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -281,7 +281,10 @@ pub fn split_target(target: &str) -> (&str, Option<&str>) {
 fn through_tunnel(e: IdeError, source: &DataSource, via: Option<&str>) -> IdeError {
     let Some(via) = via.filter(|_| e.kind == ErrorKind::Io) else { return e };
     let port = source.port.or(source.driver.default_port()).unwrap_or_default();
-    IdeError::new(ErrorKind::Io, format!("{} through the SSH tunnel ({}:{port} as seen from {via})", e.message, source.host))
+    IdeError::new(
+        ErrorKind::Io,
+        format!("{} through the SSH tunnel ({}:{port} as seen from {via})", e.message, source.host),
+    )
 }
 
 /// Options › Run keep-alive query: pings the pool until it is closed or dropped
@@ -517,9 +520,13 @@ impl DbManager {
             None => self.password(source).await,
         };
         let (target, tunnel) = self.endpoint(source, ssh_secret, false).await?;
-        let pool = Pool::connect(&target, password.as_deref(), Some(&self.root))
-            .await
-            .map_err(|e| through_tunnel(e, source, tunnel.is_some().then(|| self.ssh_label(source.ssh.as_ref().expect("tunneled"))).as_deref()))?;
+        let pool = Pool::connect(&target, password.as_deref(), Some(&self.root)).await.map_err(|e| {
+            through_tunnel(
+                e,
+                source,
+                tunnel.is_some().then(|| self.ssh_label(source.ssh.as_ref().expect("tunneled"))).as_deref(),
+            )
+        })?;
         let version = match source.driver {
             DbDriver::Sqlite => "SELECT 'SQLite ' || sqlite_version()",
             DbDriver::Postgres => "SELECT version()",
@@ -556,7 +563,11 @@ impl DbManager {
             Ok(p) => Arc::new(p),
             Err(e) => {
                 self.drop_unused_tunnel(source_id);
-                return Err(through_tunnel(e, &source, tunnel.is_some().then(|| self.ssh_label(source.ssh.as_ref().expect("tunneled"))).as_deref()));
+                return Err(through_tunnel(
+                    e,
+                    &source,
+                    tunnel.is_some().then(|| self.ssh_label(source.ssh.as_ref().expect("tunneled"))).as_deref(),
+                ));
             }
         };
         // Another caller may have connected meanwhile; keep theirs.

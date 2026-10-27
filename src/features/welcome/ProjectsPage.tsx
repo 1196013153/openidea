@@ -22,6 +22,7 @@ import styles from "./Welcome.module.css";
 
 function HeaderButtons() {
   const canClone = useActions((s) => s.actions.has("vcs.clone"));
+  const canRemote = useActions((s) => s.actions.has("remote.connect"));
   const opening = useProject((s) => s.opening);
   const openKey = shortcutLabel("file.openProject");
   return (
@@ -36,6 +37,11 @@ function HeaderButtons() {
       {canClone && (
         <Button onClick={() => void executeAction("vcs.clone")}>
           <T>Clone Repository</T>
+        </Button>
+      )}
+      {canRemote && (
+        <Button disabled={opening} onClick={() => void executeAction("remote.connect")}>
+          <T>Remote Development</T>
         </Button>
       )}
     </div>

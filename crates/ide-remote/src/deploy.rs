@@ -159,7 +159,11 @@ impl Deployment<'_> {
         Ok(())
     }
 
-    pub async fn upload(&self, paths: &[PathBuf], progress: &mut (dyn FnMut(&str, usize, usize) + Send)) -> TransferReport {
+    pub async fn upload(
+        &self,
+        paths: &[PathBuf],
+        progress: &mut (dyn FnMut(&str, usize, usize) + Send),
+    ) -> TransferReport {
         let mut report = TransferReport::default();
         let files = self.local_files(paths, &mut report);
         for (i, local) in files.iter().enumerate() {
@@ -181,7 +185,11 @@ impl Deployment<'_> {
     }
 
     /// Downloads the remote counterparts of `paths` (folders recursively).
-    pub async fn download(&self, paths: &[PathBuf], progress: &mut (dyn FnMut(&str, usize, usize) + Send)) -> TransferReport {
+    pub async fn download(
+        &self,
+        paths: &[PathBuf],
+        progress: &mut (dyn FnMut(&str, usize, usize) + Send),
+    ) -> TransferReport {
         let mut report = TransferReport::default();
         let mut jobs: Vec<(String, PathBuf)> = Vec::new();
         for p in paths {
@@ -202,7 +210,9 @@ impl Deployment<'_> {
                     }
                 }
                 Ok(Some(_)) => jobs.push((remote, p.clone())),
-                Ok(None) => report.fail(self.rel(p), IdeError::not_found(format!("{remote} does not exist on the server"))),
+                Ok(None) => {
+                    report.fail(self.rel(p), IdeError::not_found(format!("{remote} does not exist on the server")))
+                }
                 Err(e) => report.fail(self.rel(p), e),
             }
         }
@@ -256,7 +266,13 @@ impl Deployment<'_> {
             let stamp = FileStamp { size, mtime: mtime_of(&f) };
             by_rel.insert(
                 self.rel(&f),
-                SyncEntry { path: self.rel(&f), remote_path, local: Some(stamp), remote: None, status: SyncStatus::LocalOnly },
+                SyncEntry {
+                    path: self.rel(&f),
+                    remote_path,
+                    local: Some(stamp),
+                    remote: None,
+                    status: SyncStatus::LocalOnly,
+                },
             );
         }
         let mut remote = Vec::new();
@@ -272,10 +288,13 @@ impl Deployment<'_> {
             }
             let rel = self.rel(&l);
             let stamp = FileStamp { size: e.size, mtime: e.mtime };
-            by_rel
-                .entry(rel.clone())
-                .and_modify(|x| x.remote = Some(stamp))
-                .or_insert(SyncEntry { path: rel, remote_path: e.path, local: None, remote: Some(stamp), status: SyncStatus::RemoteOnly });
+            by_rel.entry(rel.clone()).and_modify(|x| x.remote = Some(stamp)).or_insert(SyncEntry {
+                path: rel,
+                remote_path: e.path,
+                local: None,
+                remote: Some(stamp),
+                status: SyncStatus::RemoteOnly,
+            });
         }
         Ok(by_rel
             .into_values()
@@ -287,7 +306,11 @@ impl Deployment<'_> {
     }
 
     /// Applies the chosen Sync with Deployed actions.
-    pub async fn apply(&self, steps: &[SyncStep], progress: &mut (dyn FnMut(&str, usize, usize) + Send)) -> TransferReport {
+    pub async fn apply(
+        &self,
+        steps: &[SyncStep],
+        progress: &mut (dyn FnMut(&str, usize, usize) + Send),
+    ) -> TransferReport {
         let mut report = TransferReport::default();
         let root = self.map.project_root().to_path_buf();
         for (i, step) in steps.iter().enumerate() {
@@ -315,7 +338,11 @@ impl Deployment<'_> {
     }
 
     /// Uploads what changed locally under `local` (new, newer or resized files): sync before a run.
-    pub async fn push_changes(&self, local: &Path, progress: &mut (dyn FnMut(&str, usize, usize) + Send)) -> IdeResult<TransferReport> {
+    pub async fn push_changes(
+        &self,
+        local: &Path,
+        progress: &mut (dyn FnMut(&str, usize, usize) + Send),
+    ) -> IdeResult<TransferReport> {
         let steps: Vec<SyncStep> = self
             .compare(local)
             .await?

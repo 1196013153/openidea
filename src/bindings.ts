@@ -800,6 +800,25 @@ export const commands = {
 	remoteDelete: (ssh: string, path: string) => typedError<null, IdeError>(__TAURI_INVOKE("remote_delete", { ssh, path })),
 	remoteMkdir: (ssh: string, path: string) => typedError<null, IdeError>(__TAURI_INVOKE("remote_mkdir", { ssh, path })),
 	remoteRename: (ssh: string, from: string, to: string) => typedError<null, IdeError>(__TAURI_INVOKE("remote_rename", { ssh, from, to })),
+	/**
+	 *  File › Remote Development: opens `path` on the host of SSH configuration
+	 *  `ssh_config` in this window (installs / starts the server as needed).
+	 */
+	remoteConnect: (sshConfig: string, path: string) => typedError<RemoteProject_Serialize, IdeError>(__TAURI_INVOKE("remote_connect", { sshConfig, path })),
+	/**  The remote session of this window (a settings window: its parent's), if any. */
+	remoteCurrent: () => __TAURI_INVOKE<{
+	sshConfig: string,
+	root: string,
+	host: string,
+	commands: string[],
+} | null>("remote_current"),
+	remoteDisconnect: () => __TAURI_INVOKE<void>("remote_disconnect"),
+	/**
+	 *  Runs a command on the window's remote server; `args` and the result are JSON
+	 *  text. Streaming arguments are `{ "$channel": id }`; their values arrive on
+	 *  `on_channel` tagged with the id.
+	 */
+	remoteInvoke: (cmd: string, args: string, onChannel: Channel<ChannelFrame>) => typedError<string, IdeError>(__TAURI_INVOKE("remote_invoke", { cmd, args, onChannel })),
 	/**  Test Connection: connects with unsaved settings and returns the server version. */
 	dbTest: (source: DataSource, password: string | null, sshSecret: string | null) => typedError<string, IdeError>(__TAURI_INVOKE("db_test", { source, password, sshSecret })),
 	dbConnected: () => typedError<string[], IdeError>(__TAURI_INVOKE("db_connected")),
@@ -1169,6 +1188,12 @@ export type ChangelistState = {
 	active: string,
 	/**  Project-relative path → list id. Files not listed belong to the active list. */
 	files?: { [key in string]: string },
+};
+
+/**  A value for one streaming argument of a remote command (`data`: JSON text). */
+export type ChannelFrame = {
+	id: number,
+	data: string,
 };
 
 export type CheckStatus = "pending" | "success" | "failure" | "cancelled" | "skipped" | "neutral";
@@ -4113,6 +4138,39 @@ tags?: PushTags | null } |
 { op: "updateBranch"; branch: string } | 
 /**  Pull dialog: `branches` of `remote` (none = the configured merge branch). */
 { op: "pullFrom"; remote: string; branches: string[]; rebase: boolean; options: MergeOptions };
+
+export type RemoteProject = RemoteProject_Serialize | RemoteProject_Deserialize;
+
+export type RemoteProject_Deserialize = {
+	sshConfig: string,
+	root: string,
+	/**  `user@host:port` of the SSH configuration. */
+	host: string,
+	serverVersion: string,
+	os: string,
+	/**  Commands the server answers (the rest run locally). */
+	commands: string[],
+	project: ProjectInfo_Deserialize,
+};
+
+export type RemoteProject_Serialize = {
+	sshConfig: string,
+	root: string,
+	/**  `user@host:port` of the SSH configuration. */
+	host: string,
+	serverVersion: string,
+	os: string,
+	/**  Commands the server answers (the rest run locally). */
+	commands: string[],
+	project: ProjectInfo_Serialize,
+};
+
+export type RemoteSession = {
+	sshConfig: string,
+	root: string,
+	host: string,
+	commands: string[],
+};
 
 export type ReplaceEvent = 
 /**  A file was changed (`replacements` > 0) or had nothing left to replace. */

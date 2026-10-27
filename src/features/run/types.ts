@@ -319,6 +319,7 @@ const TEMPLATE_KEYS = [
   "openToolWindow",
   "focusToolWindow",
   "emulateTerminal",
+  "target",
 ] as const satisfies ReadonlyArray<keyof RunConfig>;
 
 export const templateId = (kind: string) => `template:${kind}`;

@@ -117,15 +117,17 @@ impl Session {
         let host = format!("{}:{}", target.host, target.port.unwrap_or(22));
         match tokio::time::timeout(CONNECT_TIMEOUT, Self::connect_inner(target, secret, files)).await {
             Ok(r) => r,
-            Err(_) => Err(io(format!(
-                "timed out connecting to the SSH host {host} ({} s)",
-                CONNECT_TIMEOUT.as_secs()
-            ))
-            .into()),
+            Err(_) => {
+                Err(io(format!("timed out connecting to the SSH host {host} ({} s)", CONNECT_TIMEOUT.as_secs())).into())
+            }
         }
     }
 
-    async fn connect_inner(target: &SshTarget, secret: Option<&str>, files: &SshFiles) -> Result<Session, ConnectError> {
+    async fn connect_inner(
+        target: &SshTarget,
+        secret: Option<&str>,
+        files: &SshFiles,
+    ) -> Result<Session, ConnectError> {
         let hops = resolve_hops(target, files.config.as_deref())?;
         let mut sessions: Vec<Handle<Client>> = Vec::new();
         for (i, hop) in hops.iter().enumerate() {
@@ -163,6 +165,13 @@ impl Session {
     /// A TCP connection to `host:port` as seen from the SSH host.
     pub async fn direct_tcpip(&self, host: &str, port: u16) -> Result<ChannelStream<Msg>, russh::Error> {
         let channel = self.handle.channel_open_direct_tcpip(host, u32::from(port), "127.0.0.1", 0).await?;
+        Ok(channel.into_stream())
+    }
+
+    /// Starts `command` and returns its stdin / stdout as one byte stream (stderr is dropped).
+    pub async fn exec_stream(&self, command: &str) -> Result<ChannelStream<Msg>, russh::Error> {
+        let channel = self.handle.channel_open_session().await?;
+        channel.exec(true, command).await?;
         Ok(channel.into_stream())
     }
 
@@ -222,6 +231,43 @@ impl Session {
             let _ = tx.send(code);
         });
         Ok(RemoteProcess { write: Arc::new(write), exit: Mutex::new(Some(rx)) })
+    }
+
+    /// Writes `data` to `remote` (absolute; its folder is created) through an
+    /// exec channel, gzip-compressed. Much faster than SFTP for one big file:
+    /// SFTP writes wait for each packet's reply, the channel only for its window.
+    pub async fn put(&self, remote: &str, data: &[u8]) -> IdeResult<()> {
+        use std::io::Write as _;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(data)?;
+        let packed = gz.finish()?;
+        let q = crate::shell::quote;
+        let dir = crate::sftp::parent(remote).unwrap_or("/");
+        let command = format!("mkdir -p {} && gzip -dc > {}", q(dir), q(remote));
+        let stderr = Arc::new(Mutex::new(Vec::new()));
+        let sink = stderr.clone();
+        let process = self
+            .spawn(
+                &command,
+                None,
+                Box::new(move |out| {
+                    if let Output::Stderr(b) = out {
+                        sink.lock().extend_from_slice(b);
+                    }
+                }),
+            )
+            .await?;
+        for chunk in packed.chunks(256 * 1024) {
+            process.write(chunk).await?;
+        }
+        process.eof().await?;
+        match process.wait().await {
+            Some(0) => Ok(()),
+            code => {
+                let err = String::from_utf8_lossy(&stderr.lock()).trim().to_owned();
+                Err(io(format!("cannot write {remote} on {} ({code:?}): {err}", self.label)))
+            }
+        }
     }
 
     /// An SFTP session on its own channel.

@@ -35,7 +35,10 @@ import { activate as services } from "./services";
 import { activate as github } from "./github";
 import { activate as httpClient } from "./http-client";
 import { activate as database } from "./database";
+import { activate as deployment } from "./deployment";
 import { activate as vim, activateSettingsPages as vimPages } from "./vim";
+import { activate as ssh } from "./ssh";
+import { activate as remoteDev } from "./remote-dev";
 
 type Activate = () => void | (() => void);
 
@@ -72,7 +75,10 @@ const features: Array<[string, Activate]> = [
   ["github", github],
   ["http-client", httpClient],
   ["database", database],
+  ["deployment", deployment],
   ["vim", vim],
+  ["ssh", ssh],
+  ["remote-dev", remoteDev],
 ];
 
 export function activateFeatures(): () => void {
