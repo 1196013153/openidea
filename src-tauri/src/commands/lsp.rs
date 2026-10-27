@@ -106,8 +106,16 @@ pub async fn lsp_references(
     include_declaration: bool,
     project_wide: bool,
 ) -> IdeResult<References> {
-    ide_host::ops::lsp::lsp_references(&state.host, window.label(), request, doc, pos, include_declaration, project_wide)
-        .await
+    ide_host::ops::lsp::lsp_references(
+        &state.host,
+        window.label(),
+        request,
+        doc,
+        pos,
+        include_declaration,
+        project_wide,
+    )
+    .await
 }
 
 #[tauri::command]

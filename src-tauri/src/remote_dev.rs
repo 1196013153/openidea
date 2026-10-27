@@ -29,10 +29,15 @@ pub struct Connection {
     pub root: String,
     pub host: String,
     pub commands: Vec<String>,
-    /// Streaming arguments by id: the frontend channel and the id it expects.
-    channels: Arc<Mutex<HashMap<u64, Channel<ChannelFrame>>>>,
+    /// Streaming arguments by connection-wide id: the frontend channel and the id
+    /// it expects (each webview numbers its own, and a settings window shares this
+    /// connection with its parent).
+    channels: Channels,
+    next_channel: std::sync::atomic::AtomicU64,
     _session: Arc<ide_ssh::Session>,
 }
+
+type Channels = Arc<Mutex<HashMap<u64, (Channel<ChannelFrame>, u64)>>>;
 
 #[derive(Default)]
 pub struct Connections(Mutex<HashMap<String, Arc<Connection>>>);
@@ -74,7 +79,7 @@ pub struct RemoteProject {
 struct ClientHandler {
     app: AppHandle,
     window: String,
-    channels: Arc<Mutex<HashMap<u64, Channel<ChannelFrame>>>>,
+    channels: Channels,
 }
 
 impl Handler for ClientHandler {
@@ -91,8 +96,8 @@ impl Handler for ClientHandler {
             "channel" => match serde_json::from_value::<ChannelMessage>(params) {
                 Ok(m) => {
                     let channel = self.channels.lock().get(&m.id).cloned();
-                    if let Some(c) = channel {
-                        let _ = c.send(ChannelFrame { id: m.id, data: m.data.to_string() });
+                    if let Some((c, id)) = channel {
+                        let _ = c.send(ChannelFrame { id, data: m.data.to_string() });
                     }
                 }
                 Err(e) => tracing::warn!("remote channel: {e}"),
@@ -162,9 +167,14 @@ async fn ensure_server(state: &AppState, session: &ide_ssh::Session) -> IdeResul
     let version = env!("CARGO_PKG_VERSION");
     let dir = install_dir(version);
     let q = ide_ssh::shell::tilde_quote;
-    let probe =
-        session.exec(&format!("uname -sm; ls -d {}/*/openidea-server 2>/dev/null", q(&dir)), None).await?.stdout_str();
-    let mut lines = probe.lines();
+    // Between markers: shell start-up files may print to stdout too.
+    const MARK: &str = "__OPENIDEA_PROBE__";
+    let probe = session
+        .exec(&format!("echo {MARK}; uname -sm; ls -d {}/*/openidea-server 2>/dev/null", q(&dir)), None)
+        .await?
+        .stdout_str();
+    let probe = probe.split_once(MARK).map_or(probe.as_str(), |(_, rest)| rest);
+    let mut lines = probe.lines().map(str::trim).filter(|l| !l.is_empty());
     let (os, arch) = platform(lines.next().unwrap_or_default());
     let installed: Vec<&str> = lines.collect();
     let local = match local_server_binary(state, &os, &arch) {
@@ -200,7 +210,12 @@ async fn ensure_server(state: &AppState, session: &ide_ssh::Session) -> IdeResul
     fs.close().await;
     let remote_dir = remote_dir?;
     let remote_bin = ide_ssh::sftp::join(&ide_ssh::sftp::join(&remote_dir, &build), "openidea-server");
-    let tmp = format!("{remote_bin}.part");
+    // Per install: another window may be installing the same build right now.
+    let tmp = format!(
+        "{remote_bin}.{}-{}.part",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+    );
     let started = std::time::Instant::now();
     session.put(&tmp, &tokio::fs::read(&local).await?).await?;
     tracing::info!("installed openidea-server on {} in {:?}", session.label(), started.elapsed());
@@ -260,7 +275,7 @@ pub async fn remote_connect(
         .await
         .map_err(|e| IdeError::unavailable(format!("cannot start openidea-server: {e}")))?;
     let (reader, writer) = tokio::io::split(stream);
-    let channels: Arc<Mutex<HashMap<u64, Channel<ChannelFrame>>>> = Arc::default();
+    let channels: Channels = Arc::default();
     let handler =
         Arc::new(ClientHandler { app: window.app_handle().clone(), window: label.clone(), channels: channels.clone() });
     let peer = Peer::connect(reader, writer, handler);
@@ -288,6 +303,8 @@ pub async fn remote_connect(
     let call = Invoke { window: label.clone(), cmd: "open_project".into(), args: serde_json::json!({ "path": root }) };
     let project: ide_host::ops::project::ProjectInfo =
         peer.request("invoke", call, None).await.map_err(ide_host::rpc::error_from_reply)?;
+    // As the server resolved it (symlinks, a trailing `/`): the frontend compares it with the project's.
+    let root = serde_json::to_value(&project.root).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or(root);
     let _ = window.set_title(&format!("{} [{}]", project.name, config.label()));
     let connection = Arc::new(Connection {
         peer,
@@ -296,6 +313,7 @@ pub async fn remote_connect(
         host: config.label(),
         commands: commands.clone(),
         channels,
+        next_channel: std::sync::atomic::AtomicU64::new(1),
         _session: session,
     });
     state.remote_dev.0.lock().insert(label, connection);
@@ -350,16 +368,18 @@ pub async fn remote_invoke(
     args: String,
     on_channel: Channel<ChannelFrame>,
 ) -> IdeResult<String> {
-    let args: Value = serde_json::from_str(&args).map_err(|e| IdeError::invalid(format!("arguments: {e}")))?;
+    let mut args: Value = serde_json::from_str(&args).map_err(|e| IdeError::invalid(format!("arguments: {e}")))?;
     let label = AppState::owner_window(window.label()).to_owned();
     let c = state
         .remote_dev
         .get(&label)
         .ok_or_else(|| IdeError::unavailable("this window is not connected to a remote host"))?;
-    if let Value::Object(map) = &args {
-        for v in map.values() {
+    if let Value::Object(map) = &mut args {
+        for v in map.values_mut() {
             if let Some(id) = v.get("$channel").and_then(Value::as_u64) {
-                c.channels.lock().insert(id, on_channel.clone());
+                let own = c.next_channel.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                c.channels.lock().insert(own, (on_channel.clone(), id));
+                *v = serde_json::json!({ "$channel": own });
             }
         }
     }

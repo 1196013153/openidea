@@ -124,6 +124,18 @@ impl Host {
         }
     }
 
+    /// Stops what this host started: language servers, agents, runs and terminals.
+    /// For a process that exits without dropping the host (the remote server).
+    pub async fn shutdown(&self) {
+        self.processes.kill_all();
+        self.terminals.kill_all();
+        let projects: Vec<_> = self.projects.write().drain().map(|(_, p)| p).collect();
+        for project in projects {
+            project.agents.shutdown();
+            project.lsp.shutdown_all().await;
+        }
+    }
+
     // ---- cancellable requests: the UI allocates ids, `cancel_request` cancels ----
 
     pub fn begin_request(&self, id: RequestId) -> CancellationToken {

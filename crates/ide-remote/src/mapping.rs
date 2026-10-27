@@ -61,9 +61,19 @@ impl Mappings {
     pub fn remote(&self, local: &Path) -> Option<String> {
         self.entries.iter().find_map(|(l, r, _)| {
             let rel = local.strip_prefix(l).ok()?;
+            // `..` would leave the mapping (`posix` drops it).
+            if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+                return None;
+            }
             let rel = posix(rel);
             Some(if rel.is_empty() { r.clone() } else { join(r, &rel) })
         })
+    }
+
+    /// `remote` is the remote folder of a mapping (deleting it would wipe the deployment).
+    pub fn is_root(&self, remote: &str) -> bool {
+        let remote = remote.trim_end_matches('/');
+        self.entries.iter().any(|(_, r, _)| r.trim_end_matches('/') == remote)
     }
 
     /// The local path of a remote file or folder (`None`: not under any mapping).
@@ -85,6 +95,10 @@ impl Mappings {
             }
         }
         let (l, rest, _) = best?;
+        // A `..` from the server must not leave the local folder.
+        if rest.split('/').any(|s| s == ".." || s == ".") {
+            return None;
+        }
         Some(rest.split('/').filter(|s| !s.is_empty()).fold(l.clone(), |p, s| p.join(s)))
     }
 
@@ -126,7 +140,7 @@ impl Excludes {
             .iter()
             .map(|p| p.trim())
             .filter(|p| !p.is_empty())
-            .map(|p| join(remote_root, p).trim_end_matches('/').to_owned())
+            .map(|p| join(remote_root, p.trim_start_matches('/')).trim_end_matches('/').to_owned())
             .collect();
         Self { names: b.build().unwrap_or_else(|_| GlobSet::empty()), remote }
     }

@@ -2,8 +2,8 @@
 
 use crate::state::AppState;
 use ide_build::compile::{BuildEvent, BuildKind, BuildResult};
-use ide_build::{BuildModel, BuildTool, SyncProgress};
 use ide_build::pom_edit::ArtifactKey;
+use ide_build::{BuildModel, BuildTool, SyncProgress};
 use ide_core::{IdeResult, Location, RequestId};
 #[allow(unused_imports)]
 pub use ide_host::ops::build::*;

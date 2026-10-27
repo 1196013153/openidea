@@ -18,8 +18,9 @@ pub struct SshManager {
     entered: Mutex<HashMap<String, String>>,
     configs: RwLock<Vec<SshConfiguration>>,
     sessions: Mutex<HashMap<String, Arc<Session>>>,
-    /// Serialises connecting so concurrent users share one session.
-    opening: tokio::sync::Mutex<()>,
+    /// Serialises connecting per configuration so concurrent users share one
+    /// session (an unreachable host doesn't hold up the others).
+    opening: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// Host keys awaiting the user's trust, by key (configuration id or a caller's own).
     unknown: Mutex<HashMap<String, UnknownHostKey>>,
 }
@@ -37,7 +38,7 @@ impl SshManager {
             entered: Mutex::default(),
             configs: RwLock::default(),
             sessions: Mutex::default(),
-            opening: tokio::sync::Mutex::new(()),
+            opening: Mutex::default(),
             unknown: Mutex::default(),
         }
     }
@@ -117,7 +118,8 @@ impl SshManager {
         if let Some(s) = self.live(id) {
             return Ok(s);
         }
-        let _opening = self.opening.lock().await;
+        let lock = self.opening.lock().entry(id.to_owned()).or_default().clone();
+        let _opening = lock.lock().await;
         if let Some(s) = self.live(id) {
             return Ok(s);
         }

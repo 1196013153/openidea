@@ -238,7 +238,8 @@ impl Deployment<'_> {
     pub async fn delete_remote(&self, paths: &[PathBuf]) -> TransferReport {
         let mut report = TransferReport::default();
         for p in paths {
-            let Some(remote) = self.map.remote(p).filter(|r| !self.exclude.remote(r)) else {
+            // Never a whole mapping (the project folder went away, or a mapped folder did).
+            let Some(remote) = self.map.remote(p).filter(|r| !self.exclude.remote(r) && !self.map.is_root(r)) else {
                 report.skipped += 1;
                 continue;
             };
@@ -318,7 +319,9 @@ impl Deployment<'_> {
                 break;
             }
             let local = step.path.split('/').filter(|s| !s.is_empty()).fold(root.clone(), |p, s| p.join(s));
-            let Some(remote) = self.map.remote(&local) else {
+            let Some(remote) =
+                self.map.remote(&local).filter(|r| !self.exclude.remote(r) && !self.excluded_local(&local))
+            else {
                 report.skipped += 1;
                 continue;
             };

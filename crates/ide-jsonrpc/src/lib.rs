@@ -194,6 +194,14 @@ impl Handler for NoopHandler {
 
 type Pending = HashMap<i64, oneshot::Sender<Result<Value, RpcError>>>;
 
+/// What the delivery thread hands on, in arrival order: a response is not seen
+/// before the notifications the peer sent ahead of it (a streamed result's last
+/// values before its request completes).
+enum Incoming {
+    Notification(String, Value),
+    Response(oneshot::Sender<Result<Value, RpcError>>, Result<Value, RpcError>),
+}
+
 struct Inner {
     out: mpsc::UnboundedSender<Vec<u8>>,
     pending: Mutex<Pending>,
@@ -451,14 +459,21 @@ impl Peer {
             });
         }
 
-        // Notifications are delivered in order on a dedicated thread.
-        let (notif_tx, notif_rx) = std::sync::mpsc::channel::<(String, Value)>();
+        // Notifications (and the responses after them) are delivered in order on a dedicated thread.
+        let (notif_tx, notif_rx) = std::sync::mpsc::channel::<Incoming>();
         {
             let handler = handler.clone();
             std::thread::Builder::new()
                 .name("jsonrpc-notify".into())
                 .spawn(move || {
-                    while let Ok((method, params)) = notif_rx.recv() {
+                    while let Ok(incoming) = notif_rx.recv() {
+                        let (method, params) = match incoming {
+                            Incoming::Notification(method, params) => (method, params),
+                            Incoming::Response(tx, result) => {
+                                let _ = tx.send(result);
+                                continue;
+                            }
+                        };
                         let h = handler.clone();
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             h.on_notification(&method, params)
@@ -614,12 +629,7 @@ fn parse_id(id: &Value) -> Option<i64> {
     }
 }
 
-fn dispatch(
-    inner: &Arc<Inner>,
-    handler: &Arc<dyn Handler>,
-    notif_tx: &std::sync::mpsc::Sender<(String, Value)>,
-    body: &[u8],
-) {
+fn dispatch(inner: &Arc<Inner>, handler: &Arc<dyn Handler>, notif_tx: &std::sync::mpsc::Sender<Incoming>, body: &[u8]) {
     tracing::trace!(target: "ide_jsonrpc::wire", "<-- {}", String::from_utf8_lossy(body));
     let msg: Value = match serde_json::from_slice(body) {
         Ok(v) => v,
@@ -657,7 +667,7 @@ fn dispatch(
                     });
                 }
                 _ => {
-                    let _ = notif_tx.send((method, params));
+                    let _ = notif_tx.send(Incoming::Notification(method, params));
                 }
             }
         }
@@ -688,7 +698,7 @@ fn dispatch(
                 }
                 _ => Ok(obj.remove("result").unwrap_or(Value::Null)),
             };
-            let _ = tx.send(result);
+            let _ = notif_tx.send(Incoming::Response(tx, result));
         }
     }
 }

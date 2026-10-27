@@ -156,7 +156,13 @@ jobs:
       - name: musl toolchain
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo build --release --locked -p ide-host --bin openidea-server --target ${{ matrix.target }}
+      - name: Build
+        run: |
+          # musl-tools only ships `musl-gcc`; cc-rs would look for `<arch>-linux-musl-gcc`.
+          if [ "$RUNNER_OS" = Linux ]; then export CC_${TARGET//-/_}=musl-gcc; fi
+          cargo build --release --locked -p ide-host --bin openidea-server --target "$TARGET"
+        env:
+          TARGET: ${{ matrix.target }}
       - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

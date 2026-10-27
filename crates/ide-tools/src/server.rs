@@ -42,19 +42,23 @@ pub fn fetch(
     }
     let name = asset_name(os, arch);
     let url = format!("{RELEASES}/v{version}/{name}");
-    let dl = sources::Download {
-        version: version.to_owned(),
-        checksum_url: Some(format!("{url}.sha256")),
-        name,
-        url,
-        size: None,
-        sha256: None,
-    };
     let dir = dest.parent().expect("cached path has a parent");
     std::fs::create_dir_all(dir)?;
     let staging = tempfile_dir(dir)?;
     let result = (|| {
         let http = Http::new(&default_search_path())?;
+        // The binary runs on the remote host: never install it unverified.
+        let checksum_url = format!("{url}.sha256");
+        let sha256 = sources::parse_checksum(&http.get_text(&checksum_url, cancel)?, &name)
+            .ok_or_else(|| IdeError::unavailable(format!("no SHA-256 for {name} at {checksum_url}")))?;
+        let dl = sources::Download {
+            version: version.to_owned(),
+            checksum_url: None,
+            name,
+            url,
+            size: None,
+            sha256: Some(sha256),
+        };
         let archive = fetch_verified(&http, &dl, &staging, cancel, emit)?;
         let unpacked = staging.join("openidea-server");
         let mut gz = flate2::read::GzDecoder::new(std::fs::File::open(&archive)?);
@@ -72,7 +76,10 @@ pub fn fetch(
 }
 
 fn tempfile_dir(parent: &Path) -> IdeResult<PathBuf> {
-    let dir = parent.join(format!(".download-{}", std::process::id()));
+    // Unique per call: two windows of this process may download at once.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = parent.join(format!(".download-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
     Ok(dir)

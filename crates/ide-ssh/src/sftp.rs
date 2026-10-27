@@ -124,7 +124,8 @@ impl RemoteFs {
         let mut out = Vec::new();
         for e in read {
             let name = e.file_name();
-            if name == "." || name == ".." {
+            // A name with `/` (from a hostile server) would point elsewhere once joined.
+            if name == "." || name == ".." || name.contains('/') {
                 continue;
             }
             let path = join(dir, &name);

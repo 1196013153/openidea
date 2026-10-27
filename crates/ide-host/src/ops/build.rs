@@ -125,7 +125,11 @@ pub async fn build_sync(
 
 /// The POM declaring `dependency` for the Maven module `pom` (project-relative): the
 /// module's own, else its nearest parent in the project; its path, text and declaration.
-fn declaring_pom(project: &Project, pom: &str, dependency: &ArtifactKey) -> IdeResult<(std::path::PathBuf, String, Range)> {
+fn declaring_pom(
+    project: &Project,
+    pom: &str,
+    dependency: &ArtifactKey,
+) -> IdeResult<(std::path::PathBuf, String, Range)> {
     let model = ide_build::maven::load(&project.root);
     for rel in ide_build::pom_edit::declaring_poms(&model, pom) {
         let path = project.root.join(&rel);

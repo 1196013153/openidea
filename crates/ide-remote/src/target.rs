@@ -33,7 +33,14 @@ pub struct RemoteCommand {
 impl RemoteCommand {
     pub fn line(&self) -> String {
         match &self.shell_line {
-            Some(line) => format!("cd {} && {line}", ide_ssh::shell::quote(&self.cwd)),
+            Some(line) => {
+                let exports: String = self
+                    .env
+                    .iter()
+                    .map(|(k, v)| format!("export {}; ", ide_ssh::shell::quote(&format!("{k}={v}"))))
+                    .collect();
+                format!("cd {} && {exports}{line}", ide_ssh::shell::quote(&self.cwd))
+            }
             None => ide_ssh::shell::command_line(Some(&self.cwd), &self.env, &self.program, &self.args),
         }
     }
@@ -49,6 +56,22 @@ impl RemoteCommand {
                 .join(" "),
         }
     }
+}
+
+/// `s` with the path `root` replaced by `remote` where it appears as a whole path
+/// (followed by a separator or the end of a path), not as the prefix of a longer name.
+fn replace_root(s: &str, root: &str, remote: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find(root) {
+        let after = &rest[i + root.len()..];
+        let whole = after.chars().next().is_none_or(|c| !(c.is_alphanumeric() || matches!(c, '_' | '-' | '.')));
+        out.push_str(&rest[..i]);
+        out.push_str(if whole { remote } else { root });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 fn file_name(program: &str) -> &str {
@@ -79,10 +102,10 @@ pub fn remote_command(config: &RunConfig, target: &RunTarget, root: &Path, remot
         if root_str.is_empty() {
             return s.to_owned();
         }
-        s.replace(&root_str, remote_root.trim_end_matches('/')).replace('\\', "/")
+        replace_root(s, &root_str, remote_root.trim_end_matches('/')).replace('\\', "/")
     };
     let map_text = |s: &str| -> String {
-        if root_str.is_empty() { s.to_owned() } else { s.replace(&root_str, remote_root.trim_end_matches('/')) }
+        if root_str.is_empty() { s.to_owned() } else { replace_root(s, &root_str, remote_root.trim_end_matches('/')) }
     };
     let cwd = match config.cwd.as_ref().map(|p| p.to_path_buf()) {
         Some(dir) if dir.is_absolute() => match dir.strip_prefix(root) {
@@ -314,10 +337,16 @@ mod tests {
         );
 
         let c = remote_command(&config("npm run dev", &[], None), &target, root, "/home/me/proj");
-        assert_eq!(c.line(), "cd /home/me/proj && npm run dev");
+        assert_eq!(c.line(), "cd /home/me/proj && export DATA=/home/me/proj/data; npm run dev");
         let c = remote_command(&config("/usr/local/bin/node", &["app.js"], None), &RunTarget::default(), root, "/srv");
         assert_eq!((c.program.as_str(), c.cwd.as_str()), ("node", "/srv"));
         let c = remote_command(&config("/usr/bin/make", &["test"], None), &RunTarget::default(), root, "/srv");
         assert_eq!(c.program, "make");
+    }
+
+    #[test]
+    fn maps_the_root_only_as_a_whole_path() {
+        assert_eq!(replace_root("/work/proj2/x:/work/proj/y", "/work/proj", "/srv"), "/work/proj2/x:/srv/y");
+        assert_eq!(replace_root("/work/proj", "/work/proj", "/srv"), "/srv");
     }
 }

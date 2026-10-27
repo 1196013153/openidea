@@ -113,6 +113,8 @@ fn serve(
     on_prompt: &(dyn Fn(AskpassPrompt) + Send + Sync),
 ) {
     let mut line = String::new();
+    // The helper writes its request at once: an idle connection must not hold a thread.
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(10)));
     let Ok(mut reader) = stream.try_clone().map(BufReader::new) else { return };
     if reader.read_line(&mut line).is_err() {
         return;

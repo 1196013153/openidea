@@ -137,6 +137,8 @@ pub fn openssh_args(target: &SshTarget) -> Vec<String> {
         args.extend(["-o".into(), "PreferredAuthentications=password,keyboard-interactive".into()]);
     }
     let host = target.host.trim();
+    // A host starting with `-` must not be read as an option.
+    args.push("--".into());
     args.push(if target.user.trim().is_empty() { host.to_owned() } else { format!("{}@{host}", target.user.trim()) });
     args
 }
@@ -174,9 +176,9 @@ mod tests {
     #[test]
     fn builds_openssh_arguments() {
         let t = SshTarget { host: "box".into(), user: "me".into(), port: Some(2200), ..Default::default() };
-        assert_eq!(openssh_args(&t), ["-p", "2200", "me@box"]);
+        assert_eq!(openssh_args(&t), ["-p", "2200", "--", "me@box"]);
         let t =
             SshTarget { host: "box".into(), auth: SshAuth::KeyPair, key_file: "/k/id".into(), ..Default::default() };
-        assert_eq!(openssh_args(&t), ["-i", "/k/id", "-o", "IdentitiesOnly=yes", "box"]);
+        assert_eq!(openssh_args(&t), ["-i", "/k/id", "-o", "IdentitiesOnly=yes", "--", "box"]);
     }
 }
