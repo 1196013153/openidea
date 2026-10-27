@@ -19,11 +19,16 @@ body, .splash { background: #e9eaee; }
   box-sizing: border-box;
   font: 500 15px/1.2 "Inter Variable", Inter, system-ui, -apple-system, sans-serif;
   color: #6c707e;
+  /* As on body: picking it up when the app CSS arrives would change the wordmark's weight. */
+  -webkit-font-smoothing: antialiased;
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
   animation: splash-in 240ms ease-out 120ms both;
   transition: opacity 160ms ease-out;
+  /* One compositing layer for its whole life: WebKit layers it only while the opacity animates,
+     and the fade-out's fresh layer re-snaps the centred text, which then jumps up half a pixel. */
+  will-change: opacity;
 }
 .splash.splash-out { opacity: 0; pointer-events: none; }
 :root[data-theme^="dark"] .splash { color: #8c8f95; }
