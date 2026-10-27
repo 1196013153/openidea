@@ -6,10 +6,11 @@
  */
 import { useMemo, useState, type CSSProperties } from "react";
 import { Button, Checkbox, Input, Tree, type SelectOption, T } from "@/ui";
-import type { TextAttributesOverride } from "@/platform/editorSettings";
+import { fontWeightVars, type TextAttributesOverride } from "@/platform/editorSettings";
 import {
   ATTRIBUTES,
   SCHEMES,
+  boldWeight,
   effectiveScheme,
   schemeTokens,
   type AttributeDef,
@@ -72,7 +73,7 @@ function previewVars(id: SchemeId, o: Record<string, TextAttributesOverride> | u
     if (ov.foreground && attr.fg) vars[attr.fg] = ov.foreground;
     if (ov.background && attr.bg) vars[attr.bg] = ov.background;
     if (attr.token) {
-      if (ov.bold !== undefined) vars[`--syn-${attr.token}-bold`] = ov.bold ? "700" : "400";
+      if (ov.bold !== undefined) vars[`--syn-${attr.token}-bold`] = boldWeight(ov.bold);
       if (ov.italic !== undefined) vars[`--syn-${attr.token}-italic`] = ov.italic ? "italic" : "normal";
       if (ov.background) vars[`--syn-${attr.token}-bg`] = ov.background;
       if (ov.effect && ov.effect !== "none")
@@ -86,6 +87,8 @@ function previewVars(id: SchemeId, o: Record<string, TextAttributesOverride> | u
 /** Text styled like an attribute in the preview. */
 function tokenStyle(attr: AttributeDef | undefined): CSSProperties {
   if (!attr?.token) return attr?.fg ? { color: `var(${attr.fg})` } : {};
+  if (attr.italicOnly)
+    return { fontStyle: `var(--syn-${attr.token}-italic, ${attr.defaultItalic === false ? "normal" : "italic"})` };
   const t = attr.token;
   return {
     color: `var(--syn-${t})`,
@@ -110,6 +113,8 @@ const SAMPLE: Seg[][] = [
     [" = ", "operator"],
     ["3", "number"],
   ],
+  [["    static_field", "staticSymbol"], [" = 3"]],
+  [["    python_field", "pyStaticSymbol"], [" = 3"]],
   [
     ["    def ", "keyword"],
     ["greet", "functionDeclaration"],
@@ -149,7 +154,16 @@ function AttributeEditor({
   };
   return (
     <div className={styles.attrEditor} aria-label={`${attr.name} attributes`}>
-      {attr.token && (
+      {attr.italicOnly && (
+        <div className={styles.attrRow}>
+          <Checkbox
+            checked={v.italic ?? attr.defaultItalic ?? true}
+            onChange={(b) => set({ italic: b === (attr.defaultItalic ?? true) ? undefined : b })}
+            label="Italic"
+          />
+        </div>
+      )}
+      {attr.token && !attr.italicOnly && (
         <>
           <div className={styles.attrRow}>
             <Checkbox checked={!!v.bold} onChange={(b) => set({ bold: b || undefined })} label="Bold" />
@@ -158,11 +172,11 @@ function AttributeEditor({
         </>
       )}
       {attr.fg && <ColorRow label="Foreground" value={v.foreground} onChange={(c) => set({ foreground: c })} />}
-      {(attr.bg || attr.token) && (
+      {(attr.bg || (attr.token && !attr.italicOnly)) && (
         <ColorRow label="Background" value={v.background} onChange={(c) => set({ background: c })} />
       )}
       {attr.effect && <ColorRow label="Effects" value={v.effectColor} onChange={(c) => set({ effectColor: c })} />}
-      {attr.token && (
+      {attr.token && !attr.italicOnly && (
         <div className={styles.attrRow}>
           <Checkbox
             checked={!!v.effect && v.effect !== "none"}
@@ -192,9 +206,11 @@ function AttributeEditor({
           )}
         </div>
       )}
-      <div className={styles.inherited}>
-        <T>Unchecked values are inherited from the scheme.</T>
-      </div>
+      {!attr.italicOnly && (
+        <div className={styles.inherited}>
+          <T>Unchecked values are inherited from the scheme.</T>
+        </div>
+      )}
     </div>
   );
 }
@@ -255,11 +271,16 @@ function ColorRow({
 function ColorSchemePage() {
   const [scheme, setScheme] = useSetting<string>("editor.colorScheme");
   const [overrides, setOverrides] = useSetting<Overrides>("editor.colorOverrides");
+  const [weight] = useSetting<number>("editor.fontWeight");
+  const [boldFontWeight] = useSetting<number>("editor.boldFontWeight");
   const [selected, setSelected] = useState<string>("keyword");
   const id = effectiveScheme(scheme);
   const mine = overrides?.[id];
   const attr = ATTRIBUTES.find((a) => a.id === selected);
-  const vars = useMemo(() => previewVars(id, mine), [id, mine]);
+  const vars = useMemo(
+    () => ({ ...previewVars(id, mine), ...fontWeightVars(weight, boldFontWeight) }) as CSSProperties,
+    [id, mine, weight, boldFontWeight],
+  );
   const update = (attrId: string, v: TextAttributesOverride | undefined) => {
     const next: Overrides = { ...(overrides ?? {}) };
     const forScheme = { ...(next[id] ?? {}) };
@@ -348,9 +369,27 @@ export const COLOR_SCHEME_PAGE = editorPage({
     "background",
     "bold",
     "italic",
+    "rainbow",
     ...SCHEMES.map((s) => s.name),
   ],
   sections: [
     { items: [{ t: "custom", label: "Scheme", keywords: ATTRIBUTES.map((a) => a.name), component: ColorSchemePage }] },
+    {
+      title: "Language Defaults",
+      items: [
+        {
+          t: "check",
+          key: "editor.semanticHighlighting",
+          label: "Semantic highlighting",
+          hint: "Local variables and parameters get a colour derived from their name (needs a language server).",
+        },
+        {
+          t: "check",
+          key: "editor.rainbowBrackets",
+          label: "Rainbow brackets",
+          hint: "Color (), [] and {} by nesting depth; unmatched brackets use the error color.",
+        },
+      ],
+    },
   ],
 });

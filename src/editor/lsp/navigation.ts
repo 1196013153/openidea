@@ -49,7 +49,8 @@ import { requestHover } from "./hover";
 import { declarationSummary, renderCode } from "./markdown";
 import { editorPrefs } from "@/platform/editorSettings";
 import { isVirtualUri, virtualContainer } from "@/platform/virtualDocs";
-import { hasPrimaryModifier, isMacHost, shortcutLabel } from "@/platform/keymap";
+import { shortcutLabel } from "@/platform/keymap";
+import { isNavigationGesture, onNavigationModifier } from "@/platform/navigationModifier";
 import { create } from "zustand";
 
 export async function navigateTo(loc: Location) {
@@ -319,15 +320,14 @@ async function probeNavigation(view: EditorView, offset: number): Promise<{ info
     try {
       navigable = (await lspRequest(() => commands.lspGoto(doc.doc, pos, "definition"))).length > 0;
     } catch (e) {
-      if (isCancelled(e)) return null;
-      if (isUnavailable(e)) navigable = !!(await gotoFallback(view, doc, pos))?.length;
+      if (!isUnavailable(e)) throw e;
+      navigable = !!(await gotoFallback(view, doc, pos))?.length;
     }
     if (!navigable && WEB_LANGUAGES.has(doc.language) && !doc.virtual)
       navigable = !!(await lspRequest(() => commands.webGoto(doc.doc, pos)).catch(() => null))?.targets.length;
   }
   if (!navigable) return null;
-  const hover = await requestHover(view, offset).catch(() => null);
-  return { info: hover ? declarationSummary(hover.contents) : null };
+  return { info: null };
 }
 
 const linkPlugin = ViewPlugin.fromClass(
@@ -337,10 +337,29 @@ const linkPlugin = ViewPlugin.fromClass(
     private probed = new Map<string, { info: NavInfo | null } | null>();
     private probedDoc: Text | null = null;
     private probing: string | null = null;
-    constructor(readonly view: EditorView) {}
+    private off: () => void;
+    private disposed = false;
+    private hovered: string | null = null;
+    private probeVersion = 0;
+    private probeTimer: ReturnType<typeof setTimeout> | undefined;
+    constructor(readonly view: EditorView) {
+      // Window-wide, so ⌘/Ctrl over an unfocused editor underlines too; released anywhere clears it.
+      this.off = onNavigationModifier((held) => {
+        if (!held || this.last) this.show(held);
+      });
+    }
+    destroy() {
+      this.off();
+      this.disposed = true;
+      this.probeVersion++;
+      clearTimeout(this.probeTimer);
+    }
     private set(value: LinkState | null) {
       const current = this.view.state.field(linkField);
-      if (current === value || (current && value && current.from === value.from && current.to === value.to && current.info === value.info))
+      if (
+        current === value ||
+        (current && value && current.from === value.from && current.to === value.to && current.info === value.info)
+      )
         return;
       if (!current && !value) return;
       this.view.dispatch({ effects: setLink.of(value) });
@@ -351,10 +370,19 @@ const linkPlugin = ViewPlugin.fromClass(
       // Underline whole links once the server's links are in.
       if (doc && !doc.virtual && !knownLinks(view))
         void documentLinks(view, doc).then(() => {
-          if (view.state.field(linkField)) this.show(true);
+          if (!this.disposed && view.state.field(linkField)) this.show(true);
         });
       const target = meta && this.last ? linkAt(view, this.last.x, this.last.y) : null;
+      const hovered = target ? `${target.from}:${target.to}` : null;
+      if (hovered !== this.hovered) {
+        this.hovered = hovered;
+        this.probeVersion++;
+        clearTimeout(this.probeTimer);
+        this.probing = null;
+      }
       if (!target) {
+        this.probeVersion++;
+        clearTimeout(this.probeTimer);
         this.probing = null;
         this.set(null);
         return;
@@ -378,38 +406,58 @@ const linkPlugin = ViewPlugin.fromClass(
       if (current && (current.from !== target.from || current.to !== target.to)) this.set(null);
       if (this.probing === key) return;
       this.probing = key;
+      const version = ++this.probeVersion;
+      clearTimeout(this.probeTimer);
+      // A timed-out probe must be retryable, rather than cached as "no target".
+      this.probeTimer = setTimeout(() => {
+        if (this.probeVersion === version) {
+          this.probeVersion++;
+          this.probing = null;
+        }
+      }, 3000);
       const docAt = view.state.doc;
-      void probeNavigation(view, target.from).then((result) => {
-        if (view.state.doc !== docAt) return;
-        this.probed.set(key, result);
-        if (this.probing !== key) return;
-        this.probing = null;
-        if (result) this.set({ from: target.from, to: target.to, info: result.info });
+      void probeNavigation(view, target.from)
+        .then((result) => {
+          if (this.disposed || view.state.doc !== docAt || this.probeVersion !== version) return;
+          clearTimeout(this.probeTimer);
+          this.probed.set(key, result);
+          if (this.probing !== key) return;
+          this.probing = null;
+          if (result) {
+            this.set({ from: target.from, to: target.to, info: null });
+            // Documentation must never delay the link cursor or underline.
+            void requestHover(view, target.from)
+              .then((hover) => {
+                if (this.disposed || view.state.doc !== docAt || this.probeVersion !== version || !hover) return;
+                const info = declarationSummary(hover.contents);
+                this.probed.set(key, { info });
+                this.set({ from: target.from, to: target.to, info });
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {
+          if (this.disposed || this.probeVersion !== version) return;
+          clearTimeout(this.probeTimer);
+          this.probing = null;
+          // Cancellation and server errors are transient, not negative results.
       });
     }
   },
   {
     eventHandlers: {
       mousemove(e) {
-        this.last = { x: e.clientX, y: e.clientY };
-        this.show(hasPrimaryModifier(e) && !e.altKey && !e.shiftKey);
+        // Not through a popup or an inlay hint (which navigates on its own ⌘-click) to the text under it.
+        const over = e.target instanceof Element ? e.target : null;
+        this.last = over?.closest(".cm-tooltip, .cm-lsp-inlay") ? null : { x: e.clientX, y: e.clientY };
+        this.show(isNavigationGesture(e));
       },
       mouseleave() {
         this.last = null;
         this.show(false);
       },
-      keydown(e) {
-        if (e.key === (isMacHost() ? "Meta" : "Control")) this.show(true);
-      },
-      keyup(e) {
-        if (e.key === (isMacHost() ? "Meta" : "Control")) this.show(false);
-      },
-      blur() {
-        this.show(false);
-      },
       mousedown(e, view) {
-        if (e.button !== 0 || !hasPrimaryModifier(e) || e.altKey || e.shiftKey) return false;
-        if (isMacHost() ? e.ctrlKey : e.metaKey) return false;
+        if (e.button !== 0 || !isNavigationGesture(e)) return false;
         const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false);
         if (pos == null) return false;
         e.preventDefault();

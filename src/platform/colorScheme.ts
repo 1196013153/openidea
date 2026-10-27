@@ -29,6 +29,9 @@ export interface AttributeDef {
   effect?: string;
   /** Syntax token: bold / italic / background / effect come from `--syn-<token>-*`. */
   token?: string;
+  /** A semantic modifier whose only configurable attribute is italic. */
+  italicOnly?: boolean;
+  defaultItalic?: boolean;
 }
 
 const syn = (id: string, name: string, path: string[], token: string): AttributeDef => ({
@@ -81,6 +84,7 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
   syn("parameter", "Identifiers › Parameter", [LD], "param"),
   syn("constant", "Identifiers › Constant", [LD], "constant"),
   syn("field", "Identifiers › Instance field", [LD], "property"),
+  { id: "staticSymbol", name: "Identifiers › Static symbol", path: [LD], token: "static", italicOnly: true },
   syn("functionDeclaration", "Identifiers › Function declaration", [LD], "function"),
   syn("functionCall", "Identifiers › Function call", [LD], "function-call"),
   syn("predefined", "Identifiers › Predefined symbol", [LD], "builtin"),
@@ -94,8 +98,11 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
   syn("operator", "Braces and Operators", [LD], "punct"),
   syn("markupTag", "Markup › Tag", [LD], "tag"),
   syn("markupAttribute", "Markup › Attribute", [LD], "attribute"),
+  ...[1, 2, 3, 4, 5].map((n) => syn(`semantic${n}`, `Semantic highlighting › Color ${n}`, [LD], `rainbow-${n}`)),
+  ...[1, 2, 3].map((n) => syn(`bracket${n}`, `Rainbow brackets › Level ${n}`, [LD], `bracket-${n}`)),
 
   syn("pySelf", "Self parameter", ["Python"], "self"),
+  { id: "pyStaticSymbol", name: "Static symbol", path: ["Python"], token: "python-static", italicOnly: true, defaultItalic: false },
   syn("pyKeywordArg", "Keyword argument", ["Python"], "keyword-arg"),
   syn("pyDocstring", "Docstring", ["Python"], "docstring"),
   syn("pyBuiltin", "Built-in name", ["Python"], "predefined"),
@@ -214,6 +221,11 @@ export function schemeValue(id: SchemeId, cssVar: string): string | undefined {
   return schemeTokens(id).get(cssVar);
 }
 
+/** An explicit Bold / regular attribute: the editor's configured bold or main weight. */
+export function boldWeight(bold: boolean): string {
+  return bold ? "var(--fw-code-bold, 700)" : "var(--fw-code, 400)";
+}
+
 const EFFECT_CSS: Record<string, (c: string) => string> = {
   underline: (c) => `underline ${c}`,
   wave: (c) => `underline wavy ${c}`,
@@ -237,7 +249,7 @@ export function overrideDeclarations(overrides: Record<string, TextAttributesOve
     }
     if (attr.token) {
       const t = attr.token;
-      if (o.bold !== undefined) out.push([`--syn-${t}-bold`, o.bold ? "700" : "400"]);
+      if (o.bold !== undefined) out.push([`--syn-${t}-bold`, boldWeight(o.bold)]);
       if (o.italic !== undefined) {
         out.push([`--syn-${t}-italic`, o.italic ? "italic" : "normal"]);
         if (t === "comment") out.push(["--syn-comment-style", o.italic ? "italic" : "normal"]);
