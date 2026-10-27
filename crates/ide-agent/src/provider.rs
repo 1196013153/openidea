@@ -25,7 +25,7 @@ const BUILTIN: &[(&str, &str, &[&str], &str)] = &[
         &["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.97.0"],
         "Run `claude` in a terminal and sign in.",
     ),
-    ("codex", "Codex", &["npx", "-y", "@zed-industries/codex-acp@0.16.0"], "Run `codex login` in a terminal."),
+    ("codex", "Codex", &["npx", "-y", "@agentclientprotocol/codex-acp@2.3.0"], "Run `codex login` in a terminal."),
     ("gemini", "Gemini CLI", &["gemini", "--experimental-acp"], "Run `gemini` in a terminal and sign in."),
     ("copilot", "GitHub Copilot", &["copilot", "--acp"], "Run `copilot` in a terminal and sign in."),
     ("cursor", "Cursor", &["cursor-agent", "acp"], "Run `cursor-agent login` in a terminal."),
