@@ -202,7 +202,8 @@ pub mod codes {
 ///
 /// Calls run on blocking-capable threads, never on the reader task, so a slow
 /// handler cannot stall response delivery. Notifications are delivered one at
-/// a time in arrival order; requests run concurrently.
+/// a time in arrival order; requests run concurrently, each once every
+/// notification that arrived before it has been handled.
 pub trait Handler: Send + Sync + 'static {
     fn on_notification(&self, method: &str, params: Value);
     /// Respond to a server→client request (e.g. `workspace/configuration`).
@@ -217,6 +218,13 @@ impl Handler for NoopHandler {
     fn on_request(&self, method: &str, _: Value) -> Result<Value, (i64, String)> {
         Err((codes::METHOD_NOT_FOUND, format!("unhandled method {method}")))
     }
+}
+
+/// Work for the in-order notification thread.
+enum Inbound {
+    Notification(String, Value),
+    /// A request may start: the notifications before it are handled.
+    Release(oneshot::Sender<()>),
 }
 
 type Pending = HashMap<i64, oneshot::Sender<Result<Value, RpcError>>>;
@@ -499,13 +507,20 @@ impl Peer {
         }
 
         // Notifications are delivered in order on a dedicated thread.
-        let (notif_tx, notif_rx) = std::sync::mpsc::channel::<(String, Value)>();
+        let (notif_tx, notif_rx) = std::sync::mpsc::channel::<Inbound>();
         {
             let handler = handler.clone();
             std::thread::Builder::new()
                 .name("jsonrpc-notify".into())
                 .spawn(move || {
-                    while let Ok((method, params)) = notif_rx.recv() {
+                    while let Ok(inbound) = notif_rx.recv() {
+                        let (method, params) = match inbound {
+                            Inbound::Notification(method, params) => (method, params),
+                            Inbound::Release(start) => {
+                                let _ = start.send(());
+                                continue;
+                            }
+                        };
                         let h = handler.clone();
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             h.on_notification(&method, params)
@@ -680,12 +695,7 @@ fn parse_id(id: &Value) -> Option<i64> {
     }
 }
 
-fn dispatch(
-    inner: &Arc<Inner>,
-    handler: &Arc<dyn Handler>,
-    notif_tx: &std::sync::mpsc::Sender<(String, Value)>,
-    body: &[u8],
-) {
+fn dispatch(inner: &Arc<Inner>, handler: &Arc<dyn Handler>, notif_tx: &std::sync::mpsc::Sender<Inbound>, body: &[u8]) {
     tracing::trace!(target: "ide_jsonrpc::wire", "<-- {}", String::from_utf8_lossy(body));
     let msg: Value = match serde_json::from_slice(body) {
         Ok(v) => v,
@@ -706,7 +716,11 @@ fn dispatch(
                 Some(id) if !id.is_null() => {
                     let handler = handler.clone();
                     let inner = inner.clone();
+                    let (start, started) = oneshot::channel();
+                    let _ = notif_tx.send(Inbound::Release(start));
                     tokio::spawn(async move {
+                        // E.g. a `didOpen` before a request must be applied when the request is answered.
+                        let _ = started.await;
                         let m = method.clone();
                         let result = tokio::task::spawn_blocking(move || handler.on_request(&m, params)).await;
                         let reply = match result {
@@ -723,7 +737,7 @@ fn dispatch(
                     });
                 }
                 _ => {
-                    let _ = notif_tx.send((method, params));
+                    let _ = notif_tx.send(Inbound::Notification(method, params));
                 }
             }
         }
