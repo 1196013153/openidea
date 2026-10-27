@@ -213,6 +213,8 @@ pub struct DbManager {
     ssh: Arc<SshManager>,
     saved_passwords: SecretStore,
     history: Arc<HistoryStore>,
+    /// Records executed statements in the history off the async threads, in order.
+    recorder: std::sync::mpsc::Sender<(String, String, f64)>,
     /// Passwords entered this session (not saved, or not yet), by credential key.
     session_passwords: Mutex<HashMap<String, String>>,
     /// Manual-commit data sources, each with the connection of its open
@@ -319,9 +321,25 @@ impl DbManager {
     /// `passwords` / `history` are the app-wide files of saved passwords
     /// ([`SecretStore`]) and query history ([`HistoryStore`]).
     pub fn new(root: PathBuf, passwords: PathBuf, history: PathBuf, ssh: Arc<SshManager>) -> Self {
+        let history = Arc::new(HistoryStore::new(history, &root));
+        let (recorder, statements) = std::sync::mpsc::channel::<(String, String, f64)>();
+        {
+            let history = history.clone();
+            let spawned = std::thread::Builder::new().name("openidea-db-history".into()).spawn(move || {
+                for (source, text, time) in statements {
+                    if let Err(e) = history.add(&source, &text, time) {
+                        tracing::warn!("{}", e.message);
+                    }
+                }
+            });
+            if let Err(e) = spawned {
+                tracing::warn!("query history recorder: {e}");
+            }
+        }
         Self {
             saved_passwords: SecretStore::new(passwords, &root),
-            history: Arc::new(HistoryStore::new(history, &root)),
+            history,
+            recorder,
             root,
             pools: Mutex::default(),
             tunnels: Mutex::default(),
@@ -915,15 +933,10 @@ impl DbManager {
     }
 
     fn remember_statement(&self, id: &str, statement: &str) {
-        let (history, source, text) = (self.history.clone(), split_target(id).0.to_owned(), statement.to_owned());
         let time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0.0, |d| d.as_secs_f64() * 1000.0);
-        tokio::task::spawn_blocking(move || {
-            if let Err(e) = history.add(&source, &text, time) {
-                tracing::warn!("{}", e.message);
-            }
-        });
+        let _ = self.recorder.send((split_target(id).0.to_owned(), statement.to_owned(), time));
     }
 
     /// The query history of data source `id`, newest first.

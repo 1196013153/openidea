@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RemoteEntry } from "@/platform/ipc";
+import { forgetRemote, parseRemoteLocation, recentRemotes, rememberRemote, remoteLocation } from "@/platform/remote";
 import { browsableFolders, listedDirectory, remoteParent } from "./model";
 
 const entry = (path: string, isDir = true): RemoteEntry => ({
@@ -35,5 +36,24 @@ describe("remote folder browser", () => {
     expect(listedDirectory("~", [])).toBe("~");
     expect(listedDirectory("/srv/", [])).toBe("/srv");
     expect(listedDirectory("/", [])).toBe("/");
+  });
+});
+
+describe("remote project locations", () => {
+  it("round-trip the configuration id and the path", () => {
+    const loc = remoteLocation("mac mini/1", "/Users/me/repo");
+    expect(loc).toBe("ssh://mac%20mini%2F1/Users/me/repo");
+    expect(parseRemoteLocation(loc)).toEqual({ sshConfig: "mac mini/1", path: "/Users/me/repo" });
+    expect(parseRemoteLocation("/Users/me/repo")).toBeNull();
+  });
+
+  it("remembers recent remote projects most recent first, once each", () => {
+    localStorage.clear();
+    rememberRemote({ sshConfig: "a", path: "/p", name: "p", host: "me@a", openedAtMs: 1 });
+    rememberRemote({ sshConfig: "b", path: "/q", name: "q", host: "me@b", openedAtMs: 2 });
+    rememberRemote({ sshConfig: "a", path: "/p", name: "p", host: "me@a", openedAtMs: 3 });
+    expect(recentRemotes().map((r) => r.path)).toEqual(["/p", "/q"]);
+    forgetRemote("a", "/p");
+    expect(recentRemotes().map((r) => r.path)).toEqual(["/q"]);
   });
 });

@@ -103,6 +103,13 @@ export async function connectRemote(sshConfig: string, path: string) {
     const r = await call(commands.remoteConnect(sshConfig, path));
     enableRemote({ sshConfig: r.sshConfig, root: r.root, host: r.host, commands: r.commands });
     useProject.setState({ project: r.project, settings: r.project.settings });
+    rememberRemote({
+      sshConfig: r.sshConfig,
+      path: r.root,
+      name: r.project.name,
+      host: r.host,
+      openedAtMs: Date.now(),
+    });
     return r;
   } finally {
     useProject.setState({ opening: false });
@@ -114,6 +121,71 @@ export async function disconnectRemote() {
   await commands.closeProject();
   disableRemote();
   useProject.setState({ project: null });
+}
+
+// ---------------------------------------------------------------------------
+// Remote project locations: `ssh://<configuration id>/<absolute path>`, what the
+// session and the recent projects remember for a remote window.
+
+const SCHEME = "ssh://";
+
+export function remoteLocation(sshConfig: string, path: string): string {
+  return `${SCHEME}${encodeURIComponent(sshConfig)}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+export function parseRemoteLocation(location: string): { sshConfig: string; path: string } | null {
+  if (!location.startsWith(SCHEME)) return null;
+  const rest = location.slice(SCHEME.length);
+  const slash = rest.indexOf("/");
+  if (slash <= 0) return null;
+  return { sshConfig: decodeURIComponent(rest.slice(0, slash)), path: rest.slice(slash) };
+}
+
+/** The location of this window's project: remote, else its local root. */
+export function projectLocation(root: string | null | undefined): string | null {
+  if (!root) return null;
+  const session = useRemote.getState().session;
+  return session && session.root === root ? remoteLocation(session.sshConfig, root) : root;
+}
+
+export interface RecentRemote {
+  sshConfig: string;
+  path: string;
+  name: string;
+  /** `user@host:port` when it was opened. */
+  host: string;
+  openedAtMs: number;
+}
+
+const RECENT_KEY = "openidea.remote.recent";
+const RECENT_MAX = 20;
+
+export function recentRemotes(): RecentRemote[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
+    return Array.isArray(list) ? (list as RecentRemote[]).filter((r) => r && r.sshConfig && r.path) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRemotes(list: RecentRemote[]) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+const sameRemote = (a: Pick<RecentRemote, "sshConfig" | "path">, b: Pick<RecentRemote, "sshConfig" | "path">) =>
+  a.sshConfig === b.sshConfig && a.path === b.path;
+
+export function rememberRemote(entry: RecentRemote) {
+  saveRemotes([entry, ...recentRemotes().filter((r) => !sameRemote(r, entry))]);
+}
+
+export function forgetRemote(sshConfig: string, path: string) {
+  saveRemotes(recentRemotes().filter((r) => !sameRemote(r, { sshConfig, path })));
 }
 
 // Any way of leaving the remote project (Close Project, opening a local one) ends remote routing.
