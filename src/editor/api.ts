@@ -283,6 +283,28 @@ export function contributedAt<T>(state: EditorState, key: string, pos: number): 
   return state.languageDataAt<T>(key, pos)[0];
 }
 
+/** A context action a feature offers at the caret, listed by Show Context Actions (⌥↵) before the language server's. */
+export interface ContributedIntention {
+  id: string;
+  label: string;
+  icon?: string;
+  run: () => void | Promise<void>;
+}
+
+/** Providers of `ContributedIntention`s for the caret of `view` (cheap and synchronous: also drives the light bulb). */
+export const intentionProviders = Facet.define<(view: EditorView) => ContributedIntention[]>();
+
+export function contributedIntentions(view: EditorView): ContributedIntention[] {
+  return view.state.facet(intentionProviders).flatMap((p) => {
+    try {
+      return p(view);
+    } catch (e) {
+      console.error("intention provider failed", e);
+      return [];
+    }
+  });
+}
+
 // --- navigation history ------------------------------------------------------
 
 /** One entry of the Back/Forward (⌘[ / ⌘]) history. 0-based line, UTF-16 col. */
