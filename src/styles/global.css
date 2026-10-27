@@ -1,3 +1,5 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 @import "./tokens.css";
 
 /* Monochrome icons default to the theme icon grey; callers override for selected / disabled. */

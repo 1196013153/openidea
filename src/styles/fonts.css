@@ -1,4 +1,0 @@
-/* Linked from index.html rather than imported by global.css, so the faces are known before the
-   splash first paints: the dev server injects the app CSS only once the bundle runs. */
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/jetbrains-mono";
