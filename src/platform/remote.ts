@@ -7,7 +7,7 @@
 import { Channel, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import { invokeLocal, setInvokeRoute, type InvokeRoute } from "./tauriCore";
 import { create } from "zustand";
-import { call, commands, isTauri, type ChannelFrame, type RemoteSession } from "./ipc";
+import { call, commands, isTauri, type ChannelFrame, type RemoteProgress, type RemoteSession } from "./ipc";
 import { useProject } from "./project";
 
 interface RemoteState {
@@ -96,11 +96,17 @@ export async function restoreRemote(): Promise<RemoteSession | null> {
   return session;
 }
 
+/** Where the connection in progress is (`null`: none). */
+export const useRemoteProgress = create<{ progress: RemoteProgress | null }>(() => ({ progress: null }));
+
 /** Opens `path` on the host of SSH configuration `sshConfig` in this window. */
 export async function connectRemote(sshConfig: string, path: string) {
   useProject.setState({ opening: true });
+  const onProgress = new Channel<RemoteProgress>();
+  onProgress.onmessage = (progress) => useRemoteProgress.setState({ progress });
+  useRemoteProgress.setState({ progress: { stage: "connecting", fraction: null } });
   try {
-    const r = await call(commands.remoteConnect(sshConfig, path));
+    const r = await call(commands.remoteConnect(sshConfig, path, onProgress));
     enableRemote({ sshConfig: r.sshConfig, root: r.root, host: r.host, commands: r.commands });
     useProject.setState({ project: r.project, settings: r.project.settings });
     rememberRemote({
@@ -113,6 +119,7 @@ export async function connectRemote(sshConfig: string, path: string) {
     return r;
   } finally {
     useProject.setState({ opening: false });
+    useRemoteProgress.setState({ progress: null });
   }
 }
 

@@ -237,6 +237,16 @@ impl Session {
     /// exec channel, gzip-compressed. Much faster than SFTP for one big file:
     /// SFTP writes wait for each packet's reply, the channel only for its window.
     pub async fn put(&self, remote: &str, data: &[u8]) -> IdeResult<()> {
+        self.put_with_progress(remote, data, &|_| {}).await
+    }
+
+    /// [`Self::put`], reporting the fraction sent (0..1) as it goes.
+    pub async fn put_with_progress(
+        &self,
+        remote: &str,
+        data: &[u8],
+        progress: &(dyn Fn(f64) + Send + Sync),
+    ) -> IdeResult<()> {
         use std::io::Write as _;
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         gz.write_all(data)?;
@@ -257,8 +267,11 @@ impl Session {
                 }),
             )
             .await?;
+        let mut sent = 0;
         for chunk in packed.chunks(256 * 1024) {
             process.write(chunk).await?;
+            sent += chunk.len();
+            progress(sent as f64 / packed.len().max(1) as f64);
         }
         process.eof().await?;
         match process.wait().await {

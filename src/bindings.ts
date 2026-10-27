@@ -854,7 +854,7 @@ export const commands = {
 	 *  File › Remote Development: opens `path` on the host of SSH configuration
 	 *  `ssh_config` in this window (installs / starts the server as needed).
 	 */
-	remoteConnect: (sshConfig: string, path: string) => typedError<RemoteProject_Serialize, IdeError>(__TAURI_INVOKE("remote_connect", { sshConfig, path })),
+	remoteConnect: (sshConfig: string, path: string, onProgress: Channel<RemoteProgress>) => typedError<RemoteProject_Serialize, IdeError>(__TAURI_INVOKE("remote_connect", { sshConfig, path, onProgress })),
 	/**  The remote session of this window (a settings window: its parent's), if any. */
 	remoteCurrent: () => __TAURI_INVOKE<{
 	sshConfig: string,
@@ -4412,6 +4412,11 @@ tags?: PushTags | null } |
 /**  Pull dialog: `branches` of `remote` (none = the configured merge branch). */
 { op: "pullFrom"; remote: string; branches: string[]; rebase: boolean; options: MergeOptions };
 
+export type RemoteProgress = {
+	stage: RemoteStage,
+	fraction: number | null,
+};
+
 export type RemoteProject = RemoteProject_Serialize | RemoteProject_Deserialize;
 
 export type RemoteProject_Deserialize = {
@@ -4444,6 +4449,9 @@ export type RemoteSession = {
 	host: string,
 	commands: string[],
 };
+
+/**  Where [`remote_connect`] is (`fraction`: 0..1 of a download / upload). */
+export type RemoteStage = "connecting" | "checking" | "downloading" | "uploading" | "starting" | "opening";
 
 export type ReplaceEvent = 
 /**  A file was changed (`replacements` > 0) or had nothing left to replace. */

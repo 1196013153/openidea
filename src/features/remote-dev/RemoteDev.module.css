@@ -53,3 +53,22 @@
   overflow-wrap: anywhere;
   user-select: text;
 }
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.progressLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+}
+
+.percent {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}

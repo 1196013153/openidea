@@ -4153,5 +4153,11 @@
   "Remote Development…": "远程开发…",
   "Opens a project folder on an SSH host in this window; the IDE backend runs on that host.": "在此窗口中打开 SSH 主机上的项目文件夹；IDE 后端在该主机上运行。",
   "Disconnect from Remote Host": "断开与远程主机的连接",
-  "Opens a terminal tab connected to an SSH configuration (`arg`: its id; otherwise a chooser).": "打开连接到 SSH 配置的终端标签页（`arg`：配置 id；否则显示选择器）。"
+  "Opens a terminal tab connected to an SSH configuration (`arg`: its id; otherwise a chooser).": "打开连接到 SSH 配置的终端标签页（`arg`：配置 id；否则显示选择器）。",
+  "Connecting to the host…": "正在连接主机…",
+  "Checking the IDE backend on the host…": "正在检查主机上的 IDE 后端…",
+  "Downloading the IDE backend…": "正在下载 IDE 后端…",
+  "Installing the IDE backend on the host…": "正在主机上安装 IDE 后端…",
+  "Starting the IDE backend…": "正在启动 IDE 后端…",
+  "Opening the project…": "正在打开项目…"
 }

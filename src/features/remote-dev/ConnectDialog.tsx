@@ -3,11 +3,18 @@ import { useState } from "react";
 import { executeAction } from "@/platform/actions";
 import { useTx } from "@/platform/i18n";
 import { call, commands, type RemoteEntry } from "@/platform/ipc";
-import { connectRemote } from "@/platform/remote";
+import { connectRemote, useRemoteProgress } from "@/platform/remote";
 import { sshLabel } from "@/platform/remoteSettings";
 import { useWorkflowSettings } from "@/platform/workflowSettings";
-import { Button, Dialog, Icon, Input, Select } from "@/ui";
-import { browsableFolders, closeConnectDialog, listedDirectory, remoteParent, useConnectDialog } from "./model";
+import { Button, Dialog, Icon, Input, ProgressBar, Select, Spinner } from "@/ui";
+import {
+  browsableFolders,
+  closeConnectDialog,
+  listedDirectory,
+  remoteParent,
+  stageLabel,
+  useConnectDialog,
+} from "./model";
 import styles from "./RemoteDev.module.css";
 
 export function ConnectHost() {
@@ -130,6 +137,7 @@ function ConnectDialog() {
             ))}
           </ul>
         )}
+        <ConnectProgress />
         {error && (
           <div className={styles.error} role="alert">
             {error}
@@ -137,5 +145,23 @@ function ConnectDialog() {
         )}
       </form>
     </Dialog>
+  );
+}
+
+/** The stage of the connection in progress (and how far a download / upload is). */
+function ConnectProgress() {
+  const tx = useTx();
+  const progress = useRemoteProgress((s) => s.progress);
+  if (!progress) return null;
+  const percent = progress.fraction == null ? null : Math.round(progress.fraction * 100);
+  return (
+    <div className={styles.progress} role="status">
+      <div className={styles.progressLine}>
+        <Spinner size={12} />
+        <span>{tx(stageLabel(progress.stage))}</span>
+        {percent != null && <span className={styles.percent}>{percent}%</span>}
+      </div>
+      <ProgressBar value={progress.fraction} aria-label={tx(stageLabel(progress.stage))} />
+    </div>
   );
 }

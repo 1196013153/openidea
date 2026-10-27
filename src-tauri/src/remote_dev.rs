@@ -54,6 +54,27 @@ impl Connections {
     }
 }
 
+/// Where [`remote_connect`] is (`fraction`: 0..1 of a download / upload).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteStage {
+    Connecting,
+    Checking,
+    Downloading,
+    Uploading,
+    Starting,
+    Opening,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteProgress {
+    pub stage: RemoteStage,
+    pub fraction: Option<f64>,
+}
+
+type Progress = dyn Fn(RemoteStage, Option<f64>) + Send + Sync;
+
 /// A value for one streaming argument of a remote command (`data`: JSON text).
 #[derive(Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -134,13 +155,18 @@ fn local_server_binary(state: &AppState, os: &str, arch: &str) -> Option<std::pa
 }
 
 /// The release build of the server for `os`/`arch`, downloaded once into the data dir.
-async fn download_server(state: &AppState, version: &str, os: &str, arch: &str) -> IdeResult<std::path::PathBuf> {
+async fn download_server(
+    state: &AppState,
+    version: &str,
+    os: &str,
+    arch: &str,
+    progress: Arc<Progress>,
+) -> IdeResult<std::path::PathBuf> {
     let (data, version, os, arch) = (state.data_dir.clone(), version.to_owned(), os.to_owned(), arch.to_owned());
     tokio::task::spawn_blocking(move || {
-        ide_tools::server::fetch(&data, &version, &os, &arch, &ide_core::CancellationToken::new(), &|e| {
-            if let ide_tools::InstallEvent::Line { text } = e {
-                tracing::info!("openidea-server download: {text}");
-            }
+        ide_tools::server::fetch(&data, &version, &os, &arch, &ide_core::CancellationToken::new(), &|e| match e {
+            ide_tools::InstallEvent::Line { text } => tracing::info!("openidea-server download: {text}"),
+            ide_tools::InstallEvent::Progress { fraction, .. } => progress(RemoteStage::Downloading, fraction),
         })
     })
     .await
@@ -163,7 +189,8 @@ fn platform(uname: &str) -> (String, String) {
 }
 
 /// Makes sure this version of the server is installed on the host; returns its path.
-async fn ensure_server(state: &AppState, session: &ide_ssh::Session) -> IdeResult<String> {
+async fn ensure_server(state: &AppState, session: &ide_ssh::Session, progress: Arc<Progress>) -> IdeResult<String> {
+    progress(RemoteStage::Checking, None);
     let version = env!("CARGO_PKG_VERSION");
     let dir = install_dir(version);
     let q = ide_ssh::shell::tilde_quote;
@@ -179,7 +206,7 @@ async fn ensure_server(state: &AppState, session: &ide_ssh::Session) -> IdeResul
     let installed: Vec<&str> = lines.collect();
     let local = match local_server_binary(state, &os, &arch) {
         Some(local) => local,
-        None => match download_server(state, version, &os, &arch).await {
+        None => match download_server(state, version, &os, &arch, progress.clone()).await {
             Ok(local) => local,
             // Offline: any build of this version already on the host will do.
             Err(e) => {
@@ -217,7 +244,10 @@ async fn ensure_server(state: &AppState, session: &ide_ssh::Session) -> IdeResul
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
     );
     let started = std::time::Instant::now();
-    session.put(&tmp, &tokio::fs::read(&local).await?).await?;
+    progress(RemoteStage::Uploading, Some(0.0));
+    session
+        .put_with_progress(&tmp, &tokio::fs::read(&local).await?, &|f| progress(RemoteStage::Uploading, Some(f)))
+        .await?;
     tracing::info!("installed openidea-server on {} in {:?}", session.label(), started.elapsed());
     let q = ide_ssh::shell::quote;
     // Older builds of this version go (a running one keeps its open file).
@@ -263,13 +293,19 @@ pub async fn remote_connect(
     state: State<'_, AppState>,
     ssh_config: String,
     path: String,
+    on_progress: Channel<RemoteProgress>,
 ) -> IdeResult<RemoteProject> {
+    let progress: Arc<Progress> = Arc::new(move |stage, fraction| {
+        let _ = on_progress.send(RemoteProgress { stage, fraction });
+    });
+    progress(RemoteStage::Connecting, None);
     let label = AppState::owner_window(window.label()).to_owned();
     state.remote_dev.disconnect(&label);
     state.host.close_project(&label);
     let config = state.ssh.config(&ssh_config)?;
     let session = state.ssh.session(&ssh_config).await?;
-    let bin = ensure_server(&state, &session).await?;
+    let bin = ensure_server(&state, &session, progress.clone()).await?;
+    progress(RemoteStage::Starting, None);
     let stream = session
         .exec_stream(&format!("{} --stdio", ide_ssh::shell::tilde_quote(&bin)))
         .await
@@ -300,6 +336,7 @@ pub async fn remote_connect(
     } else {
         path.trim().to_owned()
     };
+    progress(RemoteStage::Opening, None);
     let call = Invoke { window: label.clone(), cmd: "open_project".into(), args: serde_json::json!({ "path": root }) };
     let project: ide_host::ops::project::ProjectInfo =
         peer.request("invoke", call, None).await.map_err(ide_host::rpc::error_from_reply)?;

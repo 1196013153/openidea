@@ -1,6 +1,6 @@
 /** File › Remote Development…: state of the connect dialog and the folder browser helpers. */
 import { create } from "zustand";
-import type { RemoteEntry } from "@/platform/ipc";
+import type { RemoteEntry, RemoteStage } from "@/platform/ipc";
 
 export const useConnectDialog = create<{ open: boolean }>(() => ({ open: false }));
 
@@ -32,4 +32,22 @@ export function listedDirectory(requested: string, entries: readonly RemoteEntry
   if (requested.startsWith("/")) return requested.replace(/(.)\/+$/, "$1");
   const first = entries[0];
   return first ? remoteParent(first.path) : requested;
+}
+
+/** What the window is waiting for at each stage of connecting. */
+export function stageLabel(stage: RemoteStage): string {
+  switch (stage) {
+    case "connecting":
+      return "Connecting to the host…";
+    case "checking":
+      return "Checking the IDE backend on the host…";
+    case "downloading":
+      return "Downloading the IDE backend…";
+    case "uploading":
+      return "Installing the IDE backend on the host…";
+    case "starting":
+      return "Starting the IDE backend…";
+    case "opening":
+      return "Opening the project…";
+  }
 }
