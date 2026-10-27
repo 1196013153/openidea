@@ -5,7 +5,11 @@
 import { Channel } from "@tauri-apps/api/core";
 import type { InstallEvent, RequestId, ToolInfo } from "@/bindings";
 import { call, commands, IpcError, isTauri } from "@/platform/ipc";
-import { useProject } from "@/platform/project";
+
+export interface LanguageChoice {
+  id: string;
+  name: string;
+}
 
 export interface ToolsBackend {
   list(): Promise<ToolInfo[]>;
@@ -14,10 +18,10 @@ export interface ToolsBackend {
   cancel(request: RequestId): void;
   /** Restarts running language servers named `name` (after an install). */
   restartServers(name: string): Promise<void>;
-  /** Launches `command` from `path` instead of the detected one (global setting); "" clears it. */
-  setCustomPath(command: string, path: string): Promise<void>;
   /** File chooser for an executable; null when cancelled. */
   chooseExecutable(title: string, defaultPath?: string): Promise<string | null>;
+  /** Languages a server defined in settings can serve. */
+  languages(): Promise<LanguageChoice[]>;
 }
 
 export const tauriToolsBackend: ToolsBackend = {
@@ -40,18 +44,13 @@ export const tauriToolsBackend: ToolsBackend = {
       servers.filter((s) => s.name === name).map((s) => call(commands.lspRestart(s.id)).catch(() => {})),
     );
   },
-  setCustomPath: async (command, path) => {
-    const tools = { ...(await commands.settingsGet()).tools };
-    if (path) tools[command] = { path };
-    else delete tools[command];
-    const settings = await call(commands.settingsSet("global", "tools", JSON.stringify(tools)));
-    useProject.setState({ settings });
-  },
   chooseExecutable: async (title, defaultPath) => {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const picked = await open({ directory: false, multiple: false, title, defaultPath: defaultPath || undefined });
     return (Array.isArray(picked) ? picked[0] : picked) ?? null;
   },
+  languages: async () =>
+    (await commands.languages()).map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name)),
 };
 
 function tool(partial: Partial<ToolInfo> & Pick<ToolInfo, "name" | "languages">): ToolInfo {
@@ -69,6 +68,8 @@ function tool(partial: Partial<ToolInfo> & Pick<ToolInfo, "name" | "languages">)
     installHint: null,
     homepage: null,
     customError: null,
+    defaultArgs: [],
+    defaultInitializationOptions: null,
     ...partial,
   };
 }
@@ -202,21 +203,20 @@ export class MemoryToolsBackend implements ToolsBackend {
     this.restarted.push(name);
   }
 
-  /** Paths set through `setCustomPath`, by command. */
-  customPaths: Record<string, string> = {};
   /** What `chooseExecutable` answers. */
   chosen: string | null = null;
 
-  async setCustomPath(command: string, path: string) {
-    if (path) this.customPaths[command] = path;
-    else delete this.customPaths[command];
-    for (const t of this.tools.filter((x) => x.command === command)) {
-      this.replace(path ? { ...t, status: "custom", path, version: null } : { ...t, status: "missing", path: null });
-    }
-  }
-
   async chooseExecutable() {
     return this.chosen;
+  }
+
+  async languages() {
+    return [
+      { id: "go", name: "Go" },
+      { id: "python", name: "Python" },
+      { id: "rust", name: "Rust" },
+      { id: "typescript", name: "TypeScript" },
+    ];
   }
 }
 

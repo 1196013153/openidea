@@ -203,6 +203,7 @@ fn server_cfg(name: &str) -> LanguageServerConfig {
         env: Default::default(),
         root_markers: vec!["mock.toml".into()],
         initialization_options: Some(toml::Value::Table(toml::toml! { flag = true nested = { deep = 1 } })),
+        settings: None,
         install_hint: Some(format!("install {name}")),
         connect: None,
         fallback: false,
@@ -796,6 +797,54 @@ async fn launch_error_fails_without_starting_the_server() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn settings_changes_reach_servers_without_restarts() {
+    let h = harness(&[("mock", incremental_caps()), ("extra", incremental_caps())]);
+    let settings: Arc<Mutex<Option<Value>>> = Default::default();
+    let disabled: Arc<Mutex<Vec<String>>> = Default::default();
+    {
+        let settings = settings.clone();
+        h.mgr.set_config_hook(Box::new(move |cfg, _| cfg.settings = settings.lock().clone()));
+    }
+    {
+        let disabled = disabled.clone();
+        h.mgr.set_servers_hook(Box::new(move |_, defined| {
+            defined.iter().filter(|c| !disabled.lock().contains(&c.name)).cloned().collect()
+        }));
+    }
+    h.open("a.mk", "x");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    h.wait_status("extra", ServerStatus::Ready).await;
+
+    // Only `settings` changed: pushed to the running server, which keeps running.
+    let s = h.launcher.state("mock");
+    *settings.lock() = Some(json!({ "nested": { "other": 2 } }));
+    h.mgr.reconfigure().await;
+    eventually(|| !s.notified("workspace/didChangeConfiguration").is_empty()).await;
+    assert_eq!(
+        s.notified("workspace/didChangeConfiguration")[0],
+        json!({ "settings": { "flag": true, "nested": { "deep": 1, "other": 2 } } })
+    );
+    assert_eq!(s.launches.load(Ordering::SeqCst), 1);
+    let cfg: Value = s
+        .peer()
+        .request("workspace/configuration", json!({ "items": [{ "section": "nested.other" }] }), None)
+        .await
+        .unwrap();
+    assert_eq!(cfg, json!([2]));
+
+    // Disabled: stopped and forgotten; enabled again: attached to the open document.
+    disabled.lock().push("extra".into());
+    h.mgr.reconfigure().await;
+    assert_eq!(h.mgr.servers().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["mock"]);
+    assert_eq!(h.statuses("extra").last(), Some(&ServerStatus::Stopped));
+    disabled.lock().clear();
+    h.mgr.reconfigure().await;
+    h.wait_status("extra", ServerStatus::Ready).await;
+    eventually(|| h.launcher.state("extra").notified("textDocument/didOpen").len() == 2).await;
+    assert_eq!(s.launches.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn fallback_servers_only_run_when_the_preferred_one_is_missing() {
     // Preferred installed: the alternative is never started.
     let h = harness_with_fallbacks(&[("main", incremental_caps()), ("alt", incremental_caps())], &["alt"]);
@@ -817,6 +866,40 @@ async fn fallback_servers_only_run_when_the_preferred_one_is_missing() {
     let other = uri_of(&other);
     eventually(|| h.launcher.state("alt").docs.lock().contains_key(&other)).await;
     assert!(h.mgr.hover(doc, Pos::new(0, 0), Default::default()).await.is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_fallback_leaves_when_the_preferred_server_is_enabled_again() {
+    let h = harness_with_fallbacks(&[("main", incremental_caps()), ("alt", incremental_caps())], &["alt"]);
+    let disabled: Arc<Mutex<Vec<String>>> = Default::default();
+    {
+        let disabled = disabled.clone();
+        h.mgr.set_servers_hook(Box::new(move |_, defined| {
+            defined.iter().filter(|c| !disabled.lock().contains(&c.name)).cloned().collect()
+        }));
+    }
+    let (doc, path) = h.open("a.mk", "x");
+    let uri = uri_of(&path);
+    h.wait_status("main", ServerStatus::Ready).await;
+    assert!(h.statuses("alt").is_empty());
+
+    // Preferred disabled: the fallback takes over the open document.
+    disabled.lock().push("main".into());
+    h.mgr.reconfigure().await;
+    h.wait_status("alt", ServerStatus::Ready).await;
+    eventually(|| h.launcher.state("alt").docs.lock().contains_key(&uri)).await;
+    assert_eq!(h.mgr.servers().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["alt"]);
+
+    // Enabled again: the fallback closes the document and stops.
+    disabled.lock().clear();
+    h.mgr.reconfigure().await;
+    h.wait_status("main", ServerStatus::Ready).await;
+    eventually(|| h.launcher.state("main").docs.lock().contains_key(&uri)).await;
+    assert!(!h.launcher.state("alt").notified("textDocument/didClose").is_empty());
+    assert_eq!(h.statuses("alt").last(), Some(&ServerStatus::Stopped));
+    assert_eq!(h.mgr.servers().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["main"]);
+    assert!(h.mgr.hover(doc, Pos::new(0, 0), Default::default()).await.is_ok());
+    assert_eq!(h.launcher.state("alt").requested("textDocument/hover").len(), 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]

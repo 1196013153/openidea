@@ -113,7 +113,7 @@ pub fn set_settings(
         host.ssh.set_configs(host.global_settings.effective().ssh.configs);
     }
     // A new interpreter / toolchain / server executable restarts the language servers it affects.
-    if ["languages", "tools"].iter().any(|k| key == *k || key.starts_with(&format!("{k}."))) {
+    if ["languages", "tools", "languageServers"].iter().any(|k| key == *k || key.starts_with(&format!("{k}."))) {
         for project in affected() {
             let lsp = project.lsp.clone();
             host.runtime.spawn(async move { lsp.reconfigure().await });

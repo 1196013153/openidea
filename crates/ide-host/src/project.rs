@@ -117,6 +117,7 @@ impl Host {
             let data_dir = self.data_dir.clone();
             lsp.set_config_hook(Box::new(move |cfg, server_root| {
                 let effective = settings.effective();
+                ide_sdk::apply::server_launch_overrides(cfg, &effective);
                 ide_sdk::apply::configure_server(cfg, &root, server_root, &effective);
                 if cfg.name == "jdtls" {
                     let bundles: Vec<PathBuf> =
@@ -149,6 +150,13 @@ impl Host {
                     );
                     ide_sdk::jdtls::launch_directly(cfg);
                 }
+                ide_sdk::apply::server_protocol_overrides(cfg, &effective);
+            }));
+        }
+        {
+            let settings = settings.clone();
+            lsp.set_servers_hook(Box::new(move |language, defined| {
+                ide_sdk::apply::language_servers(language.as_str(), defined, &settings.effective())
             }));
         }
         {

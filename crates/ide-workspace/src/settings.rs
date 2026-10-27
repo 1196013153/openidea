@@ -106,20 +106,33 @@ fn json_to_toml(value: &Json) -> IdeResult<toml_edit::Value> {
     })
 }
 
-/// Sets (or removes, for `None`) a dotted key in a TOML document.
-fn set_in_document(doc: &mut DocumentMut, segments: &[&str], value: Option<toml_edit::Value>) {
+/// Sets (or removes, for `None`) a dotted key in a TOML document. A new
+/// `map_entry` object becomes a `[languageServers.ruff]` table rather than an
+/// inline table under an explicit `[languageServers]` header.
+fn set_in_document(doc: &mut DocumentMut, segments: &[&str], value: Option<toml_edit::Value>, map_entry: bool) {
     let (last, parents) = segments.split_last().expect("non-empty key");
     let mut table: &mut dyn TableLike = doc.as_table_mut();
+    let mut in_inline = false;
     for seg in parents {
         if !table.get(seg).is_some_and(Item::is_table_like) {
             if value.is_none() {
                 return;
             }
-            table.insert(seg, Item::Table(Table::new()));
+            // Implicit: no `[languageServers]` header above `[languageServers.ruff]`.
+            let mut new = Table::new();
+            new.set_implicit(true);
+            table.insert(seg, Item::Table(new));
         }
-        table = table.get_mut(seg).and_then(Item::as_table_like_mut).expect("table just ensured");
+        let item = table.get_mut(seg).expect("table just ensured");
+        in_inline |= item.is_inline_table();
+        table = item.as_table_like_mut().expect("table just ensured");
     }
     match value {
+        Some(toml_edit::Value::InlineTable(t))
+            if map_entry && !in_inline && !matches!(table.get(last), Some(Item::Value(_))) =>
+        {
+            table.insert(last, Item::Table(t.into_table()));
+        }
         Some(v) => match table.get_mut(last) {
             // Keep the key's decor (comments, spacing) when replacing a value.
             Some(Item::Value(existing)) => {
@@ -188,9 +201,19 @@ impl SettingsStore {
         if segments.iter().any(|s| s.is_empty()) {
             return Err(IdeError::invalid(format!("invalid settings key {key:?}")));
         }
-        let mut cursor = &defaults_json();
-        for seg in &segments {
-            cursor = cursor.get(seg).ok_or_else(|| IdeError::invalid(format!("unknown setting {key:?}")))?;
+        let defaults = defaults_json();
+        let mut cursor = &defaults;
+        let mut map_entry = false;
+        for (i, seg) in segments.iter().enumerate() {
+            match cursor.get(seg) {
+                Some(next) => cursor = next,
+                // An entry of a map setting (`languageServers.rust-analyzer`): the merge below validates it.
+                None if cursor.as_object().is_some_and(|m| m.is_empty()) => {
+                    map_entry = i + 1 == segments.len();
+                    break;
+                }
+                None => return Err(IdeError::invalid(format!("unknown setting {key:?}"))),
+            }
         }
 
         let text = match std::fs::read_to_string(&file) {
@@ -202,7 +225,7 @@ impl SettingsStore {
             .parse()
             .map_err(|e| IdeError::invalid(format!("{} is not valid TOML; fix it first: {e}", file.display())))?;
         let new_value = if value.is_null() { None } else { Some(json_to_toml(&value)?) };
-        set_in_document(&mut doc, &segments, new_value);
+        set_in_document(&mut doc, &segments, new_value, map_entry);
         let new_text = doc.to_string();
 
         // Validate the resulting stack before touching the disk.
@@ -350,6 +373,47 @@ mod tests {
         let s =
             store.set(SettingsScope::Global, "appearance.statusBarWidgets", json!({"editor.caret": false})).unwrap();
         assert_eq!(s.appearance.status_bar_widgets.len(), 1);
+        // One entry of a map setting, set and removed on its own.
+        let s = store
+            .set(
+                SettingsScope::Global,
+                "languageServers.rust-analyzer",
+                json!({"args": ["--log"], "initializationOptions": {"check": {"command": "clippy"}}}),
+            )
+            .unwrap();
+        let ra = &s.language_servers["rust-analyzer"];
+        assert!(ra.enabled);
+        assert_eq!(ra.args.as_deref(), Some(&["--log".to_string()][..]));
+        assert_eq!(ra.initialization_options, Some(json!({"check": {"command": "clippy"}})));
+        assert_eq!(
+            store
+                .set(SettingsScope::Global, "languageServers.rust-analyzer", json!({"enabled": "no"}))
+                .unwrap_err()
+                .kind,
+            ide_core::error::ErrorKind::InvalidInput
+        );
+        let s = store.set(SettingsScope::Global, "languageServers.rust-analyzer", json!(null)).unwrap();
+        assert!(s.language_servers.is_empty());
+        // New parent tables stay implicit: no empty `[languageServers]` header.
+        let fresh = tmp.path().join("fresh");
+        let s = SettingsStore::load(&fresh, None)
+            .set(SettingsScope::Global, "languageServers.ruff.languages", json!(["python"]))
+            .unwrap();
+        assert!(s.language_servers["ruff"].is_custom());
+        let text = std::fs::read_to_string(fresh.join("settings.toml")).unwrap();
+        assert_eq!(text, "[languageServers.ruff]\nlanguages = [\"python\"]\n");
+        // A whole new entry: a table of its own, still under an implicit parent.
+        let added = tmp.path().join("added");
+        let s = SettingsStore::load(&added, None)
+            .set(
+                SettingsScope::Global,
+                "languageServers.ruff",
+                json!({"command": "ruff", "args": ["server"], "languages": ["python"]}),
+            )
+            .unwrap();
+        assert_eq!(s.language_servers["ruff"].command, "ruff");
+        let text = std::fs::read_to_string(added.join("settings.toml")).unwrap();
+        assert_eq!(text, "[languageServers.ruff]\nargs = [\"server\"]\ncommand = \"ruff\"\nlanguages = [\"python\"]\n");
 
         // Project layer is created on demand and wins.
         let s = store.set(SettingsScope::Project, "editor.fontSize", json!(12)).unwrap();

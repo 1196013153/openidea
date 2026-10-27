@@ -26,6 +26,17 @@ fn tools(host: &Host, window: &str) -> IdeResult<Tools> {
     Ok(Tools::new(&data).with_custom_paths(custom).with_found_paths(found.into_iter().collect()))
 }
 
+/// The language definitions plus the servers defined in the window's settings.
+fn languages(host: &Host, window: &str) -> Vec<ide_language::LanguageConfig> {
+    let settings = match host.project(window) {
+        Ok(project) => project.settings.effective(),
+        Err(_) => host.global_settings.effective(),
+    };
+    let mut langs = host.languages.all();
+    ide_sdk::apply::with_custom_servers(&mut langs, &settings);
+    langs
+}
+
 fn join_err(e: impl std::fmt::Display) -> IdeError {
     IdeError::internal(e.to_string())
 }
@@ -40,7 +51,7 @@ fn reconfigure_servers(host: &Host) {
 /// Status of every known language server / debug adapter and the languages using it.
 pub async fn tools_list(host: &Host, window: &str) -> IdeResult<Vec<ToolInfo>> {
     let tools = tools(host, window)?;
-    let langs = host.languages.all();
+    let langs = languages(host, window);
     tokio::task::spawn_blocking(move || tools.list(&langs)).await.map_err(join_err)
 }
 
@@ -54,7 +65,7 @@ pub async fn tools_install(
     on_event: Channel<InstallEvent>,
 ) -> IdeResult<ToolInfo> {
     let tools = tools(host, window)?;
-    let langs = host.languages.all();
+    let langs = languages(host, window);
     let cancel = host.begin_request(request);
     let result = tokio::task::spawn_blocking(move || {
         tools.install(&name, &langs, &cancel, &|e| {
@@ -74,7 +85,7 @@ pub async fn tools_install(
 /// Removes a tool the IDE installed.
 pub async fn tools_uninstall(host: &Host, window: &str, name: String) -> IdeResult<ToolInfo> {
     let tools = tools(host, window)?;
-    let langs = host.languages.all();
+    let langs = languages(host, window);
     let info = tokio::task::spawn_blocking(move || tools.uninstall(&name, &langs)).await.map_err(join_err)??;
     reconfigure_servers(host);
     Ok(info)
