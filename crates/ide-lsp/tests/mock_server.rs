@@ -72,6 +72,8 @@ struct MockHandler(Arc<MockState>);
 impl Handler for MockHandler {
     fn on_notification(&self, method: &str, params: Value) {
         let s = &self.0;
+        // Held throughout: a test that sees the effect (a document, the peer gone) also sees the record.
+        let mut log = s.notifications.lock();
         let uri = params["textDocument"]["uri"].as_str().unwrap_or_default().to_owned();
         match method {
             "textDocument/didOpen" => {
@@ -110,7 +112,7 @@ impl Handler for MockHandler {
             }
             _ => {}
         }
-        s.notifications.lock().push((method.to_owned(), params));
+        log.push((method.to_owned(), params));
     }
 
     fn on_request(&self, method: &str, params: Value) -> Result<Value, (i64, String)> {
@@ -276,14 +278,37 @@ impl Harness {
     }
 }
 
+/// Waits for `f`; the bound only keeps a broken test from hanging (machines under load are slow).
 async fn eventually(mut f: impl FnMut() -> bool) {
-    for _ in 0..500 {
-        if f() {
-            return;
-        }
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while !f() {
+        assert!(std::time::Instant::now() < deadline, "condition not reached in time");
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("condition not reached in time");
+}
+
+/// Holds mock request handlers until the test opens it.
+#[derive(Default)]
+struct Gate {
+    entered: std::sync::atomic::AtomicBool,
+    open: std::sync::atomic::AtomicBool,
+}
+
+impl Gate {
+    /// Called from a handler: blocks until [`Gate::open`] (or a generous bound).
+    fn hold(&self) {
+        self.entered.store(true, Ordering::SeqCst);
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while !self.open.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    fn entered(&self) -> bool {
+        self.entered.load(Ordering::SeqCst)
+    }
+    fn open(&self) {
+        self.open.store(true, Ordering::SeqCst);
+    }
 }
 
 fn uri_of(path: &Path) -> String {
@@ -313,7 +338,7 @@ async fn initialize_and_incremental_sync() {
     assert_eq!(init["capabilities"]["textDocument"]["completion"]["completionItem"]["snippetSupport"], true);
     assert_eq!(init["initializationOptions"], json!({ "flag": true, "nested": { "deep": 1 } }));
     assert_eq!(init["rootUri"], json!(uri_of(&h.root)));
-    assert_eq!(s.notified("initialized").len(), 1);
+    eventually(|| s.notified("initialized").len() == 1).await;
     assert_eq!(h.statuses("mock"), vec![ServerStatus::Starting, ServerStatus::Ready]);
 
     let uri = uri_of(&path);
@@ -707,11 +732,13 @@ async fn gives_up_after_repeated_crashes_and_manual_restart_works() {
     let h = harness(&[("mock", incremental_caps())]);
     h.open("a.mk", "x");
     let s = h.launcher.state("mock");
+    let count = |status| h.statuses("mock").iter().filter(|s| **s == status).count();
     for n in 1..=4 {
-        eventually(|| s.launches.load(Ordering::SeqCst) == n && s.peer.lock().is_some()).await;
-        h.wait_status("mock", ServerStatus::Ready).await;
+        // Counted, not the last status: a restart may already have replaced it.
+        eventually(|| count(ServerStatus::Ready) == n).await;
+        assert_eq!(s.launches.load(Ordering::SeqCst), n);
         s.peer().kill();
-        eventually(|| h.statuses("mock").last() == Some(&ServerStatus::Crashed)).await;
+        eventually(|| count(ServerStatus::Crashed) == n).await;
     }
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(s.launches.load(Ordering::SeqCst), 4, "initial start + 3 restarts");
@@ -1526,23 +1553,27 @@ async fn cancelling_a_references_search_stops_the_candidate_search_and_closes_fi
     grep_candidates(&h);
     let slow = uri_of(&b);
     let inner = open_files_only(vec![]);
+    let gate = Arc::new(Gate::default());
+    let held = gate.clone();
     *s.responder.lock() = Some(Arc::new(move |s, method, params| {
         if s.docs.lock().contains_key(&slow) {
-            std::thread::sleep(Duration::from_millis(600));
+            held.hold();
         }
         inner(s, method, params)
     }));
     let cancel = ide_core::CancellationToken::new();
-    let later = cancel.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        later.cancel();
+    let mgr = h.mgr.clone();
+    let search = tokio::spawn({
+        let cancel = cancel.clone();
+        async move { mgr.references(doc, Pos::new(0, 5), true, true, cancel).await }
     });
-    let started = std::time::Instant::now();
-    let err = h.mgr.references(doc, Pos::new(0, 5), true, true, cancel).await.unwrap_err();
+    eventually(|| gate.entered()).await;
+    cancel.cancel();
+    // Returns while the server still holds the answer.
+    let err = search.await.unwrap().unwrap_err();
     assert_eq!(err.kind, ide_core::error::ErrorKind::Cancelled);
-    assert!(started.elapsed() < Duration::from_millis(550));
     eventually(|| uris(&s.notified("textDocument/didClose")) == vec![uri_of(&b)]).await;
+    gate.open();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1586,9 +1617,11 @@ async fn opening_a_file_during_a_search_takes_it_over() {
     let (doc, _) = h.open("a.mk", "def target\n");
     let slow = uri_of(&b);
     let inner = open_files_only(vec![]);
+    let gate = Arc::new(Gate::default());
+    let held = gate.clone();
     *s.responder.lock() = Some(Arc::new(move |s, method, params| {
         if s.docs.lock().get(&slow).is_some_and(|t| t.starts_with("call")) {
-            std::thread::sleep(Duration::from_millis(400));
+            held.hold();
         }
         inner(s, method, params)
     }));
@@ -1597,9 +1630,12 @@ async fn opening_a_file_during_a_search_takes_it_over() {
 
     let mgr = h.mgr.clone();
     let search = tokio::spawn(async move { mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await });
-    eventually(|| s.docs.lock().contains_key(&uri_of(&b))).await;
+    // The server answers with the copy opened for the search.
+    eventually(|| gate.entered()).await;
     let user_doc = DocId::next();
     h.mgr.did_open(user_doc, &b, &h.lang, 7, "edited target\n");
+    eventually(|| s.docs.lock().get(&uri_of(&b)).map(String::as_str) == Some("edited target\n")).await;
+    gate.open();
     search.await.unwrap().unwrap();
 
     // The temporary copy was closed before the user's didOpen, and the user's stays open.
@@ -1633,10 +1669,15 @@ async fn an_empty_answer_while_indexing_is_retried_when_indexing_ends() {
     let peer = s.peer();
     peer.notify("$/progress", json!({ "token": "idx", "value": { "kind": "begin", "title": "Indexing" } })).unwrap();
     h.wait_status("mock", ServerStatus::Busy).await;
-    let (state, uri) = (s.clone(), uri_of(&path));
+    // Nothing found while indexing; indexing ends once that answer is out.
+    s.respond("textDocument/references", Value::Array(occurrences(&uri_of(&path), "def target\n")));
+    let answered = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let first = answered.clone();
+    *s.responder.lock() = Some(Arc::new(move |_, method, _| {
+        (method == "textDocument/references" && !first.swap(true, Ordering::SeqCst)).then(|| json!([]))
+    }));
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        state.respond("textDocument/references", Value::Array(occurrences(&uri, "def target\n")));
+        eventually(|| answered.load(Ordering::SeqCst)).await;
         peer.notify("$/progress", json!({ "token": "idx", "value": { "kind": "end" } })).unwrap();
     });
     let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();

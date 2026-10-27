@@ -202,7 +202,10 @@ pub mod codes {
 ///
 /// Calls run on blocking-capable threads, never on the reader task, so a slow
 /// handler cannot stall response delivery. Notifications are delivered one at
-/// a time in arrival order; requests run concurrently.
+/// a time in arrival order; requests run concurrently, each once every
+/// notification that arrived before it has been handled. So `on_notification`
+/// must not wait for the remote side (a response to our request may depend on
+/// its request to us, which would then never start); hand such work to a task.
 pub trait Handler: Send + Sync + 'static {
     fn on_notification(&self, method: &str, params: Value);
     /// Respond to a server→client request (e.g. `workspace/configuration`).
@@ -220,14 +223,6 @@ impl Handler for NoopHandler {
 }
 
 type Pending = HashMap<i64, oneshot::Sender<Result<Value, RpcError>>>;
-
-/// What the delivery thread hands on, in arrival order: a response is not seen
-/// before the notifications the peer sent ahead of it (a streamed result's last
-/// values before its request completes).
-enum Incoming {
-    Notification(String, Value),
-    Response(oneshot::Sender<Result<Value, RpcError>>, Result<Value, RpcError>),
-}
 
 struct Inner {
     out: mpsc::UnboundedSender<Vec<u8>>,
@@ -506,27 +501,35 @@ impl Peer {
             });
         }
 
-        // Notifications (and the responses after them) are delivered in order on a dedicated thread.
+        // Notifications are delivered in order on a dedicated thread. Requests start from the same
+        // queue, so a request handler sees every notification that arrived before it, and responses
+        // complete from it, so a caller sees the notifications sent before its response (a streamed
+        // result's last values).
         let (notif_tx, notif_rx) = std::sync::mpsc::channel::<Incoming>();
         {
             let handler = handler.clone();
+            let inner = inner.clone();
+            let runtime = tokio::runtime::Handle::current();
             std::thread::Builder::new()
                 .name("jsonrpc-notify".into())
                 .spawn(move || {
-                    while let Ok(incoming) = notif_rx.recv() {
-                        let (method, params) = match incoming {
-                            Incoming::Notification(method, params) => (method, params),
+                    while let Ok(msg) = notif_rx.recv() {
+                        match msg {
+                            Incoming::Notification(method, params) => {
+                                let h = handler.clone();
+                                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    h.on_notification(&method, params)
+                                }));
+                                if result.is_err() {
+                                    tracing::error!("jsonrpc notification handler panicked on {method}");
+                                }
+                            }
+                            Incoming::Request(id, method, params) => {
+                                runtime.spawn(handle_request(inner.clone(), handler.clone(), id, method, params));
+                            }
                             Incoming::Response(tx, result) => {
                                 let _ = tx.send(result);
-                                continue;
                             }
-                        };
-                        let h = handler.clone();
-                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            h.on_notification(&method, params)
-                        }));
-                        if result.is_err() {
-                            tracing::error!("jsonrpc notification handler panicked on {method}");
                         }
                     }
                 })
@@ -558,7 +561,7 @@ impl Peer {
                     match msg {
                         Ok(Some(body)) => {
                             seen_message.store(true, Ordering::Relaxed);
-                            dispatch(&inner, &handler, &notif_tx, &body);
+                            dispatch(&inner, &notif_tx, &body);
                         }
                         Ok(None) => break,
                         Err(e) => {
@@ -695,7 +698,29 @@ fn parse_id(id: &Value) -> Option<i64> {
     }
 }
 
-fn dispatch(inner: &Arc<Inner>, handler: &Arc<dyn Handler>, notif_tx: &std::sync::mpsc::Sender<Incoming>, body: &[u8]) {
+enum Incoming {
+    Notification(String, Value),
+    Request(Value, String, Value),
+    Response(oneshot::Sender<Result<Value, RpcError>>, Result<Value, RpcError>),
+}
+
+async fn handle_request(inner: Arc<Inner>, handler: Arc<dyn Handler>, id: Value, method: String, params: Value) {
+    let m = method.clone();
+    let result = tokio::task::spawn_blocking(move || handler.on_request(&m, params)).await;
+    let reply = match result {
+        Ok(Ok(result)) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        Ok(Err((code, message))) => {
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+        }
+        Err(_) => json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": codes::INTERNAL_ERROR, "message": format!("handler for {method} panicked") }
+        }),
+    };
+    let _ = inner.send_value(&reply);
+}
+
+fn dispatch(inner: &Arc<Inner>, notif_tx: &std::sync::mpsc::Sender<Incoming>, body: &[u8]) {
     tracing::trace!(target: "ide_jsonrpc::wire", "<-- {}", String::from_utf8_lossy(body));
     let msg: Value = match serde_json::from_slice(body) {
         Ok(v) => v,
@@ -714,23 +739,7 @@ fn dispatch(inner: &Arc<Inner>, handler: &Arc<dyn Handler>, notif_tx: &std::sync
             let params = obj.remove("params").unwrap_or(Value::Null);
             match id {
                 Some(id) if !id.is_null() => {
-                    let handler = handler.clone();
-                    let inner = inner.clone();
-                    tokio::spawn(async move {
-                        let m = method.clone();
-                        let result = tokio::task::spawn_blocking(move || handler.on_request(&m, params)).await;
-                        let reply = match result {
-                            Ok(Ok(result)) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-                            Ok(Err((code, message))) => {
-                                json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
-                            }
-                            Err(_) => json!({
-                                "jsonrpc": "2.0", "id": id,
-                                "error": { "code": codes::INTERNAL_ERROR, "message": format!("handler for {method} panicked") }
-                            }),
-                        };
-                        let _ = inner.send_value(&reply);
-                    });
+                    let _ = notif_tx.send(Incoming::Request(id, method, params));
                 }
                 _ => {
                     let _ = notif_tx.send(Incoming::Notification(method, params));

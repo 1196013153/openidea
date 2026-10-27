@@ -191,6 +191,8 @@ struct Task {
     dirty: Mutex<BTreeSet<usize>>,
     flush_scheduled: AtomicBool,
     stderr: Mutex<VecDeque<String>>,
+    /// Set by `delete`; held while saving, so a late save can't bring the file back.
+    deleted: Mutex<bool>,
 }
 
 impl AgentManager {
@@ -519,6 +521,7 @@ impl AgentManager {
             blocking(move || worktree::remove(&root, &cwd)).await?;
         }
         self.tasks.write().remove(id);
+        *task.deleted.lock() = true;
         let _ = std::fs::remove_file(self.shared.paths.store_dir.join(format!("{id}.json")));
         self.shared.emit(AgentEvent::Removed { id: id.to_owned() });
         Ok(())
@@ -568,6 +571,7 @@ impl Task {
             dirty: Mutex::new(BTreeSet::new()),
             flush_scheduled: AtomicBool::new(false),
             stderr: Mutex::new(VecDeque::new()),
+            deleted: Mutex::new(false),
         })
     }
 
@@ -604,6 +608,10 @@ impl Task {
             })
         };
         let path = self.shared.paths.store_dir.join(format!("{}.json", self.id));
+        let deleted = self.deleted.lock();
+        if *deleted {
+            return;
+        }
         if let Err(e) = bytes.map_err(|e| e.to_string()).and_then(|b| write_file(&path, &b)) {
             tracing::warn!("saving agent task {}: {e}", self.id);
         }
@@ -934,15 +942,6 @@ impl Task {
                     .collect()
             })
             .unwrap_or_default();
-        // The tool call it is about arrives as a notification on another thread: let it land first.
-        if let Some(tool) = params.pointer("/toolCall/toolCallId").and_then(Value::as_str) {
-            for _ in 0..20 {
-                if self.state.lock().timeline.has_tool(tool) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        }
         let (tx, rx) = std::sync::mpsc::channel();
         let entry = self.push_entry(AgentEntry::Permission { id, title, options: options.clone(), chosen: None });
         self.permissions.lock().insert(id, tx);

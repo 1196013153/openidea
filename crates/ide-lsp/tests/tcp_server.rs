@@ -115,6 +115,14 @@ impl Harness {
     }
 }
 
+/// A loopback port where nothing listens, held (bound, not listening) by the
+/// returned socket so that no other test is handed it meanwhile.
+fn idle_port() -> (u16, tokio::net::TcpSocket) {
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.bind(([127, 0, 0, 1], 0).into()).unwrap();
+    (socket.local_addr().unwrap().port(), socket)
+}
+
 async fn eventually(mut f: impl FnMut() -> bool) {
     for _ in 0..1000 {
         if f() {
@@ -157,7 +165,7 @@ async fn connects_to_a_running_server_requests_and_reconnects() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn nothing_listening_and_no_executable_reports_how_to_fix_it() {
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+    let (port, _reserved) = idle_port();
     let h = harness(godot_cfg(port, "openidea-no-such-godot"));
     h.open("player.gd", "extends Node\n");
     h.wait_status(ServerStatus::Missing, 1).await;
@@ -170,16 +178,18 @@ async fn nothing_listening_and_no_executable_reports_how_to_fix_it() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn starts_the_command_and_waits_until_it_listens() {
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
-    let cfg = LanguageServerConfig { args: vec!["30".into()], ..godot_cfg(port, "sleep") };
+    let (port, socket) = idle_port();
+    let args = ["-c", "touch started; exec sleep 30"].map(String::from).to_vec();
+    let cfg = LanguageServerConfig { args, ..godot_cfg(port, "sh") };
     let root = tempfile::tempdir().unwrap();
-    // The "server" (`sleep`) never listens itself; a listener comes up a moment later.
+    // The "server" never listens itself; a listener comes up once it has been started.
     let log = Arc::new(ServerLog::default());
     let server = {
         let log = log.clone();
+        let started = root.path().join("started");
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(400)).await;
-            let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+            eventually(|| started.exists()).await;
+            let listener = socket.listen(16).unwrap();
             let (stream, _) = listener.accept().await.unwrap();
             let (r, w) = stream.into_split();
             log.peers.lock().push(Peer::connect(r, w, Arc::new(MockHandler(log.clone()))));
@@ -205,7 +215,7 @@ async fn starts_the_command_and_waits_until_it_listens() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_that_exits_without_listening_fails_and_cancel_stops_waiting() {
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+    let (port, _reserved) = idle_port();
     let root = tempfile::tempdir().unwrap();
     let path = root.path().to_path_buf();
     let cfg = godot_cfg(port, "false");
