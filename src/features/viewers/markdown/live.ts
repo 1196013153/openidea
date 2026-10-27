@@ -6,6 +6,7 @@
 import { ViewPlugin, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { create } from "zustand";
 import { registerEditorContribution } from "@/editor/api";
+import { fontZoom } from "@/editor/core/cm/prefs";
 import { isMarkdownPath } from "../fileKinds";
 
 export interface LiveMarkdown {
@@ -14,6 +15,8 @@ export interface LiveMarkdown {
   topLine: number;
   /** Bumped when the editor scrolls, so equal lines still resync. */
   scrollSeq: number;
+  /** The editor's font zoom in px; the preview scales its text by the same amount. */
+  fontZoom: number;
 }
 
 export const useLiveMarkdown = create<Record<string, LiveMarkdown | undefined>>(() => ({}));
@@ -22,7 +25,7 @@ const TEXT_DELAY = 120;
 
 function publish(path: string, patch: Partial<LiveMarkdown>) {
   useLiveMarkdown.setState((s) => {
-    const prev = s[path] ?? { text: "", topLine: 0, scrollSeq: 0 };
+    const prev = s[path] ?? { text: "", topLine: 0, scrollSeq: 0, fontZoom: 0 };
     return { [path]: { ...prev, ...patch } };
   });
 }
@@ -47,11 +50,13 @@ function livePlugin(path: string) {
       };
 
       constructor(private view: EditorView) {
-        publish(path, { text: view.state.doc.toString() });
+        publish(path, { text: view.state.doc.toString(), fontZoom: view.state.field(fontZoom, false) ?? 0 });
         view.scrollDOM.addEventListener("scroll", this.onScroll, { passive: true });
       }
 
       update(u: ViewUpdate) {
+        const zoom = u.state.field(fontZoom, false) ?? 0;
+        if (zoom !== (u.startState.field(fontZoom, false) ?? 0)) publish(path, { fontZoom: zoom });
         if (!u.docChanged) return;
         clearTimeout(this.timer);
         this.timer = setTimeout(() => publish(path, { text: this.view.state.doc.toString() }), TEXT_DELAY);

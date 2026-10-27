@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -80,6 +81,7 @@ export function MarkdownEditor({ path, children }: { path: string; tabId: string
 
 function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
   const text = useLiveMarkdown((s) => s[path]?.text);
+  const fontZoom = useLiveMarkdown((s) => s[path]?.fontZoom ?? 0);
   const topLine = useLiveMarkdown((s) => s[path]?.topLine ?? 0);
   const scrollSeq = useLiveMarkdown((s) => s[path]?.scrollSeq ?? 0);
   const deferred = useDeferredValue(text ?? "");
@@ -169,6 +171,7 @@ function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
     <div
       ref={ref}
       className={clsx(styles.preview, selectableText)}
+      style={{ "--markdown-font-zoom": `${fontZoom}px` } as CSSProperties}
       tabIndex={-1}
       role="document"
       aria-label="Markdown preview"
