@@ -50,7 +50,7 @@ pub fn run_system_env() -> std::collections::BTreeMap<String, String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn run_start(
+pub async fn run_start(
     window: Window,
     state: State<'_, AppState>,
     config: RunConfig,
@@ -60,6 +60,22 @@ pub fn run_start(
     let root = project.root.clone();
     if config.command.is_empty() {
         return Err(IdeError::invalid("run configuration has no command"));
+    }
+    // Settings › Run Targets: over SSH.
+    if config.extras.target.as_deref().is_some_and(|t| !t.is_empty()) {
+        let remote = state.remote.clone();
+        let settings = project.settings.effective();
+        return remote
+            .run(
+                &settings,
+                &root,
+                &config,
+                project.sink.clone(),
+                Box::new(move |chunk| {
+                    let _ = on_output.send(chunk);
+                }),
+            )
+            .await;
     }
     let encoding = project.settings.effective().console.encoding;
     let options = StartOptions { encoding: Some(encoding).filter(|e| !e.trim().is_empty()) };
@@ -82,12 +98,18 @@ pub fn run_stop(window: Window, state: State<'_, AppState>, id: RunId) -> IdeRes
         Err(_) => state.global_settings.effective(),
     };
     let grace = std::time::Duration::from_millis(u64::from(settings.run.termination_timeout_ms));
+    if state.remote.runs.contains(id) {
+        return state.remote.runs.stop(id, grace);
+    }
     state.processes.stop_with_grace(id, grace)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn run_stdin(state: State<'_, AppState>, id: RunId, data: String) -> IdeResult<()> {
+    if state.remote.runs.contains(id) {
+        return state.remote.runs.write_stdin(id, &data);
+    }
     state.processes.write_stdin(id, &data)
 }
 
@@ -95,18 +117,26 @@ pub fn run_stdin(state: State<'_, AppState>, id: RunId, data: String) -> IdeResu
 #[tauri::command]
 #[specta::specta]
 pub fn run_resize(state: State<'_, AppState>, id: RunId, cols: u16, rows: u16) -> IdeResult<()> {
+    if state.remote.runs.contains(id) {
+        return state.remote.runs.resize(id, cols, rows);
+    }
     state.processes.resize(id, cols, rows)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn run_list(state: State<'_, AppState>) -> Vec<RunInfo> {
-    state.processes.list()
+    let mut runs = state.processes.list();
+    runs.extend(state.remote.runs.list());
+    runs
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn run_close_stdin(state: State<'_, AppState>, id: RunId) -> IdeResult<()> {
+    if state.remote.runs.contains(id) {
+        return state.remote.runs.close_stdin(id);
+    }
     state.processes.close_stdin(id)
 }
 

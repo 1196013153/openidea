@@ -15,6 +15,7 @@ pub mod clipboard;
 pub mod coverage;
 pub mod db;
 pub mod debug;
+pub mod deploy;
 pub mod doc;
 pub mod docker;
 pub mod fs;
@@ -32,6 +33,7 @@ pub mod run;
 pub mod sdk;
 pub mod search;
 pub mod spell;
+pub mod ssh;
 pub mod syntax;
 pub mod term;
 pub mod tools;
@@ -356,6 +358,27 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         db::db_set_password,
         db::db_set_ssh_secret,
         db::db_trust_ssh_host,
+        ssh::ssh_test,
+        ssh::ssh_set_secret,
+        ssh::ssh_needs_secret,
+        ssh::ssh_trust_host,
+        ssh::ssh_connected,
+        ssh::ssh_disconnect,
+        ssh::ssh_askpass_answer,
+        ssh::ssh_terminal_command,
+        deploy::deploy_upload,
+        deploy::deploy_download,
+        deploy::deploy_delete_remote,
+        deploy::deploy_compare,
+        deploy::deploy_sync,
+        deploy::deploy_info,
+        deploy::deploy_server_root,
+        deploy::remote_list,
+        deploy::remote_open,
+        deploy::remote_of,
+        deploy::remote_delete,
+        deploy::remote_mkdir,
+        deploy::remote_rename,
         db::db_test,
         db::db_connected,
         db::db_connect,

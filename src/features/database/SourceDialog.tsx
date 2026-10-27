@@ -13,7 +13,7 @@ import {
   type DbOptions,
   type DbProperty,
   type DbSsh,
-  type DbSshAuth,
+  type SshAuth,
   type DbSslMode,
   type DbTxMode,
 } from "@/platform/ipc";
@@ -51,7 +51,7 @@ const TX: Array<SelectOption<DbTxMode>> = [
   { value: "manual", label: "Manual" },
 ];
 
-const SSH_AUTH: Array<SelectOption<DbSshAuth>> = [
+const SSH_AUTH: Array<SelectOption<SshAuth>> = [
   { value: "openSsh", label: "OpenSSH config and authentication agent" },
   { value: "password", label: "Password" },
   { value: "keyPair", label: "Key pair" },

@@ -1,5 +1,5 @@
 use crate::events::TauriSink;
-use ide_core::{CancellationToken, IdeError, IdeEvent, IdeResult, RequestId, SharedSink};
+use ide_core::{CancellationToken, EventSink, IdeError, IdeEvent, IdeResult, RequestId, SharedSink};
 use ide_dap::DebugManager;
 use ide_index::ProjectIndex;
 use ide_language::{FileTypes, LanguageRegistry, Syntax, SyntaxCache};
@@ -39,6 +39,12 @@ pub struct AppState {
     pub plugins: Arc<ide_plugin::PluginHost>,
     /// The built-in web server (Open In › Browser, the editor's browser bar).
     pub web: ide_web::WebServer,
+    /// SSH connections of Settings › SSH Configurations, shared by all windows.
+    pub ssh: Arc<ide_ssh::SshManager>,
+    /// Credential prompts of `ssh` / `git` child processes (`None` if it failed to start).
+    pub askpass: Option<ide_ssh::askpass::AskpassServer>,
+    /// SFTP deployment, remote file editing and runs on run targets.
+    pub remote: Arc<ide_remote::RemoteService>,
     /// Broadcasts to every window.
     pub sink: SharedSink,
     /// One project per window, keyed by window label.
@@ -118,9 +124,15 @@ impl AppState {
         }
         let global_sink: SharedSink = Arc::new(TauriSink { app: app.clone(), window: None });
         let languages = Arc::new(LanguageRegistry::load(Some(&config_dir.join("languages")))?);
+        let global_settings = SettingsStore::load(&config_dir, None);
+        let ssh = Arc::new(ide_ssh::SshManager::new(data_dir.join("ssh-passwords.json")));
+        ssh.set_configs(global_settings.effective().ssh.configs);
         Ok(Self {
             recent: RecentProjects::load(&config_dir),
-            global_settings: SettingsStore::load(&config_dir, None),
+            global_settings,
+            remote: Arc::new(ide_remote::RemoteService::new(ssh.clone(), data_dir.join("remote"))),
+            ssh,
+            askpass: start_askpass(&app),
             // Sessions, runs and terminals report to the window that started them (`window_sink`).
             terminals: TerminalManager::new(),
             processes: ProcessManager::new(),
@@ -302,6 +314,12 @@ impl AppState {
         documents.add_observer(Arc::new(SyntaxObserver(syntax.clone())));
         documents.add_observer(Arc::new(LspObserver(lsp.clone())));
         documents.add_observer(Arc::new(HistoryObserver(history.clone())));
+        documents.add_observer(Arc::new(DeployObserver {
+            remote: self.remote.clone(),
+            settings: settings.clone(),
+            root: root.clone(),
+            sink: sink.clone(),
+        }));
 
         let repos = Arc::new(RwLock::new(Repos::enclosing(&root)?));
         let watcher = {
@@ -313,6 +331,7 @@ impl AppState {
             let root = root.clone();
             let detected_roots = detected_roots.clone();
             let history = history.clone();
+            let remote = self.remote.clone();
             Watcher::start(
                 &root.clone(),
                 excludes.clone(),
@@ -323,6 +342,9 @@ impl AppState {
                     // Atomic saves by external tools surface as `created`.
                     documents.on_disk_changed(&changed);
                     record_external_changes(&history, &changed, &batch.removed);
+                    if !batch.removed.is_empty() {
+                        delete_deployed(remote.clone(), settings.clone(), root.clone(), batch.removed.clone(), sink.clone());
+                    }
                     // Build files / conventional folders changed: re-detect roots.
                     let touched = changed.iter().chain(&batch.removed).filter_map(|p| p.strip_prefix(&root).ok());
                     if touched.into_iter().any(ide_workspace::roots::affects_roots) {
@@ -401,6 +423,7 @@ impl AppState {
             root.clone(),
             self.data_dir.join("db-passwords.json"),
             self.data_dir.join("db-history.json"),
+            self.ssh.clone(),
         ));
         let http_history = Arc::new(ide_http::History::new(self.data_dir.join("http-history").join(&project_key)));
         let project = Arc::new(Project {
@@ -811,6 +834,72 @@ impl DocumentObserver for HistoryObserver {
     fn saved(&self, _doc: ide_core::DocId, path: &Path, text: &str) {
         if let Err(e) = self.0.record(path, text, "Saved") {
             tracing::warn!("local history: {e}");
+        }
+    }
+}
+
+/// Uploads saved files: remote files' local copies, and automatic upload to the default server.
+struct DeployObserver {
+    remote: Arc<ide_remote::RemoteService>,
+    settings: Arc<SettingsStore>,
+    root: PathBuf,
+    sink: SharedSink,
+}
+
+impl DocumentObserver for DeployObserver {
+    fn saved(&self, _doc: ide_core::DocId, path: &Path, _text: &str) {
+        let (remote, settings, root, sink, path) =
+            (self.remote.clone(), self.settings.clone(), self.root.clone(), self.sink.clone(), path.to_path_buf());
+        tauri::async_runtime::spawn(async move {
+            if let Some(result) = remote.on_saved(&settings.effective(), &root, &path).await {
+                notify_transfer(&sink, "Upload", &path, result);
+            }
+        });
+    }
+}
+
+fn delete_deployed(
+    remote: Arc<ide_remote::RemoteService>,
+    settings: Arc<SettingsStore>,
+    root: PathBuf,
+    removed: Vec<PathBuf>,
+    sink: SharedSink,
+) {
+    tauri::async_runtime::spawn(async move {
+        if let Some(result) = remote.on_deleted(&settings.effective(), &root, &removed).await {
+            let first = removed.first().cloned().unwrap_or_default();
+            notify_transfer(&sink, "Delete on server", &first, result);
+        }
+    });
+}
+
+/// Reports a failed automatic transfer (successes stay quiet).
+fn notify_transfer(sink: &SharedSink, what: &str, path: &Path, result: IdeResult<ide_remote::TransferReport>) {
+    let body = match result {
+        Ok(r) if r.errors.is_empty() => return,
+        Ok(r) => r.errors.iter().map(|e| format!("{}: {}", e.path, e.message)).collect::<Vec<_>>().join("\n"),
+        Err(e) => e.message,
+    };
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    sink.emit(IdeEvent::Notify { level: ide_core::event::NotifyLevel::Error, title: format!("{what} failed: {name}"), body: Some(body) });
+}
+
+/// Serves askpass prompts to the focused window and routes `git`'s prompts there.
+fn start_askpass(app: &AppHandle) -> Option<ide_ssh::askpass::AskpassServer> {
+    let exe = std::env::current_exe().ok()?;
+    let handle = app.clone();
+    let on_prompt = Arc::new(move |p: ide_ssh::askpass::AskpassPrompt| {
+        let window = crate::windows::target_window(&handle).map(|w| w.label().to_owned());
+        TauriSink { app: handle.clone(), window }.emit(IdeEvent::Askpass { id: p.id, prompt: p.prompt, kind: p.kind });
+    });
+    match ide_ssh::askpass::AskpassServer::start(exe, on_prompt) {
+        Ok(server) => {
+            ide_vcs::set_askpass_env(server.env());
+            Some(server)
+        }
+        Err(e) => {
+            tracing::warn!("askpass unavailable: {}", e.message);
+            None
         }
     }
 }

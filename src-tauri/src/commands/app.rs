@@ -184,6 +184,9 @@ pub fn settings_set(
             }
         });
     }
+    if key == "ssh" || key.starts_with("ssh.") {
+        crate::commands::ssh::apply_ssh_settings(&state);
+    }
     // A new interpreter / toolchain / server executable restarts the language servers it affects.
     if ["languages", "tools"].iter().any(|k| key == *k || key.starts_with(&format!("{k}."))) {
         let affected = if project_scope { current.iter().cloned().collect() } else { state.projects() };
@@ -254,6 +257,7 @@ pub async fn settings_import(window: Window, state: State<'_, AppState>, path: P
         let lsp = project.lsp.clone();
         tauri::async_runtime::spawn(async move { lsp.reconfigure().await });
     }
+    crate::commands::ssh::apply_ssh_settings(&state);
     state.sink.emit(ide_core::IdeEvent::SettingsChanged { key: String::new() });
     let settings = match state.project(window.label()) {
         Ok(p) => p.settings.effective(),

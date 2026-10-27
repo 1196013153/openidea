@@ -56,6 +56,8 @@ ide-http.workspace = true
 ide-db.workspace = true
 ide-web.workspace = true
 ide-spell.workspace = true
+ide-ssh.workspace = true
+ide-remote.workspace = true
 ide-tools = { path = "../crates/ide-tools" }
 ide-plugin = { path = "../crates/ide-plugin" }
 ide-docker = { path = "../crates/ide-docker" }
