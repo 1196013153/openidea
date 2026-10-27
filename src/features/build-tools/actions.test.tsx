@@ -70,6 +70,7 @@ describe("build tools feature", () => {
   it("offers its actions in Search Everywhere only for Maven projects and toggles run options", async () => {
     const visible = () => allActions().filter((a) => !a.hidden && a.id.startsWith("maven."));
     expect(visible().map((a) => a.id).sort()).toEqual([
+      "maven.analyzeDependencies",
       "maven.executeGoal",
       "maven.reload",
       "maven.toggleOffline",
