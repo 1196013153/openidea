@@ -40,11 +40,29 @@ export function applyCompletion(text: string, c: Completion, insert: string): { 
   return { text: next, caret: c.from + insert.length + 1 };
 }
 
-/** Commands matching `query`, prefix matches first. */
+/**
+ * Commands matching `query`: prefix matches first (a plugin's "plugin:name" also by its
+ * name), then substrings, then names holding its letters in order ("trig" → "triage").
+ */
 export function matchCommands(commands: readonly AgentCommand[], query: string): AgentCommand[] {
   const q = query.toLowerCase();
-  const hits = commands.filter((c) => c.name.toLowerCase().includes(q));
-  return hits.sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)));
+  const rank = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.startsWith(q) || n.slice(n.lastIndexOf(":") + 1).startsWith(q)) return 0;
+    if (n.includes(q)) return 1;
+    return inOrder(n, q) ? 2 : -1;
+  };
+  return commands
+    .map((command) => ({ command, rank: rank(command.name) }))
+    .filter((m) => m.rank >= 0)
+    .sort((a, b) => a.rank - b.rank)
+    .map((m) => m.command);
+}
+
+function inOrder(text: string, query: string): boolean {
+  let i = 0;
+  for (const ch of text) if (ch === query[i]) i++;
+  return i >= query.length;
 }
 
 /** `@rel` with a line range suffix when given ("@src/a.rs:10-20"). */

@@ -25,6 +25,7 @@ import {
   sendMessage,
   sendQueuedNow,
   setTaskConfig,
+  useAgentCommands,
   useAgents,
 } from "./store";
 import styles from "./Session.module.css";
@@ -279,6 +280,7 @@ function SessionComposer({ task, entries }: { task: AgentTask; entries: AgentEnt
   const project = useProject((s) => s.project);
   const composer = useAgents((s) => s.composers.get(task.id)) ?? emptyDraft();
   const [sending, setSending] = useState(false);
+  const agentCommands = useAgentCommands(task.provider, task.id, task.commands);
   const busy = isBusy(task.status);
   // ↑ recalls this conversation's messages, newest first.
   const history = useMemo(
@@ -304,7 +306,7 @@ function SessionComposer({ task, entries }: { task: AgentTask; entries: AgentEnt
         placeholder={busy ? "Queue a message for when the agent is done (⌘↵ sends it now)" : "Reply to the agent"}
         root={task.cwd}
         projectRoot={project?.root ?? task.cwd}
-        commands={task.commands}
+        commands={agentCommands}
         history={history}
         config={task.config}
         onConfig={setOption}

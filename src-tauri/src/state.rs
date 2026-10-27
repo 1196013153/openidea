@@ -418,6 +418,7 @@ impl AppState {
                     .join(&project_key),
                 models_file: self.data_dir.join("agents").join("models.json"),
                 custom_agents_dir: Some(self.config_dir.join("agents")),
+                home_dir: dirs::home_dir(),
             },
             tauri::async_runtime::handle().inner().clone(),
         ));

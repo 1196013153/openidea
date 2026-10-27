@@ -93,6 +93,10 @@ impl Handler for FakeAgent {
 }
 
 fn manager(dir: &Path, agent: Arc<FakeAgent>) -> AgentManager {
+    manager_at(dir, &dir.join("models.json"), agent)
+}
+
+fn manager_at(dir: &Path, models_file: &Path, agent: Arc<FakeAgent>) -> AgentManager {
     let connector: Connector = Arc::new(move |_spec, _cwd, client, _stderr| {
         let (a, b) = duplex(1 << 20);
         let (ar, aw) = tokio::io::split(a);
@@ -107,12 +111,52 @@ fn manager(dir: &Path, agent: Arc<FakeAgent>) -> AgentManager {
             project_root: dir.to_path_buf(),
             store_dir: dir.join("store"),
             worktrees_dir: dir.join("worktrees"),
-            models_file: dir.join("models.json"),
+            models_file: models_file.to_path_buf(),
             custom_agents_dir: None,
+            home_dir: None,
         },
         tokio::runtime::Handle::current(),
         connector,
     )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commands_are_remembered_per_project_and_merged_with_skills_on_disk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (a, b, models) = (tmp.path().join("a"), tmp.path().join("b"), tmp.path().join("models.json"));
+    std::fs::create_dir_all(a.join(".claude/skills/triage")).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(a.join(".claude/skills/triage/SKILL.md"), "---\nname: triage\ndescription: Triage\n---\n").unwrap();
+    let names = |c: Vec<AgentCommand>| c.into_iter().map(|c| c.name).collect::<Vec<_>>();
+
+    let mgr_a = manager_at(&a, &models, Arc::new(FakeAgent::default()));
+    // Before any session: the skills on disk.
+    assert_eq!(names(mgr_a.commands("claude", None).await.unwrap()), ["triage"]);
+    let task = mgr_a
+        .create(NewAgentTask {
+            prompt: text("Fix the lexer"),
+            provider: "claude".into(),
+            config: Vec::new(),
+            isolation: Isolation::Local,
+            base: None,
+        })
+        .await
+        .unwrap();
+    wait_for(&mgr_a, &task.id, AgentStatus::NeedsInput).await;
+    assert_eq!(names(mgr_a.commands("claude", None).await.unwrap()), ["review", "triage"]);
+    assert_eq!(names(mgr_a.commands("claude", Some(&task.id)).await.unwrap()), ["review", "triage"]);
+    // Other agents get only what they offered.
+    assert!(mgr_a.commands("codex", None).await.unwrap().is_empty());
+    mgr_a.shutdown();
+
+    // Another project shares the settings but not the commands.
+    let mgr_b = manager_at(&b, &models, Arc::new(FakeAgent::default()));
+    let claude = mgr_b.providers().into_iter().find(|p| p.id == "claude").unwrap();
+    assert_eq!(claude.config.len(), 2);
+    assert!(claude.commands.is_empty());
+    assert!(mgr_b.commands("claude", None).await.unwrap().is_empty());
+    let mgr_a = manager_at(&a, &models, Arc::new(FakeAgent::default()));
+    assert_eq!(names(mgr_a.providers().into_iter().find(|p| p.id == "claude").unwrap().commands), ["review"]);
 }
 
 async fn wait_for(mgr: &AgentManager, id: &str, status: AgentStatus) {
@@ -299,6 +343,9 @@ fn prompts_become_acp_content_blocks() {
         blocks(&p, &[Some("fn a() {}".into())])[1],
         json!({"type": "resource", "resource": {"uri": "file:///p/my%20file.rs", "text": "fn a() {}"}})
     );
+    // A slash command goes through as typed: the agent runs it.
+    let skill = clean(text(" /triage dry-run\n")).unwrap();
+    assert_eq!(blocks(&skill, &[]), [json!({"type": "text", "text": "/triage dry-run"})]);
     let old = upgrade(
         json!({"task": {"id": "t"}, "entries": [{"type": "user", "text": "hi"}, {"type": "agent", "text": "a"}]}),
     );
@@ -375,6 +422,7 @@ async fn real_claude_task_in_a_worktree() {
             worktrees_dir: tmp.path().join("wt"),
             models_file: tmp.path().join("models.json"),
             custom_agents_dir: None,
+            home_dir: None,
         },
         tokio::runtime::Handle::current(),
     );

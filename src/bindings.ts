@@ -56,6 +56,11 @@ export const commands = {
 	/**  Streams the project's agent events to this window; returns every task. */
 	agentSubscribe: (onEvent: Channel<AgentEvent>) => typedError<AgentTask[], IdeError>(__TAURI_INVOKE("agent_subscribe", { onEvent })),
 	agentProviders: () => typedError<AgentProvider[], IdeError>(__TAURI_INVOKE("agent_providers")),
+	/**
+	 *  Slash commands to complete for `provider` in `task`'s directory, or in the project
+	 *  before a task exists (skills and custom commands on disk included).
+	 */
+	agentCommands: (provider: string, task: string | null) => typedError<AgentCommand[], IdeError>(__TAURI_INVOKE("agent_commands", { provider, task })),
 	agentEntries: (task: string) => typedError<AgentEntry[], IdeError>(__TAURI_INVOKE("agent_entries", { task })),
 	agentCreate: (request: NewAgentTask) => typedError<AgentTask, IdeError>(__TAURI_INVOKE("agent_create", { request })),
 	/**  Sends a message; while the agent works it is queued, or with `now` it interrupts the turn. */
