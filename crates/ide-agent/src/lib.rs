@@ -10,6 +10,7 @@
 mod config;
 mod model;
 mod provider;
+mod skills;
 mod timeline;
 mod worktree;
 
@@ -53,10 +54,12 @@ pub struct AgentPaths {
     pub store_dir: PathBuf,
     /// Parent of the tasks' worktrees.
     pub worktrees_dir: PathBuf,
-    /// Settings and commands each agent offered last time (shared by all projects).
+    /// Settings each agent offered last time (shared by all projects), and its commands per project.
     pub models_file: PathBuf,
     /// User-defined agents, one `<id>.toml` each (`name`, `command`, `args`, `env`).
     pub custom_agents_dir: Option<PathBuf>,
+    /// The user's home: its `.claude` holds their own skills and commands.
+    pub home_dir: Option<PathBuf>,
 }
 
 /// Starts the ACP server of a provider in a directory, speaking to `client`.
@@ -80,8 +83,9 @@ struct Shared {
 struct Known {
     #[serde(default)]
     config: Vec<AgentConfigOption>,
-    #[serde(default)]
-    commands: Vec<AgentCommand>,
+    /// By project root: skills and custom commands differ per project.
+    #[serde(default, rename = "projectCommands")]
+    commands: HashMap<String, Vec<AgentCommand>>,
 }
 
 impl Shared {
@@ -96,8 +100,18 @@ impl Shared {
         }
     }
 
-    fn known(&self, provider: &str) -> Known {
-        self.known.lock().get(provider).cloned().unwrap_or_default()
+    fn known_config(&self, provider: &str) -> Vec<AgentConfigOption> {
+        self.known.lock().get(provider).map(|k| k.config.clone()).unwrap_or_default()
+    }
+
+    /// The commands the agent offered last time in this project.
+    fn known_commands(&self, provider: &str) -> Vec<AgentCommand> {
+        let cache = self.known.lock();
+        cache.get(provider).and_then(|k| k.commands.get(&self.root_key())).cloned().unwrap_or_default()
+    }
+
+    fn root_key(&self) -> String {
+        self.paths.project_root.to_string_lossy().into_owned()
     }
 
     fn remember(&self, provider: &str, config: Option<&[AgentConfigOption]>, commands: Option<&[AgentCommand]>) {
@@ -109,8 +123,11 @@ impl Shared {
                 known.config = c.to_vec();
                 changed = true;
             }
-            if let Some(c) = commands.filter(|c| !c.is_empty() && known.commands != *c) {
-                known.commands = c.to_vec();
+            let root = self.root_key();
+            if let Some(c) =
+                commands.filter(|c| !c.is_empty() && known.commands.get(&root).map(Vec::as_slice) != Some(c))
+            {
+                known.commands.insert(root, c.to_vec());
                 changed = true;
             }
             if !changed {
@@ -238,23 +255,40 @@ impl AgentManager {
         let specs = provider::load(self.shared.paths.custom_agents_dir.as_deref());
         let list = specs
             .iter()
-            .map(|p| {
-                let known = self.shared.known(&p.id);
-                AgentProvider {
-                    id: p.id.clone(),
-                    name: p.name.clone(),
-                    command: std::iter::once(p.command.as_str())
-                        .chain(p.args.iter().map(String::as_str))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    installed: provider::installed(&p.command),
-                    config: known.config,
-                    commands: known.commands,
-                }
+            .map(|p| AgentProvider {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                command: std::iter::once(p.command.as_str())
+                    .chain(p.args.iter().map(String::as_str))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                installed: provider::installed(&p.command),
+                config: self.shared.known_config(&p.id),
+                commands: self.shared.known_commands(&p.id),
             })
             .collect();
         *self.shared.providers.write() = specs;
         list
+    }
+
+    /// The slash commands to complete for `provider`, in `task`'s directory or (without one)
+    /// in the project: what the agent offered last time there, plus, for Claude Code, the
+    /// skills and custom commands on disk it has not listed.
+    pub async fn commands(&self, provider: &str, task: Option<&str>) -> IdeResult<Vec<AgentCommand>> {
+        let (provider, offered, cwd) = match task {
+            Some(id) => {
+                let task = self.task(id)?;
+                let s = task.state.lock();
+                (s.task.provider.clone(), s.task.commands.clone(), s.task.cwd.0.clone())
+            }
+            None => (provider.to_owned(), self.shared.known_commands(provider), self.shared.paths.project_root.clone()),
+        };
+        if provider != "claude" {
+            return Ok(offered);
+        }
+        let home = self.shared.paths.home_dir.clone();
+        let found = blocking(move || Ok(skills::discover(&cwd, home.as_deref()))).await?;
+        Ok(skills::merge(offered, found))
     }
 
     fn task(&self, id: &str) -> IdeResult<Arc<Task>> {
@@ -289,8 +323,7 @@ impl AgentManager {
             }
         };
         // Until the session reports its own, show what the agent offered last time with the choices applied.
-        let known = self.shared.known(&spec.id);
-        let mut config = known.config;
+        let mut config = self.shared.known_config(&spec.id);
         for choice in &req.config {
             if let Some(o) = config.iter_mut().find(|o| o.id == choice.id) {
                 o.current = Some(choice.value.clone());
@@ -312,7 +345,7 @@ impl AgentManager {
             created_ms: now,
             updated_ms: now,
             config,
-            commands: known.commands,
+            commands: self.shared.known_commands(&spec.id),
             usage: None,
             queue: Vec::new(),
         };

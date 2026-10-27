@@ -66,6 +66,21 @@ describe("agent composer", () => {
     expect(matchCommands(cmds, "rev").map((c) => c.name)).toEqual(["review", "pr-review"]);
   });
 
+  it("matches commands by prefix, plugin name, substring, then letters in order", () => {
+    const cmds = ["triage", "verify", "issue-fix", "brooks-lint:brooks-review", "pr-review", "init"].map((name) => ({
+      name,
+      description: "",
+      hint: null,
+    }));
+    const names = (q: string) => matchCommands(cmds, q).map((c) => c.name);
+    expect(names("trig")).toEqual(["triage"]);
+    expect(names("brooks-r")).toEqual(["brooks-lint:brooks-review"]);
+    expect(names("rev")).toEqual(["brooks-lint:brooks-review", "pr-review"]);
+    expect(names("if")).toEqual(["verify", "issue-fix"]);
+    expect(names("xyz")).toEqual([]);
+    expect(names("")).toHaveLength(cmds.length);
+  });
+
   it("sends only the files still mentioned", () => {
     const prompt = toPrompt({
       text: " look at @src/a.rs:3-5 and @b.rs ",

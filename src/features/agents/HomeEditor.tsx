@@ -9,7 +9,7 @@ import { Composer } from "./Composer";
 import { canSend, emptyDraft } from "./composerModel";
 import { ConfigPickers } from "./ConfigPickers";
 import { providerIcon } from "./model";
-import { HOME, startTask, updateDraft, useAgents } from "./store";
+import { HOME, NO_COMMANDS, startTask, updateDraft, useAgentCommands, useAgents } from "./store";
 import styles from "./Home.module.css";
 
 export function HomeEditor() {
@@ -36,6 +36,7 @@ export function HomeEditor() {
   }, []);
 
   const provider = providers.find((p) => p.id === draft.provider) ?? providers[0];
+  const agentCommands = useAgentCommands(provider?.id, null, provider?.commands ?? NO_COMMANDS);
   // Installed agents first; the rest under a "Not installed" title, with the command they need.
   const installed = providers.filter((p) => p.installed);
   const missing = providers.filter((p) => !p.installed);
@@ -70,7 +71,7 @@ export function HomeEditor() {
           placeholder="Describe a task for the agent. @ references a file, / runs a command"
           root={root}
           projectRoot={root}
-          commands={provider?.commands ?? []}
+          commands={agentCommands}
           history={history}
           config={provider?.config ?? []}
           onConfig={setOption}

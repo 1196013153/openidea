@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use ide_agent::{
-    AgentChange, AgentEntry, AgentEvent, AgentPrompt, AgentProvider, AgentQueued, AgentTask, NewAgentTask,
+    AgentChange, AgentCommand, AgentEntry, AgentEvent, AgentPrompt, AgentProvider, AgentQueued, AgentTask, NewAgentTask,
 };
 use ide_core::{IdeResult, IpcPath};
 use std::sync::Arc;
@@ -25,6 +25,20 @@ pub fn agent_subscribe(
 #[specta::specta]
 pub fn agent_providers(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<AgentProvider>> {
     Ok(state.project(window.label())?.agents.providers())
+}
+
+/// Slash commands to complete for `provider` in `task`'s directory, or in the project
+/// before a task exists (skills and custom commands on disk included).
+#[tauri::command]
+#[specta::specta]
+pub async fn agent_commands(
+    window: Window,
+    state: State<'_, AppState>,
+    provider: String,
+    task: Option<String>,
+) -> IdeResult<Vec<AgentCommand>> {
+    let project = state.project(window.label())?;
+    project.agents.commands(&provider, task.as_deref()).await
 }
 
 #[tauri::command]
