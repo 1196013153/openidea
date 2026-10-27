@@ -8,6 +8,7 @@ import { FOCUSABLE, onWindowDeactivate, openLayer, trapTab } from "./popupState"
 import { useTx } from "@/platform/i18n";
 import { selectableText } from "./selectableText";
 import styles from "./Dialog.module.css";
+import { isImeKey } from "@/platform/ime";
 
 /**
  * `default`: filled accent button, triggered by Enter. `cancel`: Esc / close
@@ -256,7 +257,7 @@ function DialogInner({
         onCloseRef.current();
       } else if (e.key === "Tab") {
         trapTab(e, ref.current);
-      } else if (e.key === "Enter" && !e.defaultPrevented && !e.isComposing && !e.shiftKey && !e.altKey) {
+      } else if (e.key === "Enter" && !e.defaultPrevented && !isImeKey(e) && !e.shiftKey && !e.altKey) {
         const t = e.target instanceof Element ? e.target : null;
         const mod = e.metaKey || e.ctrlKey;
         if (t && t !== document.body && !ref.current.contains(t)) return;

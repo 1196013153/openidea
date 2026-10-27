@@ -6,6 +6,7 @@ import { sshLabel } from "./model";
 import { SourceDialog } from "./SourceDialog";
 import { closeDialog, useDatabase } from "./store";
 import styles from "./Database.module.css";
+import { isImeKey } from "@/platform/ime";
 
 const ObjectDialogs = lazyComponent(() => import("./ObjectDialogs").then((m) => m.ObjectDialogs));
 const ExportDialog = lazyComponent(() => import("./ExportDialog").then((m) => m.ExportDialog));
@@ -138,7 +139,7 @@ function ParamsDialog({
       <div
         className={styles.form}
         onKeyDown={(e) => {
-          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+          if (e.key !== "Enter" || isImeKey(e.nativeEvent)) return;
           e.preventDefault();
           done(values);
         }}

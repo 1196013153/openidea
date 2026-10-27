@@ -33,6 +33,7 @@ import { trackRuntimeSettings } from "./runtime";
 import { installActionProxies, installSettingsHost } from "./window/bridge";
 import { AssignShortcutOverlay, showAssignShortcut } from "./keymap/AssignShortcut";
 import { settingsSearchEntries } from "./searchIndex";
+import { isImeKey } from "@/platform/ime";
 
 export { settingsWindowParent } from "./window/bridge";
 export const SettingsWindow = lazyComponent(() => import("./window/SettingsWindow").then((m) => m.SettingsWindow));
@@ -165,7 +166,7 @@ function listenLaunch(): () => void {
 /** Esc and ⌘W cancel, like closing the window; ⌘, stays here. */
 function installWindowKeys(): () => void {
   const onKey = (e: KeyboardEvent) => {
-    if (e.defaultPrevented || e.isComposing) return;
+    if (e.defaultPrevented || isImeKey(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     if ((e.key === "Escape" && !isPopupOpen()) || (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "w")) {
       e.preventDefault();

@@ -33,6 +33,7 @@ import { closeBreakpointPopover, useOverlays } from "./popoverStore";
 import { VariablesView, type VarRoot } from "./VariablesView";
 import { pushHistory, readHistory } from "./expressionHistory";
 import styles from "./Overlays.module.css";
+import { isImeKey } from "@/platform/ime";
 
 export function DebuggerOverlays() {
   return (
@@ -710,7 +711,7 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
     });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
+    if (isImeKey(e.nativeEvent)) return;
     const el = e.currentTarget;
     if (e.key === "Enter" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();

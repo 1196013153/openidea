@@ -23,6 +23,7 @@ import { colorVar, connectRemedy, fileSourceName, newSourceId, parseSourceUrl, s
 import { closeDialog, loadDatabases, loadSchemas, saveSource, useDatabase } from "./store";
 import { VENDORS, sourceUrl, vendorById, vendorOf } from "./vendors";
 import styles from "./Database.module.css";
+import { isImeKey } from "@/platform/ime";
 
 type Tab = "general" | "options" | "ssh" | "schemas" | "advanced";
 
@@ -284,7 +285,7 @@ function NamePicker({
               aria-label={`Add ${title} pattern`}
               onChange={(e) => setPattern(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                if (e.key === "Enter" && !isImeKey(e.nativeEvent)) {
                   e.preventDefault();
                   add();
                 }

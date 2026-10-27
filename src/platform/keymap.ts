@@ -18,6 +18,7 @@ import { intellijWindows } from "./keymaps/intellij-windows";
 import { vscodeMacos } from "./keymaps/vscode-macos";
 import { vscodeWindows } from "./keymaps/vscode-windows";
 import { usePlatform } from "./platformInfo";
+import { isImeKey } from "./ime";
 
 export type Keymap = Record<string, string[]>;
 
@@ -439,7 +440,7 @@ export function installKeyboardDispatcher(target: Window = window, now: () => nu
     if (runHeldGesture(e)) return reset();
     resetTap();
     otherKeyAt = e.key === "Escape" || e.key === "Tab" ? -Infinity : now();
-    if (e.isComposing) return;
+    if (isImeKey(e)) return;
     const stroke = strokeOf(e);
     if (!stroke) return;
     const chord = pending.length > 0;
