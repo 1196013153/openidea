@@ -422,7 +422,12 @@ pub(crate) fn run_in_terminal(s: &Arc<Session>, args: &Value) -> Result<Value, S
     };
     let mut cmd = tokio::process::Command::new(program);
     ide_core::process::no_window(cmd.as_std_mut());
-    cmd.args(rest).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    cmd.args(rest)
+        .envs(ide_core::process::shell_env())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     if let Some(cwd) = args.get("cwd").and_then(Value::as_str).filter(|c| !c.is_empty()) {
         cmd.current_dir(cwd);
     }

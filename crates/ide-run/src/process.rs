@@ -406,6 +406,10 @@ impl ProcessManager {
         cmd.cwd(cwd);
         if env.clear {
             cmd.env_clear();
+        } else {
+            for (k, v) in ide_core::process::shell_env() {
+                cmd.env(k, v);
+            }
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -610,6 +614,8 @@ fn launch_env(root: &Path, config: &RunConfig) -> IdeResult<LaunchEnv> {
 fn apply_env(cmd: &mut Command, env: &LaunchEnv) {
     if env.clear {
         cmd.env_clear();
+    } else {
+        cmd.envs(ide_core::process::shell_env());
     }
     cmd.envs(&env.vars);
 }

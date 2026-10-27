@@ -312,6 +312,7 @@ impl Peer {
         ide_core::process::no_window(cmd.as_std_mut());
         cmd.args(args)
             .current_dir(cwd)
+            .envs(ide_core::process::shell_env())
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
