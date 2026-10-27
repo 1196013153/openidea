@@ -14,6 +14,7 @@ mod mask;
 mod pattern;
 mod query;
 mod replace;
+mod words;
 
 pub use files::{ScopeFile, scope_files};
 pub use mask::FileMask;
@@ -22,6 +23,7 @@ pub use replace::{
     ReplaceEvent, ReplaceHost, ReplacePreview, ReplaceSummary, ReplaceTarget, apply_edits, preserve_case, preview,
     replace_files, replacement_edits,
 };
+pub use words::{WordFiles, WordQuery, files_with_word};
 
 use grep_matcher::{Captures, Matcher};
 use ide_core::{CancellationToken, IdeError, IdeResult};

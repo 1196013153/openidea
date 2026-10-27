@@ -20,22 +20,18 @@ body, .splash { background: var(--bg-frame, var(--boot-frame, #e9eaee)); }
   gap: 14px;
   padding-bottom: 38px;
   box-sizing: border-box;
-  font: 500 15px/1.2 "Inter Variable", Inter, system-ui, -apple-system, sans-serif;
   color: var(--fg-muted, var(--boot-fg, #6c707e));
-  /* As on body: picking it up when the app CSS arrives would change the wordmark's weight. */
-  -webkit-font-smoothing: antialiased;
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
   animation: splash-in 240ms ease-out 120ms both;
   transition: opacity 160ms ease-out;
-  /* One compositing layer for its whole life: WebKit layers it only while the opacity animates,
-     and the fade-out's fresh layer re-snaps the centred text, which then jumps up half a pixel. */
-  will-change: opacity;
 }
 .splash.splash-out { opacity: 0; pointer-events: none; }
 :root[data-theme^="dark"] .splash { color: var(--fg-muted, var(--boot-fg, #8c8f95)); }
-.splash svg { width: 56px; height: 56px; }
+.splash-logo { width: 56px; height: 56px; }
+/* 15px Inter: 2048 units per em, the line box from ascender to descender. */
+.splash-wordmark { width: 73.2px; height: 18.15px; }
 .splash-bar { width: 120px; height: 2px; border-radius: 1px; overflow: hidden; background: rgb(127 127 127 / 0.18); }
 /* Fake progress: eases towards ~90% over the 4 s cap; hideSplash() fills it before fading out. */
 .splash-bar > i {

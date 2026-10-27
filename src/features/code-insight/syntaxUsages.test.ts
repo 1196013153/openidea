@@ -24,7 +24,7 @@ vi.mock("@/platform/ipc", async (orig) => {
 vi.mock("./candidates", () => ({ filesMentioning: () => filesMentioning() }));
 
 const { _addEditor } = await import("@/editor/api");
-const { fetchUsages } = await import("./usages");
+const { fetchUsages, incompleteNote } = await import("./usages");
 const { LOCAL_NOTE, TEXT_NOTE } = await import("./syntaxUsages");
 
 const r = (line: number, col: number, endCol: number): Range => ({ start: { line, col }, end: { line, col: endCol } });
@@ -39,9 +39,19 @@ beforeEach(() => {
 
 describe("Find Usages fallback", () => {
   it("uses the server when it answers, even with nothing", async () => {
-    cmd.lspReferences.mockReturnValueOnce(ok([]));
+    cmd.lspReferences.mockReturnValueOnce(ok({ locations: [], incomplete: null }));
     expect(await fetchUsages(caret)).toEqual({ groups: [], note: null });
     expect(cmd.syntaxLocals).not.toHaveBeenCalled();
+  });
+
+  it("searches project-wide under the given request and says when results may be incomplete", async () => {
+    const usage = { path: "/p/a.ts", range: r(1, 0, 1) };
+    cmd.lspReferences.mockReturnValueOnce(ok({ locations: [usage], incomplete: "indexing" }));
+    const res = await fetchUsages(caret, 42 as never);
+    expect(cmd.lspReferences).toHaveBeenCalledWith(42, 3, { line: 1, col: 0 }, false, true);
+    expect(res.groups[0]!.usages.length).toBe(1);
+    expect(res.note).toBe(incompleteNote("indexing", "x"));
+    expect(incompleteNote("tooManyFiles", "x")).toBe("May be incomplete: too many files mention 'x' to search them all");
   });
 
   it("lists a certain local's references when the server is not ready", async () => {
