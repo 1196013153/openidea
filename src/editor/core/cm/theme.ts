@@ -57,6 +57,9 @@ export const openideaTheme = EditorView.theme({
     boxShadow: "inset 0 1px 0 var(--border-method-separator, var(--border))",
   },
   "&.cm-openidea-hideGutter-run .cm-openidea-gutter-run, &.cm-openidea-hideGutter-bookmarks .cm-openidea-bookmarks": { display: "none" },
+  // Inheritance markers share one gutter: each group hides its own icons.
+  "&.cm-openidea-hideGutter-inheritors :is(.cm-openidea-lineMarker-implemented, .cm-openidea-lineMarker-overridden), &.cm-openidea-hideGutter-supers :is(.cm-openidea-lineMarker-implementing, .cm-openidea-lineMarker-overriding)":
+    { display: "none" },
   // Distraction Free Mode: no gutter; the text column (n chars + line padding) is centred.
   "&.cm-openidea-distractionFree": { "--openidea-df-width": "calc(var(--openidea-df-columns, 80) * 1ch + 22px)" },
   "&.cm-openidea-distractionFree .cm-gutters": { display: "none" },

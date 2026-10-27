@@ -288,6 +288,12 @@ export const commands = {
 } | null, IdeError>(__TAURI_INVOKE("lsp_signature_help", { doc, pos })),
 	lspGoto: (doc: DocId, pos: Pos, kind: GotoKind) => typedError<Location[], IdeError>(__TAURI_INVOKE("lsp_goto", { doc, pos, kind })),
 	/**
+	 *  Implementations of the symbols at `positions`, one list per position (the
+	 *  editor's "is implemented / overridden" gutter markers). Cancel with
+	 *  `cancel_request(request)`.
+	 */
+	lspImplementations: (request: RequestId, doc: DocId, positions: Pos[]) => typedError<Location[][], IdeError>(__TAURI_INVOKE("lsp_implementations", { request, doc, positions })),
+	/**
 	 *  Contents of a virtual document (library class, decompiled code) that a
 	 *  language server returned a non-`file:` URI for. Cached per project.
 	 */

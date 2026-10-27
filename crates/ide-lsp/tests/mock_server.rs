@@ -793,6 +793,39 @@ async fn fallback_servers_only_run_when_the_preferred_one_is_missing() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn implementations_per_position() {
+    let caps = json!({ "textDocumentSync": 1, "implementationProvider": true });
+    let h = harness(&[("mock", caps)]);
+    let (doc, path) = h.open("a.mk", "iface A {}\nimpl B {}\nimpl C {}\n");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    let s = h.launcher.state("mock");
+    let uri = uri_of(&path);
+    *s.responder.lock() = Some(Arc::new(move |_, method, params| {
+        if method != "textDocument/implementation" {
+            return None;
+        }
+        // Line 0 is implemented on lines 1 and 2; nothing else is.
+        Some(match params["position"]["line"].as_u64() {
+            Some(0) => json!([
+                { "uri": uri, "range": {"start":{"line":1,"character":5},"end":{"line":1,"character":6}} },
+                { "uri": uri, "range": {"start":{"line":2,"character":5},"end":{"line":2,"character":6}} },
+            ]),
+            _ => json!([]),
+        })
+    }));
+    let found = h.mgr.implementations(doc, &[Pos::new(0, 6), Pos::new(1, 5)], Default::default()).await.unwrap();
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0].iter().map(|l| l.range.start.line).collect::<Vec<_>>(), vec![1, 2]);
+    assert!(found[1].is_empty());
+    assert!(h.mgr.implementations(doc, &[], Default::default()).await.unwrap().is_empty());
+
+    let cancel = ide_core::CancellationToken::new();
+    cancel.cancel();
+    let err = h.mgr.implementations(doc, &[Pos::new(0, 6)], cancel).await.unwrap_err();
+    assert_eq!(err.kind, ide_core::error::ErrorKind::Cancelled);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn navigation_rename_format_and_decorations() {
     let h = harness(&[("mock", incremental_caps())]);
     let (doc, path) = h.open("a.mk", "fn foo() {}\nfoo();\n");

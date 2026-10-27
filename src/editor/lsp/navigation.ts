@@ -121,7 +121,7 @@ export function chooserTitle(kind: GotoKind, name: string | null, count: number,
 }
 
 /** Pin button of the targets chooser: the targets as a Find tool window tab (code-insight). */
-function pinToFind(symbol: string, locations: readonly Location[]) {
+export function pinToFind(symbol: string, locations: readonly Location[]) {
   return {
     label: "Open in Find Tool Window",
     run: () => void executeAction("find.showUsageResults", { symbol, locations }),

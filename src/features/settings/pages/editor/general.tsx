@@ -536,6 +536,18 @@ const GUTTER = editorPage({
               component: () => <GutterGroup id="run" label="Run configurations and tests" />,
             },
             { t: "custom", label: "Bookmarks", component: () => <GutterGroup id="bookmarks" label="Bookmarks" /> },
+            {
+              t: "custom",
+              label: "Implemented and overridden",
+              keywords: ["implementations", "subclasses", "inheritors"],
+              component: () => <GutterGroup id="inheritors" label="Implemented and overridden declarations" />,
+            },
+            {
+              t: "custom",
+              label: "Implementing and overriding",
+              keywords: ["super method", "overrides", "implements"],
+              component: () => <GutterGroup id="supers" label="Implementing and overriding methods" />,
+            },
           ],
         },
       ],
