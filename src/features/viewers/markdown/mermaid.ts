@@ -30,8 +30,8 @@ function loadMermaid(): Promise<Mermaid> {
 /** Theme identity: anything that changes the colours read below. */
 export function themeKey(): string {
   const root = document.documentElement;
-  const { theme = "", contrast = "", pluginTheme = "" } = root.dataset;
-  return `${theme}|${contrast}|${pluginTheme}|${root.style.getPropertyValue("--accent")}`;
+  const { theme = "", contrast = "", colorTheme = "", pluginTheme = "" } = root.dataset;
+  return `${theme}|${contrast}|${colorTheme}|${pluginTheme}|${root.style.getPropertyValue("--accent")}`;
 }
 
 /** Calls `cb` when the theme attributes (a plugin theme's included) or the accent on the root change. */
@@ -40,7 +40,7 @@ export function subscribeTheme(cb: () => void): () => void {
   const observer = new MutationObserver(cb);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-contrast", "data-plugin-theme", "style"],
+    attributeFilter: ["data-theme", "data-contrast", "data-color-theme", "data-plugin-theme", "style"],
   });
   return () => observer.disconnect();
 }

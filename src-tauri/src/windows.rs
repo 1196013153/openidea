@@ -11,6 +11,7 @@
 //! [`Launch::settings_page`] tells it which page to show.
 
 use crate::state::AppState;
+use crate::theme_frame::builtin_frame;
 use ide_core::settings::AppearanceSettings;
 use ide_core::{IdeError, IdeResult};
 use parking_lot::Mutex;
@@ -212,22 +213,15 @@ fn window_config(app: &AppHandle) -> IdeResult<WindowConfig> {
 
 /// The theme's `--bg-frame` (tokens.css), mirroring `resolveThemeId` in theme.ts.
 pub fn frame_color(appearance: &AppearanceSettings, os_dark: bool) -> Color {
-    const LIGHT: Color = Color(0xe9, 0xea, 0xee, 0xff);
-    const DARK: Color = Color(0x26, 0x28, 0x2c, 0xff);
-    const DARK_HC: Color = Color(0x1a, 0x1b, 0x1e, 0xff);
     let sync = appearance.sync_with_os || appearance.theme == "system";
     let theme = match (sync, os_dark) {
         (false, _) => &appearance.theme,
         (true, true) => &appearance.preferred_dark_theme,
         (true, false) => &appearance.preferred_light_theme,
     };
-    match theme.as_str() {
-        "dark-hc" => DARK_HC,
-        "dark" => DARK,
-        "light" => LIGHT,
-        _ if sync && os_dark => DARK,
-        _ => LIGHT,
-    }
+    builtin_frame(theme)
+        .or_else(|| builtin_frame(if sync && os_dark { "dark" } else { "light" }))
+        .unwrap_or(Color(0xe9, 0xea, 0xee, 0xff))
 }
 
 /// A `#rgb` / `#rrggbb` / `#rrggbbaa` colour sent by the UI (Tauri's own parser).
@@ -473,6 +467,25 @@ mod tests {
         a.sync_with_os = true;
         assert_eq!(frame_color(&a, false), Color(0xe9, 0xea, 0xee, 0xff));
         assert_eq!(frame_color(&a, true), Color(0x26, 0x28, 0x2c, 0xff));
+    }
+
+    #[test]
+    fn additional_palettes_keep_native_startup_and_os_preferences_in_sync() {
+        for (id, color) in [
+            ("solarized-light", Color(0xee, 0xe8, 0xd5, 0xff)),
+            ("solarized-dark", Color(0x07, 0x36, 0x42, 0xff)),
+            ("one-light", Color(0xea, 0xea, 0xeb, 0xff)),
+            ("one-dark", Color(0x21, 0x25, 0x2b, 0xff)),
+        ] {
+            let mut a = AppearanceSettings { theme: id.into(), ..Default::default() };
+            assert_eq!(frame_color(&a, false), color);
+            assert_eq!(frame_color(&a, true), color);
+            a.sync_with_os = true;
+            a.preferred_light_theme = id.into();
+            a.preferred_dark_theme = id.into();
+            assert_eq!(frame_color(&a, false), color);
+            assert_eq!(frame_color(&a, true), color);
+        }
     }
 
     #[test]

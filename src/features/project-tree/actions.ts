@@ -154,6 +154,7 @@ export function registerProjectActions(): () => void {
     title: tx`Project View: ${label}`,
     category: "View",
     keywords: ["project", "tree", "toggle"],
+    toggled: () => useProjectTree.getState().options[key],
     run: () => setViewOption(key, !useProjectTree.getState().options[key]),
   }));
 

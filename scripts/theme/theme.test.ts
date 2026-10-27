@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   convertIcls,
@@ -74,73 +74,6 @@ describe("theme plugin template", () => {
     expect(manifest).toContain('path = "themes/harbor-night.theme.json"');
     expect(manifest).toContain('editor-scheme = "themes/harbor-night.scheme.json"');
     expect(manifest).not.toMatch(/^wasm\s*=/m);
-  });
-});
-
-/** Theme packages in plugins/: every theme they contribute, with its editor scheme. */
-function pluginThemes() {
-  return readdirSync("plugins", { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(`plugins/${d.name}/plugin.toml`))
-    .flatMap((d) => {
-      const dir = `plugins/${d.name}`;
-      const manifest = read(`${dir}/plugin.toml`);
-      return manifest
-        .split("[[contributes.themes]]")
-        .slice(1)
-        .map((entry) => ({
-          dir,
-          manifest,
-          path: /^path\s*=\s*"([^"]+)"/m.exec(entry)?.[1],
-          scheme: /^editor-scheme\s*=\s*"([^"]+)"/m.exec(entry)?.[1],
-        }));
-    });
-}
-
-describe("theme plugins in plugins/", () => {
-  const themes = pluginThemes();
-
-  it("include Solarized and One, light and dark", () => {
-    expect(themes.map((t) => `${t.dir}/${t.path}`)).toEqual(
-      expect.arrayContaining([
-        "plugins/theme-solarized/themes/solarized-light.theme.json",
-        "plugins/theme-solarized/themes/solarized-dark.theme.json",
-        "plugins/theme-one/themes/one-light.theme.json",
-        "plugins/theme-one/themes/one-dark.theme.json",
-      ]),
-    );
-  });
-
-  it.each(themes.map((t) => [`${t.dir}/${t.path}`, t] as const))(
-    "%s sets every UI token and its scheme every editor token",
-    (_name, t) => {
-      // A failure here means tokens.css gained (or lost) a themeable token: add it to the theme too.
-      expect(t.path && t.scheme, "theme and editor-scheme paths").toBeTruthy();
-      expect(t.manifest).not.toMatch(/^wasm\s*=/m);
-      const ui = JSON.parse(stripJsonComments(read(`${t.dir}/${t.path}`))) as {
-        id: string;
-        name: string;
-        kind: string;
-        tokens: Record<string, string>;
-      };
-      const ed = JSON.parse(stripJsonComments(read(`${t.dir}/${t.scheme}`))) as { tokens: Record<string, string> };
-      expect(ui.id).toMatch(/^[a-z0-9][a-z0-9._-]*$/);
-      expect(ui.name.trim()).not.toBe("");
-      expect(["light", "dark"]).toContain(ui.kind);
-      expect(sorted(Object.keys(ui.tokens))).toEqual(sorted(sets.ui));
-      expect(sorted(Object.keys(ed.tokens))).toEqual(sorted(sets.scheme));
-      for (const [k, v] of Object.entries({ ...ui.tokens, ...ed.tokens })) {
-        expect(/[;{}<>\\\n]|url\(|image\(/i.test(v), `${k}: ${v}`).toBe(false);
-        // var() may only point at tokens the IDE defines.
-        for (const [, ref] of v.matchAll(/var\((--[a-z0-9-]+)/g)) expect(css, `${k} → ${ref}`).toContain(`${ref}:`);
-      }
-    },
-  );
-
-  it("ship the licence of the palettes they port", () => {
-    for (const dir of new Set(themes.map((t) => t.dir))) {
-      if (dir === "plugins/theme-solarized" || dir === "plugins/theme-one")
-        expect(read(`${dir}/LICENSE`), dir).toContain("MIT License");
-    }
   });
 });
 

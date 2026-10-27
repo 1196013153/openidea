@@ -153,6 +153,7 @@ function Toolbar({ tool, selection }: { tool: BuildTool; selection: BuildNode[] 
         action={`${tool}.toggleOffline`}
         pressed={maven ? settings.maven.offline : settings.gradle.offline}
       />
+      {maven && <IconButton icon="build-dependencies" size="small" iconSize={16} action="maven.analyzeDependencies" />}
       {maven && (
         <IconButton
           icon="skip-tests"
@@ -309,8 +310,11 @@ function BuildToolView({ tool }: { tool: BuildTool }) {
         },
         { kind: "action", action: "maven.reload", label: "Reload All Maven Projects" },
         { kind: "action", action: "maven.executeGoal" },
+        { kind: "action", action: "maven.analyzeDependencies", arg: { pom: node.project.pom } },
       );
     }
+    if (node.kind === "dependencies")
+      items.push({ kind: "action", action: "maven.analyzeDependencies", arg: { pom: node.project.pom } });
     if (node.kind === "gradleProject") {
       const file = node.project.buildFile;
       if (file)

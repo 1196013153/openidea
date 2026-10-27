@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { contrastRatio, isColorValue, readTokens } from "../theme/contrast";
+import { BUILTIN_THEMES } from "@/platform/themes";
 
 const css = readFileSync(`${process.cwd()}/src/styles/tokens.css`, "utf8");
 const dark = readTokens(css, ":root");
@@ -114,5 +115,51 @@ describe("theme tokens", () => {
     const t = readTokens("a, :root[x] { --a: #fff; /* c */ --b: 1px }", ":root[x]");
     expect(t).toEqual({ "--a": "#fff", "--b": "1px" });
     expect(contrastRatio("#000", "#fff")).toBeCloseTo(21, 5);
+  });
+});
+
+/**
+ * Tokens the palette themes (Solarized, One) take from their light / dark base
+ * on purpose: colours the user assigns (project and data source colours), the
+ * platform's caption close button, and the tint strength.
+ */
+const INHERITED_FROM_BASE = /^--(project-color-|db-color-|caption-close-|fg-caption-close-|tint-strength$)/;
+
+describe("palette themes", () => {
+  const ISLANDS = ["light", "dark", "dark-hc"];
+  const palettes = BUILTIN_THEMES.filter((t) => !ISLANDS.includes(t.id));
+  const shared = readTokens(css, ":root[data-color-theme]");
+  // Every themeable token (the Islands Light block lists them all) and every plain colour of :root.
+  const required = [
+    ...new Set([
+      ...Object.keys(readTokens(css, ':root[data-theme="light"]')),
+      ...Object.entries(dark)
+        .filter(([, v]) => isColorValue(v) && !v.includes("var("))
+        .map(([k]) => k),
+    ]),
+  ];
+
+  it("have a tokens.css block for every palette theme id, and no other", () => {
+    const blocks = [...css.matchAll(/:root\[data-color-theme="([a-z0-9-]+)"\]/g)].map((m) => m[1]);
+    expect([...new Set(blocks)].sort()).toEqual(palettes.map((t) => t.id).sort());
+    expect(palettes.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each(palettes)("$id defines every token or inherits it from its $kind base on purpose", ({ id, kind }) => {
+    // A failure here means tokens.css gained a token: map it in the :root[data-color-theme]
+    // block (or the theme's own), or add it to INHERITED_FROM_BASE if the base's value is right.
+    const own = { ...shared, ...readTokens(css, `:root[data-color-theme="${id}"]`) };
+    expect(required.length).toBeGreaterThan(200);
+    expect(required.filter((k) => !(k in own) && !INHERITED_FROM_BASE.test(k))).toEqual([]);
+    const base = kind === "light" ? light : dark;
+    expect(required.filter((k) => INHERITED_FROM_BASE.test(k) && !(k in base))).toEqual([]);
+    // Every palette role the shared mapping uses is set by the theme.
+    const refs = Object.values(own)
+      .join(" ")
+      .matchAll(/var\((--palette-[a-z0-9-]+)/g);
+    const roles = new Set([...refs].map((m) => m[1]!));
+    expect([...roles].filter((r) => !(r in own))).toEqual([]);
+    for (const t of ["--chart-series", "--bg-frame", "--fg-muted", "--accent", "--ansi-red", "--syn-keyword"])
+      expect(own[t], `${id} ${t}`).toBeTruthy();
   });
 });
