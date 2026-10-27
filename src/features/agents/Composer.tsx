@@ -28,6 +28,7 @@ import {
 } from "./composerModel";
 import { composerDraft, updateComposer, useAgents } from "./store";
 import styles from "./Composer.module.css";
+import { isImeKey } from "@/platform/ime";
 
 const MAX_PROMPT_HEIGHT = 280;
 const MAX_ITEMS = 12;
@@ -213,7 +214,7 @@ export function Composer(props: ComposerProps) {
   }, [id, root]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
+    if (isImeKey(e.nativeEvent)) return;
     if (open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
@@ -320,6 +321,9 @@ export function Composer(props: ComposerProps) {
         ref={ref}
         className={styles.textarea}
         rows={2}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
         value={text}
         aria-label={tx("Message")}
         placeholder={tx(props.placeholder)}

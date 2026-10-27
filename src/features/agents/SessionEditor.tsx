@@ -68,12 +68,14 @@ function Header({ task }: { task: AgentTask }) {
       </span>
       <span className={styles.headerDetail} title={task.cwd}>
         <Icon name={providerIcon(task.provider)} size={13} className={styles.providerIcon} />
-        {providerName(task.provider)}
-        {task.model ? ` · ${task.model}` : ""}
-        {" · "}
-        {where ?? <T>Local checkout</T>}
-        {" · "}
-        <T>{statusLabel(task.status)}</T>
+        <span className={styles.headerText}>
+          {providerName(task.provider)}
+          {task.model ? ` · ${task.model}` : ""}
+          {" · "}
+          {where ?? <T>Local checkout</T>}
+          {" · "}
+          <T>{statusLabel(task.status)}</T>
+        </span>
       </span>
       {task.usage && <Usage task={task} />}
       {busy && <IconButton icon="stop" title="Stop" size="small" onClick={() => void cancelTask(task.id)} />}
