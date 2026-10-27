@@ -4115,7 +4115,7 @@ dependencies = [
 
 [[package]]
 name = "ide-host"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "dirs 6.0.0",
  "dunce",
@@ -4319,7 +4319,7 @@ dependencies = [
 
 [[package]]
 name = "ide-remote"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "globset",
  "ide-core",
@@ -4408,7 +4408,7 @@ dependencies = [
 
 [[package]]
 name = "ide-ssh"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "dirs 6.0.0",
  "flate2",
