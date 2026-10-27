@@ -5,6 +5,7 @@
  * derived from the status + syntax tokens.
  */
 import type { ITheme, Terminal } from "@xterm/xterm";
+import { fontWeightOf } from "@/platform/editorSettings";
 import { BUNDLED_MONO_FAMILY, fontsLoaded, monoFontFamily, monoStack } from "@/platform/fonts";
 
 export type Rgba = [number, number, number, number];
@@ -192,6 +193,8 @@ export interface EditorFont {
   fontSize?: number;
   lineHeight?: number;
   fallbackFont?: string;
+  fontWeight?: number;
+  boldFontWeight?: number;
 }
 
 export interface TerminalFont {
@@ -199,6 +202,9 @@ export interface TerminalFont {
   size: number;
   lineHeight: number;
   letterSpacing: number;
+  /** xterm `fontWeight` / `fontWeightBold`. */
+  weight: number;
+  boldWeight: number;
 }
 
 /**
@@ -216,7 +222,7 @@ function cssNumber(name: string): number {
 
 /**
  * Font from Settings › Tools › Terminal: the editor font (Editor › Font, with its
- * fallback) or the terminal's own family / size / line height (a multiple of the
+ * fallback and Typography Settings weights) or the terminal's own family / size / line height (a multiple of the
  * cell height). The family resolves like the editor's (`monoFontFamily`), so the
  * bundled JetBrains Mono is used where it isn't installed; `base` is the resolved
  * `--font-mono` stack, since xterm measures on a canvas and can't use `var()`.
@@ -225,6 +231,8 @@ function cssNumber(name: string): number {
  */
 export function terminalFont(t: TerminalFontSettings, editor: EditorFont | undefined, base = monoStack()): TerminalFont {
   let family: string, fallback: string, size: number, lineHeight: number;
+  let weight = 400,
+    boldWeight = 700;
   if (!t.useEditorFont) {
     family = t.fontFamily;
     fallback = t.fallbackFontFamily;
@@ -237,9 +245,11 @@ export function terminalFont(t: TerminalFontSettings, editor: EditorFont | undef
     const lh = editor?.lineHeight ?? (editor?.fontSize ? size * 1.6 : cssNumber("--lh-code") || 21);
     // xterm's lineHeight is a multiplier of the cell height (≈ 1.2 × font size); aim for the editor's line height.
     lineHeight = Math.max(1, Math.round((lh / (size * 1.2)) * 100) / 100);
+    weight = fontWeightOf(editor?.fontWeight, weight);
+    boldWeight = fontWeightOf(editor?.boldFontWeight, boldWeight);
   }
   const letterSpacing = Math.round((t.columnWidth - 1) * size * 0.6 * 10) / 10;
-  return { family: withNerdFonts(monoFontFamily(family, fallback, base)), size, lineHeight, letterSpacing };
+  return { family: withNerdFonts(monoFontFamily(family, fallback, base)), size, lineHeight, letterSpacing, weight, boldWeight };
 }
 
 /**

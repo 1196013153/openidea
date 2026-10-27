@@ -235,6 +235,18 @@ describe("terminalFont", () => {
     expect(font.family).not.toContain("PingFang SC");
   });
 
+  it("follows the editor's Typography Settings weights with Use editor font", () => {
+    const f = terminalFont(t, { ...editor, fontWeight: 300, boldFontWeight: 600 }, BASE);
+    expect([f.weight, f.boldWeight]).toEqual([300, 600]);
+    const d = terminalFont(t, editor, BASE);
+    expect([d.weight, d.boldWeight]).toEqual([400, 700]);
+  });
+
+  it("keeps regular / bold for the terminal's own font", () => {
+    const f = terminalFont({ ...t, useEditorFont: false }, { ...editor, fontWeight: 300, boldFontWeight: 600 }, BASE);
+    expect([f.weight, f.boldWeight]).toEqual([400, 700]);
+  });
+
   it("turns the column width into letter spacing", () => {
     expect(terminalFont({ ...t, useEditorFont: false }, editor, BASE).letterSpacing).toBe(0);
     expect(terminalFont({ ...t, useEditorFont: false, columnWidth: 1.5 }, editor, BASE).letterSpacing).toBe(3);

@@ -30,6 +30,8 @@ export function createEmbeddedTerminal(host: HTMLElement, opts: EmbeddedTerminal
     fontSize: font.size,
     lineHeight: font.lineHeight,
     letterSpacing: font.letterSpacing,
+    fontWeight: font.weight,
+    fontWeightBold: font.boldWeight,
     cursorBlink: settings.cursorBlink,
     cursorWidth: 2,
     cursorInactiveStyle: "outline",
