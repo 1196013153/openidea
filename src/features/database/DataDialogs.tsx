@@ -8,6 +8,7 @@ import { CodePreview } from "./CodePreview";
 import { guessSeparator, importEdits, parseDelimited } from "./model";
 import { closeDialog, detailsKey, loadDetails, openConsoleWith, targetLabel, useDatabase } from "./store";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 function when(t: number): string {
   const d = new Date(t);
@@ -60,7 +61,7 @@ export function HistoryDialog({ id, path }: { id: string; path: string | null })
     <Dialog
       open
       onClose={closeDialog}
-      title={`${targetLabel(id)} Query History`}
+      title={tx`${targetLabel(id)} Query History`}
       width={820}
       footerStart={
         <IconButton icon="trash" title="Clear History" disabled={!entries?.length} onClick={() => void remove(null)} />
@@ -192,12 +193,12 @@ export function ImportDialog({ id, schema, table }: { id: string; schema: string
     <Dialog
       open
       onClose={closeDialog}
-      title={`Import Data into ${schema}.${table}`}
+      title={tx`Import Data into ${schema}.${table}`}
       width={720}
       buttons={[
         { label: "Cancel", role: "cancel" },
         {
-          label: `Import ${edits.length} Rows`,
+          label: tx`Import ${edits.length} Rows`,
           role: "default",
           disabled: !edits.length || !mapped.length || busy,
           onClick: () => void run(),

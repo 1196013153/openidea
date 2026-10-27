@@ -64,6 +64,7 @@ import {
   type LanguageServers,
 } from "./inspectionsModel";
 import styles from "./Inspections.module.css";
+import { tx } from "@/platform/i18n";
 
 let languagesCache: LanguageServers[] | null = null;
 
@@ -175,7 +176,7 @@ function InspectionsPage() {
   const isCopy = location.key !== null;
 
   const confirmDelete = async () => {
-    if (!(await confirm({ title: "Delete Profile", message: `Delete inspection profile '${label}'?`, ok: "Delete" })))
+    if (!(await confirm({ title: "Delete Profile", message: tx`Delete inspection profile '${label}'?`, ok: "Delete" })))
       return;
     apply(deleteProfile(settings, profileId));
   };
@@ -418,7 +419,7 @@ function InspectionRow({
           checked={state === "on"}
           indeterminate={state === "mixed"}
           onChange={() => onToggle(state !== "on")}
-          aria-label={`Enable ${node.name}`}
+          aria-label={tx`Enable ${node.name}`}
         />
       </span>
     </span>

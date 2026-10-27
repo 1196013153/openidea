@@ -72,14 +72,23 @@ pub async fn lsp_virtual_document(host: &Host, window: &str, uri: String) -> Ide
     host.project(window)?.lsp.virtual_document(&uri).await
 }
 
+/// References of the symbol at `pos`. `project_wide` also searches project files
+/// outside the language server's analysis scope; bulk scans over many symbols
+/// leave it off. Cancel with `cancel_request(request)`.
 pub async fn lsp_references(
     host: &Host,
     window: &str,
+    request: RequestId,
     doc: DocId,
     pos: Pos,
     include_declaration: bool,
-) -> IdeResult<Vec<Location>> {
-    host.project(window)?.lsp.references(doc, pos, include_declaration).await
+    project_wide: bool,
+) -> IdeResult<References> {
+    let lsp = host.project(window)?.lsp.clone();
+    let cancel = host.begin_request(request);
+    let result = lsp.references(doc, pos, include_declaration, project_wide, cancel).await;
+    host.end_request(request);
+    result
 }
 
 pub async fn lsp_document_highlights(host: &Host, window: &str, doc: DocId, pos: Pos) -> IdeResult<Vec<Highlight>> {
@@ -267,7 +276,16 @@ pub(crate) fn register(d: &mut Dispatcher) {
     );
     d.add("lsp_virtual_document", |c| async move { lsp_virtual_document(&c.host, &c.window, c.arg("uri")?).await });
     d.add("lsp_references", |c| async move {
-        lsp_references(&c.host, &c.window, c.arg("doc")?, c.arg("pos")?, c.arg("includeDeclaration")?).await
+        lsp_references(
+            &c.host,
+            &c.window,
+            c.arg("request")?,
+            c.arg("doc")?,
+            c.arg("pos")?,
+            c.arg("includeDeclaration")?,
+            c.arg("projectWide")?,
+        )
+        .await
     });
     d.add("lsp_document_highlights", |c| async move {
         lsp_document_highlights(&c.host, &c.window, c.arg("doc")?, c.arg("pos")?).await

@@ -11,6 +11,7 @@ import {
   type RunConfigTypeContribution,
 } from "@/workbench/contributions";
 import { formatArgs, parseArgs, uid, uniqueName } from "./configs";
+import { tx } from "@/platform/i18n";
 
 export const COMPOUND = "compound";
 
@@ -111,6 +112,47 @@ const program: RunConfigTypeContribution = {
     c.args.length || !/\s/.test(c.command) ? { program: c.command, arguments: formatArgs(c.args) } : null,
 };
 
+const isScene = (a: string) => /\.t?scn$/i.test(a);
+const isGodot = (cmd: string) => /^godot([-.\w]*)$/i.test(baseName(cmd).replace(/\.exe$/i, ""));
+
+/**
+ * Godot: `godot --path <project>` runs the main scene, `… <scene>` one scene. The
+ * executable is the one from Settings › Language Servers › godot (else detected).
+ */
+const godot: RunConfigTypeContribution = {
+  id: "godot",
+  label: "Godot",
+  icon: "file-gdscript",
+  description: "Run a Godot project's main scene or a chosen scene",
+  ownsWorkingDirectory: true,
+  debugAdapter: "godot",
+  fields: [
+    { key: "projectDir", label: "Project directory", mono: true, placeholder: "Project root (holds project.godot)" },
+    {
+      key: "scene",
+      label: "Scene",
+      mono: true,
+      placeholder: "Main scene",
+      hint: "e.g. res://levels/level_1.tscn; empty runs the project's main scene",
+      suggestions: (configs) => [...new Set(configs.filter((c) => c.kind === "godot").flatMap((c) => c.args.filter(isScene)))],
+    },
+    { key: "arguments", label: "Arguments", mono: true, placeholder: "Godot command line options, e.g. --debug-collisions" },
+  ],
+  commandLine: (p) => ({
+    command: "godot",
+    args: ["--path", ".", ...(p.scene?.trim() ? [p.scene.trim()] : []), ...parseArgs(p.arguments ?? "")],
+    cwd: p.projectDir?.trim() || null,
+  }),
+  paramsFrom(c) {
+    if (!isGodot(c.command)) return null;
+    const rest = [...c.args];
+    const path = rest.indexOf("--path");
+    if (path >= 0) rest.splice(path, 2);
+    const scene = rest.find(isScene) ?? "";
+    return { projectDir: dirOf(c.cwd), scene, arguments: formatArgs(rest.filter((a) => a !== scene)) };
+  },
+};
+
 const PACKAGE_MANAGERS = ["npm", "pnpm", "yarn", "bun"];
 const NPM_COMMANDS = ["run", "test", "start", "install", "ci", "publish", "pack"];
 
@@ -162,21 +204,21 @@ function buildToolType(
   id: string,
   label: string,
   icon: string,
-  tasksLabel: string,
+  tasks: { label: string; description: string },
   wrapper: { unix: string; windows: string; plain: string; label: string; byDefault: boolean },
 ): RunConfigTypeContribution {
   return {
     id,
     label,
     icon,
-    description: `Run ${label} ${tasksLabel.toLowerCase()}`,
+    description: tasks.description,
     defaults: wrapper.byDefault ? { wrapper: "true" } : {},
     ownsWorkingDirectory: true,
     fields: [
-      { key: "projectDir", label: `${label} project`, mono: true, placeholder: "Project root" },
+      { key: "projectDir", label: tx`${label} project`, mono: true, placeholder: "Project root" },
       {
         key: "tasks",
-        label: tasksLabel,
+        label: tasks.label,
         mono: true,
         required: true,
         suggestions: (configs) => argsOf(configs, id, 0),
@@ -203,7 +245,7 @@ function buildToolType(
   };
 }
 
-const gradle = buildToolType("gradle", "Gradle", "file-gradle", "Tasks", {
+const gradle = buildToolType("gradle", "Gradle", "file-gradle", { label: "Tasks", description: "Run Gradle tasks" }, {
   unix: "gradlew",
   windows: "gradlew.bat",
   plain: "gradle",
@@ -211,7 +253,7 @@ const gradle = buildToolType("gradle", "Gradle", "file-gradle", "Tasks", {
   byDefault: true,
 });
 
-const maven = buildToolType("maven", "Maven", "file-maven", "Goals", {
+const maven = buildToolType("maven", "Maven", "file-maven", { label: "Goals", description: "Run Maven goals" }, {
   unix: "mvnw",
   windows: "mvnw.cmd",
   plain: "mvn",
@@ -228,7 +270,7 @@ const compound: RunConfigTypeContribution = {
   commandLine: () => null,
 };
 
-export const BUILTIN_TYPES: readonly RunConfigTypeContribution[] = [shell, program, npm, gradle, maven, compound];
+export const BUILTIN_TYPES: readonly RunConfigTypeContribution[] = [shell, program, npm, gradle, maven, godot, compound];
 
 export function registerBuiltinTypes(): () => void {
   const disposers = BUILTIN_TYPES.map(registerRunConfigType);

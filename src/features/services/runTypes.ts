@@ -11,6 +11,7 @@ import { call, commands, type RunConfig } from "@/platform/ipc";
 import { registerRunConfigType, type RunConfigTypeContribution } from "@/workbench/contributions";
 import { imageTag, targetTitle, type DockerTarget } from "./compose";
 import { connections, endpointOf, loadSettings, useServices } from "./store";
+import { tx } from "@/platform/i18n";
 
 export const DOCKERFILE = "docker-dockerfile";
 export const DOCKER_IMAGE = "docker-image";
@@ -279,7 +280,7 @@ export function gutterActions(
           config: typedConfig(dockerfileType, `docker:dockerfile:${file}`, file, { ...params, runImage: "true" }),
         },
         {
-          title: `Build Image '${params.tag}'`,
+          title: tx`Build Image '${params.tag}'`,
           config: typedConfig(dockerfileType, `docker:build:${file}`, `Build ${file}`, params),
         },
       ];

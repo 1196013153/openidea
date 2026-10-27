@@ -4,8 +4,10 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { create } from "zustand";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
+import { BUILTIN_THEMES, isBuiltinTheme, themeKind, type BuiltinThemeId } from "@/platform/themes";
+import { resolveTokenColor, toHex } from "@/platform/cssColor";
 
-export type ThemeSetting = "dark" | "light" | "system" | "dark-hc";
+export type ThemeSetting = BuiltinThemeId | "system";
 /** PyCharm's brand blue: the accent both Islands themes ship with. */
 export const DEFAULT_ACCENT = "#3871e1";
 /** Accent presets (Settings › Appearance, Welcome › Customize); the first is the Islands default. */
@@ -43,8 +45,8 @@ interface AppearanceLike {
  * Concrete theme id: the chosen theme, or with "Sync with OS" (legacy
  * `theme = "system"`) the preferred light / dark theme for the OS mode.
  */
-export function resolveThemeId(a: AppearanceLike | undefined, systemLight: boolean): "dark" | "light" | "dark-hc" {
-  const concrete = (v: string | undefined, d: "dark" | "light") => (v === "dark" || v === "light" || v === "dark-hc" ? v : d);
+export function resolveThemeId(a: AppearanceLike | undefined, systemLight: boolean): BuiltinThemeId {
+  const concrete = (v: string | undefined, d: "dark" | "light") => (isBuiltinTheme(v) ? v : d);
   if (a?.syncWithOs || a?.theme === "system")
     return systemLight ? concrete(a?.preferredLightTheme, "light") : concrete(a?.preferredDarkTheme, "dark");
   return concrete(a?.theme, "light");
@@ -52,7 +54,7 @@ export function resolveThemeId(a: AppearanceLike | undefined, systemLight: boole
 
 /** `dark-hc` resolves to `dark` plus `data-contrast="high"`. */
 export function resolveTheme(setting: string | undefined, systemLight: boolean): "dark" | "light" {
-  return resolveThemeId({ theme: setting }, systemLight) === "light" ? "light" : "dark";
+  return themeKind(resolveThemeId({ theme: setting }, systemLight));
 }
 
 const ACCENT_RE = /^#[0-9a-f]{3,8}$/i;
@@ -64,7 +66,6 @@ export function useApplyTheme() {
   const id = override
     ? resolveThemeId({ theme: override }, systemLight)
     : resolveThemeId(appearance as AppearanceLike | undefined, systemLight);
-  const theme = id === "light" ? "light" : "dark";
   const accent = appearance?.accent;
 
   // Until settings arrive, keep the theme public/boot.js restored rather than the light default.
@@ -77,39 +78,89 @@ export function useApplyTheme() {
     const custom = !!accent && ACCENT_RE.test(accent) && !THEME_ACCENTS.has(accent.toLowerCase());
     if (custom) root.style.setProperty("--accent", accent);
     else root.style.removeProperty("--accent");
-    try {
-      localStorage.setItem("openidea.theme", JSON.stringify({ theme, contrast: root.dataset.contrast }));
-    } catch {
-      /* storage unavailable */
-    }
     syncWindowBackground();
-  }, [pending, theme, id, accent]);
+  }, [pending, id, accent]);
 }
 
 /**
- * Sets `data-theme` / `data-contrast` for a built-in theme id. While a plugin
+ * Sets `data-theme` / `data-contrast` / `data-color-theme` (the palette themes
+ * over a light / dark base, tokens.css) for a built-in theme id. While a plugin
  * theme is active (`data-plugin-theme-kind`), its light / dark base wins.
  */
-export function applyThemeAttributes(id: "dark" | "light" | "dark-hc", root: HTMLElement = document.documentElement) {
+export function applyThemeAttributes(id: BuiltinThemeId, root: HTMLElement = document.documentElement) {
   const pluginKind = root.dataset.pluginThemeKind;
   if (pluginKind === "light" || pluginKind === "dark") {
+    delete root.dataset.colorTheme;
     root.dataset.theme = pluginKind;
     delete root.dataset.contrast;
     return;
   }
-  root.dataset.theme = id === "light" ? "light" : "dark";
+  if (id === "light" || id === "dark" || id === "dark-hc") delete root.dataset.colorTheme;
+  else root.dataset.colorTheme = id;
+  root.dataset.theme = themeKind(id);
   if (id === "dark-hc") root.dataset.contrast = "high";
   else delete root.dataset.contrast;
 }
 
 /**
+ * The frame colour as Tauri's `[r, g, b, a]` (0–255). Tauri parses neither
+ * `hsl()` nor `color-mix()`, which themes may use, so it is resolved here.
+ */
+export function windowBackgroundColor(
+  root: HTMLElement = document.documentElement,
+): [number, number, number, number] | null {
+  const c = resolveTokenColor("--bg-frame", root);
+  if (!c) return null;
+  const [r, g, b, a] = c;
+  return [Math.round(r), Math.round(g), Math.round(b), Math.round(a * 255)];
+}
+
+/** The frame colour as `#rrggbb[aa]`, for native window commands that take a string. */
+export function windowBackgroundHex(root: HTMLElement = document.documentElement): string | null {
+  const c = resolveTokenColor("--bg-frame", root);
+  return c ? toHex(c) : null;
+}
+
+/** localStorage key read by public/boot.js. */
+export const STARTUP_THEME_KEY = "openidea.theme";
+
+/**
+ * Remembers the theme for public/boot.js, which applies it to the next window
+ * before any stylesheet loads: the light / dark base, and the resolved frame,
+ * text and accent colours its splash is painted in.
+ */
+export function rememberStartupTheme(root: HTMLElement = document.documentElement) {
+  const hex = (name: string) => {
+    const c = resolveTokenColor(name, root);
+    return c ? toHex(c) : undefined;
+  };
+  try {
+    localStorage.setItem(
+      STARTUP_THEME_KEY,
+      JSON.stringify({
+        theme: root.dataset.theme,
+        contrast: root.dataset.contrast,
+        colorTheme: root.dataset.colorTheme,
+        frame: hex("--bg-frame"),
+        fg: hex("--fg-muted"),
+        accent: hex("--accent"),
+      }),
+    );
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/**
  * Where a live resize outruns the page, the native window and the webview (WebView2's default
  * background) show their own colours; match both to the frame. The webview one is only set at
- * window creation otherwise, so a theme switched later left it light.
+ * window creation otherwise, so a theme switched later left it light. Also remembers the theme
+ * for the next window's start-up.
  */
 export function syncWindowBackground() {
+  rememberStartupTheme();
   if (!isTauri()) return;
-  const color = getComputedStyle(document.documentElement).getPropertyValue("--bg-frame").trim();
+  const color = windowBackgroundColor();
   if (!color) return;
   getCurrentWebviewWindow()
     .setBackgroundColor(color)
@@ -117,18 +168,14 @@ export function syncWindowBackground() {
 }
 
 export function currentTheme(): "dark" | "light" {
-  return currentThemeId() === "light" ? "light" : "dark";
+  return themeKind(currentThemeId());
 }
 
 /** Themes offered by quick switch menus, in IDEA's order. */
-export const THEME_CHOICES: ReadonlyArray<{ id: "light" | "dark" | "dark-hc"; label: string }> = [
-  { id: "light", label: "Islands Light" },
-  { id: "dark", label: "Islands Dark" },
-  { id: "dark-hc", label: "High Contrast" },
-];
+export const THEME_CHOICES = BUILTIN_THEMES;
 
 /** The concrete theme in effect (`dark-hc` kept distinct). */
-export function currentThemeId(): "dark" | "light" | "dark-hc" {
+export function currentThemeId(): BuiltinThemeId {
   const override = useThemeOverride.getState().theme;
   return override
     ? resolveThemeId({ theme: override }, prefersLight())

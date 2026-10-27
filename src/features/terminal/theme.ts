@@ -7,36 +7,9 @@
 import type { ITheme, Terminal } from "@xterm/xterm";
 import { fontWeightOf } from "@/platform/editorSettings";
 import { BUNDLED_MONO_FAMILY, fontsLoaded, monoFontFamily, monoStack } from "@/platform/fonts";
+import { parseColor, type Rgba } from "@/platform/cssColor";
 
-export type Rgba = [number, number, number, number];
-
-/** Parses `#rgb[a]`, `#rrggbb[aa]`, `rgb[a](…)` and `color(srgb …)`; `null` when unknown. */
-export function parseColor(input: string): Rgba | null {
-  const s = input.trim().toLowerCase();
-  if (s.startsWith("#")) {
-    const h = s.slice(1);
-    if (!/^[0-9a-f]+$/.test(h)) return null;
-    if (h.length === 3 || h.length === 4) {
-      const [r, g, b, a = "f"] = h.split("") as [string, string, string, string?];
-      return [parseInt(r + r, 16), parseInt(g + g, 16), parseInt(b + b, 16), parseInt(a + a, 16) / 255];
-    }
-    if (h.length === 6 || h.length === 8) {
-      const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
-      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), a];
-    }
-    return null;
-  }
-  let m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/.exec(s);
-  if (m) {
-    const alpha = m[4] === undefined ? 1 : m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
-    return [Number(m[1]), Number(m[2]), Number(m[3]), alpha];
-  }
-  m = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/.exec(s);
-  if (m) {
-    return [Number(m[1]) * 255, Number(m[2]) * 255, Number(m[3]) * 255, m[4] === undefined ? 1 : Number(m[4])];
-  }
-  return null;
-}
+export { parseColor, type Rgba };
 
 export function toHex([r, g, b]: Rgba): string {
   const h = (n: number) =>

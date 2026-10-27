@@ -39,6 +39,7 @@ import type { ExportData, ExportFormat } from "./export";
 import type { DbObjectRef } from "./objects";
 import { formatted } from "./sql/format";
 import { bindParams, findParams } from "./sql/params";
+import { tx } from "@/platform/i18n";
 
 export const DB_TOOL_WINDOW = "database";
 export const RESULTS_VIEW = "dbResults";
@@ -282,7 +283,7 @@ export async function renameSource(id: string, name: string): Promise<void> {
 export async function removeSource(source: DataSource): Promise<void> {
   const ok = await confirm({
     title: "Remove Data Source",
-    message: `Remove data source '${source.name}'? Its query console file stays on disk.`,
+    message: tx`Remove data source '${source.name}'? Its query console file stays on disk.`,
     ok: "Remove",
   });
   if (!ok) return;
@@ -791,7 +792,7 @@ export async function executeConsole(
       .filter((o) => o.result?.columns.length)
       .map((outcome) => {
         const n = nextTab++;
-        return { id: n, title: `Result ${n}`, path, sourceId: id, outcome };
+        return { id: n, title: tx`Result ${n}`, path, sourceId: id, outcome };
       });
     const failed = outcomes.some((o) => o.error);
     useDatabase.setState((s) => ({
@@ -960,7 +961,7 @@ export async function finishTransaction(id: string, commit: boolean): Promise<bo
 async function askEndTransaction(source: DataSource): Promise<boolean | null> {
   const { button } = await ask({
     title: "Switch to Auto-Commit",
-    body: `${source.name} has uncommitted changes. Commit or roll them back before switching to auto-commit?`,
+    body: tx`${source.name} has uncommitted changes. Commit or roll them back before switching to auto-commit?`,
     buttons: [
       { id: "rollback", label: "Roll Back" },
       { id: "commit", label: "Commit", primary: true },

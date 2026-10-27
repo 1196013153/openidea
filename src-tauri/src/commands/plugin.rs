@@ -11,8 +11,12 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State, Window};
+
+/// How long `plugin_list` waits for the startup load before answering with what it has.
+const INITIAL_LOAD_WAIT: Duration = Duration::from_secs(5);
 
 /// Window label → its event channel.
 static SUBSCRIBERS: LazyLock<Mutex<HashMap<String, Channel<PluginEvent>>>> = LazyLock::new(Default::default);
@@ -62,6 +66,8 @@ pub async fn plugin_list(window: Window, state: State<'_, AppState>) -> IdeResul
     let host = state.plugins.clone();
     let root = state.project(window.label()).ok().map(|p| p.root.clone());
     blocking(move || {
+        // A window opened at startup would otherwise see no plugins and drop the selected theme.
+        host.wait_initial_load(INITIAL_LOAD_WAIT);
         if let Some(root) = &root {
             host.sync_project(root);
         }
@@ -155,4 +161,12 @@ pub fn plugin_set_theme(
         (Some(p), Some(t)) => state.plugins.set_theme(Some((p, t))),
         _ => state.plugins.set_theme(None),
     }
+}
+
+/// The UI reports the selected plugin theme's resolved frame colour (`#rrggbb[aa]`),
+/// which new windows open in before their page loads.
+#[tauri::command]
+#[specta::specta]
+pub fn plugin_set_theme_frame(state: State<'_, AppState>, color: Option<String>) -> IdeResult<()> {
+    state.plugins.set_theme_frame(color.as_deref())
 }

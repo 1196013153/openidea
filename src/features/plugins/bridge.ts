@@ -8,9 +8,10 @@ import type { ActiveTheme, PluginEvent, PluginInfo } from "@/bindings";
 import { activeEditor, useEditorRegistry } from "@/editor/api";
 import { registerAction, type Action } from "@/platform/actions";
 import { notifications } from "@/workbench/contributions";
-import { applyThemeAttributes, currentThemeId, syncWindowBackground } from "@/workbench/theme";
+import { applyThemeAttributes, currentThemeId, syncWindowBackground, windowBackgroundHex } from "@/workbench/theme";
 import { pluginsBackend } from "./backend";
 import { refreshPlugins, runPluginCommand, usePlugins } from "./store";
+import { tx } from "@/platform/i18n";
 
 export const pluginActionId = (pluginId: string, commandId: string) => `plugin.${pluginId}.${commandId}`;
 
@@ -25,7 +26,7 @@ export function pluginActions(plugins: readonly PluginInfo[]): Action[] {
         category: c.category ?? p.name,
         icon: "package",
         keywords: ["plugin", p.name, p.id],
-        description: `From plugin ${p.name}`,
+        description: tx`From plugin ${p.name}`,
         run: async ({ arg }) => {
           await runPluginCommand(p.id, c.id, typeof arg === "string" ? arg : null);
         },
@@ -105,10 +106,67 @@ export function applyPluginTheme(theme: ActiveTheme | null, root: HTMLElement = 
   if (had || theme) syncWindowBackground();
 }
 
+/** localStorage key read by public/boot.js: the selected theme's stylesheet, applied before the app loads. */
+export const PLUGIN_THEME_CACHE_KEY = "openidea.pluginTheme";
+
+export interface CachedPluginTheme {
+  /** `data-plugin-theme`: `<pluginId>/<themeId>`. */
+  id: string;
+  kind: "light" | "dark";
+  css: string;
+}
+
+function cachePluginTheme(theme: ActiveTheme | null) {
+  try {
+    if (!theme) {
+      localStorage.removeItem(PLUGIN_THEME_CACHE_KEY);
+      return;
+    }
+    const cached: CachedPluginTheme = {
+      id: `${theme.pluginId}/${theme.theme.id}`,
+      kind: theme.theme.kind === "light" ? "light" : "dark",
+      css: pluginThemeCss(theme.theme),
+    };
+    localStorage.setItem(PLUGIN_THEME_CACHE_KEY, JSON.stringify(cached));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+let reportedFrame: string | undefined;
+
+/**
+ * Tells the backend the theme's resolved frame colour, which new windows open
+ * in. Selecting a theme clears it there, so it is sent once per selection.
+ */
+function reportThemeFrame(theme: ActiveTheme | null) {
+  const frame = theme ? windowBackgroundHex() : null;
+  if (!theme || !frame) {
+    reportedFrame = undefined;
+    return;
+  }
+  const key = `${theme.pluginId}/${theme.theme.id}|${frame}`;
+  if (key === reportedFrame) return;
+  reportedFrame = key;
+  void pluginsBackend()
+    .setThemeFrame(frame)
+    .catch(() => (reportedFrame = undefined));
+}
+
+/**
+ * Applies the selected plugin theme and keeps it for the next start-up. Until
+ * the first plugin list arrives, the theme public/boot.js restored stays.
+ */
 export function trackPluginTheme(): () => void {
-  applyPluginTheme(usePlugins.getState().activeTheme);
+  const sync = (s: ReturnType<typeof usePlugins.getState>) => {
+    if (!s.activeTheme && (!s.loaded || s.error)) return;
+    applyPluginTheme(s.activeTheme);
+    cachePluginTheme(s.activeTheme);
+    reportThemeFrame(s.activeTheme);
+  };
+  sync(usePlugins.getState());
   const unsubscribe = usePlugins.subscribe((s, prev) => {
-    if (s.activeTheme !== prev.activeTheme) applyPluginTheme(s.activeTheme);
+    if (s.activeTheme !== prev.activeTheme || s.loaded !== prev.loaded) sync(s);
   });
   return () => {
     unsubscribe();

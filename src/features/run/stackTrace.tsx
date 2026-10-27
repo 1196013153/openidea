@@ -15,6 +15,7 @@ import { ConsoleView } from "./ConsoleView";
 import { findOutputLinks } from "./links";
 import { useRun } from "./store";
 import styles from "./StackTrace.module.css";
+import { tx } from "@/platform/i18n";
 
 export interface StackTraceTab {
   id: string;
@@ -142,7 +143,7 @@ export function StackTracePanel({ tab }: { tab: StackTraceTab }) {
       follow={false}
       onFollowChange={() => {}}
       cwd={root}
-      aria-label={`Stack trace ${tab.title}`}
+      aria-label={tx`Stack trace ${tab.title}`}
     />
   );
 }

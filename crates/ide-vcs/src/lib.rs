@@ -507,6 +507,11 @@ impl Repo {
     pub fn branch_info(&self) -> IdeResult<BranchInfo> {
         refs::branch_info(self)
     }
+    /// Current branch (short name; `None` when detached) and HEAD commit, without
+    /// upstream tracking (cheap enough to call for every repository on each refresh).
+    pub fn head(&self) -> IdeResult<(Option<String>, Option<String>)> {
+        refs::head(&self.gix()?)
+    }
     /// Merge / rebase / cherry-pick… in progress (cheap: no ref walking).
     pub fn operation(&self) -> IdeResult<Option<String>> {
         Ok(refs::operation(&self.gix()?))
@@ -820,6 +825,11 @@ impl Repo {
     /// Tracked files whose working-tree content differs from `rev`.
     pub fn diff_with_worktree(&self, rev: &str) -> IdeResult<Vec<ChangedFile>> {
         ops::diff_with_worktree(self, rev)
+    }
+    /// `(repo-relative path, added lines, deleted lines)` of the tracked files whose
+    /// working-tree content differs from `rev`.
+    pub fn numstat_with_worktree(&self, rev: &str) -> IdeResult<Vec<(String, u32, u32)>> {
+        ops::numstat_with_worktree(self, rev)
     }
 
     // ---- patches and shelf ----

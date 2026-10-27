@@ -10,6 +10,7 @@ mod menu;
 mod remote_dev;
 
 mod state;
+mod theme_frame;
 mod windows;
 
 use state::AppState;

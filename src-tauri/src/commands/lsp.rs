@@ -92,16 +92,22 @@ pub async fn lsp_virtual_document(
     ide_host::ops::lsp::lsp_virtual_document(&state.host, window.label(), uri).await
 }
 
+/// References of the symbol at `pos`. `project_wide` also searches project files
+/// outside the language server's analysis scope; bulk scans over many symbols
+/// leave it off. Cancel with `cancel_request(request)`.
 #[tauri::command]
 #[specta::specta]
 pub async fn lsp_references(
     window: Window,
     state: State<'_, AppState>,
+    request: RequestId,
     doc: DocId,
     pos: Pos,
     include_declaration: bool,
-) -> IdeResult<Vec<Location>> {
-    ide_host::ops::lsp::lsp_references(&state.host, window.label(), doc, pos, include_declaration).await
+    project_wide: bool,
+) -> IdeResult<References> {
+    ide_host::ops::lsp::lsp_references(&state.host, window.label(), request, doc, pos, include_declaration, project_wide)
+        .await
 }
 
 #[tauri::command]

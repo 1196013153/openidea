@@ -19,6 +19,7 @@ import {
   type InstallJob,
 } from "./store";
 import styles from "./LanguageServersPage.module.css";
+import { tx } from "@/platform/i18n";
 
 type Filter = "all" | "missing" | "installed";
 
@@ -48,7 +49,7 @@ export function filterTools(tools: readonly ToolInfo[], query: string, filter: F
 function JobRow({ name, job }: { name: string; job: InstallJob }) {
   return (
     <div className={styles.job}>
-      <ProgressBar value={job.fraction} aria-label={`Installing ${name}`} className={styles.jobBar} />
+      <ProgressBar value={job.fraction} aria-label={tx`Installing ${name}`} className={styles.jobBar} />
       <div className={styles.jobLine}>
         <span className={styles.jobMessage} title={job.message ?? undefined}>
           {job.message ?? "Starting…"}
@@ -178,7 +179,9 @@ function Details({ tool }: { tool: ToolInfo }) {
             variant={tool.status === "missing" ? "primary" : "secondary"}
             disabled={busy}
             onClick={() => void installTool(tool.name)}
-            aria-label={`${tool.status === "installed" ? "Reinstall" : "Install"} ${tool.displayName}`}
+            aria-label={
+              tool.status === "installed" ? tx`Reinstall ${tool.displayName}` : tx`Install ${tool.displayName}`
+            }
           >
             {tool.status === "installed" ? "Reinstall" : "Install"}
           </Button>

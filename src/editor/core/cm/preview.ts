@@ -12,6 +12,7 @@ import { openideaHighlightStyle } from "./highlight";
 import { openideaTheme } from "./theme";
 import { findLanguageDescription, loadSupport, loadedSupport, uiModeForPath } from "./languages";
 import { fontExtension } from "./setup";
+import { tx } from "@/platform/i18n";
 
 export async function previewExtensions(path: string, settings: EditorSettings | undefined): Promise<Extension> {
   const open = editorsFor(path)[0]?.ctx;
@@ -25,7 +26,7 @@ export async function previewExtensions(path: string, settings: EditorSettings |
     syntaxHighlighting(openideaHighlightStyle),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
-    EditorView.contentAttributes.of({ "aria-label": `Preview of ${path}` }),
+    EditorView.contentAttributes.of({ "aria-label": tx`Preview of ${path}` }),
     support ?? [],
   ];
 }

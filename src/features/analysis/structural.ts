@@ -21,6 +21,7 @@ import {
 } from "@/platform/ipc";
 import { notifications } from "@/workbench/contributions";
 import { resolveScope, type ScopeChoice } from "./scope";
+import { tx } from "@/platform/i18n";
 
 const STATE_KEY = "openidea.analysis.structural.v1";
 
@@ -152,7 +153,7 @@ export async function showStructuralResults(
       group: "analysis",
       level: "warning",
       title: "Search Structurally",
-      body: `Stopped after ${summary.matches} matches`,
+      body: tx`Stopped after ${summary.matches} matches`,
     });
   }
 }

@@ -37,7 +37,7 @@ import { qualifiedReference } from "./copyReference";
 import { symbolChain } from "./view/outline";
 import { recordClipboard } from "./clipboardHistory";
 import { useDocMeta, useOutline } from "./model/document";
-import { fontZoom, setFontZoom } from "./cm/prefs";
+import { fontZoom, setFontZoom, stepFontZoom } from "./cm/prefs";
 import { useEditorRegistry } from "@/editor/api";
 import { useProject } from "@/platform/project";
 import { call, commands } from "@/platform/ipc";
@@ -54,6 +54,7 @@ import {
 } from "./cm/structural";
 import type { DocModel } from "./model/document";
 import { structure } from "@/editor/structure";
+import { tx } from "@/platform/i18n";
 
 /** Text-editing actions: the editor has focus, or a popup (Find Action) runs them on it. */
 export const TEXT_WHEN = "editorTextFocus || textEditorActive && popupOpen";
@@ -293,7 +294,7 @@ function copyReference(view: EditorView, slot: EditorSlot) {
   });
   recordClipboard(reference);
   void navigator.clipboard?.writeText(reference).catch(() => {});
-  void executeAction("editor.showHint", { text: `Copied reference: ${reference}` });
+  void executeAction("editor.showHint", { text: tx`Copied reference: ${reference}` });
 }
 
 /** ⌃G; when nothing more is found, a hint first and the search from the top on the next press (IDEA). */
@@ -470,6 +471,22 @@ export function registerEditorActions(): () => void {
         for (const ed of useEditorRegistry.getState().editors)
           if (ed.view.state.field(fontZoom, false)) ed.view.dispatch({ effects: setFontZoom.of(0) });
       },
+    },
+    {
+      id: "editor.increaseFontSize",
+      title: "Increase Font Size",
+      category: "View",
+      keywords: ["zoom", "font size"],
+      when: EDITOR_WHEN,
+      run: withView((view) => stepFontZoom(view, 1)),
+    },
+    {
+      id: "editor.decreaseFontSize",
+      title: "Decrease Font Size",
+      category: "View",
+      keywords: ["zoom", "font size"],
+      when: EDITOR_WHEN,
+      run: withView((view) => stepFontZoom(view, -1)),
     },
     {
       id: "file.toggleReadOnly",

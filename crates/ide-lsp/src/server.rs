@@ -2,7 +2,7 @@
 
 use crate::caps::ServerCaps;
 use ide_core::event::ServerStatus;
-use ide_core::{IdeEvent, LanguageId, ServerId, SharedSink, TaskId};
+use ide_core::{CancellationToken, IdeEvent, LanguageId, ServerId, SharedSink, TaskId};
 use ide_jsonrpc::Peer;
 use ide_language::LanguageServerConfig;
 use lsp_types as lsp;
@@ -17,6 +17,9 @@ use tokio::sync::{Notify, watch};
 const STABLE_UPTIME: Duration = Duration::from_secs(180);
 const MAX_RESTARTS: usize = 3;
 const STDERR_LINES: usize = 50;
+/// Diagnostics a server publishes for a transiently opened file shortly after
+/// its `didClose` (analysis that was already running) are dropped too.
+const TRANSIENT_GRACE: Duration = Duration::from_secs(3);
 
 /// A live, initialized instance.
 #[derive(Clone)]
@@ -49,6 +52,17 @@ struct State {
     conn: Conn,
 }
 
+/// A file opened on the server by the client itself (not by the user) for the
+/// duration of a request, e.g. to widen a references search.
+struct Transient {
+    /// Requests holding the file open.
+    holders: usize,
+    generation: u64,
+    /// The user opened the file meanwhile: its `didOpen` replaced ours.
+    taken: bool,
+    closed_at: Option<Instant>,
+}
+
 pub struct Progress {
     pub task: TaskId,
     pub title: String,
@@ -65,6 +79,8 @@ pub struct Server {
     effective: Mutex<Option<LanguageServerConfig>>,
     languages: Mutex<Vec<LanguageId>>,
     state: Mutex<State>,
+    /// Fired when the instance being started is abandoned (stop / restart while starting).
+    start_cancel: Mutex<CancellationToken>,
     phase: watch::Sender<Phase>,
     status: Mutex<(ServerStatus, Option<String>)>,
     /// Consecutive crashes of short-lived instances.
@@ -78,6 +94,9 @@ pub struct Server {
     published: Mutex<HashMap<PathBuf, Instant>>,
     /// Woken on every `publishDiagnostics` (Inspect Code waits on it).
     pub published_notify: Notify,
+    /// Woken when the last `$/progress` task ends.
+    idle_notify: Notify,
+    transient: Mutex<HashMap<PathBuf, Transient>>,
 }
 
 impl Server {
@@ -90,6 +109,7 @@ impl Server {
             effective: Mutex::new(None),
             languages: Mutex::new(vec![language]),
             state: Mutex::new(State { generation: 0, conn: Conn::Idle }),
+            start_cancel: Mutex::new(CancellationToken::new()),
             phase: watch::channel(Phase::Down).0,
             status: Mutex::new((ServerStatus::Stopped, None)),
             crashes: Mutex::new(0),
@@ -99,6 +119,8 @@ impl Server {
             diagnostics: Mutex::new(HashMap::new()),
             published: Mutex::new(HashMap::new()),
             published_notify: Notify::new(),
+            idle_notify: Notify::new(),
+            transient: Mutex::new(HashMap::new()),
         }
     }
 
@@ -132,6 +154,7 @@ impl Server {
         }
         st.generation += 1;
         st.conn = Conn::Starting;
+        *self.start_cancel.lock() = CancellationToken::new();
         *self.started.lock() = Some(Instant::now());
         self.phase.send_replace(Phase::Starting);
         Some(st.generation)
@@ -197,6 +220,7 @@ impl Server {
             }
             Conn::Starting => {
                 st.generation += 1; // invalidates the in-flight start
+                self.start_cancel.lock().cancel();
                 self.phase.send_replace(Phase::Down);
                 None
             }
@@ -205,6 +229,11 @@ impl Server {
                 None
             }
         }
+    }
+
+    /// Cancelled when the current start is abandoned.
+    pub fn start_token(&self) -> CancellationToken {
+        self.start_cancel.lock().clone()
     }
 
     pub fn end_stop(&self, generation: u64) {
@@ -293,6 +322,95 @@ impl Server {
         }
         let busy = !self.progress.lock().is_empty();
         self.set_status(sink, if busy { ServerStatus::Busy } else { ServerStatus::Ready }, None);
+    }
+
+    /// Whether the server reports work in progress (indexing, analysis).
+    pub fn is_busy(&self) -> bool {
+        !self.progress.lock().is_empty()
+    }
+
+    /// Called after a `$/progress` task ended.
+    pub fn progress_ended(&self) {
+        if !self.is_busy() {
+            self.idle_notify.notify_waiters();
+        }
+    }
+
+    /// Waits until no `$/progress` task is active; false on timeout or cancellation.
+    pub async fn wait_idle(&self, timeout: Duration, cancel: &CancellationToken) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.idle_notify.notified();
+            if !self.is_busy() || self.running().is_none() {
+                return !self.is_busy();
+            }
+            tokio::select! {
+                () = notified => {}
+                () = tokio::time::sleep_until(deadline) => return !self.is_busy(),
+                () = cancel.cancelled() => return false,
+            }
+        }
+    }
+
+    // ---- transiently opened files ----
+
+    /// Registers a holder of the transient file `path` on instance `generation`;
+    /// true when the caller must send `didOpen` (first holder).
+    pub fn hold_transient(&self, path: &Path, generation: u64) -> bool {
+        let mut map = self.transient.lock();
+        map.retain(|_, t| t.holders > 0 || t.closed_at.is_some_and(|c| c.elapsed() < TRANSIENT_GRACE));
+        let t =
+            map.entry(path.to_owned()).or_insert(Transient { holders: 0, generation, taken: false, closed_at: None });
+        if t.holders == 0 || t.generation != generation {
+            *t = Transient { holders: 1, generation, taken: false, closed_at: None };
+            return true;
+        }
+        t.holders += 1;
+        false
+    }
+
+    /// Drops a holder of `path`; true when the caller must send `didClose`
+    /// (last holder, same instance, and the user did not open the file meanwhile).
+    pub fn release_transient(&self, path: &Path, generation: u64) -> bool {
+        let mut map = self.transient.lock();
+        let Some(t) = map.get_mut(path) else { return false };
+        if t.holders == 0 {
+            return false;
+        }
+        t.holders -= 1;
+        if t.holders > 0 {
+            return false;
+        }
+        let close = !t.taken && t.generation == generation;
+        if close {
+            t.closed_at = Some(Instant::now());
+        } else {
+            map.remove(path);
+        }
+        close
+    }
+
+    /// The user opens `path` on instance `generation`: true when a transient
+    /// copy is open there and must be closed before the user's `didOpen`.
+    pub fn take_transient(&self, path: &Path, generation: u64) -> bool {
+        let mut map = self.transient.lock();
+        let Some(t) = map.get_mut(path) else { return false };
+        let open = t.holders > 0 && !t.taken && t.generation == generation;
+        if t.holders > 0 {
+            t.taken = true;
+        } else {
+            map.remove(path);
+        }
+        open
+    }
+
+    /// Whether diagnostics published for `path` belong to a transient copy
+    /// and must not reach the Problems view.
+    pub fn suppresses_diagnostics(&self, path: &Path) -> bool {
+        self.transient
+            .lock()
+            .get(path)
+            .is_some_and(|t| !t.taken && (t.holders > 0 || t.closed_at.is_some_and(|c| c.elapsed() < TRANSIENT_GRACE)))
     }
 
     // ---- bookkeeping ----

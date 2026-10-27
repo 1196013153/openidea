@@ -5,6 +5,7 @@ import type { ReviewEvent } from "@/platform/ipc";
 import { call, commands } from "@/platform/ipc";
 import { Checkbox, Dialog, Input, Select, T } from "@/ui";
 import styles from "./Github.module.css";
+import { tx } from "@/platform/i18n";
 
 interface Entry {
   id: number;
@@ -134,7 +135,7 @@ function CreateDialog(props: {
         />
         <div className={styles.formRow}>
           <Checkbox checked={draft} onChange={setDraft} label="Draft" />
-          <Checkbox checked={push} onChange={setPush} label={`Push '${props.head}' first`} />
+          <Checkbox checked={push} onChange={setPush} label={tx`Push '${props.head}' first`} />
         </div>
       </div>
     </Dialog>
@@ -165,7 +166,7 @@ function ReviewDialog(props: {
   return (
     <Dialog
       open
-      title={`Review #${props.number}`}
+      title={tx`Review #${props.number}`}
       onClose={() => props.onDone(null)}
       width={520}
       buttons={[

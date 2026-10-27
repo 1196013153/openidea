@@ -5,6 +5,7 @@
  * every language with a grammar is covered.
  */
 import type { Text } from "@codemirror/state";
+import { tx } from "@/platform/i18n";
 
 export interface ChainNode {
   kind: string;
@@ -133,7 +134,7 @@ export function unwrapOptions(doc: Text, chain: readonly ChainNode[]): UnwrapOpt
     const key = `${target.from}:${target.to}:${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label: `Unwrap '${label}'`, target: { from: target.from, to: target.to }, ...replacement(doc, target, child) });
+    out.push({ label: tx`Unwrap '${label}'`, target: { from: target.from, to: target.to }, ...replacement(doc, target, child) });
   }
   return out;
 }

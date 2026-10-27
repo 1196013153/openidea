@@ -22,6 +22,7 @@ import type { FileTemplate } from "./files/model";
 import { syncTemplatesFromStorage } from "./sync";
 import { tagAtCaret, updateTag } from "./emmet/editor";
 import { promptAbbreviation, UpdateTagDialogHost } from "./emmet/UpdateTagDialog";
+import { tx } from "@/platform/i18n";
 
 export { EXTRA_COMPLETION_KEY } from "./editor";
 
@@ -42,7 +43,7 @@ async function updateTagWithEmmet() {
     notifications().notify({
       level: "warning",
       title: "Cannot update the tag",
-      body: `'${abbreviation}' does not describe a single element.`,
+      body: tx`'${abbreviation}' does not describe a single element.`,
       key: "emmet-update-tag",
     });
 }
@@ -78,7 +79,7 @@ function directoryOf(arg: unknown): string | null {
 function newFileAction(t: FileTemplate): Action {
   return {
     id: `templates.new.${t.id}`,
-    title: t.id === "file" ? "New Empty File…" : `New ${t.name}…`,
+    title: t.id === "file" ? "New Empty File…" : tx`New ${t.name}…`,
     category: "File",
     icon: t.icon,
     when: "projectOpen",

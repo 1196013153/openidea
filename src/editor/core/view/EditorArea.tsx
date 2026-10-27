@@ -31,12 +31,11 @@ import {
   SplitHandle,
   SplitPanel,
   Tabs,
-  fileIconName,
   showContextMenu,
   type TabItem,
   type TabsDnd,
 } from "@/ui";
-import { editorController, isTextInput, useTabs, type VirtualInputData } from "../controller";
+import { editorController, isTextInput, tabIcon, tabTitle, useTabs, type VirtualInputData } from "../controller";
 import { useDocMeta } from "../model/document";
 import type { LayoutNode, SplitEdge, Tab } from "../model/tabs";
 import { disambiguateTitles } from "../model/tabTitles";
@@ -45,6 +44,7 @@ import { FindBar } from "./FindBar";
 import { EditorBanners, VirtualBanner } from "./Banner";
 import { CodeBreadcrumbs } from "./StatusItems";
 import styles from "./EditorArea.module.css";
+import { tx } from "@/platform/i18n";
 
 export function EditorAreaView() {
   const layout = useTabs((s) => s.layout);
@@ -114,28 +114,6 @@ function useTitleHints(): Map<string, string> {
 }
 
 const virtualData = (input: EditorInput) => input.data as VirtualInputData | undefined;
-
-function tabTitle(input: EditorInput, kinds: ReturnType<typeof useContributions.getState>["editorKinds"]): string {
-  if (input.kind === "file") return basename(input.path ?? input.key);
-  if (input.kind === "virtual") return virtualData(input)?.title ?? basename(input.path ?? input.key);
-  const kind = kinds.get(input.kind);
-  try {
-    return kind?.title(input) ?? input.key;
-  } catch {
-    return input.key;
-  }
-}
-
-function tabIcon(input: EditorInput, kinds: ReturnType<typeof useContributions.getState>["editorKinds"]): string {
-  if (input.kind === "file") return fileIconName(basename(input.path ?? ""));
-  if (input.kind === "virtual") return fileIconName(tabTitle(input, kinds));
-  const kind = kinds.get(input.kind);
-  try {
-    return kind?.icon?.(input) ?? "file";
-  } catch {
-    return "file";
-  }
-}
 
 function PaneView({ paneId }: { paneId: string }) {
   const ctrl = editorController();
@@ -366,7 +344,7 @@ function PaneContent({ paneId, tab }: { paneId: string; tab: Tab }) {
     );
   }
   const kind = kinds.get(tab.input.kind);
-  if (!kind) return <EmptyState icon="file" title={`No editor for “${tab.input.kind}”`} />;
+  if (!kind) return <EmptyState icon="file" title={tx`No editor for “${tab.input.kind}”`} />;
   const Component = kind.component;
   return (
     <div className={styles.kind} data-editor-focus="" tabIndex={-1} key={tab.id}>

@@ -6,7 +6,7 @@ const loc = { path: "/p/b.ts", range: { start: { line: 1, col: 4 }, end: { line:
 vi.mock("./ipc", async (orig) => ({
   ...(await orig<typeof import("./ipc")>()),
   caretContext: () => ({ doc: 1, path: "/p/a.ts", line: 0, col: 0, word: "used", view: null }),
-  lspRequest: async () => [loc],
+  lspRequest: async () => ({ locations: [loc], incomplete: null }),
   readManyFileLines: async () => new Map([["/p/b.ts", ["", "    used();"]]]),
   openLocation: async (path: string, line: number) => void calls.push(`open ${path}:${line}`),
   hint: (text: string) => void calls.push(`hint ${text}`),

@@ -146,7 +146,7 @@ export function NumberInput({ id, value, onChange, min, max, step = 1, integer, 
         aria-label={aria["aria-label"]}
         aria-valuemin={min}
         aria-valuemax={max}
-        title={invalid ? `Enter a value between ${min} and ${max}` : undefined}
+        title={invalid ? tx`Enter a value between ${min} and ${max}` : undefined}
         onChange={(e) => {
           setDraft(e.target.value);
           const n = parseNumberInput(e.target.value, { min, max, integer });

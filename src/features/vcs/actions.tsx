@@ -6,7 +6,7 @@ import { Menu, type MenuItem } from "@/ui";
 import { editorService, maybeEditorService, notifications, toolWindowService } from "@/workbench/contributions";
 import { annotationsShown, toggleAnnotations } from "./blame";
 import { showBranchesPopup } from "./BranchWidget";
-import { checkoutRevision, newBranch } from "./branchOps";
+import { checkoutRevision, newBranch, newBranchInRepos } from "./branchOps";
 import {
   addToVcs,
   commitChanges,
@@ -37,6 +37,7 @@ import {
   showWorktrees,
 } from "./gitMenuDialogs";
 import { refreshNow, repoName } from "./store";
+import { tx } from "@/platform/i18n";
 
 const VCS = "vcsAvailable";
 const IN_COMMIT_WINDOW = "vcsAvailable && activeToolWindow == commit";
@@ -287,7 +288,7 @@ export function registerVcsActions(): () => void {
               group: "vcs",
               level: "info",
               title: "Submodule changes cannot be rolled back here",
-              body: `${repoName(submodule)} points to another commit. Check out the recorded commit in the submodule (git submodule update) to revert it.`,
+              body: tx`${repoName(submodule)} points to another commit. Check out the recorded commit in the submodule (git submodule update) to revert it.`,
             });
           return showRollbackDialog(candidates);
         }
@@ -401,7 +402,11 @@ export function registerVcsActions(): () => void {
       category: "Git",
       icon: "plus",
       when: VCS,
-      run: () => void newBranch(),
+      // `{ repos }` (Branches popup with several repositories): in each of them.
+      run: ({ arg }) => {
+        const repos = (arg as { repos?: unknown } | undefined)?.repos;
+        void (Array.isArray(repos) && repos.length ? newBranchInRepos(repos as string[]) : newBranch());
+      },
     },
     {
       id: "vcs.checkoutRevision",

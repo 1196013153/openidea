@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { isStatusItemVisible, statusBarMenu, useStatusWidgetOverrides } from "./statusBarWidgets";
 import { useTasks } from "./tasks";
 import styles from "./StatusBar.module.css";
+import { tx } from "@/platform/i18n";
 
 /**
  * Orders status items: on both sides a higher priority sits closer to the
@@ -80,7 +81,7 @@ export function TaskStatus() {
       <BarButton
         ref={ref}
         aria-expanded={open}
-        aria-label={`Background tasks: ${current.title}`}
+        aria-label={tx`Background tasks: ${current.title}`}
         tooltip={current.message ?? current.title}
         onClick={() => setOpen((v) => !v)}
         className={styles.task}
@@ -115,7 +116,7 @@ export function TaskStatus() {
                 </span>
                 {t.fraction != null && <span className={styles.taskPct}>{Math.round(t.fraction * 100)}%</span>}
                 {t.cancel && !t.done && (
-                  <IconButton icon="stop" size="small" title={`Cancel ${t.title}`} onClick={() => t.cancel?.()} />
+                  <IconButton icon="stop" size="small" title={tx`Cancel ${t.title}`} onClick={() => t.cancel?.()} />
                 )}
               </div>
               <ProgressBar value={t.done ? 1 : t.fraction} aria-label={t.title} />

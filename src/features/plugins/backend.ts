@@ -18,6 +18,8 @@ export interface PluginsBackend {
   runCommand(pluginId: string, commandId: string, arg: string | null): Promise<string | null>;
   setActiveFile(path: string | null): Promise<void>;
   setTheme(pluginId: string | null, themeId: string | null): Promise<ActiveTheme | null>;
+  /** The selected theme's resolved frame colour (`#rrggbb[aa]`), which new windows open in. */
+  setThemeFrame(color: string | null): Promise<void>;
   /** Folder picker; `null` when cancelled. */
   pickFolder(): Promise<string | null>;
   /** Subscribes to backend plugin events (this window only). */
@@ -40,6 +42,9 @@ export const tauriPluginsBackend: PluginsBackend = {
     await commands.pluginSetActiveFile(path);
   },
   setTheme: (pluginId, themeId) => call(commands.pluginSetTheme(pluginId, themeId)),
+  setThemeFrame: async (color) => {
+    await call(commands.pluginSetThemeFrame(color));
+  },
   pickFolder: async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const picked = await open({ directory: true, multiple: false, title: "Install Plugin from Disk" });
@@ -71,21 +76,24 @@ function ensureSubscribed() {
 // ---------------------------------------------------------------------------
 // Browser simulation: the bundled sample plugins, with `hello` implemented in JS.
 
-const SOLARIZED: ActiveTheme["theme"] = {
-  id: "solarized-dark",
-  name: "Solarized Dark",
-  kind: "dark",
-  tokens: {
-    "--bg-app": "#002b36",
-    "--bg-elev": "#03313c",
-    "--bg-popup": "#073642",
-    "--fg": "#93a1a1",
-    "--fg-strong": "#eee8d5",
-    "--accent": "#268bd2",
-    "--syn-keyword": "#859900",
-    "--syn-string": "#2aa198",
+// templates/theme-plugin, abridged.
+const SAMPLE_THEMES: ActiveTheme["theme"][] = [
+  {
+    id: "harbor-night",
+    name: "Harbor Night",
+    kind: "dark",
+    tokens: {
+      "--bg-app": "#14171c",
+      "--bg-island": "#14171c",
+      "--bg-frame": "#1f252e",
+      "--bg-elev": "#1b2027",
+      "--fg": "#c9d1dc",
+      "--accent": "#2b9e93",
+      "--syn-keyword": "#e0a46e",
+      "--syn-string": "#9ccc7a",
+    },
   },
-};
+];
 
 function samplePlugins(): PluginInfo[] {
   const base = {
@@ -118,14 +126,14 @@ function samplePlugins(): PluginInfo[] {
     },
     {
       ...base,
-      id: "theme-solarized-dark",
-      name: "Solarized Dark Theme",
+      id: "theme-harbor-night",
+      name: "Harbor Night Theme",
       version: "1.0.0",
-      description: "Ethan Schoonover's Solarized palette, dark variant.",
-      path: "~/Library/Application Support/ai.l0ng.openidea/plugins/theme-solarized-dark",
+      description: "Example dark theme: slate surfaces, a teal accent and a warm syntax palette.",
+      path: "~/Library/Application Support/ai.l0ng.openidea/plugins/theme-harbor-night",
       status: "static",
       hasCode: false,
-      themes: [{ id: "solarized-dark", name: "Solarized Dark", kind: "dark" }],
+      themes: SAMPLE_THEMES.map(({ id, name, kind }) => ({ id, name, kind })),
     },
     {
       ...base,
@@ -179,8 +187,9 @@ export function createMemoryPluginsBackend(
   const activeTheme = (): ActiveTheme | null => {
     if (!theme) return null;
     const p = plugins.find((x) => x.id === theme?.pluginId);
-    if (!p?.enabled || theme.themeId !== SOLARIZED.id) return null;
-    return { pluginId: p.id, theme: SOLARIZED };
+    const t = SAMPLE_THEMES.find((x) => x.id === theme?.themeId);
+    if (!p?.enabled || !t) return null;
+    return { pluginId: p.id, theme: t };
   };
   return {
     list: async () => ({ plugins: plugins.map((p) => ({ ...p })), activeTheme: activeTheme() }),
@@ -237,6 +246,7 @@ export function createMemoryPluginsBackend(
       emit({ type: "themeChanged", theme: t });
       return t;
     },
+    setThemeFrame: async () => {},
     pickFolder: async () => null,
     onEvent: (handler) => {
       listeners.add(handler);

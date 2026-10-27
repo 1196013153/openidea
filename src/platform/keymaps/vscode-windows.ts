@@ -20,8 +20,8 @@ const translated = Object.fromEntries(
 
 export const vscodeWindows: Record<string, string[]> = {
   ...translated,
-  "navigate.back": ["Alt+Left"],
-  "navigate.forward": ["Alt+Right"],
+  "navigate.back": ["Alt+Left", "Button4"],
+  "navigate.forward": ["Alt+Right", "Button5"],
   "find.replaceInFile": ["Ctrl+H"],
   "find.next": ["F3"],
   "find.previous": ["Shift+F3"],
@@ -59,4 +59,8 @@ export const vscodeWindows: Record<string, string[]> = {
   "markdown.editorOnly": [],
   "markdown.editorAndPreview": ["Ctrl+K V"],
   "markdown.previewOnly": ["Ctrl+Shift+V"],
+  // Agents (VS Code's chat: Ctrl+Shift+I)
+  "agents.newTask": ["Ctrl+Shift+I"],
+  "agents.showToolWindow": [],
+  "agents.sendToAgent": [],
 };

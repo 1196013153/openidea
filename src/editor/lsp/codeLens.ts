@@ -9,13 +9,14 @@ import { EditorSelection, MapMode, StateEffect, StateField, type Extension, type
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { codeLenses, type CodeLens } from "@/editor/api";
 import { executeAction } from "@/platform/actions";
-import { commands, type OutlineItem, type SymbolKind } from "@/platform/ipc";
+import { commands, nextRequestId, type OutlineItem, type SymbolKind } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { debounce, docOf, isUnavailable, lspRequest } from "./lsp";
 import { posToOffset } from "./positions";
 import { onLspRefresh, serverBackoff } from "./availability";
 import { editorPrefs } from "@/platform/editorSettings";
 import { authorLabel, authorSummary, authorTooltip, blameFor, onBlameInvalidated } from "./authorLens";
+import { tx } from "@/platform/i18n";
 
 const LENS_KINDS = new Set<SymbolKind>([
   "class",
@@ -166,7 +167,9 @@ class UsagesLensPlugin {
         await Promise.all(
           todo.slice(i, i + CONCURRENCY).map(async (t) => {
             try {
-              const refs = await lspRequest(() => commands.lspReferences(doc.doc, { line: t.line, col: t.col }, false));
+              const { locations: refs } = await lspRequest(() =>
+                commands.lspReferences(nextRequestId(), doc.doc, { line: t.line, col: t.col }, false, true),
+              );
               this.cache.set(key(t), refs.length);
             } catch (e) {
               if (isUnavailable(e)) unavailable = true;
@@ -188,7 +191,7 @@ class UsagesLensPlugin {
         lenses.push({
           pos: offset,
           title: usagesLabel(n),
-          tooltip: n ? `Show usages of ${t.name}` : undefined,
+          tooltip: n ? tx`Show usages of ${t.name}` : undefined,
           order: 10,
           run: n ? (v) => openUsages(v, Math.min(offset, v.state.doc.length)) : undefined,
         });

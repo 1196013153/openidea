@@ -1,5 +1,5 @@
 //! Reading the effective build from Maven / Gradle itself ("Reload" in the tool
-//! windows): `mvn help:effective-pom dependency:tree` and `gradle tasks --all`,
+//! windows): `mvn help:effective-pom dependency:tree -Dverbose` and `gradle tasks --all`,
 //! run in the background with progress and cancellation. Results are cached
 //! per project (`maven.json`, `gradle.json` in the cache directory) and merged
 //! into the static model by [`crate::load`]; a changed build file marks them stale.
@@ -49,6 +49,9 @@ struct MavenCache {
     at_ms: f64,
     error: Option<String>,
     projects: Vec<CachedMavenProject>,
+    /// The trees list omitted occurrences (`-Dverbose`); older caches are reloaded.
+    #[serde(default)]
+    verbose: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -60,6 +63,21 @@ struct GradleCache {
 }
 
 const MAVEN_CACHE: &str = "maven.json";
+
+/// `dependency:tree` of a plugin version whose `-Dverbose` lists the occurrences Maven
+/// omitted (conflicts, duplicates): verbose output was dropped in 3.0 and is back since 3.2.
+/// Offline, the project's own plugin version is used instead, since this one may not be cached.
+const DEPENDENCY_TREE: &str = "org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree";
+
+/// The goals that read the effective POM into `effective` and the verbose dependency trees.
+fn maven_sync_goals(effective: &Path, offline: bool) -> Vec<String> {
+    vec![
+        "help:effective-pom".into(),
+        format!("-Doutput={}", effective.to_string_lossy()),
+        if offline { "dependency:tree".into() } else { DEPENDENCY_TREE.into() },
+        "-Dverbose".into(),
+    ]
+}
 const GRADLE_CACHE: &str = "gradle.json";
 
 fn read_cache<T: DeserializeOwned>(dir: &Path, name: &str) -> Option<T> {
@@ -110,7 +128,7 @@ pub fn apply_maven_cache(root: &Path, cache_dir: &Path, model: &mut MavenModel) 
     }
     model.synced_at = Some(cache.at_ms);
     model.sync_error = cache.error;
-    model.stale = cache.hash != hash_files(&maven::build_files(root, model));
+    model.stale = !cache.verbose || cache.hash != hash_files(&maven::build_files(root, model));
 }
 
 /// Merges the cached task list into `model`.
@@ -182,7 +200,8 @@ pub fn sync_maven(
 ) -> IdeResult<()> {
     let model = maven::load(root);
     std::fs::create_dir_all(cache_dir)?;
-    let mut cache = MavenCache { hash: hash_files(&maven::build_files(root, &model)), ..MavenCache::default() };
+    let mut cache =
+        MavenCache { hash: hash_files(&maven::build_files(root, &model)), verbose: true, ..MavenCache::default() };
     let mut errors: Vec<String> = Vec::new();
     for (n, top) in model.projects.iter().filter(|p| !p.aggregated).enumerate() {
         let effective = cache_dir.join(format!("effective-pom-{n}.xml"));
@@ -195,9 +214,7 @@ pub fn sync_maven(
         if !options.profiles.is_empty() {
             args.push(format!("-P{}", options.profiles.join(",")));
         }
-        args.push("help:effective-pom".into());
-        args.push(format!("-Doutput={}", effective.to_string_lossy()));
-        args.push("dependency:tree".into());
+        args.extend(maven_sync_goals(&effective, options.offline));
         progress(SyncProgress { message: format!("Reading {}", top.display_name), fraction: None });
         let command = options.maven_command.as_deref().unwrap_or(&top.command);
         let out = run(command, &args, &root.join(&top.dir), &options.env, cancel, |line| {
@@ -277,6 +294,7 @@ mod tests {
             hash: hash_files(&maven::build_files(&root, &model)),
             at_ms: 5.0,
             error: None,
+            verbose: true,
             projects: vec![CachedMavenProject {
                 key: "g:a".into(),
                 plugins: vec![maven::plugin(
@@ -325,6 +343,25 @@ mod tests {
         assert_eq!(model.projects[1].tasks.len(), 1);
         assert!(model.projects[0].tasks.iter().any(|t| t.name == "wrapper"), "root keeps its defaults");
         assert!(!model.stale);
+    }
+
+    #[test]
+    fn sync_reads_verbose_trees_with_a_pinned_plugin_unless_offline() {
+        let online = maven_sync_goals(Path::new("e.xml"), false);
+        assert_eq!(online, ["help:effective-pom", "-Doutput=e.xml", DEPENDENCY_TREE, "-Dverbose"]);
+        let offline = maven_sync_goals(Path::new("e.xml"), true);
+        assert_eq!(offline[2], "dependency:tree");
+        assert!(offline.contains(&"-Dverbose".to_owned()));
+    }
+
+    #[test]
+    fn cache_written_before_omissions_existed_still_loads() {
+        let json = r#"{"hash":"x","at_ms":1.0,"error":null,"projects":[{"key":"g:a","plugins":[],
+            "dependencies":[{"groupId":"g","artifactId":"d","version":"1","type":"jar","classifier":null,
+            "scope":"compile","optional":false,"children":[]}]}]}"#;
+        let cache: MavenCache = serde_json::from_str(json).unwrap();
+        assert!(cache.projects[0].dependencies[0].resolved());
+        assert!(!cache.verbose, "reloaded to read the omitted occurrences");
     }
 
     #[test]

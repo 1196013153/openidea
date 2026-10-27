@@ -5,6 +5,7 @@
  */
 import { EditorView } from "@codemirror/view";
 import type { EditorState } from "@codemirror/state";
+import { tx } from "@/platform/i18n";
 
 export const MAX_CLIPBOARD_ENTRIES = 30;
 
@@ -45,7 +46,7 @@ export function clipLabel(text: string, max = 80): { label: string; detail: stri
   const first = (lines.find((l) => l.trim()) ?? "").trim();
   const label = first.length > max ? `${first.slice(0, max - 1)}…` : first || "(whitespace)";
   const count = text.endsWith("\n") ? lines.length - 1 : lines.length;
-  return { label, detail: count > 1 ? `${count} lines` : undefined };
+  return { label, detail: count > 1 ? tx`${count} lines` : undefined };
 }
 
 export const clipboardHistoryExtension = EditorView.domEventHandlers({

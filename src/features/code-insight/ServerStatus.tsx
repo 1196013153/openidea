@@ -7,6 +7,7 @@ import { downloadJdkActions } from "@/platform/jdk";
 import { relativePath, useProject } from "@/platform/project";
 import { STATUS_LABEL, restartServer, serversSummary, useServers } from "./servers";
 import styles from "./ServerStatus.module.css";
+import { tx } from "@/platform/i18n";
 
 export function ServerStatus() {
   const map = useServers((s) => s.servers);
@@ -23,7 +24,7 @@ export function ServerStatus() {
       <BarButton
         ref={ref}
         aria-expanded={open}
-        aria-label={`Language servers: ${summary.text}`}
+        aria-label={tx`Language servers: ${summary.text}`}
         tooltip="Language servers"
         onClick={() => setOpen((v) => !v)}
       >
@@ -65,7 +66,7 @@ export function ServerStatus() {
                   ) : s.status === "missing" && canInstall ? (
                     <Button
                       size="small"
-                      aria-label={`Install ${s.name}`}
+                      aria-label={tx`Install ${s.name}`}
                       onClick={() => {
                         setOpen(false);
                         void executeAction("tools.install", s.name);
@@ -77,7 +78,7 @@ export function ServerStatus() {
                     <IconButton
                       icon="refresh"
                       size="small"
-                      title={`Restart ${s.name}`}
+                      title={tx`Restart ${s.name}`}
                       disabled={s.status === "missing" || s.status === "starting"}
                       onClick={() => void restartServer(s.id)}
                     />

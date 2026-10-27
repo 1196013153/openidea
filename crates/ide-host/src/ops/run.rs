@@ -35,7 +35,14 @@ pub async fn start(host: &Host, window: &str, config: RunConfig, on_output: Emit
             .run(&settings, &project.root, &config, project.sink.clone(), Box::new(move |c| out(c)))
             .await;
     }
-    let encoding = project.settings.effective().console.encoding;
+    let settings = project.settings.effective();
+    // Configurations made in the UI name bare tools (`godot`) that may live outside PATH.
+    let mut config = config;
+    ide_sdk::apply::resolve_run_command(&mut config, &project.root, &settings);
+    if config.command == ide_sdk::godot::COMMAND {
+        return Err(IdeError::unavailable(ide_sdk::godot::NOT_FOUND));
+    }
+    let encoding = settings.console.encoding;
     let options = StartOptions { encoding: Some(encoding).filter(|e| !e.trim().is_empty()) };
     host.processes.start(&project.root, &config, &options, project.sink.clone(), Box::new(move |c| on_output(c)))
 }

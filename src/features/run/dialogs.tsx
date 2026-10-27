@@ -9,6 +9,7 @@ import { loadSettings } from "@/platform/project";
 import { Checkbox, Dialog, Input } from "@/ui";
 import { confirmChecked } from "@/workbench/messages";
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 interface Pending {
   title: string;
@@ -32,8 +33,11 @@ const useRunDialog = create<{ pending: Pending | null; secret: PendingSecret | n
  */
 export async function confirmRerun(name: string, instances = 1): Promise<boolean> {
   const answer = await confirmChecked({
-    title: `Process '${name}' Is Running`,
-    message: `'${name}' is not allowed to run in parallel.\nWould you like to stop ${instances > 1 ? `${instances} running instances` : "the running one"}?`,
+    title: tx`Process '${name}' Is Running`,
+    message:
+      instances > 1
+        ? tx`'${name}' is not allowed to run in parallel.\nWould you like to stop ${instances} running instances?`
+        : tx`'${name}' is not allowed to run in parallel.\nWould you like to stop the running one?`,
     ok: "Stop and Rerun",
     checkbox: "Do not ask again",
   });
@@ -51,8 +55,8 @@ export async function confirmRerun(name: string, instances = 1): Promise<boolean
 /** IDEA's question before closing a Run tab whose process still runs. Resolves true for Terminate. */
 export async function confirmTerminate(name: string): Promise<boolean> {
   const answer = await confirmChecked({
-    title: `Process '${name}' Is Running`,
-    message: `Do you want to terminate the process '${name}'?`,
+    title: tx`Process '${name}' Is Running`,
+    message: tx`Do you want to terminate the process '${name}'?`,
     ok: "Terminate",
     checkbox: "Do not ask again",
   });

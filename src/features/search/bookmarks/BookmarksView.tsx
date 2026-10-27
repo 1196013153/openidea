@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
 import { shortcutLabel } from "@/platform/keymap";
 import { confirm } from "@/workbench/messages";
-import { useT, useTx } from "@/platform/i18n";
+import { tx, useT, useTx } from "@/platform/i18n";
 import { EmptyState, Icon, IconButton, Tree, fileIconName, showContextMenu, type MenuItem } from "@/ui";
 import { basename, openLocation, relPath } from "../common/open";
 import {
@@ -118,7 +118,10 @@ async function removeList(list: BookmarkList, count: number) {
     count &&
     !(await confirm({
       title: "Delete Bookmark List",
-      message: `Delete the list '${list.name}' with its ${count} bookmark${count === 1 ? "" : "s"}?`,
+      message:
+        count === 1
+          ? tx`Delete the list '${list.name}' with its ${count} bookmark?`
+          : tx`Delete the list '${list.name}' with its ${count} bookmarks?`,
       ok: "Delete",
     }))
   )
@@ -263,7 +266,7 @@ export function BookmarksView() {
             ...(bookmarks.length ? [{ label: "Move to Another List", submenu: moveMenu(bookmarks, lists) }] : []),
             { kind: "separator" as const },
             {
-              label: targets.length > 1 ? `Delete ${targets.length} Bookmarks` : "Delete Bookmark",
+              label: targets.length > 1 ? tx`Delete ${targets.length} Bookmarks` : "Delete Bookmark",
               danger: true,
               run: () => removeNodes(targets),
             },

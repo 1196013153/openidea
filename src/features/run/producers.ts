@@ -16,6 +16,7 @@ import { applicationConfig, jvmModuleDir } from "./application";
 import { formatArgs } from "./configs";
 import { contextConfig, fileRole, projectPython, testBasesFor, testConfigFor } from "./context";
 import { detectRunTargets, targetConfig, targetLanguage, type RunTarget } from "./targets";
+import { tx } from "@/platform/i18n";
 
 export interface LocatedTool {
   path: string | null;
@@ -300,7 +301,7 @@ const LANGUAGE_NAMES: Partial<Record<ScriptLanguage, string>> = {
 function missing(lang: ScriptLanguage, file: string, tools: string[]): Missing {
   const what = LANGUAGE_NAMES[lang] ?? tools[0] ?? lang;
   return {
-    title: `Cannot run '${file}'`,
+    title: tx`Cannot run '${file}'`,
     body: `${what} was not found (looked for ${tools.map((t) => `\`${t}\``).join(", ")}). ${INSTALL[lang] ?? ""}`.trim(),
   };
 }
@@ -421,7 +422,7 @@ function jsRuntime(lang: "js" | "ts", env: ToolEnv, s: FileSite): Produced {
     name,
     scope: "file",
     missing: {
-      title: `Cannot run '${name}'`,
+      title: tx`Cannot run '${name}'`,
       body:
         `Running TypeScript needs Node.js 22.6+ (type stripping), tsx or ts-node. ${found}` +
         "Upgrade Node.js (https://nodejs.org), or install tsx: `npm install -D tsx` (or `npm install -g tsx`).",
@@ -511,6 +512,33 @@ function cargoOwner(rel: string, configs: readonly RunConfig[]): RunConfig[] {
 
 const hasBuildTool = (configs: readonly RunConfig[], kinds: string[]) => configs.some((c) => kinds.includes(c.kind));
 
+/**
+ * A Godot scene: `godot --path <project> res://<scene>` in the Godot project holding it
+ * (a detected "Godot Project" configuration), debuggable through the editor's adapter.
+ */
+function godotScene(rel: string, configs: readonly RunConfig[]): Produced | null {
+  const dirs = configs
+    .filter((c) => c.kind === "godot" && c.detected && c.id.startsWith("godot:project"))
+    .map((c) => (c.cwd ?? "").replace(/^\.\/?/, "").replace(/\/+$/, ""));
+  const dir = dirs.filter((d) => !d || rel.startsWith(d + "/")).sort((a, b) => b.length - a.length)[0];
+  if (dir === undefined) return null;
+  const name = baseName(rel);
+  const scene = `res://${dir ? rel.slice(dir.length + 1) : rel}`;
+  const config: RunConfig = {
+    id: `context:file:${rel}`,
+    name,
+    kind: "godot",
+    command: "godot",
+    args: ["--path", ".", scene],
+    cwd: dir || null,
+    env: {},
+    detected: true,
+    isTest: false,
+    debugAdapter: "godot",
+  };
+  return { name, scope: "file", config };
+}
+
 /** The file as a whole: tests of a test file, the project's run target, or the runtime for its language. */
 export function produceFile(input: ContextInput, env: ToolEnv): Produced | null {
   const s = site(input);
@@ -519,6 +547,7 @@ export function produceFile(input: ContextInput, env: ToolEnv): Produced | null 
   const rel = s.idPath;
 
   if (s.inProject) {
+    if (/\.t?scn$/i.test(rel)) return godotScene(rel, configs);
     // Project-aware: test files through the project's test runner, Cargo / Go / Gradle / Maven mains.
     const role = fileRole(rel, input.content);
     if (role === "test") {

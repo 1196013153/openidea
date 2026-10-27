@@ -12,6 +12,7 @@ import { Checkbox, Dialog, Icon, fileIconName } from "@/ui";
 import { nameOf, relativeTo } from "./paths";
 import { useProjectTree } from "./store";
 import styles from "./FileRefactor.module.css";
+import { tx } from "@/platform/i18n";
 
 type EditFile = Extract<WorkspaceEdit["files"][number], { kind: "edit" }>;
 
@@ -67,7 +68,7 @@ function FileGroup({ file, root, included, onToggle }: { file: EditFile; root: s
   return (
     <li className={styles.previewFile}>
       <div className={styles.previewFileRow}>
-        <Checkbox checked={included} onChange={onToggle} aria-label={`Include ${nameOf(file.path)}`} />
+        <Checkbox checked={included} onChange={onToggle} aria-label={tx`Include ${nameOf(file.path)}`} />
         <Icon name={fileIconName(nameOf(file.path))} size={14} />
         <span className={styles.previewName}>{nameOf(file.path)}</span>
         <span className={styles.previewPath}>{relativeTo(root, file.path) || file.path}</span>
@@ -117,7 +118,7 @@ function PreviewDialog({ request }: { request: PreviewRequest }) {
   return (
     <Dialog
       open
-      title={`Refactoring Preview: ${request.title}`}
+      title={tx`Refactoring Preview: ${request.title}`}
       onClose={() => request.resolve(null)}
       width={680}
       buttons={[

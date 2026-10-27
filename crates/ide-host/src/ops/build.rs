@@ -1,13 +1,14 @@
 //! Maven / Gradle tool windows (the build model and its background sync) and
 //! Build › Build Project (compiling with the project's build system).
-use crate::Host;
 use crate::ops::Channel;
 use crate::rpc::Dispatcher;
+use crate::{Host, Project, apply_workspace_edit};
 
 use ide_build::compile::{self, BuildEvent, BuildKind, BuildResult};
+use ide_build::pom_edit::{ArtifactKey, Exclusion};
 use ide_build::{BuildModel, BuildTool, SyncOptions, SyncProgress};
 use ide_core::settings::Settings;
-use ide_core::{IdeError, IdeEvent, IdeResult, RequestId};
+use ide_core::{FileEdit, IdeError, IdeEvent, IdeResult, Location, Range, RequestId, WorkspaceEdit};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -122,6 +123,66 @@ pub async fn build_sync(
     result?
 }
 
+/// The POM declaring `dependency` for the Maven module `pom` (project-relative): the
+/// module's own, else its nearest parent in the project; its path, text and declaration.
+fn declaring_pom(project: &Project, pom: &str, dependency: &ArtifactKey) -> IdeResult<(std::path::PathBuf, String, Range)> {
+    let model = ide_build::maven::load(&project.root);
+    for rel in ide_build::pom_edit::declaring_poms(&model, pom) {
+        let path = project.root.join(&rel);
+        let text = project.text_of(&path)?;
+        if let Some(range) = ide_build::pom_edit::declaration(&text, dependency) {
+            return Ok((path, text, range));
+        }
+    }
+    Err(IdeError::not_found(format!(
+        "{dependency} is not declared in a pom.xml of this project (it may come from an imported BOM or an external parent POM)"
+    )))
+}
+
+/// Where the direct dependency `dependency` of the Maven module `pom` is declared.
+pub async fn maven_dependency_declaration(
+    host: &Host,
+    window: &str,
+    pom: String,
+    dependency: ArtifactKey,
+) -> IdeResult<Location> {
+    let project = host.project(window)?;
+    tokio::task::spawn_blocking(move || {
+        let (path, _, range) = declaring_pom(&project, &pom, &dependency)?;
+        Ok(Location::file(path, range))
+    })
+    .await
+    .map_err(join_err)?
+}
+
+/// Adds an `<exclusion>` of `exclusion` to the declaration of the direct dependency
+/// `dependency` of the Maven module `pom`, through the open document when there is one
+/// (saved). Returns the declaration; nothing changes when it already excludes it.
+pub async fn maven_exclude_dependency(
+    host: &Host,
+    window: &str,
+    pom: String,
+    dependency: ArtifactKey,
+    exclusion: ArtifactKey,
+) -> IdeResult<Location> {
+    let project = host.project(window)?;
+    tokio::task::spawn_blocking(move || {
+        let (path, text, range) = declaring_pom(&project, &pom, &dependency)?;
+        match ide_build::pom_edit::add_exclusion(&text, &dependency, &exclusion) {
+            Some(Exclusion::Edit(edit)) => {
+                let edit =
+                    WorkspaceEdit { files: vec![FileEdit::Edit { path: path.clone().into(), edits: vec![edit] }] };
+                apply_workspace_edit(&project.documents, &edit)?;
+            }
+            Some(Exclusion::Present) => {}
+            None => return Err(IdeError::not_found(format!("{dependency} is not declared in {}", path.display()))),
+        }
+        Ok(Location::file(path, range))
+    })
+    .await
+    .map_err(join_err)?
+}
+
 /// Build › Build Project / Rebuild Project / Build Module (`file`: a file or folder of the
 /// module) / Build Artifacts, streaming the console and messages on `on_event`; cancellable
 /// with `cancel_request(request)`. Diagnostics of `clear` (the files of the previous build)
@@ -176,6 +237,12 @@ pub(crate) fn register(d: &mut Dispatcher) {
             c.sender("onProgress")?,
         )
         .await
+    });
+    d.add("maven_dependency_declaration", |c| async move {
+        maven_dependency_declaration(&c.host, &c.window, c.arg("pom")?, c.arg("dependency")?).await
+    });
+    d.add("maven_exclude_dependency", |c| async move {
+        maven_exclude_dependency(&c.host, &c.window, c.arg("pom")?, c.arg("dependency")?, c.arg("exclusion")?).await
     });
     d.add("build_run", |c| async move {
         build_run(

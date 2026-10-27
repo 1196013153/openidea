@@ -161,7 +161,7 @@ export async function reformatDialog(
   const name = ctx.path.slice(ctx.path.lastIndexOf("/") + 1);
   openPopup({
     kind: "reformat",
-    title: `Reformat File: ${name}`,
+    title: tx`Reformat File: ${name}`,
     hasSelection: !sel.empty,
     canOptimizeImports: !contributedAt(view.state, CONTRIBUTED_FORMAT, 0),
     initial: lastOptions,

@@ -118,6 +118,7 @@ impl Host {
 
     pub fn close_project(&self, window: &str) {
         if let Some(project) = self.projects.write().remove(window) {
+            project.agents.shutdown();
             let lsp = project.lsp.clone();
             self.runtime.spawn(async move { lsp.shutdown_all().await });
         }

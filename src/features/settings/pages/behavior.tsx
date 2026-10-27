@@ -27,15 +27,13 @@ import {
 import { ACCENT_PRESETS, LIMITS, type ThemeId } from "../model/schema";
 import type { PageSpec } from "./spec";
 import styles from "./Behavior.module.css";
-import { useT } from "@/platform/i18n";
+import { tx, useT } from "@/platform/i18n";
+
+import { BUILTIN_THEMES } from "@/platform/themes";
 
 export const APPEARANCE_GROUP = "Appearance & Behavior";
 
-const THEMES: SelectOption<ConcreteTheme>[] = [
-  { value: "light", label: "Islands Light" },
-  { value: "dark", label: "Islands Dark" },
-  { value: "dark-hc", label: "High Contrast" },
-];
+const THEMES: SelectOption<ConcreteTheme>[] = BUILTIN_THEMES.map((t) => ({ value: t.id, label: t.label }));
 
 /** Checkbox bound to a key, optionally disabled. */
 function BoundToggle({ k, label, hint, disabled }: { k: string; label: string; hint?: ReactNode; disabled?: boolean }) {
@@ -467,14 +465,14 @@ function NotificationGroupsTable() {
                   value={v.display}
                   options={DISPLAY_OPTIONS}
                   onChange={(display) => update(g.id, { display })}
-                  aria-label={`${g.title} popup type`}
+                  aria-label={tx`${g.title} popup type`}
                 />
               </td>
               <td className={styles.center}>
                 <Checkbox
                   checked={v.log}
                   onChange={(log) => update(g.id, { log })}
-                  aria-label={`Show ${g.title} in tool window`}
+                  aria-label={tx`Show ${g.title} in tool window`}
                 />
               </td>
             </tr>
@@ -500,7 +498,7 @@ export const BEHAVIOR_PAGES: PageSpec[] = [
           {
             kind: "custom",
             label: "Theme",
-            keywords: ["Sync with OS", "Islands Light", "Islands Dark", "High Contrast", "preferred theme"],
+            keywords: ["Sync with OS", ...BUILTIN_THEMES.map((t) => t.label), "preferred theme"],
             component: ThemeRow,
           },
           {

@@ -8,6 +8,7 @@ import { openDialog } from "./dialogs";
 import { formatTime } from "./model";
 import { currentRepo, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 const LIMIT = 2000;
 
@@ -123,7 +124,7 @@ function CompareDialog({ branch, current, onClose }: { branch: string; current: 
   return (
     <Dialog
       open
-      title={`Compare ${current} with ${branch}`}
+      title={tx`Compare ${current} with ${branch}`}
       onClose={onClose}
       width={640}
       buttons={[{ label: "Close", role: "cancel" }]}
@@ -136,12 +137,12 @@ function CompareDialog({ branch, current, onClose }: { branch: string; current: 
         items={[
           {
             id: "incoming",
-            label: `In ${branch}, not in ${current}`,
+            label: tx`In ${branch}, not in ${current}`,
             trailing: data ? String(data.incoming.length) : undefined,
           },
           {
             id: "outgoing",
-            label: `In ${current}, not in ${branch}`,
+            label: tx`In ${current}, not in ${branch}`,
             trailing: data ? String(data.outgoing.length) : undefined,
           },
         ]}

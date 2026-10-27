@@ -57,6 +57,7 @@ import {
   widenSearchEverywhere,
 } from "./store";
 import styles from "./SearchEverywhere.module.css";
+import { isImeKey } from "@/platform/ime";
 
 type SeScope = "allPlaces" | ProjectFileSet;
 
@@ -315,7 +316,7 @@ function SearchEverywhereDialog() {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.nativeEvent.isComposing) return;
+    if (isImeKey(e.nativeEvent)) return;
     if (e.key === "Tab") {
       e.preventDefault();
       e.stopPropagation();

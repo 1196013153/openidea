@@ -20,6 +20,7 @@ import { editorService } from "@/workbench/contributions";
 import { fileIconName } from "@/ui";
 import { gotoTestOrSubject, type TestNavDeps } from "./gotoTest";
 import { baseName, memberAt, methodStop, superMethods } from "./structureNav";
+import { tx } from "@/platform/i18n";
 
 const EDITOR_WHEN = "textEditorActive && (editorFocus || popupOpen || !toolWindowFocus)";
 
@@ -97,7 +98,7 @@ async function superMethod(view: EditorView) {
   openPopup({
     kind: "list",
     anchor: caretAnchor(view, head),
-    title: method ? `Choose Super Method of ${baseName(method.name)} (${locs.length} found)` : `Choose Super Class or Interface (${locs.length} found)`,
+    title: method ? tx`Choose Super Method of ${baseName(method.name)} (${locs.length} found)` : tx`Choose Super Class or Interface (${locs.length} found)`,
     items: await locationItems(locs),
   });
 }

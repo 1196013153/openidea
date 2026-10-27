@@ -40,6 +40,7 @@ import {
 } from "../state";
 import { VariablesView, type VarRoot } from "./VariablesView";
 import styles from "./DebugToolWindow.module.css";
+import { tx } from "@/platform/i18n";
 
 function useActionEnabled(id: string): boolean {
   const ctx = useContextKeys();
@@ -114,7 +115,7 @@ export function DebugTabs() {
   if (!list.length) return null;
   const items: TabItem[] = list.map((s) => ({
     id: String(s.id),
-    label: s.parent != null ? `${s.name} (child)` : s.name,
+    label: s.parent != null ? tx`${s.name} (child)` : s.name,
     text: s.name,
     icon: "debug",
     italic: s.status === "terminated",

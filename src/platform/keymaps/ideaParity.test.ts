@@ -12,6 +12,8 @@ describe("IDEA keymap parity", () => {
     ["view.zoomIn", ["Ctrl+Alt+="], ["Alt+Shift+="]],
     ["view.zoomOut", ["Ctrl+Alt+-"], ["Alt+Shift+-"]],
     ["view.resetZoom", ["Ctrl+Alt+0"], ["Alt+Shift+0"]],
+    ["editor.increaseFontSize", ["Alt+Shift+."], ["Alt+Shift+."]],
+    ["editor.decreaseFontSize", ["Alt+Shift+,"], ["Alt+Shift+,"]],
     ["vcs.changelist.move", ["Meta+Shift+M"], ["Alt+Shift+M"]],
     ["vcs.changelist.edit", ["F2", "Shift+F6"], ["F2", "Shift+F6"]],
     ["code.quickDocumentation", ["F1", "Ctrl+J"], ["Ctrl+Q"]],
@@ -49,6 +51,9 @@ describe("IDEA keymap parity", () => {
     ["usages.rerun", ["Meta+R"], ["Ctrl+F5"]],
     // Vcs.Log.GoToRef: Find in the Git Log table.
     ["vcs.log.goToRef", ["Meta+F"], ["Ctrl+F"]],
+    // Back / Forward also carry the mouse side buttons (`<mouse-shortcut keystroke="button4"/>`).
+    ["navigate.back", ["Meta+[", "Meta+Alt+Left", "Button4"], ["Ctrl+Alt+Left", "Button4"]],
+    ["navigate.forward", ["Meta+]", "Meta+Alt+Right", "Button5"], ["Ctrl+Alt+Right", "Button5"]],
   ])("%s", (id, mac, win) => {
     expect(intellijMacos[id]).toEqual(mac);
     expect(intellijWindows[id]).toEqual(win);

@@ -1,4 +1,5 @@
 /** Picks one of Settings › Tools › SSH Configurations (always the global list). */
+import { tx } from "@/platform/i18n";
 import { sshLabel, type SshConfigValid } from "@/platform/remoteSettings";
 import type { SelectOption } from "@/ui";
 import { Select } from "./Form";
@@ -26,7 +27,7 @@ export function SshConfigSelect({
     ...(none !== undefined ? [{ value: "", label: none }] : []),
     ...configs.map((c) => ({ value: c.id, label: c.name.trim() || sshLabel(c), detail: sshLabel(c) })),
   ];
-  if (value && !configs.some((c) => c.id === value)) options.push({ value, label: `${value} (missing)` });
+  if (value && !configs.some((c) => c.id === value)) options.push({ value, label: tx`${value} (missing)` });
   if (options.length === 0) options.push({ value: "", label: "No SSH configurations", disabled: true });
   return <Select value={value} options={options} onChange={onChange} aria-label={ariaLabel} />;
 }

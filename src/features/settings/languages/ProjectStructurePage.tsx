@@ -31,6 +31,7 @@ import { initProjectRoots, useDetectedRoots } from "@/platform/projectRoots";
 import { choosePath } from "./api";
 import { useProjectSetting } from "./components";
 import styles from "./Sdk.module.css";
+import { tx } from "@/platform/i18n";
 
 interface DirNode {
   path: string;
@@ -136,7 +137,7 @@ function ContentRoots({ root }: { root: string }) {
             icon="close"
             size="small"
             iconSize={12}
-            title={`Remove content root ${r}`}
+            title={tx`Remove content root ${r}`}
             onClick={() => setRoots(list.filter((x) => x !== r))}
           />
         </div>
@@ -305,7 +306,7 @@ export function ProjectStructurePage() {
                         icon="close"
                         size="small"
                         iconSize={12}
-                        title={`Unmark ${shown}`}
+                        title={tx`Unmark ${shown}`}
                         onClick={() => setPs(markFolder(ps, x.path, null, detected))}
                       />
                     </div>

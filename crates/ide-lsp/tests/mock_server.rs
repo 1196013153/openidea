@@ -27,8 +27,12 @@ struct MockState {
     /// uri → text as reconstructed by the mock from didOpen/didChange.
     docs: Mutex<HashMap<String, String>>,
     responses: Mutex<HashMap<String, Value>>,
+    /// Computes a response from the request and the open documents (before `responses`).
+    responder: Mutex<Option<Responder>>,
     peer: Mutex<Option<Peer>>,
 }
+
+type Responder = Arc<dyn Fn(&MockState, &str, &Value) -> Option<Value> + Send + Sync>;
 
 impl MockState {
     fn notified(&self, method: &str) -> Vec<Value> {
@@ -111,11 +115,17 @@ impl Handler for MockHandler {
 
     fn on_request(&self, method: &str, params: Value) -> Result<Value, (i64, String)> {
         let s = &self.0;
-        s.requests.lock().push((method.to_owned(), params));
+        s.requests.lock().push((method.to_owned(), params.clone()));
         match method {
             "initialize" => Ok(json!({ "capabilities": s.caps.lock().clone(), "serverInfo": { "name": "mock" } })),
             "shutdown" => Ok(Value::Null),
-            _ => Ok(s.responses.lock().get(method).cloned().unwrap_or(Value::Null)),
+            _ => {
+                let responder = s.responder.lock().clone();
+                if let Some(v) = responder.and_then(|f| f(s, method, &params)) {
+                    return Ok(v);
+                }
+                Ok(s.responses.lock().get(method).cloned().unwrap_or(Value::Null))
+            }
         }
     }
 }
@@ -192,6 +202,7 @@ fn server_cfg(name: &str) -> LanguageServerConfig {
         root_markers: vec!["mock.toml".into()],
         initialization_options: Some(toml::Value::Table(toml::toml! { flag = true nested = { deep = 1 } })),
         install_hint: Some(format!("install {name}")),
+        connect: None,
         fallback: false,
         launch_error: None,
     }
@@ -800,7 +811,7 @@ async fn navigation_rename_format_and_decorations() {
     assert_eq!(err.kind, ide_core::error::ErrorKind::Unavailable);
 
     s.respond("textDocument/references", json!([{ "uri": uri, "range": r(0,3,0,6) }, { "uri": uri, "range": r(1,0,1,3) }, { "uri": uri, "range": r(1,0,1,3) }]));
-    let refs = h.mgr.references(doc, Pos::new(1, 1), true).await.unwrap();
+    let refs = h.mgr.references(doc, Pos::new(1, 1), true, true, Default::default()).await.unwrap().locations;
     assert_eq!(refs.len(), 2);
     assert_eq!(s.requested("textDocument/references")[0]["context"]["includeDeclaration"], true);
 
@@ -986,7 +997,7 @@ async fn virtual_locations_and_text_document_content() {
         "textDocument/references",
         json!([{ "uri": uri_of(&path), "range": r(0, 4, 0, 9) }, { "uri": lib, "range": r(2, 4, 2, 9) }]),
     );
-    let refs = h.mgr.references(doc, Pos::new(0, 5), true).await.unwrap();
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap().locations;
     assert_eq!(refs.iter().map(|l| l.uri.is_some()).collect::<Vec<_>>(), vec![false, true]);
     s.respond(
         "textDocument/prepareTypeHierarchy",
@@ -1299,4 +1310,339 @@ async fn css_family_configuration_returns_default_objects() {
         assert_eq!(reply, json!([{}, {}, {}, null]), "{language}");
         assert_eq!(state.requested("initialize")[0]["initializationOptions"]["provideFormatter"], true);
     }
+}
+
+// ------------------------------------------------------------------ references beyond the analysis scope
+
+const WORD: &str = "target";
+
+/// Locations of [`WORD`] in `text` (ASCII, so UTF-16 columns are byte offsets).
+fn occurrences(uri: &str, text: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    for (line, l) in text.lines().enumerate() {
+        for (col, _) in l.match_indices(WORD) {
+            let end = col + WORD.len();
+            out.push(json!({ "uri": uri, "range": {
+                "start": { "line": line, "character": col }, "end": { "line": line, "character": end } } }));
+        }
+    }
+    out
+}
+
+/// A server that only analyses its open documents (minus `blind` URIs), like
+/// Pyright for files outside its `include`.
+fn open_files_only(blind: Vec<String>) -> Responder {
+    Arc::new(move |s, method, _| {
+        let docs: Vec<(String, String)> =
+            s.docs.lock().iter().filter(|(u, _)| !blind.contains(u)).map(|(u, t)| (u.clone(), t.clone())).collect();
+        let locs = || docs.iter().flat_map(|(u, t)| occurrences(u, t));
+        match method {
+            "textDocument/references" => Some(Value::Array(locs().collect())),
+            "textDocument/rename" => {
+                let mut changes = serde_json::Map::new();
+                for loc in locs() {
+                    let edits = changes.entry(loc["uri"].as_str().unwrap()).or_insert_with(|| json!([]));
+                    edits.as_array_mut().unwrap().push(json!({ "range": loc["range"], "newText": "renamed" }));
+                }
+                Some(json!({ "changes": changes }))
+            }
+            _ => None,
+        }
+    })
+}
+
+/// Candidate files: those directly under the root that contain the word; records the queries.
+fn grep_candidates(h: &Harness) -> Arc<Mutex<Vec<ide_lsp::CandidateQuery>>> {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    h.mgr.set_candidates_hook(Box::new(move |q, _| {
+        log.lock().push(q.clone());
+        let mut files: Vec<PathBuf> = std::fs::read_dir(&q.root)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| std::fs::read_to_string(p).is_ok_and(|t| t.contains(&q.word)))
+            .collect();
+        files.sort();
+        ide_lsp::CandidateFiles { files, limit_hit: false }
+    }));
+    seen
+}
+
+fn uris(params: &[Value]) -> Vec<String> {
+    params.iter().map(|p| p["textDocument"]["uri"].as_str().unwrap().to_owned()).collect()
+}
+
+fn diagnostics_for(h: &Harness, path: &Path) -> usize {
+    h.events.lock().iter().filter(|e| matches!(e, IdeEvent::Diagnostics { path: p, .. } if p == path)).count()
+}
+
+fn scope_harness() -> (Harness, Arc<MockState>) {
+    let h = harness(&[("mock", incremental_caps())]);
+    let s = h.launcher.state("mock");
+    *s.responder.lock() = Some(open_files_only(vec![]));
+    (h, s)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn references_open_unopened_files_that_mention_the_name() {
+    let (h, s) = scope_harness();
+    let seen = grep_candidates(&h);
+    let b = h.root.join("b.mk");
+    let c = h.root.join("c.mk");
+    std::fs::write(&b, "call target\n").unwrap();
+    std::fs::write(&c, "nothing here\n").unwrap();
+    let (doc, a) = h.open("a.mk", "def target\n");
+    let (_, d) = h.open("d.mk", "use target\n");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    eventually(|| s.docs.lock().len() == 2).await;
+
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    let mut paths: Vec<PathBuf> = refs.locations.iter().map(|l| l.path.to_path_buf()).collect();
+    paths.sort();
+    assert_eq!(paths, vec![a.clone(), b.clone(), d.clone()]);
+    assert_eq!(refs.incomplete, None);
+
+    let q = seen.lock()[0].clone();
+    assert_eq!((q.word.as_str(), q.root.as_path(), q.limit), (WORD, h.root.as_path(), ide_lsp::MAX_CANDIDATES));
+    assert_eq!(q.languages, vec![h.lang.clone()]);
+
+    // Only the unopened candidate was opened (from disk), then closed again.
+    let opens = s.notified("textDocument/didOpen");
+    let temp: Vec<&Value> = opens.iter().filter(|p| p["textDocument"]["uri"] == uri_of(&b)).collect();
+    assert_eq!(temp.len(), 1);
+    assert_eq!(temp[0]["textDocument"]["version"], 0);
+    assert_eq!(temp[0]["textDocument"]["text"], "call target\n");
+    assert!(!uris(&opens).contains(&uri_of(&c)));
+    assert_eq!(uris(&opens).iter().filter(|u| **u == uri_of(&d)).count(), 1);
+    eventually(|| uris(&s.notified("textDocument/didClose")) == vec![uri_of(&b)]).await;
+    assert_eq!(s.requested("textDocument/references").len(), 2);
+    assert_eq!(s.docs.lock().len(), 2);
+
+    // When every candidate file is already in the answer, no second request is made.
+    std::fs::remove_file(&b).unwrap();
+    h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    assert_eq!(s.requested("textDocument/references").len(), 3);
+
+    // Without project_wide only the server's scope counts: no project search.
+    std::fs::write(&b, "call target\n").unwrap();
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, false, Default::default()).await.unwrap();
+    assert_eq!(refs.locations.len(), 2);
+    assert_eq!(seen.lock().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn references_never_reopen_or_close_the_users_files() {
+    let h = harness(&[("mock", incremental_caps())]);
+    let s = h.launcher.state("mock");
+    grep_candidates(&h);
+    let (doc, _) = h.open("a.mk", "def target\n");
+    // Open, mentions the name, but the server does not report it.
+    let (_, d) = h.open("d.mk", "use target\n");
+    *s.responder.lock() = Some(open_files_only(vec![uri_of(&d)]));
+    h.wait_status("mock", ServerStatus::Ready).await;
+    eventually(|| s.docs.lock().len() == 2).await;
+
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    assert_eq!(refs.locations.len(), 1);
+    assert_eq!(uris(&s.notified("textDocument/didOpen")).iter().filter(|u| **u == uri_of(&d)).count(), 1);
+    assert!(s.notified("textDocument/didClose").is_empty());
+    assert_eq!(s.requested("textDocument/references").len(), 1);
+    assert!(s.docs.lock().contains_key(&uri_of(&d)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn references_report_a_capped_candidate_search() {
+    let (h, s) = scope_harness();
+    h.mgr.set_candidates_hook(Box::new(|q, _| ide_lsp::CandidateFiles {
+        files: vec![q.root.join("b.mk")],
+        limit_hit: true,
+    }));
+    std::fs::write(h.root.join("b.mk"), "target\n").unwrap();
+    let (doc, _) = h.open("a.mk", "def target\n");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    eventually(|| s.docs.lock().len() == 1).await;
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    assert_eq!(refs.locations.len(), 2);
+    assert_eq!(refs.incomplete, Some(ReferencesIncomplete::TooManyFiles));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancelling_a_references_search_stops_the_candidate_search_and_closes_files() {
+    let (h, s) = scope_harness();
+    h.mgr.set_candidates_hook(Box::new(|_, cancel| {
+        while !cancel.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        ide_lsp::CandidateFiles::default()
+    }));
+    let (doc, _) = h.open("a.mk", "def target\n");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    let cancel = ide_core::CancellationToken::new();
+    let later = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        later.cancel();
+    });
+    let err = h.mgr.references(doc, Pos::new(0, 5), true, true, cancel).await.unwrap_err();
+    assert_eq!(err.kind, ide_core::error::ErrorKind::Cancelled);
+
+    // Cancelled while the server answers with a file opened for the search.
+    let b = h.root.join("b.mk");
+    std::fs::write(&b, "call target\n").unwrap();
+    grep_candidates(&h);
+    let slow = uri_of(&b);
+    let inner = open_files_only(vec![]);
+    *s.responder.lock() = Some(Arc::new(move |s, method, params| {
+        if s.docs.lock().contains_key(&slow) {
+            std::thread::sleep(Duration::from_millis(600));
+        }
+        inner(s, method, params)
+    }));
+    let cancel = ide_core::CancellationToken::new();
+    let later = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        later.cancel();
+    });
+    let started = std::time::Instant::now();
+    let err = h.mgr.references(doc, Pos::new(0, 5), true, true, cancel).await.unwrap_err();
+    assert_eq!(err.kind, ide_core::error::ErrorKind::Cancelled);
+    assert!(started.elapsed() < Duration::from_millis(550));
+    eventually(|| uris(&s.notified("textDocument/didClose")) == vec![uri_of(&b)]).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostics_of_files_opened_for_a_search_stay_out_of_problems() {
+    let h = harness(&[("mock", incremental_caps())]);
+    let s = h.launcher.state("mock");
+    grep_candidates(&h);
+    let b = h.root.join("b.mk");
+    std::fs::write(&b, "call target\n").unwrap();
+    let (doc, a) = h.open("a.mk", "def target\n");
+    let diag = json!([{ "range": {"start":{"line":0,"character":0},"end":{"line":0,"character":1}}, "message": "e" }]);
+    let inner = open_files_only(vec![]);
+    let (temp, user, d) = (uri_of(&b), uri_of(&a), diag.clone());
+    *s.responder.lock() = Some(Arc::new(move |s, method, params| {
+        if s.docs.lock().contains_key(&temp) {
+            for uri in [&temp, &user] {
+                s.peer().notify("textDocument/publishDiagnostics", json!({ "uri": uri, "diagnostics": d })).unwrap();
+            }
+        }
+        inner(s, method, params)
+    }));
+    h.wait_status("mock", ServerStatus::Ready).await;
+    eventually(|| s.docs.lock().len() == 1).await;
+
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    assert_eq!(refs.locations.len(), 2);
+    // Published right after the didClose (analysis still running): dropped too.
+    s.peer().notify("textDocument/publishDiagnostics", json!({ "uri": uri_of(&b), "diagnostics": diag })).unwrap();
+    s.peer().notify("textDocument/publishDiagnostics", json!({ "uri": uri_of(&a), "diagnostics": [] })).unwrap();
+    eventually(|| diagnostics_for(&h, &a) == 2).await;
+    assert_eq!(diagnostics_for(&h, &b), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn opening_a_file_during_a_search_takes_it_over() {
+    let h = harness(&[("mock", incremental_caps())]);
+    let s = h.launcher.state("mock");
+    grep_candidates(&h);
+    let b = h.root.join("b.mk");
+    std::fs::write(&b, "call target\n").unwrap();
+    let (doc, _) = h.open("a.mk", "def target\n");
+    let slow = uri_of(&b);
+    let inner = open_files_only(vec![]);
+    *s.responder.lock() = Some(Arc::new(move |s, method, params| {
+        if s.docs.lock().get(&slow).is_some_and(|t| t.starts_with("call")) {
+            std::thread::sleep(Duration::from_millis(400));
+        }
+        inner(s, method, params)
+    }));
+    h.wait_status("mock", ServerStatus::Ready).await;
+    eventually(|| s.docs.lock().len() == 1).await;
+
+    let mgr = h.mgr.clone();
+    let search = tokio::spawn(async move { mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await });
+    eventually(|| s.docs.lock().contains_key(&uri_of(&b))).await;
+    let user_doc = DocId::next();
+    h.mgr.did_open(user_doc, &b, &h.lang, 7, "edited target\n");
+    search.await.unwrap().unwrap();
+
+    // The temporary copy was closed before the user's didOpen, and the user's stays open.
+    let events: Vec<(String, Value)> = s
+        .notifications
+        .lock()
+        .iter()
+        .filter(|(m, p)| m.starts_with("textDocument/did") && p["textDocument"]["uri"] == uri_of(&b))
+        .map(|(m, p)| (m.clone(), p["textDocument"]["version"].clone()))
+        .collect();
+    assert_eq!(
+        events,
+        vec![
+            ("textDocument/didOpen".to_owned(), json!(0)),
+            ("textDocument/didClose".to_owned(), Value::Null),
+            ("textDocument/didOpen".to_owned(), json!(7)),
+        ]
+    );
+    assert_eq!(s.docs.lock().get(&uri_of(&b)).map(String::as_str), Some("edited target\n"));
+    // Its diagnostics are the user's again.
+    s.peer().notify("textDocument/publishDiagnostics", json!({ "uri": uri_of(&b), "diagnostics": [] })).unwrap();
+    eventually(|| diagnostics_for(&h, &b) == 1).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_answer_while_indexing_is_retried_when_indexing_ends() {
+    let h = harness(&[("mock", incremental_caps())]);
+    let s = h.launcher.state("mock");
+    let (doc, path) = h.open("a.mk", "def target\n");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    let peer = s.peer();
+    peer.notify("$/progress", json!({ "token": "idx", "value": { "kind": "begin", "title": "Indexing" } })).unwrap();
+    h.wait_status("mock", ServerStatus::Busy).await;
+    let (state, uri) = (s.clone(), uri_of(&path));
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        state.respond("textDocument/references", Value::Array(occurrences(&uri, "def target\n")));
+        peer.notify("$/progress", json!({ "token": "idx", "value": { "kind": "end" } })).unwrap();
+    });
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    assert_eq!(refs.locations.len(), 1);
+    assert_eq!(refs.incomplete, None);
+    assert_eq!(s.requested("textDocument/references").len(), 2);
+
+    // While the server works, results are taken as they are; finding nothing is flagged.
+    s.peer()
+        .notify("$/progress", json!({ "token": "again", "value": { "kind": "begin", "title": "Indexing" } }))
+        .unwrap();
+    h.wait_status("mock", ServerStatus::Busy).await;
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, true, Default::default()).await.unwrap();
+    assert_eq!((refs.locations.len(), refs.incomplete), (1, None));
+    s.respond("textDocument/references", json!([]));
+    let refs = h.mgr.references(doc, Pos::new(0, 5), true, false, Default::default()).await.unwrap();
+    assert_eq!(refs.locations.len(), 0);
+    assert_eq!(refs.incomplete, Some(ReferencesIncomplete::Indexing));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_edits_files_outside_the_analysis_scope() {
+    let (h, s) = scope_harness();
+    grep_candidates(&h);
+    let b = h.root.join("b.mk");
+    std::fs::write(&b, "call target\n").unwrap();
+    let (doc, a) = h.open("a.mk", "def target\n");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    eventually(|| s.docs.lock().len() == 1).await;
+    let edit = h.mgr.rename(doc, Pos::new(0, 5), "renamed".into()).await.unwrap();
+    let mut paths: Vec<PathBuf> = edit
+        .files
+        .iter()
+        .map(|f| match f {
+            FileEdit::Edit { path, .. } => path.to_path_buf(),
+            _ => panic!("unexpected {f:?}"),
+        })
+        .collect();
+    paths.sort();
+    assert_eq!(paths, vec![a, b.clone()]);
+    eventually(|| uris(&s.notified("textDocument/didClose")) == vec![uri_of(&b)]).await;
 }

@@ -18,6 +18,7 @@ import { isPopupOpen, lazyComponent } from "@/ui";
 import { loadSettings, useProject } from "@/platform/project";
 import { restoreRemote } from "@/platform/remote";
 import { provideSettingsSearchIndex, registerOverlay } from "@/workbench/contributions";
+import { windowBackgroundHex } from "@/workbench/theme";
 import { LazySettingsDialog, loadBuiltinPages, unloadBuiltinPages } from "./dialog/LazySettingsDialog";
 import {
   closeSettings,
@@ -34,6 +35,7 @@ import { trackRuntimeSettings } from "./runtime";
 import { installActionProxies, installSettingsHost } from "./window/bridge";
 import { AssignShortcutOverlay, showAssignShortcut } from "./keymap/AssignShortcut";
 import { settingsSearchEntries } from "./searchIndex";
+import { isImeKey } from "@/platform/ime";
 
 export { settingsWindowParent } from "./window/bridge";
 export const SettingsWindow = lazyComponent(() => import("./window/SettingsWindow").then((m) => m.SettingsWindow));
@@ -85,8 +87,7 @@ function settingsActions(open: (page?: string, newProjects?: boolean) => void): 
 async function showSettings(page?: string, newProjects = false) {
   if (isTauri()) {
     try {
-      const frame = getComputedStyle(document.documentElement).getPropertyValue("--bg-frame").trim();
-      await call(commands.windowOpenSettings(page ?? null, newProjects, frame || null));
+      await call(commands.windowOpenSettings(page ?? null, newProjects, windowBackgroundHex()));
       return;
     } catch (e) {
       console.warn("settings window unavailable, using the dialog", e);
@@ -166,7 +167,7 @@ function listenLaunch(): () => void {
 /** Esc and ⌘W cancel, like closing the window; ⌘, stays here. */
 function installWindowKeys(): () => void {
   const onKey = (e: KeyboardEvent) => {
-    if (e.defaultPrevented || e.isComposing) return;
+    if (e.defaultPrevented || isImeKey(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     if ((e.key === "Escape" && !isPopupOpen()) || (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "w")) {
       e.preventDefault();

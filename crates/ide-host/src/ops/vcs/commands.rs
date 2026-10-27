@@ -20,6 +20,10 @@ pub struct VcsRoot {
     pub root: ide_core::IpcPath,
     /// Merge / rebase / cherry-pick / revert in progress.
     pub operation: Option<String>,
+    /// Current branch; `None` when HEAD is detached (or unreadable).
+    pub head: Option<String>,
+    /// HEAD commit; `None` before the first commit.
+    pub head_commit: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Type)]
@@ -167,7 +171,10 @@ pub fn vcs_roots(host: &Host, window: &str) -> IdeResult<Vec<VcsRoot>> {
     all.sort_by_key(|r| Some(r.root()) != primary.as_deref());
     Ok(all
         .into_iter()
-        .map(|r| VcsRoot { root: r.root().to_path_buf().into(), operation: r.operation().ok().flatten() })
+        .map(|r| {
+            let (head, head_commit) = r.head().unwrap_or_default();
+            VcsRoot { root: r.root().to_path_buf().into(), operation: r.operation().ok().flatten(), head, head_commit }
+        })
         .collect())
 }
 

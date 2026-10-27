@@ -15,8 +15,8 @@ export const vscodeMacos: Record<string, string[]> = {
   "navigate.switcherBack": ["Ctrl+Shift+Tab"],
   "navigate.recentFiles": [],
   "navigate.recentLocations": [],
-  "navigate.back": ["Ctrl+-"],
-  "navigate.forward": ["Ctrl+Shift+-"],
+  "navigate.back": ["Ctrl+-", "Button4"],
+  "navigate.forward": ["Ctrl+Shift+-", "Button5"],
   "navigate.gotoLine": ["Ctrl+G"],
   "navigate.declaration": ["F12"],
   "navigate.implementation": ["Meta+F12"],
@@ -266,6 +266,8 @@ export const vscodeMacos: Record<string, string[]> = {
   "view.zoomIn": ["Meta+="],
   "view.zoomOut": ["Meta+-"],
   "view.resetZoom": [],
+  "editor.increaseFontSize": [],
+  "editor.decreaseFontSize": [],
   // Editing extras, image viewer (keyWhen: image focused) and Markdown editor layouts
   "code.cyclicExpandWord": [],
   "code.cyclicExpandWordBackward": [],
@@ -322,6 +324,10 @@ export const vscodeMacos: Record<string, string[]> = {
   "find.popup.previousResult": ["Meta+Shift+G"],
   "find.popup.openResult": [],
   "find.popup.recentSearches": ["Alt+Down"],
+  // Agents (VS Code's chat: ⇧⌘I)
+  "agents.newTask": ["Meta+Shift+I"],
+  "agents.showToolWindow": [],
+  "agents.sendToAgent": [],
   // Search fields (find bar, Find in Files): last, so they win over editor keys while one is focused.
   "find.field.newLine": ["Meta+Shift+Enter"],
   "find.field.recentSearches": ["Alt+Down"],

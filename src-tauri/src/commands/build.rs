@@ -3,7 +3,8 @@
 use crate::state::AppState;
 use ide_build::compile::{BuildEvent, BuildKind, BuildResult};
 use ide_build::{BuildModel, BuildTool, SyncProgress};
-use ide_core::{IdeResult, RequestId};
+use ide_build::pom_edit::ArtifactKey;
+use ide_core::{IdeResult, Location, RequestId};
 #[allow(unused_imports)]
 pub use ide_host::ops::build::*;
 use tauri::ipc::Channel;
@@ -40,6 +41,33 @@ pub async fn build_sync(
         crate::commands::sender(on_progress),
     )
     .await
+}
+
+/// Where the direct dependency `dependency` of the Maven module `pom` is declared.
+#[tauri::command]
+#[specta::specta]
+pub async fn maven_dependency_declaration(
+    window: Window,
+    state: State<'_, AppState>,
+    pom: String,
+    dependency: ArtifactKey,
+) -> IdeResult<Location> {
+    ide_host::ops::build::maven_dependency_declaration(&state.host, window.label(), pom, dependency).await
+}
+
+/// Adds an `<exclusion>` of `exclusion` to the declaration of the direct dependency
+/// `dependency` of the Maven module `pom`, through the open document when there is one
+/// (saved). Returns the declaration; nothing changes when it already excludes it.
+#[tauri::command]
+#[specta::specta]
+pub async fn maven_exclude_dependency(
+    window: Window,
+    state: State<'_, AppState>,
+    pom: String,
+    dependency: ArtifactKey,
+    exclusion: ArtifactKey,
+) -> IdeResult<Location> {
+    ide_host::ops::build::maven_exclude_dependency(&state.host, window.label(), pom, dependency, exclusion).await
 }
 
 /// Build › Build Project / Rebuild Project / Build Module (`file`: a file or folder of the

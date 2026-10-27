@@ -18,6 +18,7 @@ import {
   type InspectionRef,
   type ProfileOverrides,
 } from "./inspections";
+import { tx } from "@/platform/i18n";
 
 /** Menu rows (structurally `@/ui` `MenuItem`s). */
 export type ControlItem =
@@ -106,7 +107,7 @@ export function problemControls(inspection: InspectionRef): ControlItem[] {
   return [
     {
       id: "inspection.disable",
-      label: `Disable Inspection '${inspection.name}'`,
+      label: tx`Disable Inspection '${inspection.name}'`,
       verbatim: true,
       run: () => report(disableInspection(inspection.id)),
     },

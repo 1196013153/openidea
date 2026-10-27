@@ -12,6 +12,7 @@ import { projectFs } from "./fs";
 import { isSameOrInside, nameOf, parentOf } from "./paths";
 import { previewFileRefactoring } from "./RefactoringPreview";
 import { useProjectTree } from "./store";
+import { tx } from "@/platform/i18n";
 
 export interface FileRefactorOptions {
   /** Update references through the language servers. */
@@ -245,7 +246,7 @@ export async function runFileRefactoring(
   } catch (e) {
     notifications().notify({
       level: "error",
-      title: `Cannot ${label.toLowerCase()} ${moves.length === 1 ? nameOf(moves[0]!.from) : `${moves.length} items`}`,
+      title: `${label === "Move" ? "Cannot move" : "Cannot rename"} ${moves.length === 1 ? nameOf(moves[0]!.from) : `${moves.length} items`}`,
       body: e instanceof Error ? e.message : String(e),
     });
     return "failed";
@@ -262,7 +263,7 @@ export async function runFileRefactoring(
   notifications().notify({
     level: "info",
     title,
-    body: edited ? `Updated references in ${edited} ${edited === 1 ? "file" : "files"}` : undefined,
+    body: !edited ? undefined : edited === 1 ? tx`Updated references in ${edited} file` : tx`Updated references in ${edited} files`,
     actions: [{ label: "Undo", run: () => void undoFileRefactoring(id) }],
     key: "project.refactor.done",
   });
@@ -296,7 +297,7 @@ export async function undoFileRefactoring(id = lastMove?.id): Promise<boolean> {
     level: outcome.conflicts.length ? "warning" : "info",
     title: "Refactoring undone",
     body: outcome.conflicts.length
-      ? `Changed since the refactoring, not reverted: ${outcome.conflicts.map(nameOf).join(", ")}`
+      ? tx`Changed since the refactoring, not reverted: ${outcome.conflicts.map(nameOf).join(", ")}`
       : undefined,
     key: "project.refactor.done",
   });

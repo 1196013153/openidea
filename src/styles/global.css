@@ -95,16 +95,16 @@ a:hover {
 }
 
 /* Focus rings mark controls only, as in IDEA: lists, trees, tables, menus, popups and other
-   focusable containers show focus through their selected row instead of a frame. */
+   focusable containers show focus through their selected row instead of a frame. Text fields
+   aren't listed: their frame shows focus, and an outline here draws a second box inside it. */
 :focus-visible {
   outline: none;
 }
 :is(
   button,
   a[href],
-  input,
+  input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]),
   select,
-  textarea,
   summary,
   [role="button"],
   [role="link"],

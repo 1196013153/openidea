@@ -21,6 +21,7 @@ import {
 import { useProject } from "@/platform/project";
 import { notifications } from "@/workbench/contributions";
 import { upsertTask } from "@/workbench/tasks";
+import { tx } from "@/platform/i18n";
 
 const JAVA_SETTINGS = "languages.java";
 const running = new Map<number, Promise<Sdk | null>>();
@@ -59,7 +60,7 @@ export function downloadJdkFor(args: DownloadJdkArgs): Promise<Sdk | null> {
         title: `${sdk.name} downloaded`,
         body: args.languageServer
           ? "The Java language server restarts on it."
-          : `Installed in ${sdk.path}; it is used for projects targeting Java ${args.version}.`,
+          : tx`Installed in ${sdk.path}; it is used for projects targeting Java ${args.version}.`,
       });
       return sdk;
     } catch (e) {

@@ -53,6 +53,27 @@ export const commands = {
 	cancelRequest: (id: RequestId) => __TAURI_INVOKE<void>("cancel_request", { id }),
 	/**  Routes frontend logs into the backend `tracing` pipeline. */
 	logFrontend: (level: LogLevel, message: string) => __TAURI_INVOKE<void>("log_frontend", { level, message }),
+	/**  Streams the project's agent events to this window; returns every task. */
+	agentSubscribe: (onEvent: Channel<AgentEvent>) => typedError<AgentTask[], IdeError>(__TAURI_INVOKE("agent_subscribe", { onEvent })),
+	agentProviders: () => typedError<AgentProvider[], IdeError>(__TAURI_INVOKE("agent_providers")),
+	agentEntries: (task: string) => typedError<AgentEntry[], IdeError>(__TAURI_INVOKE("agent_entries", { task })),
+	agentCreate: (request: NewAgentTask) => typedError<AgentTask, IdeError>(__TAURI_INVOKE("agent_create", { request })),
+	/**  Sends a message; while the agent works it is queued, or with `now` it interrupts the turn. */
+	agentPrompt: (task: string, prompt: AgentPrompt, now: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("agent_prompt", { task, prompt, now })),
+	/**  Drops a queued message and returns it (to edit it). */
+	agentUnqueue: (task: string, queued: string) => typedError<AgentQueued, IdeError>(__TAURI_INVOKE("agent_unqueue", { task, queued })),
+	/**  Sends a queued message now, interrupting the current turn. */
+	agentSendQueuedNow: (task: string, queued: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_send_queued_now", { task, queued })),
+	/**  Changes a session setting (model, mode, thinking effort…). */
+	agentSetConfig: (task: string, option: string, value: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_set_config", { task, option, value })),
+	agentCancel: (task: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_cancel", { task })),
+	/**  Answers a permission request; `option: null` cancels it. */
+	agentRespond: (task: string, permission: number, option: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("agent_respond", { task, permission, option })),
+	agentArchive: (task: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_archive", { task })),
+	agentDelete: (task: string, removeWorktree: boolean) => typedError<null, IdeError>(__TAURI_INVOKE("agent_delete", { task, removeWorktree })),
+	agentChanges: (task: string) => typedError<AgentChange[], IdeError>(__TAURI_INVOKE("agent_changes", { task })),
+	/**  Content of `path` when the task started (left side of its diff). */
+	agentBaseText: (task: string, path: IpcPath) => typedError<string | null, IdeError>(__TAURI_INVOKE("agent_base_text", { task, path })),
 	fsReadDir: (path: string) => typedError<FileEntry[], IdeError>(__TAURI_INVOKE("fs_read_dir", { path })),
 	/**  Size and text/binary classification, from the file's head only. */
 	fsProbe: (path: string) => typedError<FileProbe, IdeError>(__TAURI_INVOKE("fs_probe", { path })),
@@ -266,7 +287,12 @@ export const commands = {
 	 *  language server returned a non-`file:` URI for. Cached per project.
 	 */
 	lspVirtualDocument: (uri: string) => typedError<VirtualDocument, IdeError>(__TAURI_INVOKE("lsp_virtual_document", { uri })),
-	lspReferences: (doc: DocId, pos: Pos, includeDeclaration: boolean) => typedError<Location[], IdeError>(__TAURI_INVOKE("lsp_references", { doc, pos, includeDeclaration })),
+	/**
+	 *  References of the symbol at `pos`. `project_wide` also searches project files
+	 *  outside the language server's analysis scope; bulk scans over many symbols
+	 *  leave it off. Cancel with `cancel_request(request)`.
+	 */
+	lspReferences: (request: RequestId, doc: DocId, pos: Pos, includeDeclaration: boolean, projectWide: boolean) => typedError<References, IdeError>(__TAURI_INVOKE("lsp_references", { request, doc, pos, includeDeclaration, projectWide })),
 	lspDocumentHighlights: (doc: DocId, pos: Pos) => typedError<Highlight[], IdeError>(__TAURI_INVOKE("lsp_document_highlights", { doc, pos })),
 	lspWorkspaceSymbols: (request: RequestId, query: string) => typedError<WorkspaceSymbol[], IdeError>(__TAURI_INVOKE("lsp_workspace_symbols", { request, query })),
 	lspCodeActions: (doc: DocId, range: Range, only: string[]) => typedError<CodeAction[], IdeError>(__TAURI_INVOKE("lsp_code_actions", { doc, range, only })),
@@ -452,6 +478,14 @@ export const commands = {
 	 *  Returns the refreshed model; a failed build is reported in its `syncError`.
 	 */
 	buildSync: (tool: BuildTool, request: RequestId, offline: boolean, profiles: string[], onProgress: Channel<SyncProgress>) => typedError<BuildModel, IdeError>(__TAURI_INVOKE("build_sync", { tool, request, offline, profiles, onProgress })),
+	/**  Where the direct dependency `dependency` of the Maven module `pom` is declared. */
+	mavenDependencyDeclaration: (pom: string, dependency: ArtifactKey) => typedError<Location, IdeError>(__TAURI_INVOKE("maven_dependency_declaration", { pom, dependency })),
+	/**
+	 *  Adds an `<exclusion>` of `exclusion` to the declaration of the direct dependency
+	 *  `dependency` of the Maven module `pom`, through the open document when there is one
+	 *  (saved). Returns the declaration; nothing changes when it already excludes it.
+	 */
+	mavenExcludeDependency: (pom: string, dependency: ArtifactKey, exclusion: ArtifactKey) => typedError<Location, IdeError>(__TAURI_INVOKE("maven_exclude_dependency", { pom, dependency, exclusion })),
 	/**
 	 *  Build › Build Project / Rebuild Project / Build Module (`file`: a file or folder of the
 	 *  module) / Build Artifacts, streaming the console and messages on `on_event`; cancellable
@@ -664,6 +698,11 @@ export const commands = {
 	pluginId: string,
 	theme: ThemeDef,
 } | null, IdeError>(__TAURI_INVOKE("plugin_set_theme", { pluginId, themeId })),
+	/**
+	 *  The UI reports the selected plugin theme's resolved frame colour (`#rrggbb[aa]`),
+	 *  which new windows open in before their page loads.
+	 */
+	pluginSetThemeFrame: (color: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("plugin_set_theme_frame", { color })),
 	/**
 	 *  Snapshot of process memory and subsystem sizes, summed over all projects.
 	 *  Async: the process walk runs on the blocking pool, not the main thread.
@@ -880,6 +919,180 @@ export type ActiveTheme = {
 	theme: ThemeDef,
 };
 
+/**  A file the task changed, relative to [`AgentTask::base_commit`]. */
+export type AgentChange = {
+	path: IpcPath,
+	relPath: string,
+	kind: ChangeKind,
+	added: number,
+	removed: number,
+};
+
+export type AgentCommand = {
+	/**  Without the leading `/`. */
+	name: string,
+	description: string,
+	/**  What to type after the command, when it takes input. */
+	hint: string | null,
+};
+
+/**  A setting chosen for a new task, by [`AgentConfigOption::id`]. */
+export type AgentConfigChoice = {
+	id: string,
+	value: string,
+};
+
+/**  A session setting: an ACP select config option, or the older `modes` / `models`. */
+export type AgentConfigOption = {
+	id: string,
+	name: string,
+	description: string | null,
+	/**  ACP category: `model`, `mode`, `thought_level`, or agent-specific. */
+	category: string | null,
+	current: string | null,
+	values: AgentConfigValue[],
+	via: AgentConfigVia,
+};
+
+/**  One value of a select-type session setting. */
+export type AgentConfigValue = {
+	value: string,
+	name: string,
+	description: string | null,
+};
+
+/**  How a setting is changed. */
+export type AgentConfigVia = 
+/**  `session/set_config_option`. */
+"option" | 
+/**  `session/set_mode` (agents that report `modes` instead of a mode config option). */
+"mode" | 
+/**  `session/set_model` (agents that report `models` instead of a model config option). */
+"model";
+
+/**  One item of a task's conversation. */
+export type AgentEntry = { type: "user"; text: string; 
+/**  Names of the files and images sent with it. */
+attachments: string[] } | { type: "agent"; text: string } | { type: "thought"; text: string } | { type: "tool"; id: string; title: string; 
+/**  ACP tool kind: `read`, `edit`, `execute`, `search`, `fetch`, `think`… */
+kind: string; status: AgentToolStatus; locations: IpcPath[]; 
+/**  Text the tool reported (command output…), truncated. */
+output: string | null; diffs: AgentToolDiff[] } | { type: "plan"; items: AgentPlanItem[] } | { type: "permission"; id: number; title: string; options: AgentPermissionOption[]; 
+/**  Name of the chosen option, or `None` while pending. Cancelled requests read "Cancelled". */
+chosen: string | null } | { type: "error"; message: string };
+
+/**  Streamed to the window that subscribed (`AgentManager::subscribe`). */
+export type AgentEvent = 
+/**  A task was created or its metadata changed. */
+{ type: "task"; task: AgentTask } | { type: "removed"; id: string } | 
+/**  Entry `index` of `task` was added or replaced. */
+{ type: "entry"; task: string; index: number; entry: AgentEntry };
+
+export type AgentImage = {
+	mimeType: string,
+	/**  Base64, without a `data:` prefix. */
+	data: string,
+	name: string | null,
+};
+
+export type AgentPermissionOption = {
+	id: string,
+	name: string,
+	/**  `allow_once`, `allow_always`, `reject_once` or `reject_always`. */
+	kind: string,
+};
+
+export type AgentPlanItem = {
+	content: string,
+	/**  `pending`, `in_progress` or `completed`. */
+	status: string,
+};
+
+/**  A message to the agent: text, plus files to look at and images. */
+export type AgentPrompt = {
+	text: string,
+	files: IpcPath[],
+	images: AgentImage[],
+};
+
+export type AgentProvider = {
+	id: string,
+	name: string,
+	/**  The command line that starts its ACP server. */
+	command: string,
+	/**  Whether the command was found (on `PATH`). */
+	installed: boolean,
+	/**  Settings (models, modes…) the agent offered last time it ran; empty before its first session. */
+	config: AgentConfigOption[],
+	/**  Slash commands it offered last time. */
+	commands: AgentCommand[],
+};
+
+export type AgentQueued = {
+	id: string,
+	prompt: AgentPrompt,
+};
+
+export type AgentStatus = 
+/**  Creating the worktree / starting the agent. */
+"starting" | "running" | 
+/**  Waiting for a permission answer. */
+"needsInput" | 
+/**  The turn ended; the result can be reviewed or the conversation continued. */
+"ready" | "failed" | "archived";
+
+export type AgentTask = {
+	id: string,
+	title: string,
+	/**  [`AgentProvider::id`]. */
+	provider: string,
+	/**  Model the task runs on (its `model` setting), when known. */
+	model: string | null,
+	status: AgentStatus,
+	isolation: Isolation,
+	/**  Directory the agent works in (the worktree, or the project root). */
+	cwd: IpcPath,
+	/**  Branch of the task's worktree. */
+	branch: string | null,
+	/**  Branch (or revision) the worktree was created from. */
+	base: string | null,
+	/**  Commit the task's changes are compared against. */
+	baseCommit: string | null,
+	/**  Why the task failed, when it did. */
+	error: string | null,
+	createdMs: number | null,
+	updatedMs: number | null,
+	/**
+	 *  The session's settings (model, mode, thinking effort…) as last reported, with the
+	 *  user's choices applied.
+	 */
+	config: AgentConfigOption[],
+	/**  Slash commands the agent offers. */
+	commands: AgentCommand[],
+	/**  Context window use, when the agent reports it. */
+	usage: AgentUsage | null,
+	/**  Messages waiting for the current turn to end, oldest first. */
+	queue: AgentQueued[],
+};
+
+export type AgentToolDiff = {
+	path: IpcPath,
+	added: number,
+	removed: number,
+};
+
+export type AgentToolStatus = "pending" | "running" | "completed" | "failed";
+
+export type AgentUsage = {
+	/**  Tokens in the context window. */
+	used: number,
+	/**  Size of the context window. */
+	size: number,
+	/**  Session cost so far. */
+	cost: number | null,
+	currency: string | null,
+};
+
 export type AppInfo = {
 	version: string,
 	platform: string,
@@ -959,6 +1172,12 @@ export type ApplyOutcome = {
 	applied: string[],
 	/**  Repository-relative paths left with conflicts (index stages for the merge UI). */
 	conflicts: string[],
+};
+
+/**  `groupId:artifactId` of a dependency. */
+export type ArtifactKey = {
+	groupId: string,
+	artifactId: string,
 };
 
 /**  What an askpass prompt asks for. */
@@ -3045,6 +3264,12 @@ export type InvalidateCachesOptions = {
 /**  A path field of an IPC type. */
 export type IpcPath = string;
 
+export type Isolation = 
+/**  A new git worktree on its own branch. */
+"worktree" | 
+/**  The project's own checkout. */
+"local";
+
 export type IssueLink = {
 	/**  Regular expression matched in commit messages. */
 	pattern?: string,
@@ -3436,6 +3661,12 @@ export type MavenDependency = {
 	optional: boolean,
 	/**  Transitive dependencies (only after a sync). */
 	children: MavenDependency[],
+	/**  Why Maven left this occurrence out of the resolved graph (`dependency:tree -Dverbose`). */
+	omitted?: Omission | null,
+	/**  The version that won when `omitted` is `Conflict`. */
+	conflictWith?: string | null,
+	/**  The version requested before `<dependencyManagement>` replaced it. */
+	managedFrom?: string | null,
 };
 
 export type MavenModel = {
@@ -3589,6 +3820,16 @@ export type MethodStat = {
 	total: number | null,
 };
 
+export type NewAgentTask = {
+	prompt: AgentPrompt,
+	provider: string,
+	/**  Settings for the new session (model, mode…). */
+	config: AgentConfigChoice[],
+	isolation: Isolation,
+	/**  Branch to start the worktree from; the current branch when `None`. */
+	base: string | null,
+};
+
 /**  Result of `node_at`: the smallest named node covering a range, with its ancestors. */
 export type NodeAt = {
 	node: SyntaxNode,
@@ -3636,6 +3877,15 @@ export type NotificationSettings = {
 };
 
 export type NotifyLevel = "info" | "warning" | "error";
+
+/**  Why a dependency occurrence is not part of the resolved graph. */
+export type Omission = 
+/**  Another occurrence of the same version is nearer the root. */
+"duplicate" | 
+/**  Another version is nearer the root (or declared first) and wins. */
+"conflict" | 
+/**  The artifact depends on itself through this path. */
+"cycle";
 
 /**  How `open_project_window` satisfied the request. */
 export type OpenOutcome = 
@@ -4098,6 +4348,18 @@ export type RecentProject = {
 	/**  Current git branch when last opened, shown on the welcome screen. */
 	branch: string | null,
 };
+
+export type References = {
+	locations: Location[],
+	incomplete: ReferencesIncomplete | null,
+};
+
+/**  Why a references search may have missed usages. */
+export type ReferencesIncomplete = 
+/**  A language server was still indexing. */
+"indexing" | 
+/**  More project files mention the name than were checked. */
+"tooManyFiles";
 
 export type Remote = {
 	name: string,
@@ -5220,6 +5482,10 @@ export type VcsRoot = {
 	root: IpcPath,
 	/**  Merge / rebase / cherry-pick / revert in progress. */
 	operation: string | null,
+	/**  Current branch; `None` when HEAD is detached (or unreadable). */
+	head: string | null,
+	/**  HEAD commit; `None` before the first commit. */
+	headCommit: string | null,
 };
 
 /**  Version Control (main page) and its sub-pages. */

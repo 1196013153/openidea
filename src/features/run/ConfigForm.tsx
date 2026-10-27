@@ -573,7 +573,7 @@ export function ConfigForm({ config, all, type, errors, template, onChange, modi
                 icon="close"
                 size="small"
                 iconSize={10}
-                title={`Remove '${OPTION_LABELS[id]}'`}
+                title={tx`Remove '${OPTION_LABELS[id]}'`}
                 onClick={() => update(optionPatch(id, false))}
               />
             </span>

@@ -3,13 +3,25 @@
  * side by side, switched from the floating toolbar at the top right. The
  * preview follows the editor's scroll position in the split layout.
  */
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import clsx from "clsx";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { maybeEditorService } from "@/workbench/contributions";
 import { highlightInto } from "@/editor/lsp/markdown";
 import { IconButton, selectableText } from "@/ui";
 import { useLiveMarkdown } from "./live";
+import { hasMermaid, MERMAID_SELECTOR, renderMermaidIn, subscribeTheme, themeKey } from "./mermaid";
 import { modeOf, useMarkdownModes } from "./modes";
 import { ANCHOR_PREFIX, previewOffsetForLine, renderMarkdown, resolveLink, slugify } from "./render";
 import styles from "./Markdown.module.css";
@@ -69,11 +81,28 @@ export function MarkdownEditor({ path, children }: { path: string; tabId: string
 
 function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
   const text = useLiveMarkdown((s) => s[path]?.text);
+  const fontZoom = useLiveMarkdown((s) => s[path]?.fontZoom ?? 0);
   const topLine = useLiveMarkdown((s) => s[path]?.topLine ?? 0);
   const scrollSeq = useLiveMarkdown((s) => s[path]?.scrollSeq ?? 0);
   const deferred = useDeferredValue(text ?? "");
   const html = useMemo(() => renderMarkdown(deferred), [deferred]);
   const ref = useRef<HTMLDivElement>(null);
+  const theme = useSyncExternalStore(subscribeTheme, themeKey, () => "");
+  const diagrams = useRef<Node[]>([]);
+  const [diagramsDrawn, setDiagramsDrawn] = useState(0);
+
+  // Mermaid diagrams: before paint, so cached ones don't flash their source.
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root || !hasMermaid(root)) return;
+    const pass = renderMermaidIn(root, diagrams.current);
+    let live = true;
+    if (pass.async) void pass.done.then(() => live && setDiagramsDrawn((n) => n + 1));
+    return () => {
+      live = false;
+      pass.cancel();
+    };
+  }, [html, theme]);
 
   // Images and code highlighting after each render.
   useEffect(() => {
@@ -98,6 +127,7 @@ function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
       );
     });
     root.querySelectorAll<HTMLElement>("pre > code").forEach((code) => {
+      if (code.closest(MERMAID_SELECTOR)) return;
       const lang = [...code.classList].find((c) => c.startsWith("language-"))?.slice("language-".length) ?? null;
       const src = (code.textContent ?? "").replace(/\n+$/, "");
       code.textContent = src;
@@ -117,7 +147,7 @@ function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
       top: el.offsetTop,
     }));
     root.scrollTop = topLine <= 0 ? 0 : previewOffsetForLine(blocks, topLine, root.scrollHeight);
-  }, [html, topLine, scrollSeq, sync]);
+  }, [html, topLine, scrollSeq, sync, diagramsDrawn]);
 
   const onClick = (e: MouseEvent) => {
     const a = (e.target as Element).closest("a");
@@ -141,6 +171,7 @@ function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
     <div
       ref={ref}
       className={clsx(styles.preview, selectableText)}
+      style={{ "--markdown-font-zoom": `${fontZoom}px` } as CSSProperties}
       tabIndex={-1}
       role="document"
       aria-label="Markdown preview"

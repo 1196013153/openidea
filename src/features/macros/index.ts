@@ -21,6 +21,7 @@ import {
   useMacros,
   type MacroStep,
 } from "./model";
+import { isImeKey } from "@/platform/ime";
 
 /** Records typing and editor keys of every text editor while a macro records. */
 const recorder = [
@@ -31,7 +32,7 @@ const recorder = [
   EditorView.domEventHandlers({
     keydown(e) {
       // Keys the IDE keymap ran as actions were recorded as those actions.
-      if (e.defaultPrevented || e.isComposing || !useMacros.getState().recording) return false;
+      if (e.defaultPrevented || isImeKey(e) || !useMacros.getState().recording) return false;
       const key = editorKeyName(e);
       if (key) recordStep({ kind: "key", key });
       return false;

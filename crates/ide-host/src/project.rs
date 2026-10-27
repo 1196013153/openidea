@@ -2,7 +2,7 @@
 //! watchers and the per-project services, opened by [`crate::Host::open_project`].
 
 use crate::Host;
-use ide_core::{IdeError, IdeEvent, IdeResult, SharedSink};
+use ide_core::{CancellationToken, IdeError, IdeEvent, IdeResult, SharedSink};
 use ide_index::ProjectIndex;
 use ide_language::{FileTypes, LanguageRegistry, SyntaxCache};
 use ide_lsp::LspManager;
@@ -44,6 +44,8 @@ pub struct Project {
     pub db: Arc<ide_db::DbManager>,
     /// HTTP Client responses (IDEA's `.idea/httpRequests`), in the app data dir.
     pub http_history: Arc<ide_http::History>,
+    /// Coding agent tasks (Agents tool window).
+    pub agents: Arc<ide_agent::AgentManager>,
     pub(crate) watcher: Watcher,
     /// Watchers of the Project Structure content roots outside the project folder.
     pub(crate) content_watchers: Mutex<Vec<(PathBuf, Watcher)>>,
@@ -270,6 +272,21 @@ impl Host {
             self.ssh.clone(),
         ));
         let http_history = Arc::new(ide_http::History::new(self.data_dir.join("http-history").join(&project_key)));
+        let agents = Arc::new(ide_agent::AgentManager::new(
+            ide_agent::AgentPaths {
+                project_root: root.clone(),
+                store_dir: self.data_dir.join("agents").join(&project_key),
+                // Outside the app data dir: its path has spaces on macOS, which trips up build scripts.
+                worktrees_dir: dirs::home_dir()
+                    .unwrap_or_else(|| self.data_dir.clone())
+                    .join(".openidea")
+                    .join("worktrees")
+                    .join(&project_key),
+                models_file: self.data_dir.join("agents").join("models.json"),
+                custom_agents_dir: Some(self.config_dir.join("agents")),
+            },
+            self.runtime.clone(),
+        ));
         let project = Arc::new(Project {
             root,
             sink,
@@ -287,10 +304,17 @@ impl Host {
             cache_dir: self.data_dir.join("cache").join(&project_key),
             db,
             http_history,
+            agents,
             watcher,
             content_watchers: Mutex::new(content_watchers),
             _scratch_watcher: scratch_watcher,
         });
+        {
+            let weak = Arc::downgrade(&project);
+            project.lsp.set_candidates_hook(Box::new(move |q, cancel| {
+                weak.upgrade().map(|p| p.reference_candidates(q, cancel)).unwrap_or_default()
+            }));
+        }
         self.insert_project(window, project.clone());
         Ok(project)
     }
@@ -428,6 +452,33 @@ impl Project {
             }
         }
         out
+    }
+
+    /// Project files of `q.languages` under `q.root` containing `q.word` as a whole
+    /// word (unsaved buffers included; excluded roots, ignored names and
+    /// `.gitignore`d files skipped): the files a references search opens on its server.
+    pub fn reference_candidates(
+        &self,
+        q: &ide_lsp::CandidateQuery,
+        cancel: &CancellationToken,
+    ) -> ide_lsp::CandidateFiles {
+        if !q.root.starts_with(&self.root) {
+            return ide_lsp::CandidateFiles::default();
+        }
+        let query = ide_search::WordQuery {
+            word: q.word.clone(),
+            dir: q.root.clone(),
+            exclude: self.search_excludes(),
+            limit: q.limit,
+        };
+        let filter = |rel: &str| q.languages.contains(&self.languages.detect(&self.root.join(rel), None));
+        match ide_search::files_with_word(&self.root, &query, Some(&filter), &|p| self.documents.text_of(p), cancel) {
+            Ok(found) => ide_lsp::CandidateFiles { files: found.files, limit_hit: found.limit_hit },
+            Err(e) => {
+                tracing::debug!("reference candidates: {}", e.message);
+                ide_lsp::CandidateFiles::default()
+            }
+        }
     }
 
     /// `files.exclude`, the ignored names and the effective excluded roots (user-marked and detected).

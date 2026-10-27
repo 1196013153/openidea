@@ -3,14 +3,79 @@
  * based theme + syntax colours and lazy language loading by file name.
  */
 import { HighlightStyle, LanguageDescription, syntaxHighlighting, type LanguageSupport } from "@codemirror/language";
-import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
+import { EditorState, RangeSetBuilder, type Extension, type Line } from "@codemirror/state";
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  drawSelection,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
+import { getChunks } from "@codemirror/merge";
 import { defaultKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
 import { tags as t } from "@lezer/highlight";
 
+const wholeLine = Decoration.line({ class: "cm-diffWholeLine" });
+
+/**
+ * Marks the changed lines that have no counterpart on the other side (inserted
+ * or deleted as a whole) so they get a solid background. Lines paired with a
+ * line on the other side keep the line tint plus word-level highlights.
+ */
+function wholeLineDeco(view: EditorView): DecorationSet {
+  const info = getChunks(view.state);
+  if (!info || !info.side) return Decoration.none;
+  const isA = info.side === "a";
+  const { doc } = view.state;
+  const { from: vpFrom, to: vpTo } = view.viewport;
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const chunk of info.chunks) {
+    const from = isA ? chunk.fromA : chunk.fromB;
+    const to = isA ? chunk.toA : chunk.toB;
+    if (from >= vpTo) break;
+    if (from === to || to < vpFrom) continue;
+    const otherEmpty = isA ? chunk.fromB === chunk.toB : chunk.fromA === chunk.toA;
+    const ranges = chunk.changes.map((c) => (isA ? [c.fromA, c.toA] : [c.fromB, c.toB]).map((p) => p + from));
+    // Covered including the line break after it, or the one before it (a deleted last line).
+    const covered = (line: Line) =>
+      ranges.some(([f = 0, t = 0]) => (f <= line.from && t > line.to) || (f < line.from && t >= line.to));
+    for (let line = doc.lineAt(Math.max(from, vpFrom)); line.from < Math.min(to, vpTo);) {
+      if (otherEmpty || covered(line)) builder.add(line.from, line.from, wholeLine);
+      if (line.number === doc.lines) break;
+      line = doc.line(line.number + 1);
+    }
+  }
+  return builder.finish();
+}
+
+const wholeChangedLines = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = wholeLineDeco(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        getChunks(update.startState)?.chunks !== getChunks(update.state)?.chunks
+      )
+        this.decorations = wholeLineDeco(update.view);
+    }
+  },
+  { decorations: (value) => value.decorations },
+);
+
 export const viewerHighlight = HighlightStyle.define([
-  { tag: [t.keyword, t.modifier, t.controlKeyword, t.operatorKeyword, t.definitionKeyword], color: "var(--syn-keyword)" },
+  {
+    tag: [t.keyword, t.modifier, t.controlKeyword, t.operatorKeyword, t.definitionKeyword],
+    color: "var(--syn-keyword)",
+  },
   { tag: [t.string, t.special(t.string), t.regexp, t.character], color: "var(--syn-string)" },
   { tag: [t.typeName, t.className, t.namespace, t.tagName], color: "var(--syn-type)" },
   { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syn-function)" },
@@ -55,6 +120,15 @@ export const viewerTheme = EditorView.theme(
     "&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine": {
       backgroundColor: "color-mix(in srgb, var(--gutter-added) 12%, transparent)",
     },
+    "&.cm-merge-a .cm-changedLine.cm-diffWholeLine": {
+      backgroundColor: "color-mix(in srgb, var(--danger) 26%, transparent)",
+    },
+    "&.cm-merge-b .cm-changedLine.cm-diffWholeLine": {
+      backgroundColor: "color-mix(in srgb, var(--success) 26%, transparent)",
+    },
+    "&.cm-merge-a .cm-diffWholeLine .cm-changedText, &.cm-merge-b .cm-diffWholeLine .cm-changedText": {
+      background: "transparent",
+    },
     "&.cm-merge-a .cm-changedText, .cm-deletedChunk .cm-deletedText": {
       background: "color-mix(in srgb, var(--danger) 26%, transparent)",
     },
@@ -64,7 +138,6 @@ export const viewerTheme = EditorView.theme(
     "&.cm-merge-b .cm-changedText, .cm-insertedLine .cm-changedText": {
       background: "color-mix(in srgb, var(--success) 26%, transparent)",
     },
-    ".cm-insertedLine": { backgroundColor: "color-mix(in srgb, var(--gutter-added) 12%, transparent)" },
     ".cm-changeGutter": { width: "3px", paddingLeft: "0" },
     "&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter": { background: "var(--gutter-deleted)" },
     "&.cm-merge-b .cm-changedLineGutter": { background: "var(--gutter-modified)" },
@@ -104,6 +177,7 @@ export function viewerBase(opts: { readOnly: boolean; lineNumbers?: boolean }): 
     keymap.of([...searchKeymap, ...defaultKeymap]),
     syntaxHighlighting(viewerHighlight),
     viewerTheme,
+    wholeChangedLines,
     EditorState.readOnly.of(opts.readOnly),
     EditorView.editable.of(!opts.readOnly),
   ];

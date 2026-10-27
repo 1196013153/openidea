@@ -865,6 +865,7 @@ fn checkout_create_detached_delete_rebase() {
 
     repo.checkout("topic", true).unwrap();
     assert_eq!(repo.branch_info().unwrap().head.as_deref(), Some("topic"));
+    assert_eq!(repo.head().unwrap(), (Some("topic".to_string()), Some(c1.clone())));
     fx.write("t", "topic\n");
     fx.commit_all("topic work");
     repo.checkout("main", false).unwrap();
@@ -879,6 +880,7 @@ fn checkout_create_detached_delete_rebase() {
     let info = repo.branch_info().unwrap();
     assert_eq!(info.head, None);
     assert_eq!(info.head_commit.as_deref(), Some(c1.as_str()));
+    assert_eq!(repo.head().unwrap(), (None, Some(c1.clone())));
     assert!(
         repo.log(&LogQuery { branch: Some("HEAD".into()), ..Default::default() }).unwrap()[0]
             .refs

@@ -13,6 +13,7 @@ import { useSetting } from "../components/context";
 import type { PageSpec } from "./spec";
 import { BoundToggle, Grid, Indented, RadioRow, TableEditor, ToggleNumber } from "./workflowControls";
 import styles from "./Workflow.module.css";
+import { tx } from "@/platform/i18n";
 
 const L = WORKFLOW_LIMITS;
 
@@ -110,7 +111,7 @@ function GitExecutableRow() {
         mono
         className={styles.wide}
         value={path}
-        placeholder={detected ? `Auto-detected: ${detected}` : "Auto-detected"}
+        placeholder={detected ? tx`Auto-detected: ${detected}` : "Auto-detected"}
         onChange={(e) => {
           setPath(e.target.value);
           setResult(null);

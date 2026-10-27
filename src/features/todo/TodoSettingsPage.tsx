@@ -3,6 +3,7 @@ import { Button, Checkbox, IconButton, Input, Select, T } from "@/ui";
 import { DEFAULT_PATTERNS, type TodoPattern } from "./model";
 import { updateTodoSettings, useTodoSettings } from "./store";
 import styles from "./TodoSettingsPage.module.css";
+import { tx } from "@/platform/i18n";
 
 const COLORS = [
   { value: "var(--info)", label: "Blue" },
@@ -55,7 +56,7 @@ export function TodoSettingsPage() {
             <Checkbox
               checked={p.enabled}
               onChange={(v) => patch(p.id, { enabled: v })}
-              aria-label={`Enable ${p.keyword}`}
+              aria-label={tx`Enable ${p.keyword}`}
             />
             <Input
               mono
@@ -69,7 +70,7 @@ export function TodoSettingsPage() {
               value={p.color}
               options={COLORS}
               onChange={(v) => patch(p.id, { color: v })}
-              aria-label={`${p.keyword} colour`}
+              aria-label={tx`${p.keyword} colour`}
             />
             <IconButton
               icon="trash"

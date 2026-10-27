@@ -8,6 +8,7 @@
 import { call, commands, isTauri, type DebugEvent, type DebugSessionId } from "@/platform/ipc";
 import { maybeEditorService, notifications } from "@/workbench/contributions";
 import { isLive, useDebug, type DebugSession } from "./state";
+import { tx } from "@/platform/i18n";
 
 const KEY = "debug.hotswap";
 /** `BUILD_COMPLETE` events of our own build are not worth a prompt. */
@@ -25,7 +26,7 @@ function plural(n: number, word: string) {
 export function hotSwapMessage(changed: number, errors: string[]): { level: "info" | "error"; title: string; body?: string } {
   if (errors.length) return { level: "error", title: "Hot Swap failed", body: errors.join("\n") };
   if (changed === 0) return { level: "info", title: "Loaded classes are up to date. Nothing to reload." };
-  return { level: "info", title: `${plural(changed, "class")} reloaded` };
+  return { level: "info", title: tx`${plural(changed, "class")} reloaded` };
 }
 
 /** Compiles (unless `build` is false) and reloads changed classes into every Java debug session. */

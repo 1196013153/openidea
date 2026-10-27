@@ -6,6 +6,7 @@
 //! * streaming results use a `Channel<T>` argument; cancellable requests take a
 //!   UI-allocated `RequestId` and are cancelled via `cancel_request`.
 
+pub mod agent;
 pub mod analysis;
 pub mod app;
 pub mod build;
@@ -70,6 +71,20 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         app::project_roots,
         app::cancel_request,
         app::log_frontend,
+        agent::agent_subscribe,
+        agent::agent_providers,
+        agent::agent_entries,
+        agent::agent_create,
+        agent::agent_prompt,
+        agent::agent_unqueue,
+        agent::agent_send_queued_now,
+        agent::agent_set_config,
+        agent::agent_cancel,
+        agent::agent_respond,
+        agent::agent_archive,
+        agent::agent_delete,
+        agent::agent_changes,
+        agent::agent_base_text,
         fs::fs_read_dir,
         bytes::fs_probe,
         bytes::fs_read_range,
@@ -242,6 +257,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         run::run_test_reports,
         build::build_model,
         build::build_sync,
+        build::maven_dependency_declaration,
+        build::maven_exclude_dependency,
         build::build_run,
         java::java_resolve_launch,
         java::java_debug_server,
@@ -326,6 +343,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         plugin::plugin_run_command,
         plugin::plugin_set_active_file,
         plugin::plugin_set_theme,
+        plugin::plugin_set_theme_frame,
         perf::app_metrics,
         perf::clear_caches,
         analysis::inspect_code,

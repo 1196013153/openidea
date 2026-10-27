@@ -15,6 +15,7 @@ import {
 } from "../live/store";
 import { BUILTIN_IDS } from "../live/builtins";
 import styles from "./Settings.module.css";
+import { tx } from "@/platform/i18n";
 
 export function groupTemplates(templates: readonly LiveTemplate[], filter: string): Array<[string, LiveTemplate[]]> {
   const q = filter.trim().toLowerCase();
@@ -106,7 +107,7 @@ export function LiveTemplatesPage() {
                     <Checkbox
                       checked={t.enabled !== false}
                       onChange={(v) => saveTemplate({ ...t, enabled: v })}
-                      aria-label={`Enable ${t.abbrev}`}
+                      aria-label={tx`Enable ${t.abbrev}`}
                     />
                     <span className={clsx(styles.itemLabel, isModifiedBuiltin(t.id) && styles.modified)}>
                       {t.abbrev}
@@ -243,7 +244,7 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
                     value={v.expression ?? ""}
                     placeholder="className()"
                     onChange={(e) => setVar(v.name, { expression: e.target.value || undefined })}
-                    aria-label={`${v.name} expression`}
+                    aria-label={tx`${v.name} expression`}
                   />
                 </td>
                 <td>
@@ -252,14 +253,14 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
                     value={v.defaultValue ?? ""}
                     placeholder='"value"'
                     onChange={(e) => setVar(v.name, { defaultValue: e.target.value || undefined })}
-                    aria-label={`${v.name} default value`}
+                    aria-label={tx`${v.name} default value`}
                   />
                 </td>
                 <td>
                   <Checkbox
                     checked={!!v.skipIfDefined}
                     onChange={(c) => setVar(v.name, { skipIfDefined: c })}
-                    aria-label={`Skip ${v.name} if defined`}
+                    aria-label={tx`Skip ${v.name} if defined`}
                   />
                 </td>
               </tr>

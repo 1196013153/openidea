@@ -158,24 +158,95 @@ export function useT(): Translate {
   return useCallback((key, params) => translateWith({ locale, messages }, key, params), [locale, messages]);
 }
 
-/** Translates English UI text through the source-text catalog; unknown text is returned as is. */
+/**
+ * Translates English UI text through the source-text catalog; unknown text is returned as is.
+ *
+ * As a tag it translates text built at runtime: `` tx`Remove data source '${name}'?` ``
+ * looks up `"Remove data source '{name}'?"` (whatever the placeholder names) and fills
+ * in the values, each translated as text when the catalog has it. The result is
+ * remembered, so the UI primitives, which pass their strings through `tx` as they
+ * render, translate it again after a locale change or once the catalog has loaded.
+ */
+export function tx(strings: TemplateStringsArray, ...values: unknown[]): string;
 export function tx(text: string): string;
 export function tx(text: string | undefined): string | undefined;
-export function tx(text: string | undefined): string | undefined {
-  return text && (useI18n.getState().texts[text] ?? text);
+export function tx(text: string | TemplateStringsArray | undefined, ...values: unknown[]): string | undefined {
+  return translateSource(useI18n.getState().texts, text, values);
 }
 
 /** `tx` bound to the current locale; components re-render when it changes. */
 export function useTx(): typeof tx {
   const texts = useI18n((s) => s.texts);
   return useMemo(() => {
+    function bound(strings: TemplateStringsArray, ...values: unknown[]): string;
     function bound(text: string): string;
     function bound(text: string | undefined): string | undefined;
-    function bound(text: string | undefined) {
-      return text && (texts[text] ?? text);
+    function bound(text: string | TemplateStringsArray | undefined, ...values: unknown[]) {
+      return translateSource(texts, text, values);
     }
     return bound;
   }, [texts]);
+}
+
+function translateSource(texts: Catalog, text: string | TemplateStringsArray | undefined, values: unknown[]) {
+  if (text === undefined || typeof text === "string") return text && (texts[text] ?? rebuild(texts, text) ?? text);
+  return buildText(texts, { strings: text, values });
+}
+
+/** Text built by a `tx` tag: the template's literal parts and the interpolated values. */
+type Built = { strings: readonly string[]; values: readonly unknown[] };
+
+const MAX_BUILT = 10_000;
+/** Text that `tx` tags returned (in English and translated), most recently built last. */
+const built = new Map<string, Built>();
+
+function remember(text: string, b: Built) {
+  built.delete(text);
+  built.set(text, b);
+  if (built.size > MAX_BUILT) built.delete(built.keys().next().value!);
+}
+
+type Shape = { names: string[]; translation: string };
+
+const shapeCache = new WeakMap<Catalog, Map<string, Shape>>();
+
+/** Source-text templates by their literal parts: `"Run '{name}'"` under `"Run '{}'"`. */
+function shapesOf(texts: Catalog): Map<string, Shape> {
+  let shapes = shapeCache.get(texts);
+  if (shapes) return shapes;
+  shapes = new Map();
+  for (const [source, translation] of Object.entries(texts)) {
+    const names = [...source.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!);
+    if (names.length) shapes.set(source.replace(/\{\w+\}/g, "{}"), { names, translation });
+  }
+  shapeCache.set(texts, shapes);
+  return shapes;
+}
+
+const interleave = (strings: readonly string[], parts: readonly string[]) =>
+  strings.reduce((out, s, i) => out + parts[i - 1] + s);
+
+function formatBuilt(texts: Catalog, { strings, values }: Built): string {
+  const parts = values.map((v) => (typeof v === "string" ? (texts[v] ?? rebuild(texts, v) ?? v) : String(v)));
+  const shape = shapesOf(texts).get(strings.join("{}"));
+  if (!shape) return interleave(strings, parts);
+  const params: MessageParams = {};
+  shape.names.forEach((name, i) => (params[name] = parts[i]));
+  return formatMessage(shape.translation, params);
+}
+
+function buildText(texts: Catalog, b: Built): string {
+  const english = interleave(b.strings, b.values.map(String));
+  remember(english, b);
+  const text = formatBuilt(texts, b);
+  if (text !== english) remember(text, b);
+  return text;
+}
+
+/** Text that a `tx` tag built, in the locale of `texts`; `undefined` for any other text. */
+function rebuild(texts: Catalog, text: string): string | undefined {
+  const b = built.get(text);
+  return b && formatBuilt(texts, b);
 }
 
 type Template = { pattern: RegExp; names: string[]; translation: string; literal: number };
@@ -208,7 +279,7 @@ function templatesOf(texts: Catalog): Template[] {
 }
 
 function translateText(texts: Catalog, text: string): string {
-  const exact = texts[text];
+  const exact = texts[text] ?? rebuild(texts, text);
   if (exact !== undefined) return exact;
   for (const { pattern, names, translation } of templatesOf(texts)) {
     const m = pattern.exec(text);

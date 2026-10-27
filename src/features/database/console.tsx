@@ -58,6 +58,7 @@ import {
   useDatabase,
 } from "./store";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 /** `templates` feature's language-data key for finer template contexts. */
 const TEMPLATE_CONTEXT_KEY = "openideaTemplateContexts";
@@ -287,7 +288,7 @@ function ConsoleBar({ path, view }: { path: string; view: EditorView }) {
       <Select
         aria-label="Row limit"
         value={String(maxRows)}
-        options={ROW_LIMITS.map((v) => ({ value: v, label: `${Number(v).toLocaleString("en")} rows` }))}
+        options={ROW_LIMITS.map((v) => ({ value: v, label: tx`${Number(v).toLocaleString("en")} rows` }))}
         onChange={(v) => useDatabase.setState({ maxRows: Number(v) })}
       />
       <span className={styles.toolbarSeparator} />

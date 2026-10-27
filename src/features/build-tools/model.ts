@@ -181,8 +181,10 @@ export function mavenChildren(node: BuildNode, model: MavenModel, configs: reado
       }));
     case "dependencies":
       return dependencyNodes(node.key, node.dependencies);
-    case "dependency":
-      return node.dependency.children.length ? dependencyNodes(node.key, node.dependency.children) : undefined;
+    case "dependency": {
+      const kids = dependencyNodes(node.key, node.dependency.children);
+      return kids.length ? kids : undefined;
+    }
     case "runConfigs":
       return node.configs.map((config) => ({ kind: "runConfig", key: `${node.key}:${config.id}`, config }));
     default:
@@ -190,12 +192,13 @@ export function mavenChildren(node: BuildNode, model: MavenModel, configs: reado
   }
 }
 
+/** The resolved dependencies; occurrences Maven omitted are shown by the Dependency Analyzer only. */
 function dependencyNodes(parent: string, deps: readonly MavenDependency[]): BuildNode[] {
-  return deps.map((dependency, i) => ({
-    kind: "dependency",
-    key: `${parent}/${dependency.groupId}:${dependency.artifactId}:${i}`,
-    dependency,
-  }));
+  return deps.flatMap((dependency, i) =>
+    dependency.omitted == null
+      ? [{ kind: "dependency" as const, key: `${parent}/${dependency.groupId}:${dependency.artifactId}:${i}`, dependency }]
+      : [],
+  );
 }
 
 // ---------------------------------------------------------------------------

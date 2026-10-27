@@ -8,6 +8,7 @@ import { executeAction } from "@/platform/actions";
 import { onIdeEvent } from "@/platform/ipc";
 import { notifications } from "@/workbench/contributions";
 import { installTool, refreshTools, SETTINGS_PAGE_ID, toolByName, useTools } from "./store";
+import { tx } from "@/platform/i18n";
 
 export const missingKey = (name: string) => `lsp-missing-${name}`;
 
@@ -26,7 +27,7 @@ export async function promptInstall(name: string): Promise<boolean> {
     group: "tools",
     level: "warning",
     title: `${tool.displayName} is not installed`,
-    body: `Code insight for ${langs} needs ${tool.command}. Install it via ${tool.installMethod}?`,
+    body: tx`Code insight for ${langs} needs ${tool.command}. Install it via ${tool.installMethod}?`,
     key,
     sticky: true,
     actions: [

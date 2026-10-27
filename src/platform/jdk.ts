@@ -6,6 +6,7 @@
 import { Channel } from "@tauri-apps/api/core";
 import { executeAction, getAction } from "./actions";
 import { call, commands, nextRequestId, type InstallEvent, type Sdk } from "./ipc";
+import { tx } from "@/platform/i18n";
 
 export const DOWNLOAD_JDK_ACTION = "java.downloadJdk";
 export const TEMURIN = "temurin";
@@ -38,7 +39,7 @@ export function downloadJdkActions(message: string | null | undefined): Array<{ 
   const need = requiredJdk(message);
   if (!need || !getAction(DOWNLOAD_JDK_ACTION)) return [];
   const args: DownloadJdkArgs = { version: need.version, languageServer: need.languageServer };
-  return [{ label: `Download JDK ${need.version}`, run: () => void executeAction(DOWNLOAD_JDK_ACTION, args) }];
+  return [{ label: tx`Download JDK ${need.version}`, run: () => void executeAction(DOWNLOAD_JDK_ACTION, args) }];
 }
 
 export function isDownloadJdkArgs(arg: unknown): arg is DownloadJdkArgs {

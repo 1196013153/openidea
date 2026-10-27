@@ -9,14 +9,11 @@
  */
 import tokensCss from "@/styles/tokens.css?raw";
 import type { TextAttributesOverride } from "./editorSettings";
+import { BUILTIN_THEMES, isBuiltinTheme, themeKind, type BuiltinThemeId } from "./themes";
 
-export type SchemeId = "light" | "dark" | "dark-hc";
+export type SchemeId = BuiltinThemeId;
 
-export const SCHEMES: ReadonlyArray<{ id: SchemeId; name: string }> = [
-  { id: "light", name: "Islands Light" },
-  { id: "dark", name: "Islands Dark" },
-  { id: "dark-hc", name: "High Contrast" },
-];
+export const SCHEMES: ReadonlyArray<{ id: SchemeId; name: string }> = BUILTIN_THEMES.map((t) => ({ id: t.id, name: t.label }));
 
 export interface AttributeDef {
   id: string;
@@ -29,6 +26,9 @@ export interface AttributeDef {
   effect?: string;
   /** Syntax token: bold / italic / background / effect come from `--syn-<token>-*`. */
   token?: string;
+  /** A semantic modifier whose only configurable attribute is italic. */
+  italicOnly?: boolean;
+  defaultItalic?: boolean;
 }
 
 const syn = (id: string, name: string, path: string[], token: string): AttributeDef => ({
@@ -81,6 +81,7 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
   syn("parameter", "Identifiers › Parameter", [LD], "param"),
   syn("constant", "Identifiers › Constant", [LD], "constant"),
   syn("field", "Identifiers › Instance field", [LD], "property"),
+  { id: "staticSymbol", name: "Identifiers › Static symbol", path: [LD], token: "static", italicOnly: true },
   syn("functionDeclaration", "Identifiers › Function declaration", [LD], "function"),
   syn("functionCall", "Identifiers › Function call", [LD], "function-call"),
   syn("predefined", "Identifiers › Predefined symbol", [LD], "builtin"),
@@ -98,6 +99,7 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
   ...[1, 2, 3].map((n) => syn(`bracket${n}`, `Rainbow brackets › Level ${n}`, [LD], `bracket-${n}`)),
 
   syn("pySelf", "Self parameter", ["Python"], "self"),
+  { id: "pyStaticSymbol", name: "Static symbol", path: ["Python"], token: "python-static", italicOnly: true, defaultItalic: false },
   syn("pyKeywordArg", "Keyword argument", ["Python"], "keyword-arg"),
   syn("pyDocstring", "Docstring", ["Python"], "docstring"),
   syn("pyBuiltin", "Built-in name", ["Python"], "predefined"),
@@ -162,7 +164,8 @@ function blocks(css: string): Array<{ selectors: string[]; decls: Vars }> {
 function themeSelectors(id: SchemeId): string[] {
   if (id === "light") return [':root[data-theme="light"]'];
   if (id === "dark-hc") return [':root[data-theme="dark-hc"]', ':root[data-theme="dark"][data-contrast="high"]'];
-  return [':root[data-theme="dark"]'];
+  if (id === "dark") return [':root[data-theme="dark"]'];
+  return [`:root[data-theme="${themeKind(id)}"]`, ":root[data-color-theme]", `:root[data-color-theme="${id}"]`];
 }
 
 let source: string = tokensCss;
@@ -200,13 +203,14 @@ export function schemeTokens(id: SchemeId, css: string = source): Vars {
 
 /** The scheme the editor shows for `setting` under the current theme. */
 export function effectiveScheme(setting: string | undefined, root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null): SchemeId {
-  if (setting === "light" || setting === "dark" || setting === "dark-hc") return setting;
+  if (isBuiltinTheme(setting)) return setting;
   return themeScheme(root);
 }
 
 /** Scheme belonging to the active IDE theme (`data-theme` / `data-contrast`). */
 export function themeScheme(root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null): SchemeId {
   if (!root) return "light";
+  if (isBuiltinTheme(root.dataset.colorTheme)) return root.dataset.colorTheme;
   if (root.dataset.theme === "light") return "light";
   return root.dataset.contrast === "high" || root.dataset.theme === "dark-hc" ? "dark-hc" : "dark";
 }
@@ -262,7 +266,10 @@ const SAFE = /^[^;{}<>]*$/;
 export function schemeCss(setting: string | undefined, overrides: Record<string, Record<string, TextAttributesOverride>> | undefined, root?: HTMLElement | null): string {
   const id = effectiveScheme(setting, root);
   const decls: Array<[string, string]> = [];
-  if (id !== themeScheme(root)) {
+  // A plugin theme brings its own editor colours: an explicit scheme replaces them even on the same base.
+  const el = root === undefined ? (typeof document !== "undefined" ? document.documentElement : null) : root;
+  const pluginTheme = !!el?.dataset.pluginTheme && id === setting;
+  if (id !== themeScheme(root) || pluginTheme) {
     const tokens = schemeTokens(id);
     for (const [k, v] of tokens) if (SCHEME_VARS.has(k) || k.startsWith("--syn-")) decls.push([k, v]);
     // The editor surface follows the scheme, not the island colour of the UI theme.

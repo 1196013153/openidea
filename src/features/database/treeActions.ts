@@ -37,6 +37,7 @@ import {
   removeSource,
 } from "./store";
 import { tableInput } from "./tableInput";
+import { tx } from "@/platform/i18n";
 
 /** Context key: the Database tree has focus. */
 export const DB_VIEW_FOCUS = "databaseViewFocus";
@@ -57,11 +58,12 @@ function sourceOf(n: DbNode | null): DataSource | undefined {
   return n ? sourceById(nodeTarget(n)) : undefined;
 }
 
-async function copy(text: string, what: string) {
+/** Copies `text`; `failure` is the notification title when the clipboard refuses it. */
+async function copy(text: string, failure: string) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    notifications().notify({ level: "error", title: `Cannot copy the ${what}` });
+    notifications().notify({ level: "error", title: failure });
   }
 }
 
@@ -373,10 +375,10 @@ export function registerDatabaseTreeActions(): () => void {
         const n = nodeFrom(arg);
         if (!n) return;
         const id = nodeTarget(n);
-        if (n.kind === "source") return void copy(n.source.name ?? "", "name");
-        if (n.kind === "database") return void copy(n.name, "name");
+        if (n.kind === "source") return void copy(n.source.name ?? "", tx("Cannot copy the name"));
+        if (n.kind === "database") return void copy(n.name, tx("Cannot copy the name"));
         const o = objectOf(n);
-        if (id && o) void copy(reference(driverOf(id), o), "reference");
+        if (id && o) void copy(reference(driverOf(id), o), tx("Cannot copy the reference"));
       },
     }),
     tree({
@@ -397,7 +399,7 @@ export function registerDatabaseTreeActions(): () => void {
       run: async ({ arg }) => {
         const n = nodeFrom(arg);
         const ddl = n && (await ddlOf(n));
-        if (ddl) await copy(ddl.text, "DDL");
+        if (ddl) await copy(ddl.text, tx("Cannot copy the DDL"));
       },
     }),
     tree({

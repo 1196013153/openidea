@@ -21,6 +21,7 @@ import { spellingIntentions } from "./spelling";
 import { inspectionsAt } from "./diagnostics";
 import { SPELLING_INSPECTION } from "@/platform/inspections";
 import { editInspectionSettings, intentionControls } from "@/platform/inspectionControls";
+import { tx } from "@/platform/i18n";
 
 const isQuickFix = (a: CodeAction) => !!a.kind && (a.kind === "quickfix" || a.kind.startsWith("quickfix."));
 
@@ -195,7 +196,7 @@ export function withInspectionControls(view: EditorView, items: ListPopupItem[])
     ...items,
     ...inspections.map((inspection) => ({
       id: `inspection:${inspection.id}`,
-      label: `Inspection '${inspection.name}' options`,
+      label: tx`Inspection '${inspection.name}' options`,
       icon: "settings",
       run: () => editInspectionSettings(inspection.id),
       submenu: intentionControls(inspection),

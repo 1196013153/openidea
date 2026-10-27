@@ -18,6 +18,7 @@ import { executeAction } from "@/platform/actions";
 import { effectiveBindings, strokeOf } from "@/platform/keymap";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { terminalRuntime } from "./loader";
+import { isImeKey } from "@/platform/ime";
 
 export type TerminalKeyResult =
   | { kind: "send"; data: string }
@@ -128,7 +129,7 @@ export function isAllowedIdeShortcut(stroke: string, bindings: ReadonlyArray<rea
 export function installTerminalKeys(target: Window = window): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
     const rt = terminalRuntime();
-    if (e.isComposing || !rt) return;
+    if (isImeKey(e) || !rt) return;
     // The terminal find bar: Escape closes it (instead of "focus editor"), ⌘F reselects the query.
     if ((e.target as Element | null)?.closest?.("[data-terminal-find]")) {
       const plain = !e.ctrlKey && !e.altKey && !e.shiftKey;

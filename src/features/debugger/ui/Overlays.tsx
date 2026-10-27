@@ -33,6 +33,8 @@ import { closeBreakpointPopover, useOverlays } from "./popoverStore";
 import { VariablesView, type VarRoot } from "./VariablesView";
 import { pushHistory, readHistory } from "./expressionHistory";
 import styles from "./Overlays.module.css";
+import { isImeKey } from "@/platform/ime";
+import { tx } from "@/platform/i18n";
 
 export function DebuggerOverlays() {
   return (
@@ -446,7 +448,7 @@ function BreakpointsDialog() {
                     <Checkbox
                       checked={r.bp.enabled}
                       onChange={(enabled) => updateSpecial(r.bp.id, { enabled })}
-                      aria-label={`Enable ${specialTitle(r.bp)}`}
+                      aria-label={tx`Enable ${specialTitle(r.bp)}`}
                     />
                     <Icon name={r.bp.kind === "method" ? "breakpoint-method" : "breakpoint-field"} size={14} />
                     <span className={styles.bpName}>{specialTitle(r.bp)}</span>
@@ -466,7 +468,7 @@ function BreakpointsDialog() {
                   <Checkbox
                     checked={r.bp.enabled}
                     onChange={(enabled) => updateBreakpoint(r.path, r.bp.id, { enabled })}
-                    aria-label={`Enable breakpoint at ${basename(r.path)}:${r.bp.line + 1}`}
+                    aria-label={tx`Enable breakpoint at ${basename(r.path)}:${r.bp.line + 1}`}
                   />
                   <span
                     className={styles.bpDot}
@@ -710,7 +712,7 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
     });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
+    if (isImeKey(e.nativeEvent)) return;
     const el = e.currentTarget;
     if (e.key === "Enter" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
