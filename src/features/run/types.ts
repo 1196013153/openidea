@@ -11,6 +11,7 @@ import {
   type RunConfigTypeContribution,
 } from "@/workbench/contributions";
 import { formatArgs, parseArgs, uid, uniqueName } from "./configs";
+import { tx } from "@/platform/i18n";
 
 export const COMPOUND = "compound";
 
@@ -203,21 +204,21 @@ function buildToolType(
   id: string,
   label: string,
   icon: string,
-  tasksLabel: string,
+  tasks: { label: string; description: string },
   wrapper: { unix: string; windows: string; plain: string; label: string; byDefault: boolean },
 ): RunConfigTypeContribution {
   return {
     id,
     label,
     icon,
-    description: `Run ${label} ${tasksLabel.toLowerCase()}`,
+    description: tasks.description,
     defaults: wrapper.byDefault ? { wrapper: "true" } : {},
     ownsWorkingDirectory: true,
     fields: [
-      { key: "projectDir", label: `${label} project`, mono: true, placeholder: "Project root" },
+      { key: "projectDir", label: tx`${label} project`, mono: true, placeholder: "Project root" },
       {
         key: "tasks",
-        label: tasksLabel,
+        label: tasks.label,
         mono: true,
         required: true,
         suggestions: (configs) => argsOf(configs, id, 0),
@@ -244,7 +245,7 @@ function buildToolType(
   };
 }
 
-const gradle = buildToolType("gradle", "Gradle", "file-gradle", "Tasks", {
+const gradle = buildToolType("gradle", "Gradle", "file-gradle", { label: "Tasks", description: "Run Gradle tasks" }, {
   unix: "gradlew",
   windows: "gradlew.bat",
   plain: "gradle",
@@ -252,7 +253,7 @@ const gradle = buildToolType("gradle", "Gradle", "file-gradle", "Tasks", {
   byDefault: true,
 });
 
-const maven = buildToolType("maven", "Maven", "file-maven", "Goals", {
+const maven = buildToolType("maven", "Maven", "file-maven", { label: "Goals", description: "Run Maven goals" }, {
   unix: "mvnw",
   windows: "mvnw.cmd",
   plain: "mvn",

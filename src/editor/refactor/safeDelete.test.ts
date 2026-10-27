@@ -264,7 +264,7 @@ describe("safeDelete in the editor", () => {
     expect((await run("delete")).state.doc.toString()).toBe("fn unused() {\n    unused();\n}\n\nfn main() {}\n");
   });
 
-  it("confirms first ('Delete function …?') and searches nothing when cancelled", async () => {
+  it("confirms first ('Delete Function …?') and searches nothing when cancelled", async () => {
     const v = editor(text, "unused() {");
     outline = ok([item(text, "unused", "fn unused() {\n    unused();\n}")]);
     confirmAnswer = null;
@@ -272,7 +272,7 @@ describe("safeDelete in the editor", () => {
     expect(confirmChecked).toHaveBeenCalledTimes(1);
     const opts = confirmChecked.mock.calls[0]![0];
     expect(opts.title).toBe("Safe Delete");
-    expect(opts.message).toBe("Delete function 'unused'?");
+    expect(opts.message).toBe("Delete Function 'unused'?");
     expect(opts.checkbox).toBe("Search in comments and strings");
     expect(lspReferences).not.toHaveBeenCalled();
     expect(v.state.doc.toString()).toBe(text);

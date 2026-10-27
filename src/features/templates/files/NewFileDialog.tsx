@@ -9,6 +9,7 @@ import { createFromTemplate, packageFor } from "./create";
 import { planFile, withKind, type FileTemplate } from "./model";
 import { useFileTemplates } from "./store";
 import styles from "./NewFileDialog.module.css";
+import { tx } from "@/platform/i18n";
 
 interface Request {
   directory: string;
@@ -185,17 +186,17 @@ function NameStep({
     <Dialog
       open
       onClose={close}
-      title={`New ${template.name}`}
+      title={tx`New ${template.name}`}
       width={380}
       position="top"
-      aria-label={`New ${template.name}`}
+      aria-label={tx`New ${template.name}`}
     >
       <div className={styles.form}>
         <Input
           data-autofocus
           value={name}
           invalid={!!error}
-          placeholder={effective.extension ? `Name (.${effective.extension})` : "File name with extension"}
+          placeholder={effective.extension ? tx`Name (.${effective.extension})` : "File name with extension"}
           aria-label="Name"
           onChange={(e) => {
             setName(e.target.value);

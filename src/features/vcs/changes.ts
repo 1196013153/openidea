@@ -1,6 +1,7 @@
 /** Commit tool window model: change groups, directory tree, inclusion (pure). */
 import type { ChangelistState, FileStatus } from "@/bindings";
 import { baseName, dirName, effectiveKind, relTo, repoLabel, rootOf, stripSlash, type EffectiveKind } from "./model";
+import { tx } from "@/platform/i18n";
 
 export type GroupId = "conflicts" | "changes" | "unversioned";
 
@@ -90,7 +91,13 @@ function fileNode(fs: FileStatus, root: string, group: GroupId, flat: boolean, s
     files: [fs],
     kind,
     path,
-    detail: fs.renamedFrom ? `${flat && dir ? `${dir} · ` : ""}from ${fs.renamedFrom}` : flat ? dir : undefined,
+    detail: !fs.renamedFrom
+      ? flat
+        ? dir
+        : undefined
+      : flat && dir
+        ? tx`${dir} · from ${fs.renamedFrom}`
+        : tx`from ${fs.renamedFrom}`,
   };
 }
 

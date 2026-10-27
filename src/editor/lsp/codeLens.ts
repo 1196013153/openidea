@@ -16,6 +16,7 @@ import { posToOffset } from "./positions";
 import { onLspRefresh, serverBackoff } from "./availability";
 import { editorPrefs } from "@/platform/editorSettings";
 import { authorLabel, authorSummary, authorTooltip, blameFor, onBlameInvalidated } from "./authorLens";
+import { tx } from "@/platform/i18n";
 
 const LENS_KINDS = new Set<SymbolKind>([
   "class",
@@ -190,7 +191,7 @@ class UsagesLensPlugin {
         lenses.push({
           pos: offset,
           title: usagesLabel(n),
-          tooltip: n ? `Show usages of ${t.name}` : undefined,
+          tooltip: n ? tx`Show usages of ${t.name}` : undefined,
           order: 10,
           run: n ? (v) => openUsages(v, Math.min(offset, v.state.doc.length)) : undefined,
         });

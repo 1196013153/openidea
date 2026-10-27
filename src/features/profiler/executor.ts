@@ -4,6 +4,7 @@ import { call, commands, isTauri, type ProfilerInstall, type RunConfig } from "@
 import { notifications, toolWindowService, type ExecutorLaunch, type RunExecutorContribution } from "@/workbench/contributions";
 import { profilerSupports } from "./model";
 import { addSnapshot } from "./store";
+import { tx } from "@/platform/i18n";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -35,7 +36,7 @@ function notifyMissing(tool: string, message: string, install: ProfilerInstall |
     level: "warning",
     key: `profiler-missing-${tool}`,
     title: `${tool} is not installed`,
-    body: line ? `${message} Install it with: ${line}` : homepage ? `${message} ${homepage}` : message,
+    body: line ? tx`${message} Install it with: ${line}` : homepage ? `${message} ${homepage}` : message,
     sticky: true,
     actions,
   });

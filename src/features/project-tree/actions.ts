@@ -42,6 +42,7 @@ import {
   setViewOption,
   useProjectTree,
 } from "./store";
+import { tx } from "@/platform/i18n";
 
 const FOCUS = "projectViewFocus";
 const OPEN = "projectOpen";
@@ -150,7 +151,7 @@ export function registerProjectActions(): () => void {
 
   const toggles: Action[] = OPTION_LABELS.map(([key, label]) => ({
     id: `project.option.${key}`,
-    title: `Project View: ${label}`,
+    title: tx`Project View: ${label}`,
     category: "View",
     keywords: ["project", "tree", "toggle"],
     run: () => setViewOption(key, !useProjectTree.getState().options[key]),
@@ -158,7 +159,7 @@ export function registerProjectActions(): () => void {
 
   const modes: Action[] = VIEW_MODES.map(([mode, label]) => ({
     id: `project.viewMode.${mode}`,
-    title: `Project View: Show ${label}`,
+    title: tx`Project View: Show ${label}`,
     category: "View",
     when: OPEN,
     keywords: ["project", "pane", "scope", "view as"],
@@ -334,7 +335,7 @@ export function registerProjectActions(): () => void {
     copyPath("name", "project.copyFileName", "Copy File Name"),
     {
       id: "project.revealInFinder",
-      title: `Reveal in ${revealLabel()}`,
+      title: tx`Reveal in ${revealLabel()}`,
       category: "Project View",
       icon: "external-link",
       when: OPEN,

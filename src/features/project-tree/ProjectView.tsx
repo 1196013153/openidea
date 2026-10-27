@@ -21,7 +21,7 @@ import clsx from "clsx";
 import { useEditorRegistry } from "@/editor/api";
 import { executeAction } from "@/platform/actions";
 import { setContext } from "@/platform/context";
-import { useTxTemplate } from "@/platform/i18n";
+import { tx, useTxTemplate } from "@/platform/i18n";
 import { isTauri } from "@/platform/ipc";
 import type { RootFolder } from "@/platform/languageSettings";
 import { useEffectiveRoots } from "@/platform/projectRoots";
@@ -442,7 +442,7 @@ export function ProjectView() {
       setDropTarget(valid ? target.key : null);
       setDrag({
         paths,
-        label: paths.length === 1 ? nameOf(paths[0]!) : `${paths.length} items`,
+        label: paths.length === 1 ? nameOf(paths[0]!) : tx`${paths.length} items`,
         x: ev.clientX,
         y: ev.clientY,
         copy: ev.altKey,

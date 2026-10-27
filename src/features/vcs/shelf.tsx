@@ -19,6 +19,7 @@ import { errorMessage, logConsole, runOp, saveAll } from "./ops";
 import { conflictedFiles, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
 import viewStyles from "./CommitView.module.css";
+import { tx } from "@/platform/i18n";
 
 interface ShelfState {
   shelves: ShelvedChangeList[];
@@ -89,7 +90,7 @@ export function FileChecklist({
         return (
           <div key={f.path} className={styles.fileRow}>
             <Checkbox
-              aria-label={`Include ${baseName(f.path)}`}
+              aria-label={tx`Include ${baseName(f.path)}`}
               checked={selected.has(f.path)}
               onChange={(v) => {
                 const n = new Set(selected);
@@ -232,7 +233,7 @@ function UnshelveDialog({ entry, onClose }: { entry: ShelvedChangeList; onClose:
           onChange={setTarget}
           options={lists.lists.map((l) => ({
             value: l.id,
-            label: l.id === lists.active ? `${l.name} (active)` : l.name,
+            label: l.id === lists.active ? tx`${l.name} (active)` : l.name,
           }))}
         />
         <Checkbox checked={remove} onChange={setRemove} label="Remove successfully applied files from the shelf" />
@@ -244,7 +245,7 @@ function UnshelveDialog({ entry, onClose }: { entry: ShelvedChangeList; onClose:
 export async function deleteShelf(entry: ShelvedChangeList) {
   const ok = await confirmDialog({
     title: "Delete Shelved Changes",
-    message: `Delete “${entry.name}” from the shelf? This cannot be undone.`,
+    message: tx`Delete “${entry.name}” from the shelf? This cannot be undone.`,
     okLabel: "Delete",
     danger: true,
   });

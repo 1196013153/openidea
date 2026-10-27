@@ -11,6 +11,7 @@ import { FONT_WEIGHTS, fontWeightOf, fontWeightVars } from "@/platform/editorSet
 import { LIMITS } from "../../model/schema";
 import { editorPage } from "./kit";
 import styles from "./Editor.module.css";
+import { tx } from "@/platform/i18n";
 
 const CANDIDATES = [
   "JetBrains Mono",
@@ -156,7 +157,7 @@ function WeightRow({ label, value, onChange, defaultWeight, hint }: { label: str
         aria-label={label}
       />
       {custom && (
-        <NumberInput value={weight} onChange={(n) => onChange(fontWeightOf(n, defaultWeight))} min={100} max={900} step={50} integer aria-label={`${label} custom value`} />
+        <NumberInput value={weight} onChange={(n) => onChange(fontWeightOf(n, defaultWeight))} min={100} max={900} step={50} integer aria-label={tx`${label} custom value`} />
       )}
     </Row>
   );

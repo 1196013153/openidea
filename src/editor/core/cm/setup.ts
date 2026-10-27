@@ -51,6 +51,7 @@ import { gutterLineDrag } from "./gutterDrag";
 import { overwriteField } from "./overwrite";
 import { clipboardHistoryExtension } from "../clipboardHistory";
 import type { LanguageInfo } from "../backend";
+import { tx } from "@/platform/i18n";
 
 export const compartments = {
   language: new Compartment(),
@@ -309,7 +310,7 @@ export function baseExtensions(o: SetupOptions): Extension {
     findExtension(),
     overviewLane,
     codeLensExtension,
-    EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": `Editor for ${o.ctx.path}` }),
+    EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": tx`Editor for ${o.ctx.path}` }),
     tabKeymap,
     keymap.of([...closeBracketsKeymap, ...editorBaseKeymap, indentWithTab]),
     compartments.language.of(o.language ?? []),

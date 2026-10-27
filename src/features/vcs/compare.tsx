@@ -10,6 +10,7 @@ import { maybeEditorService, notifications } from "@/workbench/contributions";
 import { focusedDiffNavigator } from "./diffNavigator";
 import { openDiff, type DiffData } from "./diffInput";
 import { baseName } from "./model";
+import { tx } from "@/platform/i18n";
 
 function argPath(arg: unknown): string | undefined {
   if (typeof arg === "string") return arg;
@@ -44,7 +45,7 @@ export function compareFilesData(leftPath: string, rightPath: string): DiffData 
 export function clipboardDiffData(path: string, clipboard: string, selection: string | null): DiffData {
   return {
     path,
-    title: `Clipboard ↔ ${baseName(path)}${selection ? " (selection)" : ""}`,
+    title: selection ? tx`Clipboard ↔ ${baseName(path)} (selection)` : tx`Clipboard ↔ ${baseName(path)}`,
     left: { type: "text", text: clipboard, label: "Clipboard" },
     right: selection ? { type: "text", text: selection, label: "Selection" } : { type: "worktree", label: displayPath(path) },
   };

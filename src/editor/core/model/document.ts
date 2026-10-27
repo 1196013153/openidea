@@ -44,6 +44,7 @@ import {
 } from "../cm/setup";
 import { setMethodLines, softWrapActive } from "../cm/prefs";
 import type { EditorSlot } from "./slot";
+import { tx } from "@/platform/i18n";
 
 export type Banner = "binary" | "tooLarge" | "readOnly" | "library" | null;
 
@@ -237,7 +238,7 @@ export class DocModel {
           manager.notify({
             level: "warning",
             title: "Editor resynchronised",
-            body: `Some unsaved edits to ${this.path} could not be applied and were replaced by the file's current content.`,
+            body: tx`Some unsaved edits to ${this.path} could not be applied and were replaced by the file's current content.`,
           }),
         onError: (e) => console.warn(`document ${this.path}: sync error`, e),
       },

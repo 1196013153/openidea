@@ -43,6 +43,7 @@ import {
   openSmartStepChooser,
   useOverlays,
 } from "./ui/popoverStore";
+import { tx } from "@/platform/i18n";
 
 function isRunConfig(arg: unknown): arg is RunConfig {
   return !!arg && typeof arg === "object" && "command" in arg && "args" in arg && "debugAdapter" in arg;
@@ -159,7 +160,7 @@ async function listenForJvm(name: string, host: string, port: number): Promise<n
     key,
     sticky: true,
     title: `'${name}': listening for the remote JVM on port ${port}`,
-    body: `Start the remote JVM with -agentlib:jdwp=transport=dt_socket,server=n,address=${host}:${port},suspend=y`,
+    body: tx`Start the remote JVM with -agentlib:jdwp=transport=dt_socket,server=n,address=${host}:${port},suspend=y`,
     actions: [{ label: "Cancel", run: () => void commands.cancelRequest(request) }],
   });
   try {

@@ -136,7 +136,7 @@ function FilesTab() {
               <Checkbox
                 checked={t.enabled !== false}
                 onChange={(v) => saveFileTemplate({ ...t, enabled: v })}
-                aria-label={`Enable ${t.name}`}
+                aria-label={tx`Enable ${t.name}`}
               />
               <Icon name={t.icon} size={14} />
               <span className={clsx(isModifiedFileTemplate(t.id) && styles.modified)}>{t.name}</span>

@@ -7,6 +7,7 @@ import { call, commands, isTauri, type InstallCommand, type RunConfig } from "@/
 import { notifications, toolWindowService, type ExecutorLaunch, type RunExecutorContribution } from "@/workbench/contributions";
 import { coverageSupports, formatPercent } from "./model";
 import { addSuite } from "./store";
+import { tx } from "@/platform/i18n";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -47,7 +48,7 @@ export function notifyMissingTool(
     level: "warning",
     key: `${group}-missing-${tool}`,
     title: `${tool} is not installed`,
-    body: line ? `${missing.message} Install it with: ${line}` : missing.homepage ? `${missing.message} ${missing.homepage}` : missing.message,
+    body: line ? tx`${missing.message} Install it with: ${line}` : missing.homepage ? `${missing.message} ${missing.homepage}` : missing.message,
     sticky: true,
     actions,
   });

@@ -12,6 +12,7 @@ import { findConflicts, resolveBindings, type Conflict, type KeymapDraft } from 
 import { groupPath } from "./groups";
 import { StrokeRecorder } from "./StrokeRecorder";
 import styles from "./Keymap.module.css";
+import { tx } from "@/platform/i18n";
 
 export interface RecordShortcutDialogProps {
   action: Pick<Action, "id" | "title" | "category" | "when">;
@@ -61,7 +62,7 @@ export function RecordShortcutDialog({ action, actions, draft, onCancel, onSubmi
     <Dialog
       open
       onClose={onCancel}
-      title={`Keyboard Shortcut: ${action.title}`}
+      title={tx`Keyboard Shortcut: ${action.title}`}
       width={440}
       buttons={[
         { label: "OK", role: "default", disabled: !binding || already, onClick: () => void ok() },

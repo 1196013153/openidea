@@ -19,6 +19,7 @@ import {
 import { askRemoveRecent, ProjectBadge, recentMenu } from "./RecentList";
 import { filterRecent, openRecent, useRecent, type RecentMatch } from "./recent";
 import styles from "./Welcome.module.css";
+import { tx } from "@/platform/i18n";
 
 function HeaderButtons() {
   const canClone = useActions((s) => s.actions.has("vcs.clone"));
@@ -29,7 +30,7 @@ function HeaderButtons() {
       <Button
         disabled={opening}
         onClick={() => void executeAction("file.openProject")}
-        title={openKey ? `Open (${openKey})` : "Open"}
+        title={openKey ? tx`Open (${openKey})` : "Open"}
       >
         <T>Open</T>
       </Button>

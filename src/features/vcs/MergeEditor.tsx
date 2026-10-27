@@ -8,7 +8,7 @@ import { keymap } from "@codemirror/view";
 import { unifiedMergeView } from "@codemirror/merge";
 import type { MergeSides } from "@/bindings";
 import { embeddedEditorExtensions } from "@/editor/api";
-import { useTxTemplate } from "@/platform/i18n";
+import { tx, useTxTemplate } from "@/platform/i18n";
 import { call, commands } from "@/platform/ipc";
 import { Button, IconButton, Spinner, T } from "@/ui";
 import { editorService, type EditorInput } from "@/workbench/contributions";
@@ -258,7 +258,10 @@ export function MergeEditor({ input }: { input: EditorInput }) {
       remaining > 0 &&
       !(await confirmDialog({
         title: "Unresolved Conflicts",
-        message: `${remaining} conflict${remaining === 1 ? " is" : "s are"} unresolved and keep the base text. Save and mark the file as resolved anyway?`,
+        message:
+          remaining === 1
+            ? tx`${remaining} conflict is unresolved and keeps the base text. Save and mark the file as resolved anyway?`
+            : tx`${remaining} conflicts are unresolved and keep the base text. Save and mark the file as resolved anyway?`,
         okLabel: "Mark Resolved",
       }))
     )

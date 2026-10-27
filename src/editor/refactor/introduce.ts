@@ -35,6 +35,7 @@ import {
   type DeclResult,
   type Declaration,
 } from "./templates";
+import { tx } from "@/platform/i18n";
 
 /** Why the language server could not do it (see `withFallback`). */
 export type FallbackReason = "notReady" | "error" | "empty";
@@ -594,7 +595,7 @@ async function chooseOccurrences(p: Prepared, self: Occurrence, others: Occurren
       },
       {
         id: "all",
-        label: `Replace all ${others.length + 1} occurrences`,
+        label: tx`Replace all ${others.length + 1} occurrences`,
         onActive: () => highlightRanges(view, [self, ...others]),
         run: () => apply(true),
       },
@@ -663,7 +664,7 @@ function applyAndName(p: Prepared, plan: Plan, names: string[]) {
     initial: name,
     suggestions: names,
     note: NOTES[p.reason],
-    hint: `↵ Apply · Esc Keep '${name}'`,
+    hint: tx`↵ Apply · Esc Keep '${name}'`,
     onSubmit: (chosen) => void rename(p, chosen, name, { original, applied, plan, ranges }),
   });
 }

@@ -6,6 +6,7 @@ import { openTarget } from "./navigate";
 import { nodeStatus, type TestNode, type TestResults, type TestStatus } from "./testing";
 import { parseComparison } from "./testing/comparison";
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 /** Test tree filters, kept across runs and restarts (IDEA hides passed tests by default). */
 const FILTERS_KEY = "openidea.run.testFilters";
@@ -39,7 +40,7 @@ export function showTestDiff(node: TestNode): boolean {
   if (!c) return false;
   void executeAction("diff.compareTexts", {
     path: `${node.path.join("/")}.txt`,
-    title: `Comparison Failure: ${node.name}`,
+    title: tx`Comparison Failure: ${node.name}`,
     left: { text: c.expected, label: c.labels?.expected ?? "Expected" },
     right: { text: c.actual, label: c.labels?.actual ?? "Actual" },
   });
@@ -136,8 +137,8 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
     const items: MenuItem[] = [];
     if (onRunTests) {
       items.push(
-        { label: `Run '${name}'`, verbatim: true, icon: "run", run: () => onRunTests(ids, false) },
-        { label: `Debug '${name}'`, verbatim: true, icon: "debug", run: () => onRunTests(ids, true) },
+        { label: tx`Run '${name}'`, verbatim: true, icon: "run", run: () => onRunTests(ids, false) },
+        { label: tx`Debug '${name}'`, verbatim: true, icon: "debug", run: () => onRunTests(ids, true) },
         { kind: "separator" },
       );
     }

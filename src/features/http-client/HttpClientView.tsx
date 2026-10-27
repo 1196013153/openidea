@@ -10,6 +10,7 @@ import { EmptyState, IconButton, SplitGroup, SplitHandle, SplitPanel, Spinner, T
 import { bodyKind, formatMs, formatSize, prettyBody } from "./format";
 import { cancelRunning, clearHistory, refreshHistory, selectEntry, useHttpClient } from "./store";
 import styles from "./HttpClient.module.css";
+import { tx } from "@/platform/i18n";
 
 function statusTone(status: number | null | undefined): string {
   if (status == null) return styles.statusError ?? "";
@@ -73,7 +74,7 @@ function ExchangeView({ ex }: { ex: HttpExchange }) {
         onSelect={(id) => setTab(id as Tab)}
         items={[
           { id: "body", label: "Response" },
-          { id: "headers", label: `Headers${r ? ` (${r.headers.length})` : ""}` },
+          { id: "headers", label: r ? tx`Headers (${r.headers.length})` : "Headers" },
           { id: "request", label: "Request" },
         ]}
         trailing={

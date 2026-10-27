@@ -54,6 +54,7 @@ import {
 } from "./cm/structural";
 import type { DocModel } from "./model/document";
 import { structure } from "@/editor/structure";
+import { tx } from "@/platform/i18n";
 
 /** Text-editing actions: the editor has focus, or a popup (Find Action) runs them on it. */
 export const TEXT_WHEN = "editorTextFocus || textEditorActive && popupOpen";
@@ -293,7 +294,7 @@ function copyReference(view: EditorView, slot: EditorSlot) {
   });
   recordClipboard(reference);
   void navigator.clipboard?.writeText(reference).catch(() => {});
-  void executeAction("editor.showHint", { text: `Copied reference: ${reference}` });
+  void executeAction("editor.showHint", { text: tx`Copied reference: ${reference}` });
 }
 
 /** ⌃G; when nothing more is found, a hint first and the search from the top on the next press (IDEA). */

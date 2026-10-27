@@ -37,6 +37,7 @@ import {
   startEditing,
   useProjectTree,
 } from "./store";
+import { tx } from "@/platform/i18n";
 
 /** Nodes that may be renamed, moved or deleted (not roots, groups or library sources). */
 const mutable = (n: ProjectNode) => !n.root && !n.placeholder && !n.readOnly;
@@ -367,7 +368,7 @@ export async function safeToDelete(files: string[]): Promise<boolean> {
   if (user.choice) return user.choice === "skip";
   if (result.status !== "ok" || !result.usages.length) return true;
   const name = files.length === 1 ? nameOf(files[0]!) : `${files.length} files`;
-  const subject = files.length === 1 ? `File '${name}'` : `The ${name}`;
+  const subject = files.length === 1 ? tx`File '${name}'` : tx`The ${files.length} files`;
   const answer = await askUsagesDetected(subject, result.usages, files.length > 1);
   if (answer === "view") viewUsages(name, result.usages);
   return answer === "delete";

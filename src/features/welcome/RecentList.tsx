@@ -16,12 +16,13 @@ import { confirm } from "@/workbench/messages";
 import { projectColorVars, projectInitials } from "@/workbench/projectColor";
 import { filterRecent, openRecent, removeRecent, useRecent, type RecentMatch } from "./recent";
 import styles from "./Welcome.module.css";
+import { tx } from "@/platform/i18n";
 
 /** IDEA's "Remove Recent Project" confirmation, then removes it from the list. */
 export async function askRemoveRecent(project: RecentProject) {
   const ok = await confirm({
     title: "Remove Recent Project",
-    message: `Remove '${project.name}' from the list of recent projects?`,
+    message: tx`Remove '${project.name}' from the list of recent projects?`,
     ok: "Remove",
   });
   if (ok) await removeRecent(project.path);

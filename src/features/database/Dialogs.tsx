@@ -7,6 +7,7 @@ import { SourceDialog } from "./SourceDialog";
 import { closeDialog, useDatabase } from "./store";
 import styles from "./Database.module.css";
 import { isImeKey } from "@/platform/ime";
+import { tx } from "@/platform/i18n";
 
 const ObjectDialogs = lazyComponent(() => import("./ObjectDialogs").then((m) => m.ObjectDialogs));
 const ExportDialog = lazyComponent(() => import("./ExportDialog").then((m) => m.ExportDialog));
@@ -28,7 +29,7 @@ function PasswordDialog({ source, resolve }: { source: DataSource; resolve: (ok:
     <Dialog
       open
       onClose={() => done(false)}
-      title={`Connect to ${source.name}`}
+      title={tx`Connect to ${source.name}`}
       width={400}
       buttons={[
         { label: "Cancel", role: "cancel" },
@@ -82,7 +83,7 @@ function SshSecretDialog({
     <Dialog
       open
       onClose={() => done(false)}
-      title={`SSH: ${sshLabel(source) || source.name}`}
+      title={tx`SSH: ${sshLabel(source) || source.name}`}
       width={440}
       buttons={[
         { label: "Cancel", role: "cancel" },

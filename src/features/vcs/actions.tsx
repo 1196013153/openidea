@@ -37,6 +37,7 @@ import {
   showWorktrees,
 } from "./gitMenuDialogs";
 import { refreshNow, repoName } from "./store";
+import { tx } from "@/platform/i18n";
 
 const VCS = "vcsAvailable";
 const IN_COMMIT_WINDOW = "vcsAvailable && activeToolWindow == commit";
@@ -287,7 +288,7 @@ export function registerVcsActions(): () => void {
               group: "vcs",
               level: "info",
               title: "Submodule changes cannot be rolled back here",
-              body: `${repoName(submodule)} points to another commit. Check out the recorded commit in the submodule (git submodule update) to revert it.`,
+              body: tx`${repoName(submodule)} points to another commit. Check out the recorded commit in the submodule (git submodule update) to revert it.`,
             });
           return showRollbackDialog(candidates);
         }

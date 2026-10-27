@@ -52,6 +52,7 @@ import { KeymapNameDialog } from "./KeymapDialogs";
 import { RecordShortcutDialog } from "./RecordShortcutDialog";
 import { StrokeRecorder } from "./StrokeRecorder";
 import styles from "./Keymap.module.css";
+import { tx } from "@/platform/i18n";
 
 type KNode =
   | { kind: "group"; key: string; name: string; path: string[]; children: KNode[] }
@@ -206,14 +207,14 @@ export function KeymapPage() {
     ...Object.keys(PRESETS).map((id) => ({ value: id, label: PRESET_TITLES[id] ?? id })),
     ...Object.entries(customs)
       .sort(([, a], [, b]) => a.name.localeCompare(b.name))
-      .map(([id, k]) => ({ value: id, label: k.name, detail: `based on ${PRESET_TITLES[k.parent] ?? k.parent}` })),
+      .map(([id, k]) => ({ value: id, label: k.name, detail: tx`based on ${PRESET_TITLES[k.parent] ?? k.parent}` })),
   ];
 
   const confirmDelete = async () => {
     if (
       !(await confirm({
         title: "Delete Keymap",
-        message: `Delete keymap '${keymapName(selectedId, customs)}'?`,
+        message: tx`Delete keymap '${keymapName(selectedId, customs)}'?`,
         ok: "Delete",
       }))
     )
@@ -252,7 +253,7 @@ export function KeymapPage() {
       { kind: "separator" },
       ...(bindings.length
         ? bindings.map((b) => ({
-            label: `Remove ${formatBinding(b)}`,
+            label: tx`Remove ${formatBinding(b)}`,
             icon: "minus",
             run: () => change(removeBinding(draft, action.id, b)),
           }))

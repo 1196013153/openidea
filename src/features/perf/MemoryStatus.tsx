@@ -14,6 +14,7 @@ import { indicatorLabel, indicatorTooltip, memorySections, summarizeMemory } fro
 import { startPolling } from "./poll";
 import { METRICS_INTERVAL_MS, refreshMetrics, usePerf } from "./store";
 import styles from "./perf.module.css";
+import { tx } from "@/platform/i18n";
 
 /** Status bar widget id (hidden by default, toggled from the status bar context menu). */
 export const MEMORY_WIDGET = { id: "perf.memory", title: "Memory Indicator", defaultVisible: false } as const;
@@ -41,7 +42,7 @@ export function MemoryStatus() {
         ref={ref}
         className={styles.indicator}
         aria-expanded={open}
-        aria-label={`Memory: ${tooltip}`}
+        aria-label={tx`Memory: ${tooltip}`}
         tooltip={tooltip}
         onClick={() => usePerf.setState({ popupOpen: !open })}
       >
@@ -101,7 +102,7 @@ export function MemoryDetails({ metrics: m }: { metrics: AppMetrics }) {
               label={r.label}
               detail={r.detail}
               value={r.value}
-              title={r.processes > 1 ? `${r.processes} processes` : undefined}
+              title={r.processes > 1 ? tx`${r.processes} processes` : undefined}
               indented
             />
           ))}

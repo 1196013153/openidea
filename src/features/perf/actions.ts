@@ -6,6 +6,7 @@ import { useProject } from "@/platform/project";
 import { formatSize } from "./format";
 import { MEMORY_WIDGET } from "./MemoryStatus";
 import { clearCaches, refreshMetrics, usePerf } from "./store";
+import { tx } from "@/platform/i18n";
 
 function memoryIndicatorShown(): boolean {
   const overrides = useProject.getState().settings?.appearance?.statusBarWidgets;
@@ -30,12 +31,15 @@ export function perfActions(): Action[] {
           }
           const memory =
             r.rssBeforeBytes != null && r.rssAfterBytes != null
-              ? ` Memory ${formatSize(r.rssBeforeBytes)} → ${formatSize(r.rssAfterBytes)}.`
+              ? tx` Memory ${formatSize(r.rssBeforeBytes)} → ${formatSize(r.rssAfterBytes)}.`
               : "";
           notifications().notify({
             level: "info",
             title: "Caches cleared",
-            body: `${r.syntaxTrees} syntax tree${r.syntaxTrees === 1 ? "" : "s"} dropped, index compacted.${memory}`,
+            body:
+              r.syntaxTrees === 1
+                ? tx`${r.syntaxTrees} syntax tree dropped, index compacted.${memory}`
+                : tx`${r.syntaxTrees} syntax trees dropped, index compacted.${memory}`,
             key: "perf.clearCaches",
           });
         } catch (e) {

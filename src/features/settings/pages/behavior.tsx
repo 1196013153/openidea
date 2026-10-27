@@ -27,7 +27,7 @@ import {
 import { ACCENT_PRESETS, LIMITS, type ThemeId } from "../model/schema";
 import type { PageSpec } from "./spec";
 import styles from "./Behavior.module.css";
-import { useT } from "@/platform/i18n";
+import { tx, useT } from "@/platform/i18n";
 
 export const APPEARANCE_GROUP = "Appearance & Behavior";
 
@@ -467,14 +467,14 @@ function NotificationGroupsTable() {
                   value={v.display}
                   options={DISPLAY_OPTIONS}
                   onChange={(display) => update(g.id, { display })}
-                  aria-label={`${g.title} popup type`}
+                  aria-label={tx`${g.title} popup type`}
                 />
               </td>
               <td className={styles.center}>
                 <Checkbox
                   checked={v.log}
                   onChange={(log) => update(g.id, { log })}
-                  aria-label={`Show ${g.title} in tool window`}
+                  aria-label={tx`Show ${g.title} in tool window`}
                 />
               </td>
             </tr>

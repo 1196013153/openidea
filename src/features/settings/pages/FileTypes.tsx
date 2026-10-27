@@ -19,6 +19,7 @@ import {
 import { GlobListEditor, Row } from "../components/Form";
 import { useSetting } from "../components/context";
 import styles from "./FileTypes.module.css";
+import { tx } from "@/platform/i18n";
 
 function useLanguages(): LanguageInfo[] {
   const [langs, setLangs] = useState<LanguageInfo[]>([]);
@@ -108,7 +109,7 @@ export function RecognizedFileTypes() {
               value={patterns}
               onChange={(next) => setAssoc(applyPatternEdit(current, langs, selected, next))}
               placeholder="*.ext"
-              aria-label={`File name patterns of ${selected.name}`}
+              aria-label={tx`File name patterns of ${selected.name}`}
             />
           </Row>
           <Row
@@ -120,7 +121,7 @@ export function RecognizedFileTypes() {
               value={hashbangs}
               onChange={(next) => setAssoc(setHashbangs(current, selected.id, next))}
               placeholder="interpreter"
-              aria-label={`Hashbang patterns of ${selected.name}`}
+              aria-label={tx`Hashbang patterns of ${selected.name}`}
             />
           </Row>
           {selected.firstLine && (

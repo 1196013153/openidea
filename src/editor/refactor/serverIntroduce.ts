@@ -27,6 +27,7 @@ import type { RefactoringId } from "./catalog";
 import { expressionCandidates, expressionPreview } from "./introduce";
 import { findTextOccurrences } from "./occurrences";
 import { isIdentifier, isKeyword, suggestNames, uniqueNames } from "./names";
+import { tx } from "@/platform/i18n";
 
 /** Refactorings that take an expression (chosen first when nothing is selected). */
 export const EXPRESSION_REFACTORINGS: ReadonlySet<RefactoringId> = new Set([
@@ -135,7 +136,7 @@ export function chooseOccurrences(view: EditorView, actions: readonly CodeAction
       },
       {
         id: "all",
-        label: n > 1 ? `Replace all ${n} occurrences` : "Replace all occurrences",
+        label: n > 1 ? tx`Replace all ${n} occurrences` : "Replace all occurrences",
         onActive: () => highlightRanges(view, n ? occurrences : [{ from: sel.from, to: sel.to }]),
         run: () => applyIntroduceAction(view, variants.all, id),
       },
@@ -291,13 +292,13 @@ export async function applyIntroduceAction(view: EditorView, action: CodeAction,
     primary,
     others,
     suggestions: names.length > 1 ? names : undefined,
-    hint: keys ? `Press ${keys} to show dialog with more options` : "↵ to finish, Esc to keep the name",
+    hint: keys ? tx`Press ${keys} to show dialog with more options` : "↵ to finish, Esc to keep the name",
     commit: (name) => renameIntroduced(view, [primary, ...others], found.name, name),
     dialog: (typed) =>
       openPopup({
         kind: "rename",
         anchor: caretAnchor(view, primary.from),
-        title: `Rename '${found.name}'`,
+        title: tx`Rename '${found.name}'`,
         initial: typed,
         suggestions: names,
         onSubmit: (name) => renameIntroduced(view, [primary, ...others], found.name, name),

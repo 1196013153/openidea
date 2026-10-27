@@ -9,6 +9,7 @@ import type { Location, Pos, Range, SymbolKind, SymbolMatch } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { structure, type Locals, type LocalSymbol, type NodeAt } from "@/editor/structure";
 import { comparePos, rangeContains, rangeToOffsets } from "./positions";
+import { tx } from "@/platform/i18n";
 
 /** Subtle marker for answers that did not come from the language server. */
 export const SYNTAX_NOTE = "Based on syntax (language server not ready)";
@@ -237,7 +238,7 @@ export async function planLocalRename(
   if (locals.status === "notLocal")
     return {
       kind: "refused",
-      message: `Can't rename '${locals.name}' without the language server: only local variables can be renamed based on syntax`,
+      message: tx`Can't rename '${locals.name}' without the language server: only local variables can be renamed based on syntax`,
     };
   const { symbol } = locals;
   const ranges = [symbol.definition, ...symbol.references].sort((a, b) => comparePos(a.start, b.start));

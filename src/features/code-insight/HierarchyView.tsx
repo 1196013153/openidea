@@ -27,6 +27,7 @@ import {
   type HierarchyNode,
 } from "./hierarchy";
 import styles from "./HierarchyView.module.css";
+import { tx } from "@/platform/i18n";
 
 type Node = { kind: "root"; id: string } | { kind: "item"; id: string; node: HierarchyNode };
 
@@ -78,7 +79,7 @@ function HierarchyToolbar() {
         icon="arrow-up"
         size="small"
         iconSize={16}
-        title={`${directionLabel(mode, "incoming")} Hierarchy`}
+        title={tx`${directionLabel(mode, "incoming")} Hierarchy`}
         pressed={direction === "incoming"}
         onClick={() => setDirection("incoming")}
       />
@@ -86,7 +87,7 @@ function HierarchyToolbar() {
         icon="arrow-down"
         size="small"
         iconSize={16}
-        title={`${directionLabel(mode, "outgoing")} Hierarchy`}
+        title={tx`${directionLabel(mode, "outgoing")} Hierarchy`}
         pressed={direction === "outgoing"}
         onClick={() => setDirection("outgoing")}
       />

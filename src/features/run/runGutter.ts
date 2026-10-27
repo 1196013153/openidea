@@ -22,6 +22,7 @@ import { onTestStatesChanged, testState, testStatesVersion, type TestState } fro
 /** Languages with gutter run targets (C / C++ `main` included). */
 const hasGutterTargets = (path: string) => !!targetLanguage(path) || /\.(c|cpp|cc|cxx)$/.test(path);
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 interface PlacedTarget extends RunTarget {
   /** Line start offset in the current state. */
@@ -104,9 +105,9 @@ export function targetMenuItems(target: RunTarget, path: string, content: string
   // Like IDEA, Debug only where a debugger can run it.
   const debuggable = !p || !!(p.debug || p.config?.debugAdapter || p.missing);
   return [
-    { label: `Run '${name}'`, icon: "run", shortcut: shortcutLabel("run.runContext"), ...pick(false) } as MenuItem,
+    { label: tx`Run '${name}'`, icon: "run", shortcut: shortcutLabel("run.runContext"), ...pick(false) } as MenuItem,
     ...(debuggable
-      ? [{ label: `Debug '${name}'`, icon: "debug", shortcut: shortcutLabel("run.debugContext"), ...pick(true) } as MenuItem]
+      ? [{ label: tx`Debug '${name}'`, icon: "debug", shortcut: shortcutLabel("run.debugContext"), ...pick(true) } as MenuItem]
       : []),
     ...runExecutors()
       .filter((e) => !!p?.config && e.supports(p.config))

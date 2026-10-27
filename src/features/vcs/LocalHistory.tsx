@@ -15,6 +15,7 @@ import { diffInput } from "./diffInput";
 import { baseName, formatTime } from "./model";
 import { errorMessage, runOp } from "./ops";
 import styles from "./LocalHistory.module.css";
+import { tx } from "@/platform/i18n";
 
 export { LOCAL_HISTORY_KIND, localHistoryInput, openLocalHistory } from "./localHistoryKind";
 
@@ -92,11 +93,11 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
   // A file's history at a label: its last revision before the label.
   const fileAtLabel = atLabel && !view?.folder ? atLabel.get(path) : undefined;
 
-  const restore = async (targets: HistoryEntry[], what: string) => {
-    const ok = await confirmDialog({ title: "Revert", message: `Revert ${what}?`, okLabel: "Revert" });
+  const restore = async (targets: HistoryEntry[], question: string) => {
+    const ok = await confirmDialog({ title: "Revert", message: question, okLabel: "Revert" });
     if (!ok) return;
     await runOp(
-      `Revert ${what} from Local History`,
+      "Revert from Local History",
       async () => {
         for (const e of targets) await call(commands.historyRestore(e.path, e.id));
       },
@@ -113,7 +114,7 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
     if (!isLabel(current)) {
       void restore(
         [current],
-        `${baseName(current.path)} to the revision from ${formatTime(current.timestampMs)} (${current.label})`,
+        tx`Revert ${baseName(current.path)} to the revision from ${formatTime(current.timestampMs)} (${current.label})?`,
       );
       return;
     }
@@ -128,7 +129,9 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
     }
     void restore(
       targets,
-      `${view.folder ? `${targets.length} files under ${baseName(path)}` : baseName(path)} to label '${current.label}'`,
+      view.folder
+        ? tx`Revert ${targets.length} files under ${baseName(path)} to label '${current.label}'?`
+        : tx`Revert ${baseName(path)} to label '${current.label}'?`,
     );
   };
 

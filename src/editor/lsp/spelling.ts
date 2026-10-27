@@ -27,6 +27,7 @@ import { rangeToOffsets } from "./positions";
 import { showHint } from "./hint";
 import { caretAnchor, openPopup, type ListPopupItem } from "./popupStore";
 import { renameNamePart } from "./rename";
+import { tx } from "@/platform/i18n";
 
 const CHECK_DELAY = 800;
 
@@ -124,7 +125,7 @@ async function changeTo(view: EditorView, typo: PlacedTypo) {
   openPopup({
     kind: "list",
     anchor: caretAnchor(view, typo.from),
-    title: `${rename ? "Rename" : "Change"} '${typo.word}' to`,
+    title: rename ? tx`Rename '${typo.word}' to` : tx`Change '${typo.word}' to`,
     items: suggestions.map((s, i) => ({ id: `${i}`, label: s, run: () => applyCorrection(view, typo, s) })),
   });
 }
@@ -142,7 +143,7 @@ export function spellingIntentions(view: EditorView): ListPopupItem[] {
       ? [
           {
             id: "spelling.saveProject",
-            label: `Save '${typo.word}' to project-level dictionary`,
+            label: tx`Save '${typo.word}' to project-level dictionary`,
             icon: "bulb-fix",
             run: () => saveToDictionary(typo.word, "project"),
           },
@@ -150,7 +151,7 @@ export function spellingIntentions(view: EditorView): ListPopupItem[] {
       : []),
     {
       id: "spelling.saveIde",
-      label: `Save '${typo.word}' to application-level dictionary`,
+      label: tx`Save '${typo.word}' to application-level dictionary`,
       icon: "bulb-fix",
       run: () => saveToDictionary(typo.word, "ide"),
     },
@@ -210,7 +211,7 @@ export function spellingExtension(): Extension {
           typos.map((t) => ({
             range: t.range,
             severity: "info",
-            message: `Typo: In word '${t.word}'`,
+            message: tx`Typo: In word '${t.word}'`,
             source: "Spelling",
             code: null,
           })),

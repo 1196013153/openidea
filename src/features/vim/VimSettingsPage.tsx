@@ -7,6 +7,7 @@ import { conflictRows, VIM_KEYS } from "./conflicts";
 import { loadRcFile, useVimRc } from "./rcFile";
 import { updateVimSettings, useVimSettings, type Handler } from "./settings";
 import styles from "./Vim.module.css";
+import { tx } from "@/platform/i18n";
 
 const HANDLERS = [
   { value: "vim" as const, label: "Vim" },
@@ -120,7 +121,7 @@ export function VimSettingsPage() {
                     value={r.current}
                     options={HANDLERS}
                     onChange={(v) => setHandler(r.stroke, v)}
-                    aria-label={`Handler for ${r.stroke}`}
+                    aria-label={tx`Handler for ${r.stroke}`}
                   />
                 </td>
               </tr>

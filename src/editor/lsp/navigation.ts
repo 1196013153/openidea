@@ -52,6 +52,7 @@ import { isVirtualUri, virtualContainer } from "@/platform/virtualDocs";
 import { shortcutLabel } from "@/platform/keymap";
 import { isNavigationGesture, onNavigationModifier } from "@/platform/navigationModifier";
 import { create } from "zustand";
+import { tx } from "@/platform/i18n";
 
 export async function navigateTo(loc: Location) {
   await editorService().openFile(loc.path, {
@@ -224,7 +225,7 @@ async function gotoWebReference(view: EditorView, doc: EditorDocContext, pos: Po
     openPopup({
       kind: "list",
       anchor: caretAnchor(view, offset),
-      title: `Choose Declaration of '${label}' (${targets.length} found)`,
+      title: tx`Choose Declaration of '${label}' (${targets.length} found)`,
       items: await locationItems(targets),
       pin: pinToFind(label, targets),
     });

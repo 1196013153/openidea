@@ -21,6 +21,7 @@ import { failedTestPaths, leafTestPaths, rerunFailedConfig, testsConfig } from "
 import { compoundChildren } from "./configs";
 import { TerminalOutput } from "./terminalOutput";
 import { typeFor } from "./types";
+import { tx } from "@/platform/i18n";
 
 /** The permanent "Current File" pseudo-configuration of the chooser (runs the active file's context). */
 export const CURRENT_FILE = "current-file";
@@ -549,7 +550,7 @@ export async function startRun(
     }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    enqueue(sessionId, { kind: "stderr", text: `Error running '${config.name}': ${message}\n` });
+    enqueue(sessionId, { kind: "stderr", text: tx`Error running '${config.name}': ${message}\n` });
     flush(sessionId);
     patchSession(sessionId, { status: "failed", endedAt: Date.now() });
     notifications().notify({ group: "run", level: "error", title: `Error running '${config.name}'`, body: message });
@@ -795,7 +796,7 @@ export async function sendStdin(sessionId: string, text: string): Promise<void> 
   try {
     await call(commands.runStdin(session.runId, text + "\n"));
   } catch (e) {
-    enqueue(sessionId, { kind: "system", text: `Cannot write to stdin: ${e instanceof Error ? e.message : String(e)}\n` });
+    enqueue(sessionId, { kind: "system", text: tx`Cannot write to stdin: ${e instanceof Error ? e.message : String(e)}\n` });
   }
 }
 

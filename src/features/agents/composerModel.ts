@@ -1,5 +1,6 @@
 /** Pure composer helpers: `@` / `/` completion, attachments, history recall, settings. */
 import type { AgentCommand, AgentConfigOption, AgentImage, AgentPrompt, AgentUsage } from "@/bindings";
+import { tx } from "@/platform/i18n";
 
 export interface FileRef {
   /** Absolute path (in the task's directory). */
@@ -114,7 +115,7 @@ export function usageLabel(u: AgentUsage): { short: string; detail: string } {
   const pct = Math.min(100, Math.round((u.used / u.size) * 100));
   const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${Math.round(n)}`);
   const cost = u.cost != null ? ` · ${u.currency === "USD" || !u.currency ? "$" : `${u.currency} `}${u.cost.toFixed(2)}` : "";
-  return { short: `${pct}%`, detail: `${k(u.used)} / ${k(u.size)} tokens${cost}` };
+  return { short: `${pct}%`, detail: tx`${k(u.used)} / ${k(u.size)} tokens${cost}` };
 }
 
 /** `data:image/png;base64,AAA` → an image attachment. */

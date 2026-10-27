@@ -38,6 +38,7 @@ import { installFileConfirmations } from "./confirmations";
 import { installIncomingCheck } from "./incoming";
 import { installGitLog } from "./logStore";
 import { installVcsStore, onConflictsAppeared, onConflictsCleared, useVcs } from "./store";
+import { tx } from "@/platform/i18n";
 
 function trackTitleItem(): () => void {
   let dispose: (() => void) | null = null;
@@ -60,6 +61,11 @@ function trackTitleItem(): () => void {
   };
 }
 
+function conflictsBody(names: string[]): string {
+  const list = names.slice(0, 3).join(", ") + (names.length > 3 ? "…" : "");
+  return names.length === 1 ? tx`${names.length} file has conflicts: ${list}` : tx`${names.length} files have conflicts: ${list}`;
+}
+
 export function activate(): () => void {
   onConflictsAppeared((files) =>
     notifications().notify({
@@ -67,10 +73,7 @@ export function activate(): () => void {
       level: "warning",
       key: "vcs.conflicts",
       title: "Merge conflicts",
-      body: `${files.length} file${files.length === 1 ? " has" : "s have"} conflicts: ${files
-        .slice(0, 3)
-        .map((f) => baseName(f.path))
-        .join(", ")}${files.length > 3 ? "…" : ""}`,
+      body: conflictsBody(files.map((f) => baseName(f.path))),
       sticky: true,
       actions: [{ label: "Resolve…", run: showConflictsDialog }],
     }),

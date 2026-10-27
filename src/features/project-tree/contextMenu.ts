@@ -27,6 +27,7 @@ import {
   vcsArg,
 } from "./operations";
 import { isSameOrInside } from "./paths";
+import { tx } from "@/platform/i18n";
 
 /** Keys handled by the project view itself (the default keymap has no entries for them). */
 export const LOCAL_KEYS: Record<string, string> = {
@@ -352,7 +353,7 @@ export function contextMenuItems(nodes: ProjectNode[]): MenuItem[] {
               {
                 id: "unmark",
                 label:
-                  current === "excluded" ? "Cancel Exclusion" : `Unmark as ${roles.find(([r]) => r === current)![1]}`,
+                  current === "excluded" ? "Cancel Exclusion" : tx`Unmark as ${roles.find(([r]) => r === current)![1]}`,
                 run: () => void markDirectory(single.path, null),
               },
             ]

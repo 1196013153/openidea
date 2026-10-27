@@ -7,6 +7,7 @@ import { Icon, IconButton, Spinner, T, Tree, showContextMenu, type MenuItem } fr
 import { age, branchLabel, groupTasks, isBusy, type TaskGroup } from "./model";
 import { archiveTask, deleteTask, openHome, openTask, useAgents } from "./store";
 import styles from "./Agents.module.css";
+import { tx } from "@/platform/i18n";
 
 export function AgentsHeaderActions() {
   return <IconButton icon="plus" action="agents.newTask" size="small" />;
@@ -117,8 +118,8 @@ async function confirmDelete(task: AgentTask) {
   const r = await confirmChecked({
     title: "Delete Agent Task",
     message: worktree
-      ? `Delete “${task.title}”? Its branch ${task.branch ?? ""} is kept.`
-      : `Delete “${task.title}”? Files it changed are kept.`,
+      ? tx`Delete “${task.title}”? Its branch ${task.branch ?? ""} is kept.`
+      : tx`Delete “${task.title}”? Files it changed are kept.`,
     ok: "Delete",
     icon: "warning",
     checkbox: worktree ? "Also remove its worktree folder" : undefined,

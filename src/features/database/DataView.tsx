@@ -21,6 +21,7 @@ import {
 } from "./resultView";
 import { openDialog } from "./store";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 export type DataPanel = "record" | "value" | "aggregates";
 
@@ -30,7 +31,7 @@ export function exportMenu(data: ExportData, source: string, format?: ExportForm
     { label: "Export Data…", icon: "export", run: () => openDialog({ kind: "export", data, source, format }) },
     { kind: "separator" },
     ...EXPORT_FORMATS.map((f): MenuItem => ({
-      label: `Copy as ${f.label}`,
+      label: tx`Copy as ${f.label}`,
       icon: "copy",
       run: () => void navigator.clipboard?.writeText(exportData(f.id, data)),
     })),
@@ -207,14 +208,14 @@ function FilterPopup(props: {
       anchor={props.anchor}
       placement="bottom-start"
       onClose={props.onClose}
-      aria-label={`Local filter of ${props.column}`}
+      aria-label={tx`Local filter of ${props.column}`}
       className={styles.filterPopup}
       trapFocus
     >
       <Input
         autoFocus
         aria-label="Search values"
-        placeholder={`Values of ${props.column}`}
+        placeholder={tx`Values of ${props.column}`}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

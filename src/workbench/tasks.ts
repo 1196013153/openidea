@@ -1,6 +1,7 @@
 /** Background task progress (from `task` / `indexState` backend events). */
 import { create } from "zustand";
 import { onIdeEvent } from "@/platform/ipc";
+import { tx } from "@/platform/i18n";
 
 export interface BackgroundTask {
   id: number | string;
@@ -47,7 +48,7 @@ export function setIndexing(indexing: boolean, files: number, symbols: number) {
   upsertTask({
     id: INDEX_TASK_ID,
     title: "Indexing",
-    message: indexing ? `${files.toLocaleString()} files · ${symbols.toLocaleString()} symbols` : null,
+    message: indexing ? tx`${files.toLocaleString()} files · ${symbols.toLocaleString()} symbols` : null,
     fraction: null,
     done: !indexing,
   });
