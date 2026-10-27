@@ -32,6 +32,40 @@ describe("color schemes", () => {
     expect(pythonItalic).toContain("--syn-python-static-italic: italic !important");
   });
 
+  it("applies an explicit scheme over a plugin theme of the same base", () => {
+    const root = document.documentElement;
+    root.dataset.theme = "dark";
+    root.dataset.pluginTheme = "theme-one/one-dark";
+    try {
+      // "Theme default" keeps the plugin theme's own editor colours.
+      expect(schemeCss("theme-default", undefined, root)).toBe("");
+      expect(schemeCss("dark", undefined, root)).toContain("--syn-keyword: #cf8e6d !important");
+      delete root.dataset.pluginTheme;
+      expect(schemeCss("dark", undefined, root)).toBe("");
+    } finally {
+      delete root.dataset.pluginTheme;
+    }
+  });
+
+  it("re-applies the scheme when a plugin theme of the same base is selected", async () => {
+    const root = document.documentElement;
+    root.dataset.theme = "dark";
+    const previous = useProject.getState().settings;
+    useProject.setState({ settings: { editor: { colorScheme: "dark" } } as unknown as Settings });
+    const dispose = installColorScheme();
+    const sheet = () => document.getElementById("openidea-editor-color-scheme")?.textContent ?? "";
+    try {
+      expect(sheet()).toBe("");
+      root.dataset.pluginTheme = "theme-one/one-dark";
+      await Promise.resolve();
+      expect(sheet()).toContain("--syn-keyword: #cf8e6d !important");
+    } finally {
+      dispose();
+      delete root.dataset.pluginTheme;
+      useProject.setState({ settings: previous });
+    }
+  });
+
   it("keeps editor weights out of the schemes", () => {
     for (const id of ["light", "dark", "dark-hc"] as const) {
       expect(schemeTokens(id).has("--fw-code")).toBe(false);

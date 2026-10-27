@@ -217,10 +217,11 @@ fn runtime_language_and_theme_registration() {
 #[test]
 fn contribution_only_plugins() {
     let f = fixture(Limits::default());
-    let theme = f.host.install_from_dir(&sample("theme-solarized-dark")).unwrap();
+    let theme = f.host.install_from_dir(&sample("theme-solarized")).unwrap();
     assert_eq!(theme.status, PluginStatus::Static);
     assert!(!theme.has_code);
-    assert_eq!(theme.themes[0].id, "solarized-dark");
+    let ids: Vec<&str> = theme.themes.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["solarized-light", "solarized-dark"]);
     let lang = f.host.install_from_dir(&sample("language-toy")).unwrap();
     assert_eq!(lang.status, PluginStatus::Static);
     assert_eq!(lang.languages[0].id, "toy");
@@ -228,13 +229,14 @@ fn contribution_only_plugins() {
     assert!(f.run("language-toy", "x", None).unwrap_err().contains("no code"));
 
     f.take_events();
-    let active = f.host.set_theme(Some(("theme-solarized-dark", "solarized-dark"))).unwrap().unwrap();
+    let active = f.host.set_theme(Some(("theme-solarized", "solarized-dark"))).unwrap().unwrap();
     assert_eq!(active.theme.tokens["--bg-app"], "#002b36");
+    assert_eq!(active.theme.tokens["--syn-string"], "#2aa198");
     assert!(f.take_events().iter().any(|(_, e)| matches!(e, PluginEvent::ThemeChanged { theme: Some(_) })));
     assert_eq!(f.host.list(None).active_theme, Some(active));
 
     // Disabling the plugin withdraws its theme and language.
-    f.host.set_enabled("theme-solarized-dark", false).unwrap();
+    f.host.set_enabled("theme-solarized", false).unwrap();
     assert!(f.host.active_theme().is_none());
     assert!(f.take_events().iter().any(|(_, e)| *e == PluginEvent::ThemeChanged { theme: None }));
     f.host.set_enabled("language-toy", false).unwrap();
@@ -261,6 +263,49 @@ fn theme_template_installs_with_its_editor_scheme() {
 }
 
 #[test]
+fn bundled_theme_plugins_install_with_their_licence() {
+    let f = fixture(Limits::default());
+    for (pkg, themes) in
+        [("theme-solarized", ["solarized-light", "solarized-dark"]), ("theme-one", ["one-light", "one-dark"])]
+    {
+        let info = f.host.install_from_dir(&sample(pkg)).unwrap();
+        assert_eq!(info.status, PluginStatus::Static, "{pkg}: {:?}", info.error);
+        assert!(info.authors.iter().any(|a| a.starts_with("bghtyu")));
+        let license = std::fs::read_to_string(f.plugins_dir.join(pkg).join("LICENSE")).unwrap();
+        assert!(license.contains("MIT License"));
+        for (theme, kind) in themes.iter().zip([ThemeKind::Light, ThemeKind::Dark]) {
+            let active = f.host.set_theme(Some((pkg, theme))).unwrap().unwrap();
+            assert_eq!(active.theme.kind, kind);
+            let tokens = &active.theme.tokens;
+            assert!(["--bg-frame", "--syn-keyword", "--ansi-red"].iter().all(|t| tokens.contains_key(*t)));
+        }
+    }
+}
+
+#[test]
+fn theme_frame_follows_the_selection() {
+    let f = fixture(Limits::default());
+    f.host.install_from_dir(&sample("theme-one")).unwrap();
+    // Nothing to attach it to without a selected theme.
+    f.host.set_theme_frame(Some("#21252b")).unwrap();
+    assert_eq!(f.host.startup_frame(), None);
+    f.host.set_theme(Some(("theme-one", "one-dark"))).unwrap();
+    assert!(f.host.set_theme_frame(Some("hsl(220, 13%, 15%)")).is_err());
+    f.host.set_theme_frame(Some("#21252b")).unwrap();
+    assert_eq!(f.host.startup_frame().as_deref(), Some("#21252b"));
+    f.host.set_enabled("theme-one", false).unwrap();
+    assert_eq!(f.host.startup_frame(), None);
+    f.host.set_enabled("theme-one", true).unwrap();
+    assert_eq!(f.host.startup_frame().as_deref(), Some("#21252b"));
+    // A new selection drops the old theme's colour until the UI reports the new one.
+    f.host.set_theme(Some(("theme-one", "one-light"))).unwrap();
+    assert_eq!(f.host.startup_frame(), None);
+    f.host.set_theme_frame(Some("#eaeaeb")).unwrap();
+    f.host.set_theme(None).unwrap();
+    assert_eq!(f.host.startup_frame(), None);
+}
+
+#[test]
 fn theme_with_broken_editor_scheme_fails_to_load() {
     let f = fixture(Limits::default());
     let dir = tempfile::tempdir().unwrap();
@@ -282,12 +327,17 @@ fn theme_with_broken_editor_scheme_fails_to_load() {
 fn state_persists_across_restarts() {
     let f = fixture(Limits::default());
     f.host.install_from_dir(&sample("hello")).unwrap();
-    f.host.install_from_dir(&sample("theme-solarized-dark")).unwrap();
+    f.host.install_from_dir(&sample("theme-solarized")).unwrap();
     f.host.set_enabled("hello", false).unwrap();
-    f.host.set_theme(Some(("theme-solarized-dark", "solarized-dark"))).unwrap();
+    f.host.set_theme(Some(("theme-solarized", "solarized-dark"))).unwrap();
+    f.host.set_theme_frame(Some("#073642")).unwrap();
 
     let again = PluginHost::new(f.plugins_dir.clone(), Arc::new(|_: Option<&str>, _| {}), Limits::default()).unwrap();
+    // Known before the plugins are loaded: new windows open in the theme's frame colour.
+    assert_eq!(again.startup_frame().as_deref(), Some("#073642"));
+    assert!(!again.wait_initial_load(Duration::from_millis(1)));
     again.load_all();
+    assert!(again.wait_initial_load(Duration::ZERO));
     let list = again.list(None);
     let hello = list.plugins.iter().find(|p| p.id == "hello").unwrap();
     assert!(!hello.enabled);
@@ -388,14 +438,14 @@ fn catalog_lists_sample_packages() {
 
     let catalog = scan_catalog(&[repo().join("plugins"), tmp.path().to_path_buf()]);
     let ids: Vec<&str> = catalog.iter().map(|c| c.id.as_str()).collect();
-    for id in ["hello", "theme-solarized-dark", "language-toy", "x"] {
+    for id in ["hello", "theme-solarized", "theme-one", "language-toy", "x"] {
         assert!(ids.contains(&id), "{id} missing from {ids:?}");
     }
     let hello = catalog.iter().find(|c| c.id == "hello").unwrap();
     assert!(hello.has_code && hello.problem.is_none() && hello.change_notes.is_some());
     assert_eq!(hello.commands.len(), 2);
-    let theme = catalog.iter().find(|c| c.id == "theme-solarized-dark").unwrap();
-    assert_eq!((theme.theme_count, theme.has_code), (1, false));
+    let theme = catalog.iter().find(|c| c.id == "theme-solarized").unwrap();
+    assert_eq!((theme.theme_count, theme.has_code), (2, false));
     let x = catalog.iter().find(|c| c.id == "x").unwrap();
     assert!(x.problem.as_deref().unwrap().contains("plugin.wasm"));
 }
