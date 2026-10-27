@@ -1,11 +1,14 @@
 /* Linked, not inlined in index.html: release builds hash inline <style> blocks into the CSP,
    which voids style-src 'unsafe-inline' and blocks the editor's runtime-injected styles. */
 /* Start-up splash over the page until the window's launch project is open (platform/splash.ts).
-   Tokens aren't loaded yet, so the colours mirror --bg-frame / --fg-muted / --accent. */
+   Until tokens load, the colours are the last theme's --bg-frame / --fg-muted / --accent that
+   boot.js restored as --boot-*, else these built-in ones. */
 /* Not on html: the canvas then takes body's (themed) background, which a fast resize shows before relayout. */
-body, .splash { background: #e9eaee; }
-:root[data-theme="dark"] :is(body, .splash) { background: #26282c; }
-:root:is([data-theme="dark-hc"], [data-theme="dark"][data-contrast="high"]) :is(body, .splash) { background: #1a1b1e; }
+body, .splash { background: var(--bg-frame, var(--boot-frame, #e9eaee)); }
+:root[data-theme="dark"] :is(body, .splash) { background: var(--bg-frame, var(--boot-frame, #26282c)); }
+:root:is([data-theme="dark-hc"], [data-theme="dark"][data-contrast="high"]) :is(body, .splash) {
+  background: var(--bg-frame, var(--boot-frame, #1a1b1e));
+}
 .splash {
   position: fixed;
   inset: 0;
@@ -17,7 +20,7 @@ body, .splash { background: #e9eaee; }
   gap: 14px;
   padding-bottom: 38px;
   box-sizing: border-box;
-  color: #6c707e;
+  color: var(--fg-muted, var(--boot-fg, #6c707e));
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
@@ -25,7 +28,7 @@ body, .splash { background: #e9eaee; }
   transition: opacity 160ms ease-out;
 }
 .splash.splash-out { opacity: 0; pointer-events: none; }
-:root[data-theme^="dark"] .splash { color: #8c8f95; }
+:root[data-theme^="dark"] .splash { color: var(--fg-muted, var(--boot-fg, #8c8f95)); }
 .splash-logo { width: 56px; height: 56px; }
 /* 15px Inter: 2048 units per em, the line box from ascender to descender. */
 .splash-wordmark { width: 73.2px; height: 18.15px; }
@@ -34,7 +37,7 @@ body, .splash { background: #e9eaee; }
 .splash-bar > i {
   display: block;
   height: 100%;
-  background: #3871e1;
+  background: var(--accent, var(--boot-accent, #3871e1));
   transform-origin: left;
   animation: splash-fill 4s cubic-bezier(0.1, 0.7, 0.3, 1) both;
 }

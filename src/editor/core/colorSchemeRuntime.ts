@@ -26,7 +26,10 @@ export function installColorScheme(): () => void {
     if (s.settings !== prev.settings) apply();
   });
   const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(apply) : null;
-  observer?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
+  observer?.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme", "data-contrast", "data-plugin-theme"],
+  });
   return () => {
     unsubscribe();
     observer?.disconnect();

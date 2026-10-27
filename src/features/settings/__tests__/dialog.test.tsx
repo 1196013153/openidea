@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type { Settings } from "@/platform/ipc";
+import { commands, type Settings } from "@/platform/ipc";
 
 const settingsSet = vi.fn();
 const settingsGet = vi.fn();
@@ -280,5 +280,31 @@ describe("Settings dialog", () => {
     const dialog = await openDialog("appearance");
     expect(within(dialog).getByRole("button", { name: "Theme" })).toHaveTextContent("Islands Light");
     expect(within(dialog).getByLabelText("UI font size")).toHaveValue("13");
+  });
+});
+
+describe("native Settings window background", () => {
+  it.each([
+    ["a hex frame", "#26282c", "", "#26282c"],
+    ["an hsl() frame", "hsl(220, 13%, 15%)", "rgb(33, 37, 43)", "#21252b"],
+    [
+      "a translucent color-mix() frame",
+      "color-mix(in srgb, #8040bf 80%, transparent)",
+      "color(srgb 0.5 0.25 0.75 / 0.8)",
+      "#8040bfcc",
+    ],
+  ])("sends %s as hex, the colour format the window command parses", async (_name, token, resolved, hex) => {
+    const native = vi.spyOn(commands, "windowOpenSettings").mockResolvedValue({ status: "ok", data: null });
+    const computed = vi
+      .spyOn(globalThis, "getComputedStyle")
+      .mockReturnValue({ getPropertyValue: () => token, color: resolved } as unknown as CSSStyleDeclaration);
+    try {
+      await executeAction("file.settings", "appearance");
+      expect(native).toHaveBeenCalledWith("appearance", false, hex);
+      expect(useSettingsDialog.getState().open).toBe(false);
+    } finally {
+      computed.mockRestore();
+      native.mockRestore();
+    }
   });
 });

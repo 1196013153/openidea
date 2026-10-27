@@ -16,6 +16,31 @@ my-theme/
    └─ my-theme.scheme.json        # editor colours, optional (IntelliJ: .icls)
 ```
 
+## Ready-made theme plugins
+
+The repository's [`plugins/`](../../plugins) folder holds two complete theme
+plugins, each with a light and a dark theme and an editor colour scheme
+(syntax, editor and terminal ANSI colours):
+
+| Package | Themes | Palette |
+|---|---|---|
+| [`plugins/theme-solarized`](../../plugins/theme-solarized) | Solarized Light, Solarized Dark | [Solarized](https://github.com/altercation/solarized) by Ethan Schoonover |
+| [`plugins/theme-one`](../../plugins/theme-one) | One Light, One Dark | Atom [One Light](https://github.com/atom/one-light-syntax) / [One Dark](https://github.com/atom/one-dark-syntax) by GitHub |
+
+Both palettes are MIT-licensed; each package carries the notice in its
+`LICENSE`, which is installed with it. To use one:
+
+1. *Settings › Plugins › ⚙ › Install Plugin from Disk…* and pick the package
+   folder (`plugins/theme-solarized` or `plugins/theme-one` of a checkout or a
+   downloaded copy). Development builds also list both on the *Available*
+   tab, where *Install* does the same.
+2. Select the plugin and press *Apply* next to a theme.
+
+The IDE remembers the theme: the next start-up opens its windows, splash and
+workbench in the theme's colours before the plugin host has loaded.
+
+## Writing a theme plugin
+
 The quickest way to start is to copy [`templates/theme-plugin`](../../templates/theme-plugin).
 It contains *Harbor Night*, a complete example dark theme that sets every
 themeable token. The rest of this page covers the file format, the token
@@ -282,8 +307,9 @@ A `fontStyle: "italic"` on comments maps to `"--syn-comment-style": "italic"`.
 - Text should keep at least WCAG AA contrast (4.5:1) on its surfaces. The
   built-in themes are checked by `src/features/settings/__tests__/contrast.test.ts`.
 - Repository checks (for changes to this repo): `pnpm vitest run scripts/theme`
-  validates the template against tokens.css and keeps this reference current,
-  and `cargo test -p ide-plugin` loads the template through the plugin host.
+  validates the template and the theme plugins in `plugins/` against
+  tokens.css and keeps this reference current, and `cargo test -p ide-plugin`
+  loads them through the plugin host.
 
 ## Token reference
 

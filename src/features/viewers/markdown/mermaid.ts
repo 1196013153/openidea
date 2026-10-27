@@ -4,6 +4,7 @@
  * turns placeholders into SVG. The library is imported on first use only.
  */
 import type { Mermaid } from "mermaid";
+import { resolveTokenColor, toRgb } from "@/platform/cssColor";
 
 export const MERMAID_SELECTOR = "[data-mermaid]";
 const OUTPUT_CLASS = "mermaid-output";
@@ -29,27 +30,34 @@ function loadMermaid(): Promise<Mermaid> {
 /** Theme identity: anything that changes the colours read below. */
 export function themeKey(): string {
   const root = document.documentElement;
-  return `${root.dataset.theme ?? ""}|${root.dataset.contrast ?? ""}|${root.style.getPropertyValue("--accent")}`;
+  const { theme = "", contrast = "", pluginTheme = "" } = root.dataset;
+  return `${theme}|${contrast}|${pluginTheme}|${root.style.getPropertyValue("--accent")}`;
 }
 
-/** Calls `cb` when the theme attributes or the accent on the root change. */
+/** Calls `cb` when the theme attributes (a plugin theme's included) or the accent on the root change. */
 export function subscribeTheme(cb: () => void): () => void {
   if (typeof MutationObserver === "undefined") return () => {};
   const observer = new MutationObserver(cb);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-contrast", "style"],
+    attributeFilter: ["data-theme", "data-contrast", "data-plugin-theme", "style"],
   });
   return () => observer.disconnect();
 }
 
-/** Diagram colours from the IDE tokens; values mermaid can't parse (e.g. `color-mix`) are skipped. */
+/**
+ * Diagram colours from the IDE tokens. Mermaid parses only hex and `rgb()`, so
+ * tokens a theme writes as `hsl()`, `color-mix()` or `var()` are resolved to RGB.
+ */
 function themeVariables(): Record<string, string | boolean> {
-  const css = getComputedStyle(document.documentElement);
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
   const token = (...names: string[]) => {
     for (const n of names) {
       const v = css.getPropertyValue(n).trim();
       if (/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))$/i.test(v)) return v;
+      const resolved = v ? resolveTokenColor(n, root) : null;
+      if (resolved) return toRgb(resolved);
     }
     return undefined;
   };

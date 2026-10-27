@@ -11,7 +11,8 @@ code at all.
 plugins/
 ├─ build.sh                 # builds Rust plugins into components
 ├─ hello/                   # Rust plugin: two commands
-├─ theme-solarized-dark/    # manifest-only: a theme
+├─ theme-solarized/         # manifest-only: Solarized Light / Dark themes
+├─ theme-one/               # manifest-only: One Light / Dark themes
 └─ language-toy/            # manifest-only: a language definition
 ```
 

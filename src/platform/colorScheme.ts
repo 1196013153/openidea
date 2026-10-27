@@ -267,7 +267,10 @@ const SAFE = /^[^;{}<>]*$/;
 export function schemeCss(setting: string | undefined, overrides: Record<string, Record<string, TextAttributesOverride>> | undefined, root?: HTMLElement | null): string {
   const id = effectiveScheme(setting, root);
   const decls: Array<[string, string]> = [];
-  if (id !== themeScheme(root)) {
+  // A plugin theme brings its own editor colours: an explicit scheme replaces them even on the same base.
+  const el = root === undefined ? (typeof document !== "undefined" ? document.documentElement : null) : root;
+  const pluginTheme = !!el?.dataset.pluginTheme && id === setting;
+  if (id !== themeScheme(root) || pluginTheme) {
     const tokens = schemeTokens(id);
     for (const [k, v] of tokens) if (SCHEME_VARS.has(k) || k.startsWith("--syn-")) decls.push([k, v]);
     // The editor surface follows the scheme, not the island colour of the UI theme.

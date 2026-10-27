@@ -29,14 +29,18 @@ pub use types::*;
 
 use ide_core::{IdeError, IdeResult};
 use ide_language::LanguageConfig;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Condvar, Mutex, RwLock};
 use runtime::{CallEffects, CallError, PluginEngine, Registrations, Runtime, RuntimeSetup};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 const STATE_FILE: &str = "state.json";
+/// Top-level files copied with a package on install besides those the manifest references.
+const LICENSE_FILES: &[&str] =
+    &["LICENSE", "LICENSE.md", "LICENSE.txt", "NOTICE", "NOTICE.md", "NOTICE.txt", "COPYING"];
 /// Dev plugins live here, relative to a project root.
 pub const DEV_PLUGINS_DIR: &str = ".openidea/plugins";
 
@@ -52,6 +56,10 @@ struct PersistedState {
 struct ThemeRef {
     plugin: String,
     theme: String,
+    /// The theme's window frame colour as the UI resolved it (`#rrggbb[aa]`), so
+    /// new windows open in it before the plugin is loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frame: Option<String>,
 }
 
 struct Meta {
@@ -95,6 +103,8 @@ pub struct PluginHost {
     active_files: Arc<Mutex<HashMap<String, String>>>,
     /// Serializes loading / unloading so concurrent windows can't race.
     lifecycle: Mutex<()>,
+    /// Set once the first [`load_all`](Self::load_all) has finished.
+    initial_load: (Mutex<bool>, Condvar),
 }
 
 impl PluginHost {
@@ -114,6 +124,7 @@ impl PluginHost {
             state: Mutex::new(state),
             active_files: Arc::default(),
             lifecycle: Mutex::new(()),
+            initial_load: (Mutex::new(false), Condvar::new()),
         })
     }
 
@@ -129,7 +140,22 @@ impl PluginHost {
                 self.load_dir(&dir, PluginSource::Installed, None);
             }
         }
+        let (done, cv) = &self.initial_load;
+        *done.lock() = true;
+        cv.notify_all();
         self.emit(None, PluginEvent::CommandsChanged);
+    }
+
+    /// Waits (at most `timeout`) for the first [`load_all`](Self::load_all), so a
+    /// listing made at startup already holds the installed plugins and the
+    /// selected theme. Returns whether loading has finished.
+    pub fn wait_initial_load(&self, timeout: Duration) -> bool {
+        let (done, cv) = &self.initial_load;
+        let mut done = done.lock();
+        if !*done {
+            cv.wait_while_for(&mut done, |d| !*d, timeout);
+        }
+        *done
     }
 
     /// Loads new dev plugins from `<root>/.openidea/plugins/` and unloads vanished ones.
@@ -251,6 +277,11 @@ impl PluginHost {
                     }
                     std::fs::copy(src.join(file), to)?;
                 }
+                for name in LICENSE_FILES {
+                    if src.join(name).is_file() {
+                        std::fs::copy(src.join(name), staging.join(name))?;
+                    }
+                }
                 if target.exists() {
                     std::fs::remove_dir_all(&target)?;
                 }
@@ -345,11 +376,43 @@ impl PluginHost {
             }
         }
         self.state.lock().theme =
-            selection.map(|(plugin, theme)| ThemeRef { plugin: plugin.into(), theme: theme.into() });
+            selection.map(|(plugin, theme)| ThemeRef { plugin: plugin.into(), theme: theme.into(), frame: None });
         self.save_state();
         let active = self.active_theme();
         self.emit(None, PluginEvent::ThemeChanged { theme: active.clone() });
         Ok(active)
+    }
+
+    /// Records the selected theme's resolved window frame colour (`#rgb`,
+    /// `#rrggbb` or `#rrggbbaa`); ignored without a selected theme.
+    pub fn set_theme_frame(&self, frame: Option<&str>) -> IdeResult<()> {
+        if let Some(f) = frame
+            && !is_hex_color(f)
+        {
+            return Err(IdeError::invalid(format!("not a hex colour: {f:?}")));
+        }
+        let changed = match self.state.lock().theme.as_mut() {
+            Some(t) if t.frame.as_deref() != frame => {
+                t.frame = frame.map(str::to_owned);
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.save_state();
+        }
+        Ok(())
+    }
+
+    /// Frame colour for a new window: the recorded one of the selected theme,
+    /// unless its plugin is disabled. Available before plugins are loaded.
+    pub fn startup_frame(&self) -> Option<String> {
+        let state = self.state.lock();
+        let t = state.theme.as_ref()?;
+        if state.disabled.contains(&t.plugin) {
+            return None;
+        }
+        t.frame.clone()
     }
 
     /// The selected plugin theme, when its plugin is enabled and running.
@@ -566,6 +629,10 @@ impl Drop for PluginHost {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+fn is_hex_color(s: &str) -> bool {
+    s.strip_prefix('#').is_some_and(|h| matches!(h.len(), 3 | 6 | 8) && h.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 /// Plugin packages found in `dirs` (first occurrence of an id wins). Invalid
