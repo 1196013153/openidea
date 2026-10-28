@@ -4197,6 +4197,7 @@
   "Find in conversation": "在对话中查找",
   "0 results": "0 个结果",
   "Time the agent took to answer": "智能体回答所用的时间",
+  "Time the agent spent on this task": "智能体在此任务上花费的时间",
   "Edit and Resend": "编辑后重新发送",
   "Send Again": "再次发送",
   "Customize IDE appearance and behavior: change themes and font size, configure system settings and notifications.": "自定义 IDE 的外观和行为：更改主题和字号，配置系统设置和通知。",

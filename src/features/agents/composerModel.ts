@@ -1,5 +1,5 @@
 /** Pure composer helpers: `@` / `/` completion, attachments, history recall, settings. */
-import type { AgentCommand, AgentConfigOption, AgentImage, AgentPrompt, AgentUsage } from "@/bindings";
+import type { AgentCommand, AgentConfigOption, AgentEntry, AgentImage, AgentPrompt, AgentUsage } from "@/bindings";
 import { tx } from "@/platform/i18n";
 
 export interface FileRef {
@@ -131,9 +131,33 @@ export function nextValue(option: AgentConfigOption, current = option.current): 
 /** "12%" of the context window and a tooltip with the numbers. */
 export function usageLabel(u: AgentUsage): { short: string; detail: string } {
   const pct = Math.min(100, Math.round((u.used / u.size) * 100));
-  const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${Math.round(n)}`);
-  const cost = u.cost != null ? ` · ${u.currency === "USD" || !u.currency ? "$" : `${u.currency} `}${u.cost.toFixed(2)}` : "";
-  return { short: `${pct}%`, detail: tx`${k(u.used)} / ${k(u.size)} tokens${cost}` };
+  const cost = u.cost != null ? ` · ${costLabel(u)}` : "";
+  return { short: `${pct}%`, detail: tx`${tokens(u.used)} / ${tokens(u.size)} tokens${cost}` };
+}
+
+/** `850`, `83.1k`, `1M`. */
+function tokens(n: number): string {
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${+(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k`;
+  return `${Math.round(n)}`;
+}
+
+/** Session cost (`$4.23`), when the agent reports one. */
+function costLabel(u: AgentUsage): string | null {
+  if (u.cost == null) return null;
+  return `${u.currency === "USD" || !u.currency ? "$" : `${u.currency} `}${u.cost.toFixed(2)}`;
+}
+
+/** Time the agent spent on the task's turns; a running one counts up to `now` (`null` when idle). */
+export function workTime(entries: readonly AgentEntry[], now: number | null): number {
+  const users = entries.filter((e): e is Extract<AgentEntry, { type: "user" }> => e.type === "user");
+  let total = 0;
+  users.forEach((e, i) => {
+    if (e.sentMs == null) return;
+    const end = e.doneMs ?? (i === users.length - 1 ? now : null);
+    if (end != null && end > e.sentMs) total += end - e.sentMs;
+  });
+  return total;
 }
 
 /** `data:image/png;base64,AAA` → an image attachment. */

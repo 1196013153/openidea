@@ -14,6 +14,7 @@ import {
   recall,
   toPrompt,
   usageLabel,
+  workTime,
 } from "./composerModel";
 import { age, attentionChange, branchLabel, groupTasks, upsertEntry } from "./model";
 import { markdownHtml } from "./Markdown";
@@ -129,6 +130,25 @@ describe("agent composer", () => {
     });
     expect(imageFromDataUrl("data:image/png;base64,AAA", "a.png")).toEqual({ mimeType: "image/png", data: "AAA", name: "a.png" });
     expect(imageFromDataUrl("data:text/plain;base64,AAA")).toBeNull();
+  });
+});
+
+describe("usage meters", () => {
+  it("formats token counts", () => {
+    expect(usageLabel({ used: 83_100, size: 1_000_000, cost: null, currency: null }).detail).toBe("83.1k / 1M tokens");
+  });
+
+  it("adds up the time spent on turns", () => {
+    const user = (sentMs: number, doneMs: number | null): AgentEntry => ({
+      type: "user",
+      text: "",
+      attachments: [],
+      sentMs,
+      doneMs,
+    });
+    const entries = [user(0, 5_000), { type: "agent", text: "" } as AgentEntry, user(10_000, null)];
+    expect(workTime(entries, 12_000)).toBe(7_000);
+    expect(workTime(entries, null)).toBe(5_000);
   });
 });
 

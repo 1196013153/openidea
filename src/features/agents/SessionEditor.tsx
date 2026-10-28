@@ -1,9 +1,9 @@
 /** An agent task as an editor tab: the conversation, a composer and the task's changed files. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
-import type { AgentChange, AgentEntry, AgentTask } from "@/bindings";
+import type { AgentChange, AgentEntry, AgentTask, AgentUsage } from "@/bindings";
 import { executeAction } from "@/platform/actions";
-import { call, commands } from "@/platform/ipc";
+import { call, commands, onIdeEvent } from "@/platform/ipc";
 import { basename, relativeDir, useProject } from "@/platform/project";
 import { editorService, notifications, type EditorInput } from "@/workbench/contributions";
 import {
@@ -24,7 +24,7 @@ import {
 import { useTx } from "@/platform/i18n";
 import { TaskStatusIcon } from "./AgentsView";
 import { Composer } from "./Composer";
-import { canSend, emptyDraft, usageLabel } from "./composerModel";
+import { canSend, emptyDraft, usageLabel, workTime } from "./composerModel";
 import { ConfigPickers } from "./ConfigPickers";
 import { findRanges, formatDuration, formatSentAt } from "./conversation";
 import { Markdown } from "./Markdown";
@@ -55,6 +55,7 @@ export function SessionEditor({ input }: { input: EditorInput }) {
   const task = useAgents((s) => s.tasks.get(id));
   const entries = useAgents((s) => s.entries.get(id));
   const changes = useAgents((s) => s.changes.get(id));
+  const head = useLocalHead(task?.isolation === "local" ? task.status : null);
   useEffect(() => {
     void loadEntries(id).catch(() => undefined);
     void refreshChanges(id);
@@ -86,7 +87,7 @@ export function SessionEditor({ input }: { input: EditorInput }) {
       }}
     >
       <div className={styles.conversation}>
-        <Header task={task} />
+        <Header task={task} entries={entries ?? null} head={head} />
         <PermissionBanner task={task} entries={entries ?? null} />
         <Stream
           task={task}
@@ -97,7 +98,7 @@ export function SessionEditor({ input }: { input: EditorInput }) {
         />
         <SessionComposer task={task} entries={entries ?? null} />
       </div>
-      <ChangesPane task={task} changes={changes ?? null} />
+      <ChangesPane task={task} changes={changes ?? null} head={head} />
     </div>
   );
 }
@@ -106,7 +107,32 @@ function providerName(id: string) {
   return useAgents.getState().providers.find((p) => p.id === id)?.name ?? id;
 }
 
-function Header({ task }: { task: AgentTask }) {
+/**
+ * Current branch of the project's repository for a local-checkout task (`status` is
+ * `null` otherwise); followed as git changes, since the agent or the user may switch it.
+ */
+function useLocalHead(status: AgentTask["status"] | null): string | null {
+  const [head, setHead] = useState<string | null>(null);
+  const local = status !== null;
+  useEffect(() => {
+    if (!local) return;
+    let live = true;
+    const load = () =>
+      void call(commands.vcsBranchInfo(null)).then(
+        (b) => live && setHead(b.head ?? b.headCommit?.slice(0, 8) ?? null),
+        () => live && setHead(null),
+      );
+    load();
+    const off = onIdeEvent("vcsChanged", load);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [local, status]);
+  return local ? head : null;
+}
+
+function Header({ task, entries, head }: { task: AgentTask; entries: AgentEntry[] | null; head: string | null }) {
   const busy = isBusy(task.status);
   const where = task.isolation === "worktree" ? branchLabel(task.branch) : null;
   return (
@@ -121,12 +147,17 @@ function Header({ task }: { task: AgentTask }) {
           {providerName(task.provider)}
           {task.model ? ` · ${task.model}` : ""}
           {" · "}
-          {where ?? <T>Local checkout</T>}
+          {where ?? (
+            <>
+              <T>Local checkout</T>
+              {head ? ` · ${head}` : ""}
+            </>
+          )}
           {" · "}
           <T>{statusLabel(task.status)}</T>
         </span>
       </span>
-      {task.usage && <Usage task={task} />}
+      <Meters task={task} entries={entries} />
       {busy && <IconButton icon="stop" title="Stop" size="small" onClick={() => void cancelTask(task.id)} />}
       <IconButton
         icon="terminal"
@@ -142,16 +173,41 @@ function Header({ task }: { task: AgentTask }) {
 }
 
 /** Context window use: "12%", the numbers (and cost) in the tooltip. */
-function Usage({ task }: { task: AgentTask }) {
-  const label = usageLabel(task.usage!);
+/** Context use (when the agent reports it) and the time spent on the task. */
+function Meters({ task, entries }: { task: AgentTask; entries: AgentEntry[] | null }) {
+  const tx = useTx();
+  const busy = isBusy(task.status);
+  const now = useNow(busy ? 1000 : 60_000);
+  const usage = task.usage;
+  const work = entries ? workTime(entries, busy ? now : null) : 0;
   return (
-    <span className={styles.usage} title={label.detail} aria-label={`Context ${label.short}, ${label.detail}`}>
+    <span className={styles.meters}>
+      {usage && <Usage usage={usage} />}
+      {work >= 1000 && <span title={tx("Time the agent spent on this task")}>{formatDuration(work)}</span>}
+    </span>
+  );
+}
+
+function Usage({ usage }: { usage: AgentUsage }) {
+  const label = usageLabel(usage);
+  return (
+    <span className={styles.meter} title={label.detail} aria-label={`Context ${label.short}, ${label.detail}`}>
       <span className={styles.usageBar} aria-hidden>
         <span style={{ width: label.short }} />
       </span>
       {label.short}
     </span>
   );
+}
+
+/** `Date.now()`, updated every `interval` ms. */
+function useNow(interval: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(t);
+  }, [interval]);
+  return now;
 }
 
 interface StreamProps {
@@ -217,11 +273,7 @@ type UserEntry = Extract<AgentEntry, { type: "user" }>;
 
 /** Time since `since`, ticking every second. */
 function Elapsed({ since }: { since: number }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const now = useNow(1000);
   return <span className={styles.muted}>{formatDuration(now - since)}</span>;
 }
 
@@ -644,7 +696,7 @@ const KIND_COLOR: Partial<Record<AgentChange["kind"], string>> = {
   conflicted: "var(--vcs-conflict)",
 };
 
-function ChangesPane({ task, changes }: { task: AgentTask; changes: AgentChange[] | null }) {
+function ChangesPane({ task, changes, head }: { task: AgentTask; changes: AgentChange[] | null; head: string | null }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const added = changes?.reduce((n, c) => n + c.added, 0) ?? 0;
   const removed = changes?.reduce((n, c) => n + c.removed, 0) ?? 0;
@@ -662,9 +714,9 @@ function ChangesPane({ task, changes }: { task: AgentTask; changes: AgentChange[
         <span className={styles.bannerSpacer} />
         <IconButton icon="refresh" title="Refresh" size="small" onClick={() => void refreshChanges(task.id)} />
       </div>
-      {task.base && (
+      {(head ?? task.base) && (
         <div className={styles.changesSummary}>
-          <T>vs</T> {task.base}
+          <T>vs</T> {head ?? task.base}
           {changes && changes.length > 0 && (
             <>
               {"  "}

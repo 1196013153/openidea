@@ -435,14 +435,20 @@
   white-space: nowrap;
 }
 
-.usage {
+.meters {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
   color: var(--fg-subtle);
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .usageBar {
   width: 36px;
