@@ -61,6 +61,7 @@ export const intellijMacos: Record<string, string[]> = {
 
   // Find
   "find.inFile": ["Meta+F"],
+  "agents.findInConversation": ["Meta+F"],
   "find.replaceInFile": ["Meta+R"],
   "find.next": ["Meta+G"],
   "find.previous": ["Meta+Shift+G"],

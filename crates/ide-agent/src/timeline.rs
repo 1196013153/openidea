@@ -166,11 +166,17 @@ impl Timeline {
         }
     }
 
-    /// Settles what an ended turn left open: running tools and pending permissions.
-    pub fn end_turn(&mut self) -> Vec<usize> {
+    /// Settles what an ended turn left open: running tools and pending permissions,
+    /// and records when the turn ended (`done`) on the message that started it.
+    pub fn end_turn(&mut self, done: Option<f64>) -> Vec<usize> {
         let mut changed = Vec::new();
+        let started = self.entries.iter().rposition(|e| matches!(e, AgentEntry::User { .. }));
         for (i, e) in self.entries.iter_mut().enumerate() {
             match e {
+                AgentEntry::User { done_ms, .. } if Some(i) == started && done.is_some() && done_ms.is_none() => {
+                    *done_ms = done;
+                    changed.push(i);
+                }
                 AgentEntry::Tool { status, .. }
                     if matches!(status, AgentToolStatus::Pending | AgentToolStatus::Running) =>
                 {
@@ -286,10 +292,25 @@ mod tests {
         assert_eq!(t.apply(&plan("completed")).changed, vec![0]);
         t.apply(&json!({"sessionUpdate": "tool_call", "toolCallId": "c", "title": "Run", "status": "in_progress"}));
         t.push(AgentEntry::Permission { id: 1, title: "Run?".into(), options: vec![], chosen: None });
-        assert_eq!(t.end_turn(), vec![2, 3]);
+        assert_eq!(t.end_turn(None), vec![2, 3]);
         let again = Timeline::from_entries(t.entries.clone());
         assert_eq!(again.plan, Some(0));
         assert_eq!(again.tools.get("c"), Some(&2));
+    }
+
+    #[test]
+    fn end_turn_records_when_the_last_message_was_answered() {
+        let user =
+            |sent: f64| AgentEntry::User { text: "q".into(), attachments: vec![], sent_ms: Some(sent), done_ms: None };
+        let mut t = Timeline::default();
+        t.push(user(1.0));
+        t.push(AgentEntry::Agent { text: "a".into() });
+        t.push(user(2.0));
+        assert_eq!(t.end_turn(Some(5.0)), vec![2]);
+        assert!(matches!(t.entries[0], AgentEntry::User { done_ms: None, .. }));
+        assert!(matches!(t.entries[2], AgentEntry::User { done_ms: Some(5.0), .. }));
+        // Settled once: a later end (a restart) doesn't move it.
+        assert_eq!(t.end_turn(Some(9.0)), Vec::<usize>::new());
     }
 
     #[test]

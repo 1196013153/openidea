@@ -232,7 +232,7 @@ impl AgentManager {
                     if matches!(f.task.status, AgentStatus::Running | AgentStatus::NeedsInput | AgentStatus::Starting) {
                         f.task.status = AgentStatus::Ready;
                         let mut timeline = Timeline::from_entries(std::mem::take(&mut f.entries));
-                        timeline.end_turn();
+                        timeline.end_turn(None);
                         f.entries = timeline.entries;
                     }
                     let task = Task::restore(f, shared.clone());
@@ -658,7 +658,7 @@ impl Task {
         loop {
             let result = self.turn(&prompt).await;
             tokio::time::sleep(TURN_GRACE).await;
-            let changed = self.state.lock().timeline.end_turn();
+            let changed = self.state.lock().timeline.end_turn(Some(now_ms()));
             self.mark_dirty(changed);
             let send_now = self.send_now.swap(false, Ordering::AcqRel);
             let next = {
@@ -702,7 +702,12 @@ impl Task {
             .map(|f| file_name(&f.0))
             .chain(prompt.images.iter().map(|i| i.name.clone().unwrap_or_else(|| "image".into())))
             .collect();
-        self.push_entry(AgentEntry::User { text: prompt.text.clone(), attachments });
+        self.push_entry(AgentEntry::User {
+            text: prompt.text.clone(),
+            attachments,
+            sent_ms: Some(now_ms()),
+            done_ms: None,
+        });
         // Launching the agent can take a while (`npx` fetches its adapter on first use).
         let starting = self.live.lock().as_ref().is_none_or(|l| l.peer.is_closed());
         self.set_status(if starting { AgentStatus::Starting } else { AgentStatus::Running }, None);

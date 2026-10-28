@@ -17,6 +17,7 @@ import {
 import { AgentsStatus } from "./AgentsStatus";
 import { HOME_KIND, SESSION_KIND, TOOL_WINDOW } from "./model";
 import { sendPaths, sendSelection } from "./references";
+import { focusedSession } from "./sessionFocus";
 import { connect, disconnect, openHome, useAgents } from "./store";
 
 export function activate(): () => void {
@@ -71,6 +72,14 @@ export function activate(): () => void {
           : [],
     }),
     registerActions([
+      {
+        id: "agents.findInConversation",
+        title: "Find in Conversation",
+        category: "Agents",
+        icon: "search",
+        when: "agentSessionFocus",
+        run: () => focusedSession()?.openFind(),
+      },
       {
         id: "agents.newTask",
         title: "New Agent Task",

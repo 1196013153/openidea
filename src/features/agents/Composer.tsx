@@ -80,6 +80,15 @@ export function Composer(props: ComposerProps) {
     if (props.autoFocus) ref.current?.focus();
   }, [props.autoFocus]);
 
+  const focus = useAgents((s) => (s.focus?.key === id ? s.focus.seq : 0));
+  useEffect(() => {
+    const el = ref.current;
+    if (!focus || !el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.scrollTop = el.scrollHeight;
+  }, [focus]);
+
   // Grow with the text, up to a limit.
   useLayoutEffect(() => {
     const el = ref.current;

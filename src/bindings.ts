@@ -986,7 +986,11 @@ export type AgentConfigVia =
 /**  One item of a task's conversation. */
 export type AgentEntry = { type: "user"; text: string; 
 /**  Names of the files and images sent with it. */
-attachments: string[] } | { type: "agent"; text: string } | { type: "thought"; text: string } | { type: "tool"; id: string; title: string; 
+attachments: string[]; 
+/**  When it was sent (ms since the epoch); `None` in tasks saved before this was kept. */
+sentMs?: number | null; 
+/**  When the turn it started ended; `None` while it runs or when it was cut off. */
+doneMs?: number | null } | { type: "agent"; text: string } | { type: "thought"; text: string } | { type: "tool"; id: string; title: string; 
 /**  ACP tool kind: `read`, `edit`, `execute`, `search`, `fetch`, `think`… */
 kind: string; status: AgentToolStatus; locations: IpcPath[]; 
 /**  Text the tool reported (command output…), truncated. */

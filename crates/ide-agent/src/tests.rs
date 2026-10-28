@@ -238,10 +238,17 @@ async fn a_task_runs_asks_for_permission_and_survives_a_restart() {
             events.iter().any(|e| matches!(e, AgentEvent::Task { task } if task.status == AgentStatus::NeedsInput))
         );
         let last_entry = events.iter().rev().find_map(|e| match e {
-            AgentEvent::Entry { index, entry, .. } => Some((*index, entry.clone())),
+            AgentEvent::Entry { index, entry, .. } if !matches!(entry, AgentEntry::User { .. }) => {
+                Some((*index, entry.clone()))
+            }
             _ => None,
         });
         assert_eq!(last_entry, Some((4, AgentEntry::Agent { text: "chose yes".into() })));
+        // The turn's end is recorded on the message that started it.
+        assert!(events.iter().any(|e| matches!(
+            e,
+            AgentEvent::Entry { index: 0, entry: AgentEntry::User { sent_ms: Some(_), done_ms: Some(_), .. }, .. }
+        )));
     }
     let providers = mgr.providers();
     let claude = providers.iter().find(|p| p.id == "claude").unwrap();

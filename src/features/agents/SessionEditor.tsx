@@ -1,16 +1,30 @@
 /** An agent task as an editor tab: the conversation, a composer and the task's changed files. */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
 import type { AgentChange, AgentEntry, AgentTask } from "@/bindings";
 import { executeAction } from "@/platform/actions";
 import { call, commands } from "@/platform/ipc";
 import { basename, relativeDir, useProject } from "@/platform/project";
 import { editorService, notifications, type EditorInput } from "@/workbench/contributions";
-import { Button, EmptyState, Icon, IconButton, Spinner, T, Tree, fileIconName } from "@/ui";
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  SearchField,
+  Spinner,
+  T,
+  Tree,
+  copyText,
+  fileIconName,
+  selectableText,
+} from "@/ui";
+import { useTx } from "@/platform/i18n";
 import { TaskStatusIcon } from "./AgentsView";
 import { Composer } from "./Composer";
 import { canSend, emptyDraft, usageLabel } from "./composerModel";
 import { ConfigPickers } from "./ConfigPickers";
+import { findRanges, formatDuration, formatSentAt } from "./conversation";
 import { Markdown } from "./Markdown";
 import { branchLabel, isBusy, providerIcon, statusLabel } from "./model";
 import {
@@ -19,8 +33,11 @@ import {
   loadEntries,
   markVisible,
   refreshChanges,
+  editMessage,
   editQueued,
+  quoteInComposer,
   removeQueued,
+  resendMessage,
   respond,
   sendMessage,
   sendQueuedNow,
@@ -28,6 +45,7 @@ import {
   useAgentCommands,
   useAgents,
 } from "./store";
+import { setFocusedSession, focusedSession, type FocusedSession } from "./sessionFocus";
 import styles from "./Session.module.css";
 
 export function SessionEditor({ input }: { input: EditorInput }) {
@@ -40,13 +58,41 @@ export function SessionEditor({ input }: { input: EditorInput }) {
     void refreshChanges(id);
     return markVisible(id);
   }, [id]);
+  const [finding, setFinding] = useState(false);
+  const [findFocus, setFindFocus] = useState(0);
+  const [session] = useState<FocusedSession>(() => ({
+    openFind: () => {
+      setFinding(true);
+      setFindFocus((n) => n + 1);
+    },
+  }));
+  useEffect(
+    () => () => {
+      if (focusedSession() === session) setFocusedSession(null);
+    },
+    [session],
+  );
   if (!task) return <EmptyState title="This agent task no longer exists" />;
   return (
-    <div className={styles.session}>
+    <div
+      className={styles.session}
+      onFocusCapture={() => setFocusedSession(session)}
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null) && focusedSession() === session) {
+          setFocusedSession(null);
+        }
+      }}
+    >
       <div className={styles.conversation}>
         <Header task={task} />
         <PermissionBanner task={task} entries={entries ?? null} />
-        <Stream task={task} entries={entries ?? null} />
+        <Stream
+          task={task}
+          entries={entries ?? null}
+          finding={finding}
+          findFocus={findFocus}
+          onCloseFind={() => setFinding(false)}
+        />
         <SessionComposer task={task} entries={entries ?? null} />
       </div>
       <ChangesPane task={task} changes={changes ?? null} />
@@ -106,34 +152,248 @@ function Usage({ task }: { task: AgentTask }) {
   );
 }
 
-function Stream({ task, entries }: { task: AgentTask; entries: AgentEntry[] | null }) {
+interface StreamProps {
+  task: AgentTask;
+  entries: AgentEntry[] | null;
+  finding: boolean;
+  /** Bumped by Find in Conversation: focus the find field again. */
+  findFocus: number;
+  onCloseFind: () => void;
+}
+
+function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps) {
+  const tx = useTx();
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   });
   const waiting = entries?.some((e) => e.type === "permission" && !e.chosen);
+  const lastUser = entries?.findLast((e): e is UserEntry => e.type === "user");
+  const toBottom = () => {
+    const el = ref.current;
+    if (!el) return;
+    stick.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
   return (
-    <div
-      ref={ref}
-      className={styles.stream}
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    <div className={styles.streamArea}>
+      {finding && <FindBar streamRef={ref} focus={findFocus} onClose={onCloseFind} />}
+      <div
+        ref={ref}
+        // The conversation is read and copied like a document; focusable so ⌘F reaches it.
+        className={clsx(styles.stream, selectableText)}
+        tabIndex={-1}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          setAtBottom(stick.current);
+        }}
+      >
+        {entries === null ? (
+          <Spinner />
+        ) : (
+          entries.map((entry, i) => <Entry key={i} task={task} entry={entry} />)
+        )}
+        {(task.status === "running" || task.status === "starting") && !waiting && (
+          <div className={styles.working}>
+            <Spinner size={12} />
+            <T>{task.status === "starting" ? "Starting the agent…" : "Working…"}</T>
+            {lastUser?.sentMs != null && !lastUser.doneMs && <Elapsed since={lastUser.sentMs} />}
+          </div>
+        )}
+      </div>
+      <QuoteSelection task={task} streamRef={ref} />
+      {!atBottom && (
+        <IconButton
+          icon="arrow-down"
+          title={tx("Jump to Bottom")}
+          className={styles.jumpToBottom}
+          onClick={toBottom}
+        />
+      )}
+    </div>
+  );
+}
+
+type UserEntry = Extract<AgentEntry, { type: "user" }>;
+
+/** Time since `since`, ticking every second. */
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className={styles.muted}>{formatDuration(now - since)}</span>;
+}
+
+/** A Quote button next to text selected in the conversation: replies to it in the composer. */
+function QuoteSelection({ task, streamRef }: { task: AgentTask; streamRef: RefObject<HTMLDivElement | null> }) {
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const place = useCallback(() => {
+    const stream = streamRef.current;
+    const sel = window.getSelection();
+    if (!stream || !sel || sel.isCollapsed || !sel.rangeCount || !sel.toString().trim()) return setAt(null);
+    const range = sel.getRangeAt(0);
+    if (!stream.contains(range.commonAncestorContainer)) return setAt(null);
+    const rects = range.getClientRects();
+    const last = rects[rects.length - 1] ?? range.getBoundingClientRect();
+    const area = stream.parentElement!.getBoundingClientRect();
+    const box = stream.getBoundingClientRect();
+    if (last.bottom < box.top || last.top > box.bottom) return setAt(null);
+    setAt({
+      left: Math.min(Math.max(last.right - area.left, 0), area.width - 80),
+      top: Math.min(last.bottom - area.top + 4, box.bottom - area.top - 28),
+    });
+  }, [streamRef]);
+  useEffect(() => {
+    const stream = streamRef.current;
+    document.addEventListener("selectionchange", place);
+    stream?.addEventListener("scroll", place);
+    return () => {
+      document.removeEventListener("selectionchange", place);
+      stream?.removeEventListener("scroll", place);
+    };
+  }, [place, streamRef]);
+  if (!at || task.status === "archived") return null;
+  return (
+    <button
+      type="button"
+      className={styles.quoteButton}
+      style={{ left: at.left, top: at.top }}
+      // Keep the selection: it is what gets quoted.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => {
+        const text = window.getSelection()?.toString() ?? "";
+        window.getSelection()?.removeAllRanges();
+        setAt(null);
+        if (text.trim()) quoteInComposer(task.id, text);
       }}
     >
-      {entries === null ? (
-        <Spinner />
-      ) : (
-        entries.map((entry, i) => <Entry key={i} task={task} entry={entry} />)
-      )}
-      {(task.status === "running" || task.status === "starting") && !waiting && (
-        <div className={styles.working}>
-          <Spinner size={12} />
-          <T>{task.status === "starting" ? "Starting the agent…" : "Working…"}</T>
-        </div>
-      )}
+      <T>Quote</T>
+    </button>
+  );
+}
+
+const highlights = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
+const HighlightCtor = (globalThis as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
+
+function setHighlight(name: string, ranges: Range[]) {
+  if (!highlights || !HighlightCtor) return;
+  if (ranges.length) highlights.set(name, new HighlightCtor(...ranges));
+  else highlights.delete(name);
+}
+
+/** Scrolls `range` into view in `stream`, opening the collapsed tool output or thought holding it. */
+function revealRange(range: Range, stream: HTMLElement) {
+  for (let el = range.startContainer.parentElement; el && el !== stream; el = el.parentElement) {
+    if (el instanceof HTMLDetailsElement) el.open = true;
+  }
+  const r = range.getBoundingClientRect();
+  const box = stream.getBoundingClientRect();
+  if (r.top < box.top + 24 || r.bottom > box.bottom - 24) {
+    stream.scrollTop += r.top - box.top - box.height / 3;
+  }
+}
+
+/** Find in Conversation: every match highlighted, Enter / ⇧Enter step through them. */
+function FindBar({
+  streamRef,
+  focus,
+  onClose,
+}: {
+  streamRef: RefObject<HTMLDivElement | null>;
+  focus: number;
+  onClose: () => void;
+}) {
+  const tx = useTx();
+  const input = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
+  const [ranges, setRanges] = useState<Range[]>([]);
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, [focus]);
+
+  // Matches follow the conversation as it streams in (and as code gets highlighted).
+  useEffect(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setRanges(findRanges(stream, query.trim())));
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(stream, { subtree: true, childList: true, characterData: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [query, streamRef]);
+
+  const index = ranges.length ? Math.min(current, ranges.length - 1) : -1;
+  useEffect(() => {
+    setHighlight("agent-find", ranges);
+    setHighlight("agent-find-current", index >= 0 ? [ranges[index]!] : []);
+  }, [ranges, index]);
+  useEffect(
+    () => () => {
+      setHighlight("agent-find", []);
+      setHighlight("agent-find-current", []);
+    },
+    [],
+  );
+
+  const step = (dir: 1 | -1) => {
+    const stream = streamRef.current;
+    if (!ranges.length || !stream) return;
+    const next = (index + dir + ranges.length) % ranges.length;
+    setCurrent(next);
+    revealRange(ranges[next]!, stream);
+  };
+  const close = () => {
+    onClose();
+    streamRef.current?.focus();
+  };
+
+  return (
+    <div className={styles.findBar} role="search">
+      <SearchField
+        ref={input}
+        value={query}
+        onChange={(v) => {
+          setQuery(v);
+          setCurrent(0);
+        }}
+        aria-label={tx("Find in Conversation")}
+        placeholder={tx("Find in conversation")}
+        className={styles.findField}
+        trailing={
+          query.trim() ? (
+            <span className={styles.findCount}>{ranges.length ? `${index + 1}/${ranges.length}` : tx("0 results")}</span>
+          ) : null
+        }
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            step(e.shiftKey ? -1 : 1);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+          }
+        }}
+      />
+      <IconButton icon="arrow-up" title={tx("Previous Occurrence")} size="small" disabled={!ranges.length} onClick={() => step(-1)} />
+      <IconButton icon="arrow-down" title={tx("Next Occurrence")} size="small" disabled={!ranges.length} onClick={() => step(1)} />
+      <IconButton icon="close" title={tx("Close")} size="small" onClick={close} />
     </div>
   );
 }
@@ -152,23 +412,16 @@ const TOOL_ICONS: Record<string, string> = {
 function Entry({ task, entry }: { task: AgentTask; entry: AgentEntry }) {
   switch (entry.type) {
     case "user":
+      return <UserMessage task={task} entry={entry} />;
+    case "agent":
       return (
-        <div className={styles.user}>
-          {entry.text}
-          {entry.attachments.length > 0 && (
-            <div className={styles.attachments}>
-              {entry.attachments.map((a, i) => (
-                <span key={i} className={styles.attachment}>
-                  <Icon name={fileIconName(a)} size={12} />
-                  {a}
-                </span>
-              ))}
-            </div>
-          )}
+        <div className={styles.message}>
+          <Markdown text={entry.text} cwd={task.cwd} />
+          <div className={clsx(styles.messageActions, styles.floatingActions)}>
+            <IconButton icon="copy" title="Copy" size="small" onClick={() => void copyText(entry.text)} />
+          </div>
         </div>
       );
-    case "agent":
-      return <Markdown text={entry.text} />;
     case "thought":
       return (
         <details className={styles.thought}>
@@ -204,6 +457,60 @@ function Entry({ task, entry }: { task: AgentTask; entry: AgentEntry }) {
         </div>
       );
   }
+}
+
+function UserMessage({ task, entry }: { task: AgentTask; entry: UserEntry }) {
+  const tx = useTx();
+  const fail = (e: unknown) => notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) });
+  const archived = task.status === "archived";
+  return (
+    <div className={styles.message}>
+      <div className={styles.user}>
+        {entry.text}
+        {entry.attachments.length > 0 && (
+          <div className={styles.attachments}>
+            {entry.attachments.map((a, i) => (
+              <span key={i} className={styles.attachment}>
+                <Icon name={fileIconName(a)} size={12} />
+                {a}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className={styles.messageMeta}>
+        {entry.sentMs != null && (
+          <span className={styles.muted} title={new Date(entry.sentMs).toLocaleString()}>
+            {formatSentAt(entry.sentMs)}
+          </span>
+        )}
+        {entry.sentMs != null && entry.doneMs != null && (
+          <span className={styles.muted} title={tx("Time the agent took to answer")}>
+            {`\u00a0· ${formatDuration(entry.doneMs - entry.sentMs)}`}
+          </span>
+        )}
+        <span className={styles.messageActions}>
+          <IconButton icon="copy" title="Copy" size="small" onClick={() => void copyText(entry.text)} />
+          {!archived && entry.text && (
+            <IconButton
+              icon="edit"
+              title="Edit and Resend"
+              size="small"
+              onClick={() => editMessage(task.id, entry.text)}
+            />
+          )}
+          {!archived && entry.text && entry.attachments.length === 0 && (
+            <IconButton
+              icon="refresh"
+              title="Send Again"
+              size="small"
+              onClick={() => void resendMessage(task.id, entry.text).catch(fail)}
+            />
+          )}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function ToolEntry({ task, entry }: { task: AgentTask; entry: Extract<AgentEntry, { type: "tool" }> }) {
