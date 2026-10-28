@@ -1,5 +1,5 @@
 /** An agent task as an editor tab: the conversation, a composer and the task's changed files. */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
 import type { AgentChange, AgentEntry, AgentTask } from "@/bindings";
 import { executeAction } from "@/platform/actions";
@@ -15,9 +15,11 @@ import {
   Spinner,
   T,
   Tree,
+  copyMenuFor,
   copyText,
   fileIconName,
   selectableText,
+  showContextMenu,
 } from "@/ui";
 import { useTx } from "@/platform/i18n";
 import { TaskStatusIcon } from "./AgentsView";
@@ -191,6 +193,17 @@ function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps)
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
           setAtBottom(stick.current);
         }}
+        // Copy, plus Quote for a selection: replies to it in the composer.
+        onContextMenu={(e) => {
+          const text = selectionIn(e.currentTarget);
+          const items = copyMenuFor(e.target) ?? [];
+          if (text.trim() && task.status !== "archived") {
+            items.push({ id: "quote", label: "Quote", icon: "edit", run: () => quoteInComposer(task.id, text) });
+          }
+          if (!items.length) return;
+          e.preventDefault();
+          showContextMenu(e, items);
+        }}
       >
         {entries === null ? (
           <Spinner />
@@ -205,7 +218,6 @@ function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps)
           </div>
         )}
       </div>
-      <QuoteSelection task={task} streamRef={ref} />
       {!atBottom && (
         <IconButton
           icon="arrow-down"
@@ -230,52 +242,11 @@ function Elapsed({ since }: { since: number }) {
   return <span className={styles.muted}>{formatDuration(now - since)}</span>;
 }
 
-/** A Quote button next to text selected in the conversation: replies to it in the composer. */
-function QuoteSelection({ task, streamRef }: { task: AgentTask; streamRef: RefObject<HTMLDivElement | null> }) {
-  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
-  const place = useCallback(() => {
-    const stream = streamRef.current;
-    const sel = window.getSelection();
-    if (!stream || !sel || sel.isCollapsed || !sel.rangeCount || !sel.toString().trim()) return setAt(null);
-    const range = sel.getRangeAt(0);
-    if (!stream.contains(range.commonAncestorContainer)) return setAt(null);
-    const rects = range.getClientRects();
-    const last = rects[rects.length - 1] ?? range.getBoundingClientRect();
-    const area = stream.parentElement!.getBoundingClientRect();
-    const box = stream.getBoundingClientRect();
-    if (last.bottom < box.top || last.top > box.bottom) return setAt(null);
-    setAt({
-      left: Math.min(Math.max(last.right - area.left, 0), area.width - 80),
-      top: Math.min(last.bottom - area.top + 4, box.bottom - area.top - 28),
-    });
-  }, [streamRef]);
-  useEffect(() => {
-    const stream = streamRef.current;
-    document.addEventListener("selectionchange", place);
-    stream?.addEventListener("scroll", place);
-    return () => {
-      document.removeEventListener("selectionchange", place);
-      stream?.removeEventListener("scroll", place);
-    };
-  }, [place, streamRef]);
-  if (!at || task.status === "archived") return null;
-  return (
-    <button
-      type="button"
-      className={styles.quoteButton}
-      style={{ left: at.left, top: at.top }}
-      // Keep the selection: it is what gets quoted.
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => {
-        const text = window.getSelection()?.toString() ?? "";
-        window.getSelection()?.removeAllRanges();
-        setAt(null);
-        if (text.trim()) quoteInComposer(task.id, text);
-      }}
-    >
-      <T>Quote</T>
-    </button>
-  );
+/** Text selected in `stream`, or "" when the selection is elsewhere. */
+function selectionIn(stream: HTMLElement): string {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+  return stream.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.toString() : "";
 }
 
 const highlights = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;

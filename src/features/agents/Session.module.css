@@ -96,7 +96,7 @@
   cursor: default;
 }
 
-/* The conversation plus what floats over it (find bar, Quote, Jump to Bottom). */
+/* The conversation plus what floats over it (find bar, Jump to Bottom). */
 .streamArea {
   position: relative;
   flex: 1;
@@ -165,24 +165,6 @@
   border: 1px solid var(--border);
   border-radius: 50%;
   box-shadow: var(--shadow-tooltip);
-}
-
-.quoteButton {
-  position: absolute;
-  z-index: 2;
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  background: var(--bg-popup);
-  color: var(--fg);
-  box-shadow: var(--shadow-tooltip);
-  cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
-}
-.quoteButton:hover {
-  background: var(--bg-hover);
 }
 
 .findBar {
