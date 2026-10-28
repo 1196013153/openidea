@@ -1,8 +1,8 @@
 /* Linked, not inlined in index.html: release builds hash inline <style> blocks into the CSP,
    which voids style-src 'unsafe-inline' and blocks the editor's runtime-injected styles. */
 /* Start-up splash over the page until the window's launch project is open (platform/splash.ts).
-   Until tokens load, the colours are the last theme's --bg-frame / --fg-muted / --accent that
-   boot.js restored as --boot-*, else these built-in ones. */
+   Until tokens load, the colours are the last theme's --bg-frame / --fg-muted that boot.js
+   restored as --boot-*, else these built-in ones; the bar keeps the last --accent throughout. */
 /* Not on html: the canvas then takes body's (themed) background, which a fast resize shows before relayout. */
 body, .splash { background: var(--bg-frame, var(--boot-frame, #e9eaee)); }
 :root[data-theme="dark"] :is(body, .splash) { background: var(--bg-frame, var(--boot-frame, #26282c)); }
@@ -33,11 +33,13 @@ body, .splash { background: var(--bg-frame, var(--boot-frame, #e9eaee)); }
 /* 15px Inter: 2048 units per em, the line box from ascender to descender. */
 .splash-wordmark { width: 73.2px; height: 18.15px; }
 .splash-bar { width: 120px; height: 2px; border-radius: 1px; overflow: hidden; background: rgb(127 127 127 / 0.18); }
-/* Fake progress: eases towards ~90% over the 4 s cap; hideSplash() fills it before fading out. */
+/* Fake progress: eases towards ~90% over the 4 s cap; hideSplash() fills it before fading out.
+   The remembered accent comes first: tokens.css brings the theme's default --accent before
+   settings restore a custom one, which would flash the default mid-load. */
 .splash-bar > i {
   display: block;
   height: 100%;
-  background: var(--accent, var(--boot-accent, #3871e1));
+  background: var(--boot-accent, var(--accent, #3871e1));
   transform-origin: left;
   animation: splash-fill 4s cubic-bezier(0.1, 0.7, 0.3, 1) both;
 }
