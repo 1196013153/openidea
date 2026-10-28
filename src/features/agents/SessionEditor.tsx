@@ -293,10 +293,21 @@ function FindBar({
   }, [query, streamRef]);
 
   const index = ranges.length ? Math.min(current, ranges.length - 1) : -1;
+  // Expanding or collapsing a tool output shows or hides its matches.
+  const [shown, setShown] = useState(0);
   useEffect(() => {
-    setHighlight("agent-find", ranges);
-    setHighlight("agent-find-current", index >= 0 ? [ranges[index]!] : []);
-  }, [ranges, index]);
+    const stream = streamRef.current;
+    const toggled = () => setShown((n) => n + 1);
+    stream?.addEventListener("toggle", toggled, true);
+    return () => stream?.removeEventListener("toggle", toggled, true);
+  }, [streamRef]);
+  useEffect(() => {
+    // Only rendered matches: WebKit paints those in collapsed <details> over the text next to them.
+    const visible = (r: Range) => r.getClientRects().length > 0;
+    const current = index >= 0 ? ranges[index]! : null;
+    setHighlight("agent-find", ranges.filter(visible));
+    setHighlight("agent-find-current", current && visible(current) ? [current] : []);
+  }, [ranges, index, shown]);
   useEffect(
     () => () => {
       setHighlight("agent-find", []);
