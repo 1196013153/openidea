@@ -43,6 +43,8 @@ export interface DateFormatValid {
 
 export interface GeneralExtras {
   openProjectIn: OpenProjectIn;
+  /** macOS: a new project window opens as a native tab of the current window. */
+  openProjectInTab: boolean;
   defaultProjectDirectory: string;
   saveOnIdle: boolean;
   idleSeconds: number;
@@ -87,6 +89,7 @@ export const DEFAULT_APPEARANCE_EXTRAS: AppearanceExtras = {
 
 export const DEFAULT_GENERAL_EXTRAS: GeneralExtras = {
   openProjectIn: "ask",
+  openProjectInTab: true,
   defaultProjectDirectory: "",
   saveOnIdle: false,
   idleSeconds: 15,
@@ -141,6 +144,7 @@ export function validateGeneralExtras(raw: unknown): GeneralExtras {
   const df = obj(g.dateFormat);
   return {
     openProjectIn: oneOf(g.openProjectIn, ["ask", "new", "same"] as const, d.openProjectIn),
+    openProjectInTab: bool(g.openProjectInTab, d.openProjectInTab),
     defaultProjectDirectory: typeof g.defaultProjectDirectory === "string" ? g.defaultProjectDirectory : "",
     saveOnIdle: bool(g.saveOnIdle, d.saveOnIdle),
     idleSeconds: int(g.idleSeconds, d.idleSeconds, IDLE_LIMITS),

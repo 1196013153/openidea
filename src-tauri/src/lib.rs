@@ -7,6 +7,7 @@ mod commands;
 mod events;
 mod logging;
 mod menu;
+mod native_tabs;
 mod remote_dev;
 
 mod state;
@@ -91,6 +92,7 @@ pub fn run() {
             app.manage(menu_state);
             app.on_menu_event(on_menu_event);
             windows::create_main_window(app.handle())?;
+            native_tabs::watch(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| match event {

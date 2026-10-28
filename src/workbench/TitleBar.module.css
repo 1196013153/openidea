@@ -14,6 +14,10 @@
 .overlay {
   padding-left: 82px;
 }
+/* Room for the native title bar row and tab bar of merged project windows (drawn over the page). */
+.nativeTabBar {
+  flex: none;
+}
 /* Welcome window: plain title on the frame colour with a hairline, like IntelliJ's welcome frame. */
 .minimal {
   background: var(--bg-elev);

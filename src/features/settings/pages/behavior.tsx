@@ -585,6 +585,12 @@ export const BEHAVIOR_PAGES: PageSpec[] = [
             keywords: ["New window", "Current window", "Ask"],
             component: OpenProjectInRow,
           },
+          {
+            kind: "toggle",
+            key: "general.openProjectInTab",
+            label: "Open new project windows as tabs",
+            hint: "macOS: a new project window joins the current window as a tab. Window › Merge All Windows groups existing ones.",
+          },
           { kind: "custom", label: "Default directory", component: DefaultDirectoryRow },
         ],
       },

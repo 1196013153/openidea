@@ -82,6 +82,14 @@ pub fn window_toggle_fullscreen(window: WebviewWindow) -> IdeResult<bool> {
     Ok(on)
 }
 
+/// Height of the native title bar row + tab bar over this window's page while it is a
+/// macOS window tab (0 when it is not).
+#[tauri::command]
+#[specta::specta]
+pub async fn window_native_tab_bar(app: AppHandle, window: WebviewWindow) -> f64 {
+    crate::native_tabs::tab_bar_height(&app, &window).await
+}
+
 /// What this window was opened for (taken once).
 #[tauri::command]
 #[specta::specta]
