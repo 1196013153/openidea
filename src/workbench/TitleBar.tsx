@@ -292,7 +292,7 @@ export function TitleBar({
   const entry = (id: string) => <ToolbarEntry key={id} id={id} items={map} />;
   return (
     <header
-      className={clsx(className, minimal && styles.minimal)}
+      className={clsx(className, minimal && styles.minimal, dialog && styles.dialogBar)}
       data-tauri-drag-region
       onContextMenu={(e) => {
         if (minimal || e.defaultPrevented) return;

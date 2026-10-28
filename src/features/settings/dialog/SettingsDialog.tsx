@@ -42,20 +42,46 @@ import { PageErrorBoundary } from "./PageErrorBoundary";
 import styles from "./SettingsDialog.module.css";
 import { tx } from "@/platform/i18n";
 
+/** Keys of the nodes above `key`, root first. */
+function ancestorKeys(nodes: readonly PageNode[], key: string): string[] {
+  for (const n of nodes) {
+    if (n.key === key) return [];
+    const sub = ancestorKeys(n.children, key);
+    if (sub.length || n.children.some((c) => c.key === key)) return [n.key, ...sub];
+  }
+  return [];
+}
+
 function firstPage(nodes: readonly PageNode[]): string | null {
   const list = flatten(nodes).filter((n) => n.page);
   return (list.find((n) => n.matched) ?? list[0])?.key ?? null;
 }
 
+const GROUP_DESCRIPTIONS: Record<string, string> = {
+  "Appearance & Behavior":
+    "Customize IDE appearance and behavior: change themes and font size, configure system settings and notifications.",
+  Editor: "Configure code editing: completion, folding, tabs, fonts, colors, code style and inspections.",
+  "Build, Execution, Deployment": "Configure build tools, run configurations, debugger and deployment.",
+  "Languages & Frameworks": "Configure language servers, interpreters, SDKs and framework support.",
+  Tools: "Configure external tools, terminal, database and other integrations.",
+};
+
 function GroupPage({ node }: { node: PageNode }) {
+  const description = GROUP_DESCRIPTIONS[node.title];
   return (
     <div className={styles.groupPage}>
-      {node.children.map((c) => (
-        <button key={c.key} type="button" className={styles.groupLink} onClick={() => selectPage(c.key)}>
-          <SearchLabel text={c.title} />
-          <Icon name="chevron-right" size={12} />
-        </button>
-      ))}
+      {description && (
+        <p className={styles.groupDescription}>
+          <T>{description}</T>
+        </p>
+      )}
+      <div className={styles.groupLinks}>
+        {node.children.map((c) => (
+          <button key={c.key} type="button" className={styles.groupLink} onClick={() => selectPage(c.key)}>
+            <SearchLabel text={c.title} />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -263,7 +289,7 @@ export function SettingsLayout() {
             getLabel={(n) => tx(n.title)}
             getChildren={(n) => (n.children.length ? n.children : undefined)}
             isExpandable={(n) => n.children.length > 0}
-            defaultExpanded={all.filter((n) => n.children.length).map((n) => n.key)}
+            defaultExpanded={current ? ancestorKeys(tree, current.key) : []}
             expanded={query ? expanded : undefined}
             selected={current ? new Set([current.key]) : new Set()}
             onSelectionChange={(_sel, node) => node && selectPage(node.key)}

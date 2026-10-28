@@ -147,24 +147,37 @@
 }
 
 .groupPage {
+  padding-top: 8px;
+}
+.groupDescription {
+  margin: 0 0 14px;
+  max-width: 720px;
+  color: var(--fg);
+  line-height: 1.45;
+}
+.groupLinks {
   display: flex;
   flex-direction: column;
-  max-width: 420px;
+  align-items: flex-start;
+  gap: 2px;
+  padding-left: 32px;
 }
 .groupLink {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: var(--radius-row);
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--link);
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
 .groupLink:hover {
-  background: var(--bg-hover);
   color: var(--link-hover);
+  text-decoration: underline;
+}
+.groupLink:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
 }
 
 .footerStatus {

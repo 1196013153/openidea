@@ -4198,5 +4198,10 @@
   "0 results": "0 个结果",
   "Time the agent took to answer": "智能体回答所用的时间",
   "Edit and Resend": "编辑后重新发送",
-  "Send Again": "再次发送"
+  "Send Again": "再次发送",
+  "Customize IDE appearance and behavior: change themes and font size, configure system settings and notifications.": "自定义 IDE 的外观和行为：更改主题和字号，配置系统设置和通知。",
+  "Configure code editing: completion, folding, tabs, fonts, colors, code style and inspections.": "配置代码编辑：补全、折叠、标签页、字体、配色、代码样式和检查。",
+  "Configure build tools, run configurations, debugger and deployment.": "配置构建工具、运行配置、调试器和部署。",
+  "Configure language servers, interpreters, SDKs and framework support.": "配置语言服务器、解释器、SDK 和框架支持。",
+  "Configure external tools, terminal, database and other integrations.": "配置外部工具、终端、数据库和其他集成。"
 }
