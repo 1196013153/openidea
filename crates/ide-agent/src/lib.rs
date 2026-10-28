@@ -577,7 +577,13 @@ impl Task {
 
     fn cwd_and_base(&self) -> (PathBuf, String) {
         let s = self.state.lock();
-        (s.task.cwd.0.clone(), s.task.base_commit.clone().unwrap_or_else(|| "HEAD".into()))
+        // In the project's own checkout the user commits too: compare against the current HEAD,
+        // as the Commit tool window does, so commits made since the task started drop out.
+        let base = match s.task.isolation {
+            Isolation::Local => None,
+            Isolation::Worktree => s.task.base_commit.clone(),
+        };
+        (s.task.cwd.0.clone(), base.unwrap_or_else(|| "HEAD".into()))
     }
 
     fn emit_task(&self) {

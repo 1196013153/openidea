@@ -44,7 +44,7 @@ pub struct AgentTask {
     pub branch: Option<String>,
     /// Branch (or revision) the worktree was created from.
     pub base: Option<String>,
-    /// Commit the task's changes are compared against.
+    /// Commit the task's changes are compared against (worktree tasks; local ones use `HEAD`).
     pub base_commit: Option<String>,
     /// Why the task failed, when it did.
     pub error: Option<String>,
