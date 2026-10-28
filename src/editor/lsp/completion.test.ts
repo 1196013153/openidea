@@ -4,7 +4,14 @@ import { EditorView } from "@codemirror/view";
 import type { CompletionItem } from "@/bindings";
 import type { EditorDocContext } from "@/editor/api";
 import { lspDoc } from "./lsp";
-import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter, typeColumnText } from "./completionItems";
+import {
+  completionSymbolKind,
+  identifierEnd,
+  toCmCompletion,
+  triggerCharacter,
+  typeColumnText,
+  withoutDuplicates,
+} from "./completionItems";
 import {
   applyLspCompletion,
   callParens,
@@ -73,6 +80,13 @@ describe("toCmCompletion", () => {
       expect(c.displayLabel).toBeUndefined();
     }
     expect(toCmCompletion(item({ label: "foo", filterText: "foo_bar" })).label).toBe("foo_bar");
+  });
+
+  it("lists identical items once", () => {
+    const ctor = item({ label: "String()", kind: "constructor", data: "1" });
+    const overload = item({ label: "String()", kind: "constructor", labelDetail: "(bytes: ByteArray)" });
+    const out = withoutDuplicates([ctor, { ...ctor, data: "2" }, overload, { ...ctor, server: 2 }]);
+    expect(out).toEqual([ctor, overload, { ...ctor, server: 2 }]);
   });
 
   it("boosts preselected and demotes deprecated items", () => {

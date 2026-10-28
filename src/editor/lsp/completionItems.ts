@@ -65,6 +65,22 @@ function extendsLabel(item: CompletionItem): boolean {
   return item.filterText!.startsWith(item.label) && /^[^\p{L}\p{N}_$]/u.test(rest);
 }
 
+/**
+ * Items that look and insert the same, listed once. kotlin-language-server
+ * repeats a class once per classpath entry declaring it (`String()` ×3);
+ * these all have their own `apply` (see `makeCompletion`), so CodeMirror
+ * wouldn't merge them.
+ */
+export function withoutDuplicates(items: readonly CompletionItem[]): CompletionItem[] {
+  const seen = new Set<string>();
+  return items.filter((it) => {
+    const key = JSON.stringify([it.server, it.label, it.labelDetail, it.detail, it.kind, it.insertText, it.additionalEdits]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 const IMPORT_SOURCE = [
   /^\s*from\s+([\w.]+)\s+import\b/m, // Python
   /^\s*import\s+(?:static\s+)?([\w.]+?)\.\w+;?\s*$/m, // Java, Kotlin

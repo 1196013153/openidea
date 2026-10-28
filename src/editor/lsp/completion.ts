@@ -35,7 +35,14 @@ import {
   type RequestId,
 } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter, typeColumnText } from "./completionItems";
+import {
+  completionSymbolKind,
+  identifierEnd,
+  toCmCompletion,
+  triggerCharacter,
+  typeColumnText,
+  withoutDuplicates,
+} from "./completionItems";
 import { lspSnippetToCm, snippetVariables } from "./snippet";
 import { docOf, isUnavailable, lspDoc, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, posToOffset, textEditsToChanges } from "./positions";
@@ -437,9 +444,11 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
   const req: RequestContext = { doc: doc.doc, path: doc.path, language: doc.uiMode, pos: ctx.pos, text: ctx.state.doc };
   const prefs = editorPrefs().completion;
   const typed = word?.text ?? "";
-  let items = prefs.matchCase
-    ? list.items.filter((it) => matchesCase(it.filterText ?? it.label, typed, prefs.caseSensitivity))
-    : list.items;
+  let items = withoutDuplicates(
+    prefs.matchCase
+      ? list.items.filter((it) => matchesCase(it.filterText ?? it.label, typed, prefs.caseSensitivity))
+      : list.items,
+  );
   // A server snippet named like a live template (jdtls `sout`, `fori`) would be listed twice; the template wins.
   if (items.some((it) => it.kind === "snippet")) {
     const own = await contributedSource(ctx);
