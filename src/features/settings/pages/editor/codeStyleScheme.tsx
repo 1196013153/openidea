@@ -13,6 +13,7 @@ import { usePageContext, useSetting } from "../../components/context";
 import { setPageScope, stage, stagedValue, useSettingsDialog, type Scope } from "../../model/staging";
 import { EditorSections, sectionLabels, type EditorSection } from "./kit";
 import styles from "./CodeStyle.module.css";
+import { tx } from "@/platform/i18n";
 
 export const CODE_STYLE_SCOPE = "editor.codeStyle";
 
@@ -125,7 +126,7 @@ export function CodeStyleMain({ general }: { general: EditorSection[] }) {
   return (
     <div className={styles.page}>
       <SchemeRow />
-      <div className={styles.tabs} role="tablist" aria-label="Code Style">
+      <div className={styles.tabs} role="tablist" aria-label={tx("Code Style")}>
         {tabs.map(([id, label]) => (
           <button
             key={id}

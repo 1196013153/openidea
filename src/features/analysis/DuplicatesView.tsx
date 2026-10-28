@@ -6,6 +6,7 @@ import { editorService } from "@/workbench/contributions";
 import { EmptyState, Icon, IconButton, Spinner, Tree, fileIconName } from "@/ui";
 import { cancelDuplicates, fragmentLines, rerunDuplicates, useDuplicates } from "./duplicates";
 import styles from "./Analysis.module.css";
+import { tx } from "@/platform/i18n";
 
 type Node =
   | { kind: "group"; key: string; index: number; group: DuplicateGroup }
@@ -38,7 +39,7 @@ function FragmentPane({ fragment }: { fragment: Fragment }) {
         type="button"
         className={styles.fragmentHeader}
         onClick={() => openFragment(fragment)}
-        title="Open in editor"
+        title={tx("Open in editor")}
       >
         <Icon name={fileIconName(basename(fragment.path))} size={16} className={styles.fileIcon} />
         <span className={styles.strong}>{basename(fragment.path)}</span>
@@ -104,9 +105,9 @@ export function DuplicatesView() {
               n.kind === "group" ? (
                 <span className={styles.row}>
                   <span className={styles.strong}>
-                    {n.group.fragments.length} occurrences · {n.group.lines} lines
+                    {tx`${n.group.fragments.length} occurrences · ${n.group.lines} lines`}
                   </span>
-                  <span className={styles.count}>{n.group.tokens} tokens</span>
+                  <span className={styles.count}>{tx`${n.group.tokens} tokens`}</span>
                 </span>
               ) : (
                 <span className={styles.row}>

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import clsx from "clsx";
 import { call, commands, isTauri, type RemoteEntry } from "@/platform/ipc";
-import { useTx } from "@/platform/i18n";
+import { useTx, tx } from "@/platform/i18n";
 import { useProject } from "@/platform/project";
 import { DEFAULT_RUN_TARGET, newRemoteId, type RunTargetValid } from "@/platform/remoteSettings";
 import { Button, Checkbox, Dialog, Icon, IconButton, Input, T } from "@/ui";
@@ -297,7 +297,7 @@ function RunTargetsEditor() {
   return (
     <div className={styles.toolsLayout}>
       <div className={styles.tableBox}>
-        <div className={styles.toolbar} role="toolbar" aria-label="Run targets actions">
+        <div className={styles.toolbar} role="toolbar" aria-label={tx("Run targets actions")}>
           <IconButton icon="plus" title="Add" size="small" onClick={() => add()} />
           <IconButton icon="minus" title="Remove" size="small" disabled={!current} onClick={remove} />
           <IconButton
@@ -316,7 +316,7 @@ function RunTargetsEditor() {
             onClick={() => move(1)}
           />
         </div>
-        <div className={styles.toolList} role="listbox" aria-label="Run targets">
+        <div className={styles.toolList} role="listbox" aria-label={tx("Run targets")}>
           {targets.length === 0 && (
             <div className={clsx(styles.toolRow, styles.empty)}>
               <T>No run targets. Click + to add one.</T>

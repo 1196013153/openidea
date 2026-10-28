@@ -236,7 +236,7 @@ export function ProjectStructurePage() {
     <div className={styles.page}>
       <div className={styles.structure}>
         <div className={styles.structureTree}>
-          <div className={styles.markBar} role="toolbar" aria-label="Mark as">
+          <div className={styles.markBar} role="toolbar" aria-label={tx("Mark as")}>
             <span>
               <T>Mark as:</T>
             </span>
@@ -279,7 +279,7 @@ export function ProjectStructurePage() {
           </div>
           <ExcludeFiles />
         </div>
-        <div className={styles.roots} aria-label="Marked folders">
+        <div className={styles.roots} aria-label={tx("Marked folders")}>
           <ContentRoots root={rootNode.path} />
           {ROLES.map((r) => {
             const list = roots.filter((x) => x.kind === r.role);
@@ -300,7 +300,9 @@ export function ProjectStructurePage() {
                     <div key={x.path} className={styles.rootItem}>
                       <span className={styles.rootPath} title={x.path || root || undefined}>
                         {shown}
-                        {x.detectedFrom && <span className={styles.rootHint}> detected from {x.detectedFrom}</span>}
+                        {x.detectedFrom && (
+                          <span className={styles.rootHint}> {tx`detected from ${x.detectedFrom}`}</span>
+                        )}
                       </span>
                       <IconButton
                         icon="close"
@@ -318,8 +320,8 @@ export function ProjectStructurePage() {
           {unmarkedDetected.length > 0 && (
             <div className={styles.note}>
               {unmarkedDetected.length === 1
-                ? "1 detected folder is unmarked."
-                : `${unmarkedDetected.length} detected folders are unmarked.`}{" "}
+                ? tx("1 detected folder is unmarked.")
+                : tx`${unmarkedDetected.length} detected folders are unmarked.`}{" "}
               <button type="button" className={styles.linkButton} onClick={restore}>
                 <T>Restore detected roots</T>
               </button>

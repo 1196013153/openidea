@@ -440,7 +440,7 @@ function StripeMore({ windows }: { windows: ToolWindowContribution[] }) {
         ref={ref}
         type="button"
         className={clsx(styles.stripeButton, styles.stripeMore)}
-        aria-label="More Tool Windows"
+        aria-label={tx("More Tool Windows")}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}

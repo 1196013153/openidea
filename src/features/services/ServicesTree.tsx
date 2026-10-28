@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import clsx from "clsx";
 import { setContext } from "@/platform/context";
-import { useTxTemplate } from "@/platform/i18n";
+import { useTxTemplate, tx } from "@/platform/i18n";
 import { shortcutLabel } from "@/platform/keymap";
 import {
   EmptyState,
@@ -93,7 +93,7 @@ export function ServicesTreeView() {
       {providers.map((p) => (
         <ProviderRoots key={p.id} provider={p} />
       ))}
-      <div className={styles.toolbar} role="toolbar" aria-label="Services actions">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Services actions")}>
         <IconButton
           ref={addRef}
           data-services-add

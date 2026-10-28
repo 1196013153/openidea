@@ -24,6 +24,7 @@ import {
   type ResultTab,
 } from "./store";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 function time(t: number): string {
   const d = new Date(t);
@@ -44,7 +45,7 @@ function Output() {
         <span className={styles.spacer} />
         <IconButton icon="trash" title="Clear All" disabled={!lines.length} onClick={clearOutput} />
       </div>
-      <div ref={ref} className={styles.output} role="log" aria-label="Database output">
+      <div ref={ref} className={styles.output} role="log" aria-label={tx("Database output")}>
         {lines.map((l: OutputLine) => (
           <div key={l.id} className={clsx(styles.outputLine, l.kind === "error" && styles.outputError)}>
             <span className={styles.outputTime}>[{time(l.time)}]</span>{" "}
@@ -115,8 +116,8 @@ function Result({ tab }: { tab: ResultTab }) {
             aria-label={tab.title}
           />
           <div className={styles.rowPill} role="status" title={outcomeSummary(tab.outcome)}>
-            {r.rows.length} row{r.rows.length === 1 ? "" : "s"}
-            {r.hasMore ? " (limit reached)" : ""}
+            {r.rows.length === 1 ? tx`${r.rows.length} row` : tx`${r.rows.length} rows`}
+            {r.hasMore ? ` ${tx("(limit reached)")}` : ""}
           </div>
         </div>
       )}
@@ -208,7 +209,7 @@ function PlanResult({ tab }: { tab: ResultTab }) {
             <EmptyState title="Empty plan" />
           )}
         </div>
-        <table className={styles.planProperties} aria-label="Plan node properties">
+        <table className={styles.planProperties} aria-label={tx("Plan node properties")}>
           <thead>
             <tr>
               <th>

@@ -52,6 +52,7 @@ import {
   type FindTab,
 } from "./windowStore";
 import styles from "./FindToolWindow.module.css";
+import { tx } from "@/platform/i18n";
 
 type Node =
   | { kind: "dir"; key: string; label: string; count: number; children: Node[] }
@@ -199,7 +200,7 @@ export function FindToolWindow() {
   if (!tab) {
     return (
       <EmptyState title="No search results" icon="search">
-        Use Find in Files ({shortcutLabel("find.inPath") ?? "⇧⌘F"}) and choose “Open in Find Window”.
+        {tx`Use Find in Files (${shortcutLabel("find.inPath") ?? "⇧⌘F"}) and choose “Open in Find Window”.`}
       </EmptyState>
     );
   }
@@ -367,12 +368,11 @@ function FindTabView({ tab }: { tab: FindTab }) {
         <span className={styles.title}>{tab.title}</span>
         <span className={styles.count}>
           {st.status === "invalid" || st.status === "error"
-            ? (st.error ?? "Search failed")
+            ? (st.error ?? tx("Search failed"))
             : progress
-              ? `Replacing… ${progress.done}/${progress.total} files`
-              : `${st.matchCount}${st.summary?.limitHit ? "+" : ""} matches in ${st.files.length} files${
-                  marks.excluded.size ? ` · ${marks.excluded.size} excluded` : ""
-                }`}
+              ? tx`Replacing… ${progress.done}/${progress.total} files`
+              : tx`${`${st.matchCount}${st.summary?.limitHit ? "+" : ""}`} matches in ${st.files.length} files` +
+                (marks.excluded.size ? ` · ${tx`${marks.excluded.size} excluded`}` : "")}
         </span>
         <span className={styles.spacer} />
         <Button size="small" variant="ghost" disabled={!selection.size} onClick={exclude} title="Exclude / include (⌫)">

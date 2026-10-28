@@ -124,7 +124,11 @@ function InstalledRow({ plugin, selected, onSelect }: { plugin: PluginInfo; sele
           <span className={styles.rowMeta}>
             <span className={styles.rowVendor}>{vendorOf(plugin.authors) || plugin.id}</span>
             <span>{plugin.version}</span>
-            {plugin.source === "dev" && <span className={styles.devTag}>dev</span>}
+            {plugin.source === "dev" && (
+              <span className={styles.devTag}>
+                <T>dev</T>
+              </span>
+            )}
             {plugin.status === "failed" && (
               <Badge dot tone="danger">
                 <T>Failed</T>
@@ -149,7 +153,7 @@ function CatalogButton({ entry, compact }: { entry: CatalogPlugin; compact?: boo
   const installing = usePlugins((s) => s.installing);
   const state = catalogState(entry, plugins);
   if (state === "installed" || state === "dev") {
-    return <span className={styles.installedTag}>{state === "dev" ? "Dev plugin loaded" : "Installed"}</span>;
+    return <span className={styles.installedTag}>{state === "dev" ? tx("Dev plugin loaded") : tx("Installed")}</span>;
   }
   const label = state === "update" ? "Update" : "Install";
   return (
@@ -261,7 +265,7 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
         <dt>
           <T>Code</T>
         </dt>
-        <dd>{plugin.hasCode ? "WebAssembly component (sandboxed)" : "None — contributions only"}</dd>
+        <dd>{plugin.hasCode ? tx("WebAssembly component (sandboxed)") : tx("None — contributions only")}</dd>
         {plugin.homepage && (
           <>
             <dt>
@@ -300,7 +304,7 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
                 <li key={c.id} className={styles.item}>
                   <span className={styles.itemMain}>{c.title}</span>
                   <Kbd action={actionId} />
-                  <span className={styles.mono} title="Action id (bind it in Keymap)">
+                  <span className={styles.mono} title={tx("Action id (bind it in Keymap)")}>
                     {actionId}
                   </span>
                   <Button
@@ -328,7 +332,7 @@ function InstalledDetails({ plugin }: { plugin: PluginInfo }) {
               return (
                 <li key={t.id} className={styles.item}>
                   <span className={styles.itemMain}>{t.name}</span>
-                  <span className={styles.muted}>{t.kind === "dark" ? "Dark" : "Light"}</span>
+                  <span className={styles.muted}>{t.kind === "dark" ? tx("Dark") : tx("Light")}</span>
                   {isActive ? (
                     <Button size="small" variant="secondary" onClick={() => void selectPluginTheme(null, null)}>
                       <T>Use Default Theme</T>
@@ -456,7 +460,7 @@ function CatalogDetails({ entry }: { entry: CatalogPlugin }) {
         <dt>
           <T>Code</T>
         </dt>
-        <dd>{entry.hasCode ? "WebAssembly component (sandboxed)" : "None — contributions only"}</dd>
+        <dd>{entry.hasCode ? tx("WebAssembly component (sandboxed)") : tx("None — contributions only")}</dd>
         {contributes.length > 0 && (
           <>
             <dt>
@@ -602,7 +606,7 @@ export function PluginsPage() {
             aria-label="Filter plugins"
           />
           {tab === "installed" ? (
-            <ul className={styles.list} aria-label="Installed plugins">
+            <ul className={styles.list} aria-label={tx("Installed plugins")}>
               {downloaded.length > 0 && <ListHeader title="Downloaded" count={downloaded.length} />}
               {downloaded.map((p) => (
                 <InstalledRow
@@ -623,15 +627,15 @@ export function PluginsPage() {
               ))}
               {loaded && shown.length === 0 && (
                 <li className={styles.listEmpty}>
-                  {plugins.length === 0 ? "No plugins installed." : "No plugins match."}
+                  {plugins.length === 0 ? tx("No plugins installed.") : tx("No plugins match.")}
                 </li>
               )}
             </ul>
           ) : (
-            <ul className={styles.list} aria-label="Available plugins">
+            <ul className={styles.list} aria-label={tx("Available plugins")}>
               <li className={styles.notice} role="note">
                 <Icon name="info" size={14} />
-                <span>{NO_REPOSITORY}. Showing plugin packages available on this machine.</span>
+                <span>{tx`${NO_REPOSITORY}. Showing plugin packages available on this machine.`}</span>
               </li>
               {catalogShown.length > 0 && <ListHeader title="Local" count={catalogShown.length} />}
               {catalogShown.map((c) => (
@@ -644,7 +648,7 @@ export function PluginsPage() {
               ))}
               {catalog && catalogShown.length === 0 && (
                 <li className={styles.listEmpty}>
-                  {catalog.length === 0 ? "No local plugin packages." : "No plugins match."}
+                  {catalog.length === 0 ? tx("No local plugin packages.") : tx("No plugins match.")}
                 </li>
               )}
               {catalogError && <li className={clsx(styles.listEmpty, styles.errorText)}>{catalogError}</li>}

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
-import { useT, useTx } from "@/platform/i18n";
+import { useT, useTx, tx } from "@/platform/i18n";
 import { isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { useRemoteProgress } from "@/platform/remote";
@@ -169,7 +169,7 @@ export function WelcomeView() {
           </span>
         </div>
         <p className={styles.tagline}>{t("app.about.tagline")}</p>
-        <nav className={styles.nav} aria-label="Welcome">
+        <nav className={styles.nav} aria-label={tx("Welcome")}>
           <NavItem id="projects" label="Projects" page={shown} onSelect={setPage} />
           <NavItem id="customize" label="Customize" page={shown} onSelect={setPage} />
           {Plugins && <NavItem id="plugins" label="Plugins" page={shown} onSelect={setPage} />}

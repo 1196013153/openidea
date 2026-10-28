@@ -23,6 +23,7 @@ import {
   type NavSegment,
 } from "./navBar";
 import styles from "./NavBarPopup.module.css";
+import { tx } from "@/platform/i18n";
 
 export const useNavBarPopup = create<{ open: boolean; seq: number }>(() => ({ open: false, seq: 0 }));
 
@@ -155,7 +156,7 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
         data-autofocus
         onKeyDown={onKeyDown}
         role="toolbar"
-        aria-label="Navigation bar"
+        aria-label={tx("Navigation bar")}
       >
         <div className={styles.bar}>
           {segments.map((s, i) => (
@@ -184,7 +185,7 @@ function NavBar({ path, line, col }: { path: string; line: number; col: number }
             className={styles.list}
             style={{ marginLeft: list.left }}
             role="listbox"
-            aria-label="Children"
+            aria-label={tx("Children")}
           >
             {list.items.length === 0 && (
               <div className={styles.empty}>

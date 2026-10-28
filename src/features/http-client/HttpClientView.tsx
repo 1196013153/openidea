@@ -94,10 +94,10 @@ function ExchangeView({ ex }: { ex: HttpExchange }) {
             <pre className={styles.pre}>{ex.entry.error}</pre>
           ) : body == null ? (
             <EmptyState title="Binary response">
-              {r.contentType ?? "unknown type"}, {formatSize(r.size)}
+              {r.contentType ?? tx("unknown type")}, {formatSize(r.size)}
             </EmptyState>
           ) : (
-            <pre className={styles.pre} aria-label="Response body">
+            <pre className={styles.pre} aria-label={tx("Response body")}>
               {body}
               {r.truncated && (
                 <span className={styles.truncated}>{`\n… truncated (${formatSize(r.size)} received)`}</span>
@@ -143,10 +143,10 @@ export function HttpClientView() {
   return (
     <SplitGroup orientation="horizontal" className={styles.root}>
       <SplitPanel id="http-history" defaultSize="32%" minSize="160px">
-        <div className={styles.list} role="list" aria-label="Response history">
+        <div className={styles.list} role="list" aria-label={tx("Response history")}>
           {running && (
             <div className={styles.runningRow}>
-              <Spinner size={12} /> Sending request #{running.index + 1}…
+              <Spinner size={12} /> {tx`Sending request #${running.index + 1}…`}
             </div>
           )}
           {history.length === 0 && !running ? (

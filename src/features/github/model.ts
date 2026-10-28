@@ -1,20 +1,22 @@
 /** Pure helpers of the Pull Requests view (labels, check summaries, review threads, diff inputs). */
 import type { ChangedFile, PrCheck, PrDiffRevisions, PrFile, PrReviewComment, PullRequestDetails, PullRequestSummary } from "@/platform/ipc";
+import { t, tx } from "@/platform/i18n";
 
+/** Keyed, not source text: "Open" as a state reads differently from the "Open" action in some locales. */
 export function stateLabel(pr: PullRequestSummary): string {
-  if (pr.state === "merged") return "Merged";
-  if (pr.state === "closed") return "Closed";
-  return pr.isDraft ? "Draft" : "Open";
+  if (pr.state === "merged") return t("github.prState.merged");
+  if (pr.state === "closed") return t("github.prState.closed");
+  return pr.isDraft ? t("github.prState.draft") : t("github.prState.open");
 }
 
 export function reviewDecisionLabel(decision: string | null): string | null {
   switch (decision) {
     case "APPROVED":
-      return "Approved";
+      return tx("Approved");
     case "CHANGES_REQUESTED":
-      return "Changes requested";
+      return tx("Changes requested");
     case "REVIEW_REQUIRED":
-      return "Review required";
+      return tx("Review required");
     default:
       return null;
   }
@@ -23,15 +25,15 @@ export function reviewDecisionLabel(decision: string | null): string | null {
 export function reviewStateLabel(state: string): string {
   switch (state) {
     case "APPROVED":
-      return "approved";
+      return tx("approved");
     case "CHANGES_REQUESTED":
-      return "requested changes";
+      return tx("requested changes");
     case "COMMENTED":
-      return "reviewed";
+      return tx("reviewed");
     case "DISMISSED":
-      return "review dismissed";
+      return tx("review dismissed");
     case "REQUESTED":
-      return "review requested";
+      return tx("review requested");
     default:
       return state.toLowerCase().replace(/_/g, " ");
   }
@@ -58,11 +60,11 @@ export function checksSummary(checks: readonly PrCheck[]): ChecksSummary {
 
 export function checksText(s: ChecksSummary): string {
   const parts: string[] = [];
-  if (s.failed) parts.push(`${s.failed} failing`);
-  if (s.pending) parts.push(`${s.pending} pending`);
-  if (s.passed) parts.push(`${s.passed} successful`);
-  if (s.other) parts.push(`${s.other} skipped`);
-  return parts.length ? parts.join(", ") : "No checks";
+  if (s.failed) parts.push(tx`${s.failed} failing`);
+  if (s.pending) parts.push(tx`${s.pending} pending`);
+  if (s.passed) parts.push(tx`${s.passed} passed`);
+  if (s.other) parts.push(tx`${s.other} skipped`);
+  return parts.length ? parts.join(", ") : tx`No checks`;
 }
 
 /** "3 minutes ago"-style text for an ISO date. */
@@ -70,18 +72,18 @@ export function relativeTime(iso: string, now = Date.now()): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return "";
   const s = Math.max(0, Math.round((now - t) / 1000));
-  const units: Array<[number, string]> = [
-    [60 * 60 * 24 * 365, "year"],
-    [60 * 60 * 24 * 30, "month"],
-    [60 * 60 * 24, "day"],
-    [60 * 60, "hour"],
-    [60, "minute"],
+  const units: Array<[number, (n: number) => string]> = [
+    [60 * 60 * 24 * 365, (n) => (n === 1 ? tx`${n} year ago` : tx`${n} years ago`)],
+    [60 * 60 * 24 * 30, (n) => (n === 1 ? tx`${n} month ago` : tx`${n} months ago`)],
+    [60 * 60 * 24, (n) => (n === 1 ? tx`${n} day ago` : tx`${n} days ago`)],
+    [60 * 60, (n) => (n === 1 ? tx`${n} hour ago` : tx`${n} hours ago`)],
+    [60, (n) => (n === 1 ? tx`${n} minute ago` : tx`${n} minutes ago`)],
   ];
-  for (const [size, name] of units) {
+  for (const [size, text] of units) {
     const n = Math.floor(s / size);
-    if (n >= 1) return `${n} ${name}${n === 1 ? "" : "s"} ago`;
+    if (n >= 1) return text(n);
   }
-  return "just now";
+  return tx("just now");
 }
 
 export interface ReviewThread {

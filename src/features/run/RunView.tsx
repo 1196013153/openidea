@@ -69,7 +69,7 @@ function SessionPanel({ session }: { session: RunSession }) {
   const consoleColumn = (
     <div className={styles.consoleColumn}>
       {rt.console.dropped > 0 && !testModel && (
-        <div className={styles.notice}>{rt.console.dropped.toLocaleString()} earlier lines were discarded</div>
+        <div className={styles.notice}>{tx`${rt.console.dropped.toLocaleString()} earlier lines were discarded`}</div>
       )}
       {testModel && (
         <div className={styles.notice}>
@@ -113,7 +113,7 @@ function SessionPanel({ session }: { session: RunSession }) {
 
   return (
     <div className={styles.session}>
-      <div className={styles.toolbar} role="toolbar" aria-orientation="vertical" aria-label="Run actions">
+      <div className={styles.toolbar} role="toolbar" aria-orientation="vertical" aria-label={tx("Run actions")}>
         <IconButton
           icon="rerun"
           iconSize={14}

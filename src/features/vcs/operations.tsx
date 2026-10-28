@@ -145,7 +145,7 @@ export function OperationBanner() {
         {conflicts
           ? ` · ${conflicts} conflict${conflicts === 1 ? "" : "s"}`
           : op === "merge"
-            ? " · commit to conclude"
+            ? tx(" · commit to conclude")
             : ""}
       </span>
       {conflicts > 0 && (
@@ -161,7 +161,7 @@ export function OperationBanner() {
           disabled={!!busy || (c === "continue" && conflicts > 0)}
           onClick={() => void controlOperation(c, op)}
         >
-          {c === "continue" ? "Continue" : c === "skip" ? "Skip" : "Abort"}
+          {c === "continue" ? tx("Continue") : c === "skip" ? tx("Skip") : tx("Abort")}
         </button>
       ))}
     </div>
@@ -266,7 +266,7 @@ function ResetDialog({ commit, onClose }: { commit?: Commit; onClose: () => void
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.form} role="radiogroup" aria-label="Reset type">
+      <div className={styles.form} role="radiogroup" aria-label={tx("Reset type")}>
         {commit ? (
           <div className={styles.hint}>
             <T>
@@ -398,7 +398,7 @@ function TagDialog({ onClose }: { onClose: () => void }) {
           className={styles.textarea}
           rows={4}
           value={message}
-          placeholder="Optional; creates an annotated tag"
+          placeholder={tx("Optional; creates an annotated tag")}
           onChange={(e) => setMessage(e.target.value)}
         />
       </div>

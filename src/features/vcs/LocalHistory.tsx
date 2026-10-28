@@ -179,9 +179,9 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
   else
     detail = (
       <div className={styles.message}>
-        Label '{current.label}'
+        {tx`Label '${current.label}'`}
         {view?.folder && atLabel?.size
-          ? ` · ${atLabel.size} ${atLabel.size === 1 ? "file" : "files"} recorded before it`
+          ? ` · ${atLabel.size === 1 ? tx`${atLabel.size} file recorded before it` : tx`${atLabel.size} files recorded before it`}`
           : ""}
       </div>
     );
@@ -249,7 +249,9 @@ export function LocalHistoryEditor({ input }: { input: EditorInput }) {
             aria-label="Revisions"
             className={styles.list}
             empty={
-              <span className={styles.message}>No local history for this {view.folder ? "folder" : "path"} yet</span>
+              <span className={styles.message}>
+                {view.folder ? tx`No local history for this folder yet` : tx`No local history for this path yet`}
+              </span>
             }
             renderItem={(e) =>
               isLabel(e) ? (

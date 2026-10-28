@@ -1,7 +1,7 @@
 /** Imperative dialogs for VCS actions, rendered by one overlay contribution. */
 import { Fragment, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import { Checkbox, Dialog, Input } from "@/ui";
+import { Checkbox, Dialog, Input, T } from "@/ui";
 import { confirm } from "@/workbench/messages";
 import styles from "./common.module.css";
 
@@ -279,9 +279,13 @@ function DateRangeDialog({ onDone }: { onDone: (r: { after: number | null; befor
           submit();
         }}
       >
-        <label className={styles.fieldLabel}>From:</label>
+        <label className={styles.fieldLabel}>
+          <T>From:</T>
+        </label>
         <Input data-autofocus type="date" aria-label="From" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <label className={styles.fieldLabel}>To:</label>
+        <label className={styles.fieldLabel}>
+          <T>To:</T>
+        </label>
         <Input type="date" aria-label="To" value={to} onChange={(e) => setTo(e.target.value)} />
         {(from || to) && error && <div className={styles.error}>{error}</div>}
       </form>

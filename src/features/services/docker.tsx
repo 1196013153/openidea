@@ -250,8 +250,9 @@ function Unavailable({ availability, conn }: { availability: DockerAvailability;
       >
         <div>{availability.message}</div>
         <div className={styles.hint}>
-          Start Docker{availability.context ? ` (context '${availability.context}')` : ""}; this view connects
-          automatically.
+          {availability.context
+            ? tx`Start Docker (context '${availability.context}'); this view connects automatically.`
+            : tx`Start Docker; this view connects automatically.`}
         </div>
       </EmptyState>
     );

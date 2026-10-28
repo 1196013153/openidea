@@ -36,6 +36,7 @@ import {
 } from "./model";
 import { navigateToMessage, rerunBuild, selectBuildNode, useBuildRun } from "./store";
 import styles from "./Build.module.css";
+import { tx } from "@/platform/i18n";
 
 const SEVERITY_ICON: Record<Severity, string> = { error: "error", warning: "warning", info: "info", hint: "info" };
 
@@ -218,7 +219,7 @@ function BuildConsole() {
       className={styles.console}
       tabIndex={0}
       role="log"
-      aria-label="Build output"
+      aria-label={tx("Build output")}
       onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < LINE_HEIGHT * 2;
@@ -252,7 +253,7 @@ function MessageDetail({ message }: { message: BuildMessage }) {
       }`
     : null;
   return (
-    <div className={styles.detail} tabIndex={0} role="document" aria-label="Build message">
+    <div className={styles.detail} tabIndex={0} role="document" aria-label={tx("Build message")}>
       {location && (
         <button type="button" className={styles.detailLocation} onClick={() => navigateToMessage(message, true)}>
           {location}

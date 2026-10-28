@@ -123,7 +123,7 @@ export function RemoteHostView() {
 
   return (
     <div className={styles.view}>
-      <div className={styles.toolbar} role="toolbar" aria-label="Remote host actions">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Remote host actions")}>
         <Select
           className={styles.serverSelect}
           aria-label="Deployment server"

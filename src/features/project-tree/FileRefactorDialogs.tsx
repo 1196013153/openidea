@@ -20,6 +20,7 @@ import {
 } from "./paths";
 import { useProjectTree } from "./store";
 import styles from "./FileRefactor.module.css";
+import { tx } from "@/platform/i18n";
 
 export type FileRefactorRequest =
   | {
@@ -220,7 +221,9 @@ function RenameDialog({ request }: { request: Extract<FileRefactorRequest, { kin
         }}
       >
         <label className={styles.fieldLabel} htmlFor="file-rename-name">
-          Rename {request.dir ? "directory" : "file"} '{current}' and its usages to:
+          {request.dir
+            ? tx`Rename directory '${current}' and its usages to:`
+            : tx`Rename file '${current}' and its usages to:`}
         </label>
         <Input
           id="file-rename-name"
@@ -307,7 +310,7 @@ function MoveDialog({ request }: { request: Extract<FileRefactorRequest, { kind:
           aria-label="Target directory"
           onChange={(e) => setTarget(e.target.value)}
         />
-        <div className={styles.hint}>{relativeTo(root, dest) || (dest === root ? "Project root" : dest)}</div>
+        <div className={styles.hint}>{relativeTo(root, dest) || (dest === root ? tx("Project root") : dest)}</div>
         {error && (
           <div className={styles.error} role="alert">
             {error}
@@ -418,7 +421,7 @@ function CopyDialog({ request }: { request: Extract<FileRefactorRequest, { kind:
           aria-label="Target directory"
           onChange={(e) => setTarget(e.target.value)}
         />
-        <div className={styles.hint}>{relativeTo(root, dest) || (dest === root ? "Project root" : dest)}</div>
+        <div className={styles.hint}>{relativeTo(root, dest) || (dest === root ? tx("Project root") : dest)}</div>
         {error && (
           <div className={styles.error} role="alert">
             {error}

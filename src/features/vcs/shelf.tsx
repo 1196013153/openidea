@@ -14,7 +14,7 @@ import { groupOf } from "./changes";
 import { activeList, listOf, moveFiles, relOf, updateChangelists, useChangelists } from "./changelists";
 import { useCommit } from "./commitStore";
 import { confirmDialog, openDialog, promptText } from "./dialogs";
-import { KIND_COLOR, baseName, dirName, effectiveKind, formatTime, relTo, stripSlash } from "./model";
+import { KIND_COLOR, baseName, dirName, effectiveKind, fileCount, formatTime, relTo, stripSlash } from "./model";
 import { errorMessage, logConsole, runOp, saveAll } from "./ops";
 import { conflictedFiles, refreshNow, useVcs } from "./store";
 import styles from "./common.module.css";
@@ -155,8 +155,9 @@ function ShelveDialog({
       ]}
     >
       <div className={styles.section}>
-        {selected.size} of {files.length} file{files.length === 1 ? "" : "s"} will be shelved and reverted in the
-        working tree.
+        {files.length === 1
+          ? tx`${selected.size} of ${files.length} file will be shelved and reverted in the working tree.`
+          : tx`${selected.size} of ${files.length} files will be shelved and reverted in the working tree.`}
       </div>
       <FileChecklist files={files} selected={selected} onChange={setSelected} label="Files to shelve" />
       <div className={styles.form}>
@@ -221,7 +222,7 @@ function UnshelveDialog({ entry, onClose }: { entry: ShelvedChangeList; onClose:
       ]}
     >
       <div className={styles.section}>
-        {entry.name} · {entry.files.length} file{entry.files.length === 1 ? "" : "s"}
+        {entry.name} · {fileCount(entry.files.length)}
       </div>
       <div className={styles.form}>
         <label className={styles.fieldLabel}>
@@ -316,7 +317,7 @@ export function ShelfPanel() {
   const current = roots.find((r) => selected.has(r.key) || r.children?.some((c) => selected.has(c.key)))?.entry;
   return (
     <div className={viewStyles.changes}>
-      <div className={viewStyles.toolbar} role="toolbar" aria-label="Shelf">
+      <div className={viewStyles.toolbar} role="toolbar" aria-label={tx("Shelf")}>
         <IconButton icon="refresh" title="Refresh" size="small" onClick={() => void loadShelves()} />
         <IconButton icon="shelve" action="vcs.shelve" size="small" />
         <span className={viewStyles.sep} />
@@ -354,7 +355,7 @@ export function ShelfPanel() {
           }}
           onContextMenu={(node, _sel, e: MouseEvent) => node && showContextMenu(e, shelfMenu(node.entry))}
           aria-label="Shelved changes"
-          empty={<span className={viewStyles.empty}>{loaded ? "No shelved changes" : "Loading…"}</span>}
+          empty={<span className={viewStyles.empty}>{loaded ? tx("No shelved changes") : "Loading…"}</span>}
           renderNode={(n) =>
             n.file ? (
               <>
@@ -372,7 +373,7 @@ export function ShelfPanel() {
                 <Icon name="shelve" size={16} className={viewStyles.icon} />
                 <span className={viewStyles.label}>{n.entry.name}</span>
                 <span className={viewStyles.detail}>
-                  {n.entry.files.length} file{n.entry.files.length === 1 ? "" : "s"}
+                  {fileCount(n.entry.files.length)}
                   {n.entry.timeMs ? ` · ${formatTime(n.entry.timeMs)}` : ""}
                 </span>
               </>

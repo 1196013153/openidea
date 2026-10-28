@@ -5,7 +5,7 @@
 import { useId, useState } from "react";
 import clsx from "clsx";
 import { call, commands, IpcError, isTauri } from "@/platform/ipc";
-import { useTx } from "@/platform/i18n";
+import { useTx, tx } from "@/platform/i18n";
 import {
   DEFAULT_SSH_CONFIG,
   newRemoteId,
@@ -285,7 +285,7 @@ function SshConfigsEditor() {
   return (
     <div className={styles.toolsLayout}>
       <div className={styles.tableBox}>
-        <div className={styles.toolbar} role="toolbar" aria-label="SSH configurations actions">
+        <div className={styles.toolbar} role="toolbar" aria-label={tx("SSH configurations actions")}>
           <IconButton icon="plus" title="Add" size="small" onClick={() => add()} />
           <IconButton icon="minus" title="Remove" size="small" disabled={!current} onClick={remove} />
           <IconButton
@@ -296,7 +296,7 @@ function SshConfigsEditor() {
             onClick={() => current && add(current)}
           />
         </div>
-        <div className={styles.toolList} role="listbox" aria-label="SSH configurations">
+        <div className={styles.toolList} role="listbox" aria-label={tx("SSH configurations")}>
           {configs.length === 0 && (
             <div className={clsx(styles.toolRow, styles.empty)}>
               <T>No SSH configurations. Click + to add one.</T>

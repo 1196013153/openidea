@@ -62,9 +62,11 @@ function Landing() {
         <T>Welcome to OpenIDEA</T>
       </div>
       <p className={styles.landingText}>
-        Open a folder from disk{canClone ? " or clone a repository from version control" : ""}.
+        {canClone
+          ? tx("Open a folder from disk or clone a repository from version control.")
+          : tx("Open a folder from disk.")}
         <br />
-        You can also drop a folder onto this window.
+        <T>You can also drop a folder onto this window.</T>
       </p>
       <div className={styles.landingActions}>
         <button
@@ -257,7 +259,7 @@ export function ProjectsPage() {
       <div
         id={`${baseId}-list`}
         role="listbox"
-        aria-label="Recent projects"
+        aria-label={tx("Recent projects")}
         tabIndex={-1}
         className={styles.projectList}
         onKeyDown={onKeyDown}

@@ -126,8 +126,8 @@ function CreateDialog(props: {
           onChange={(e) => setTitle(e.target.value)}
         />
         <textarea
-          aria-label="Description"
-          placeholder="Description (Markdown)"
+          aria-label={tx("Description")}
+          placeholder={tx("Description (Markdown)")}
           className={styles.textarea}
           rows={10}
           value={body}
@@ -188,7 +188,7 @@ function ReviewDialog(props: {
         />
         <textarea
           data-autofocus
-          aria-label="Review comment"
+          aria-label={tx("Review comment")}
           placeholder={needsBody ? "Leave a comment (required)" : "Leave a comment (optional)"}
           className={styles.textarea}
           rows={8}

@@ -306,7 +306,9 @@ function ColorSchemePage() {
           <T>Restore Defaults</T>
         </Button>
       </div>
-      {scheme === "theme-default" && <div className={styles.note}>Follows the IDE theme: currently {schemeName}.</div>}
+      {scheme === "theme-default" && (
+        <div className={styles.note}>{tx`Follows the IDE theme: currently ${schemeName}.`}</div>
+      )}
       <div className={styles.schemeBody}>
         <div className={styles.attrTree}>
           <Tree<Node>
@@ -335,7 +337,7 @@ function ColorSchemePage() {
           <div />
         )}
       </div>
-      <pre className={styles.schemePreview} style={vars} aria-label="Color scheme preview">
+      <pre className={styles.schemePreview} style={vars} aria-label={tx("Color scheme preview")}>
         {SAMPLE.map((line, i) => (
           <div key={i} className={`${styles.previewLine} ${i === 6 ? styles.previewCaretLine : ""}`}>
             <span className={styles.previewGutter}>{i + 1}</span>

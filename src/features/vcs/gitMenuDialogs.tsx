@@ -62,7 +62,7 @@ function MergeFlags({
 }) {
   const disabled = disabledMergeFlags(on, rebase);
   return (
-    <div className={styles.optionGrid} role="group" aria-label="Merge options">
+    <div className={styles.optionGrid} role="group" aria-label={tx("Merge options")}>
       {FLAG_LABELS.map(([flag, label]) => (
         <Checkbox
           key={flag}
@@ -317,7 +317,7 @@ function RebaseDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={styles.form}>
         <div className={styles.fieldLabel}>
-          {useOnto ? `Rebase commits of ${head ?? "HEAD"} not on:` : `Rebase ${head ?? "HEAD"} onto:`}
+          {useOnto ? tx`Rebase commits of ${head ?? "HEAD"} not on:` : `Rebase ${head ?? "HEAD"} onto:`}
         </div>
         <Select aria-label="Upstream" value={upstream} placeholder="Select branch" options={options} onChange={setUpstream} />
         <Checkbox label="--onto" checked={useOnto} onChange={setUseOnto} />
@@ -409,12 +409,12 @@ function RemotesDialog({ onClose }: { onClose: () => void }) {
       buttons={[{ label: "OK", role: "default", autoFocus: true, onClick: onClose }]}
     >
       <div className={styles.form}>
-        <div className={styles.manageBar} role="toolbar" aria-label="Remotes">
+        <div className={styles.manageBar} role="toolbar" aria-label={tx("Remotes")}>
           <IconButton icon="plus" title="Add Remote…" size="small" onClick={() => edit()} />
           <IconButton icon="minus" title="Remove Remote" size="small" disabled={!current} onClick={() => void remove()} />
           <IconButton icon="edit" title="Edit Remote…" size="small" disabled={!current} onClick={() => edit(current)} />
         </div>
-        <div className={styles.choiceList} role="listbox" aria-label="Remotes">
+        <div className={styles.choiceList} role="listbox" aria-label={tx("Remotes")}>
           {!remotes.length && (
             <div className={styles.empty}>
               <T>No remotes</T>
@@ -565,7 +565,7 @@ function WorktreesDialog({ onClose }: { onClose: () => void }) {
       buttons={[{ label: "Close", role: "default", autoFocus: true, onClick: onClose }]}
     >
       <div className={styles.form}>
-        <div className={styles.manageBar} role="toolbar" aria-label="Worktrees">
+        <div className={styles.manageBar} role="toolbar" aria-label={tx("Worktrees")}>
           <IconButton icon="plus" title="New Worktree…" size="small" onClick={() => showNewWorktree(() => void reload())} />
           <IconButton
             icon="minus"
@@ -582,7 +582,7 @@ function WorktreesDialog({ onClose }: { onClose: () => void }) {
             onClick={() => current && void executeAction("file.openProjectPath", current.path)}
           />
         </div>
-        <div className={styles.choiceList} role="listbox" aria-label="Worktrees">
+        <div className={styles.choiceList} role="listbox" aria-label={tx("Worktrees")}>
           {list.map((w) => (
             <button
               key={w.path}

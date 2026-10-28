@@ -42,7 +42,7 @@ import { useChangelists, withListDefaults } from "./changelists";
 import { moveToChangelist } from "./changelistsUi";
 import { messageHistory, setAmend, setGroupByDir, useCommit, type CommitTab } from "./commitStore";
 import { openDiff, withChain, workingDiffData } from "./diffInput";
-import { KIND_COLOR, KIND_LABEL, formatTime, stashLabel, stripSlash } from "./model";
+import { KIND_COLOR, KIND_LABEL, fileCount, formatTime, stashLabel, stripSlash } from "./model";
 import { call, commands } from "@/platform/ipc";
 import { OperationBanner } from "./operations";
 import { ShelfPanel, loadShelves, useShelf } from "./shelf";
@@ -423,7 +423,7 @@ function ChangesPanel() {
                     style={n.type === "file" && n.kind ? { color: KIND_COLOR[n.kind] } : undefined}
                     title={n.type === "file" && n.kind ? KIND_LABEL[n.kind] : undefined}
                   >
-                    {n.label}
+                    {n.type === "group" && !n.changelist ? tx(n.label) : n.label}
                   </span>
                 );
                 // Pointer-driven (HTML5 drag and drop never reaches the Tauri webview):
@@ -480,14 +480,10 @@ function ChangesPanel() {
                       />
                     )}
                     {label}
-                    {n.type === "group" && (
-                      <span className={styles.detail}>
-                        {n.files.length} file{n.files.length === 1 ? "" : "s"}
-                      </span>
-                    )}
+                    {n.type === "group" && <span className={styles.detail}>{fileCount(n.files.length)}</span>}
                     {n.type === "file" && n.files[0] && isPartiallyStaged(n.files[0]) && (
-                      <span className={styles.partial} title="Partially staged: only staged hunks are committed">
-                        partial
+                      <span className={styles.partial} title={tx("Partially staged: only staged hunks are committed")}>
+                        <T>partial</T>
                       </span>
                     )}
                     {n.detail && <span className={styles.detail}>{n.detail}</span>}
@@ -631,7 +627,7 @@ function CommitMessage({ included }: { included: number }) {
         />
         <span className={styles.grow} />
         {tooLong && (
-          <span className={clsx(styles.lineLen, styles.lineLenWarn)} title="Subject line length">
+          <span className={clsx(styles.lineLen, styles.lineLenWarn)} title={tx("Subject line length")}>
             {first.length}/{cfg.subjectLimit}
           </span>
         )}
@@ -642,8 +638,8 @@ function CommitMessage({ included }: { included: number }) {
         aria-invalid={emptyError || undefined}
         style={{ ["--guide" as string]: `${margin}ch` }}
         value={message}
-        placeholder="Commit Message"
-        aria-label="Commit message"
+        placeholder={tx("Commit Message")}
+        aria-label={tx("Commit message")}
         spellCheck
         onChange={(e) => {
           const el = e.target;

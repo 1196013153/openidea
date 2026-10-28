@@ -7,6 +7,7 @@ import { shortcutLabel } from "@/platform/keymap";
 import { IconButton, Popup } from "@/ui";
 import { editorHunks, gotoChange, setHunkPopupHooks, type EditorHunk } from "./gutter";
 import styles from "./HunkPopup.module.css";
+import { tx } from "@/platform/i18n";
 
 interface PopupState {
   view: EditorView;
@@ -110,7 +111,7 @@ function HunkPopupView({ state }: { state: PopupState }) {
       aria-label={KIND_TITLE[hunk.kind]}
       className={styles.popup}
     >
-      <div className={styles.toolbar} role="toolbar" aria-label="Change actions">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Change actions")}>
         <IconButton
           icon="arrow-up"
           title="Previous Change"

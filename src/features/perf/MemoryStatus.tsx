@@ -89,7 +89,7 @@ export function MemoryDetails({ metrics: m }: { metrics: AppMetrics }) {
   const sections = memorySections(m.memory ?? []);
   return (
     <div className={styles.panel}>
-      <div className={styles.header}>Memory &amp; Diagnostics</div>
+      <div className={styles.header}>{tx("Memory & Diagnostics")}</div>
       {sections.map((sec) => (
         <div key={sec.title} className={styles.section} aria-label={sec.title} role="group">
           <div className={styles.groupRow}>

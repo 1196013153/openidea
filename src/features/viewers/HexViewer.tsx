@@ -25,6 +25,7 @@ import {
 } from "./hex";
 import { useForwardFocus } from "./forwardFocus";
 import styles from "./Viewers.module.css";
+import { tx } from "@/platform/i18n";
 
 const ROW_H = 20;
 const COLUMNS = Array.from({ length: BYTES_PER_ROW }, (_, i) => i);
@@ -167,15 +168,15 @@ export function HexViewer({ input }: { input: EditorInput }) {
 
   return (
     <div className={styles.root}>
-      <div className={styles.toolbar} role="toolbar" aria-label="Hex view">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Hex view")}>
         <Icon name="lock" size={14} />
         <span className={styles.info}>
-          {data?.binary === false ? "Large file" : "Binary file"} · {formatSize(total)} · read-only
+          {data?.binary === false ? tx("Large file") : tx("Binary file")} · {formatSize(total)} · {tx("read-only")}
         </span>
         <div className={styles.spacer} />
         {selected !== null && (
           <span className={styles.info}>
-            Offset 0x{formatOffset(selected, 1)} ({selected})
+            {tx`Offset 0x${formatOffset(selected, 1)} (${selected})`}
             {selectedByte !== undefined && ` · 0x${hexByte(selectedByte)} = ${selectedByte}`}
           </span>
         )}
@@ -190,7 +191,7 @@ export function HexViewer({ input }: { input: EditorInput }) {
         )}
       </div>
       {error ? (
-        <div className={styles.message}>Cannot read the file: {error}</div>
+        <div className={styles.message}>{tx`Cannot read the file: ${error}`}</div>
       ) : (
         <>
           <div className={styles.hexHeader} style={{ height: ROW_H }} aria-hidden="true">

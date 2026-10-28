@@ -189,6 +189,8 @@ export function useTx(): typeof tx {
 }
 
 function translateSource(texts: Catalog, text: string | TemplateStringsArray | undefined, values: unknown[]) {
+  // A tag without `${}` spells out its whole text, which is looked up as written.
+  if (text !== undefined && typeof text !== "string" && !values.length) text = text[0]!;
   if (text === undefined || typeof text === "string") return text && (texts[text] ?? rebuild(texts, text) ?? text);
   return buildText(texts, { strings: text, values });
 }

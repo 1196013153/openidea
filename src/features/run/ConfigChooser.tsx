@@ -238,7 +238,7 @@ function ConfigChooser() {
               return (
                 <span className={clsx(styles.chooserRow, styles.chooserEdit)}>
                   <Icon name="check" size={13} />
-                  <span>Save &apos;{r.config.name}&apos; Configuration</span>
+                  <span>{tx`Save '${r.config.name}' Configuration`}</span>
                 </span>
               );
             }
@@ -277,9 +277,15 @@ function ConfigChooser() {
                   {r.indices ? <HighlightedText text={c.name} indices={r.indices} /> : c.name}
                 </span>
                 {c.target && <span className={styles.chooserMuted}>@ {targetName(c, runTargets)}</span>}
-                {c.isTest && <span className={styles.badge}>test</span>}
-                {!c.detected && <span className={styles.chooserMuted}>user</span>}
-                {temporary.includes(c.id) && <span className={styles.chooserMuted}>temporary</span>}
+                {c.isTest && <span className={styles.badge}>
+                    <T>test</T>
+                  </span>}
+                {!c.detected && <span className={styles.chooserMuted}>
+                    <T>user</T>
+                  </span>}
+                {temporary.includes(c.id) && <span className={styles.chooserMuted}>
+                    <T>temporary</T>
+                  </span>}
                 {isActive && (
                   <span className={styles.chooserActions}>
                     <IconButton

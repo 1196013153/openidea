@@ -10,6 +10,7 @@ import { useProject } from "@/platform/project";
 import { IconButton } from "@/ui";
 import { browserIcon, openInBrowser, useBrowsers, useWebPreview, webUrl } from "./browsers";
 import styles from "./Web.module.css";
+import { tx } from "@/platform/i18n";
 
 const RELOAD_DELAY = 250;
 
@@ -20,7 +21,7 @@ export function WebEditor({ path, children }: { path: string; tabId: string; chi
     <div className={clsx(styles.split, preview && styles.withPreview)}>
       <div className={styles.editor}>
         {children}
-        <div className={styles.bar} role="toolbar" aria-label="Open in browser">
+        <div className={styles.bar} role="toolbar" aria-label={tx("Open in browser")}>
           <IconButton
             icon="eye"
             size="small"
@@ -89,7 +90,7 @@ function WebPreview({ path }: { path: string }) {
     <iframe
       key={seq}
       className={styles.preview}
-      title="HTML preview"
+      title={tx("HTML preview")}
       src={url}
       sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
     />

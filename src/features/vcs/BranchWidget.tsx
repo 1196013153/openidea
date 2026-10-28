@@ -19,6 +19,7 @@ import {
   SearchField,
   firstSelectable,
   type MenuItem,
+  T,
 } from "@/ui";
 import { buildBranchRows, type BranchRow, type PopupAction } from "./branches";
 import { branchMenu, commonBranchMenu, inRepo, tagMenu } from "./branchMenu";
@@ -331,7 +332,7 @@ function BranchesPanel({ onClose, actions: baseActions, root, fallback, onBack }
           items={rows}
           getKey={(r) => r.key}
           isSection={isSection}
-          renderSection={(r) => <span className={styles.section}>{r.type === "section" ? r.label : ""}</span>}
+          renderSection={(r) => <span className={styles.section}>{r.type === "section" ? tx(r.label) : ""}</span>}
           activeIndex={activeIndex}
           onActiveChange={setActive}
           onActivate={(_r, i) => activate(i)}
@@ -340,7 +341,7 @@ function BranchesPanel({ onClose, actions: baseActions, root, fallback, onBack }
           rowHeight={ROW_HEIGHT}
           aria-label="Branches"
           className={styles.list}
-          empty={<span className={styles.empty}>{loaded ? "No matching branches" : "Loading…"}</span>}
+          empty={<span className={styles.empty}>{loaded ? tx("No matching branches") : "Loading…"}</span>}
           renderItem={(r) => <BranchRowView row={r} />}
         />
       </div>
@@ -599,7 +600,7 @@ function MultiRepoPanel({ onClose }: { onClose: () => void }) {
           sectionHeightOf={(r) => (r.type === "section" && !r.label ? SEPARATOR_HEIGHT : undefined)}
           renderSection={(r) =>
             r.type === "section" && r.label ? (
-              <span className={styles.section}>{r.label}</span>
+              <span className={styles.section}>{tx(r.label)}</span>
             ) : (
               <span className={styles.separator} role="separator" />
             )
@@ -612,7 +613,11 @@ function MultiRepoPanel({ onClose }: { onClose: () => void }) {
           rowHeight={ROW_HEIGHT}
           aria-label="Repositories and branches"
           className={styles.list}
-          empty={<span className={styles.empty}>No matching repositories or branches</span>}
+          empty={
+            <span className={styles.empty}>
+              <T>No matching repositories or branches</T>
+            </span>
+          }
           renderItem={(r) => (
             <RepoRowView row={r} operation={r.type === "repo" ? operations[r.repo.root] : undefined} />
           )}
@@ -674,7 +679,7 @@ function RepoRowView({ row, operation }: { row: RepoRow; operation?: string }) {
         >
           <Icon name={row.expanded ? "chevron-down" : "chevron-right"} size={12} className={styles.rowIcon} />
           {row.depth > 0 && <Icon name="folder" size={14} className={styles.rowIcon} />}
-          <span className={styles.label}>{row.label}</span>
+          <span className={styles.label}>{tx(row.label)}</span>
         </span>
       );
     case "common":
@@ -691,7 +696,11 @@ function RepoRowView({ row, operation }: { row: RepoRow; operation?: string }) {
             indices={row.matches}
             tone="accent"
           />
-          {row.branch.current && <span className={styles.tag}>current</span>}
+          {row.branch.current && (
+            <span className={styles.tag}>
+              <T>current</T>
+            </span>
+          )}
           <Icon name="chevron-right" size={10} className={styles.chevron} />
         </span>
       );
@@ -707,7 +716,7 @@ function BranchRowView({ row }: { row: BranchRow | Extract<RepoRow, { type: "act
     return (
       <span className={styles.row} data-row-key={row.key}>
         <Icon name={row.action.icon ?? "more"} size={14} className={styles.rowIcon} />
-        <HighlightedText className={styles.label} text={row.action.label} indices={row.matches} tone="accent" />
+        <HighlightedText className={styles.label} text={tx(row.action.label)} indices={row.matches} tone="accent" />
         {keys && <span className={styles.keys}>{keys}</span>}
       </span>
     );
@@ -756,7 +765,11 @@ function BranchRowView({ row }: { row: BranchRow | Extract<RepoRow, { type: "act
         indices={row.matches}
         tone="accent"
       />
-      {b.current && <span className={styles.tag}>current</span>}
+      {b.current && (
+        <span className={styles.tag}>
+          <T>current</T>
+        </span>
+      )}
       {(b.ahead > 0 || b.behind > 0) && (
         <span className={styles.syncSmall}>
           {b.ahead > 0 && `↑${b.ahead}`}

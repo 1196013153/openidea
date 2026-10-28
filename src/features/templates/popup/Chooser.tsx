@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { HighlightedText, List, Popup, fuzzyMatch, listNavigate } from "@/ui";
 import { closeChooser, useChooser, type ChooserItem, type ChooserRequest } from "./store";
 import styles from "./Chooser.module.css";
+import { tx } from "@/platform/i18n";
 
 /** Overlay contribution: renders the pending chooser, if any. */
 export function ChooserHost() {
@@ -126,7 +127,7 @@ function ChooserPopup({ request }: { request: ChooserRequest }) {
           rowHeight={22}
           className={styles.list}
           aria-label={request.title}
-          empty={<div className={styles.empty}>{request.emptyText ?? "Nothing to show"}</div>}
+          empty={<div className={styles.empty}>{request.emptyText ?? tx("Nothing to show")}</div>}
           renderItem={(r, state) => (
             <div className={clsx(styles.row, state.active && styles.active)}>
               <span className={styles.label}>

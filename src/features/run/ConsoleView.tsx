@@ -19,6 +19,7 @@ import { findOutputLinks, type OutputLink } from "./links";
 import { openTarget, openUrl } from "./navigate";
 import { segmentLine } from "./segments";
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 const ROW = 20;
 
@@ -248,12 +249,12 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
   );
   const foldButton = (fold: Fold, attached: boolean) =>
     fold.expanded ? (
-      <button type="button" className={styles.foldToggle} title="Collapse folded lines" aria-label="Collapse folded lines" onClick={() => toggleFold(fold.id)}>
+      <button type="button" className={styles.foldToggle} title={tx("Collapse folded lines")} aria-label={tx("Collapse folded lines")} onClick={() => toggleFold(fold.id)}>
         <Icon name="chevron-up" size={10} />
       </button>
     ) : (
-      <button type="button" className={styles.fold} title="Expand folded lines" onClick={() => toggleFold(fold.id)}>
-        {`${attached ? " " : ""}<${fold.count} internal line${fold.count === 1 ? "" : "s"}>`}
+      <button type="button" className={styles.fold} title={tx("Expand folded lines")} onClick={() => toggleFold(fold.id)}>
+        {`${attached ? " " : ""}${fold.count === 1 ? tx`<${fold.count} internal line>` : tx`<${fold.count} internal lines>`}`}
       </button>
     );
 

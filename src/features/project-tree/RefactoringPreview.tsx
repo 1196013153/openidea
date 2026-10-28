@@ -132,10 +132,9 @@ function PreviewDialog({ request }: { request: PreviewRequest }) {
       ]}
     >
       <div className={styles.previewSummary}>
-        References to update: {occurrences} {occurrences === 1 ? "occurrence" : "occurrences"} in {kept.length}{" "}
-        {kept.length === 1 ? "file" : "files"}
+        {tx`References to update: ${occurrences === 1 ? tx`${occurrences} occurrence` : tx`${occurrences} occurrences`} in ${kept.length === 1 ? tx`${kept.length} file` : tx`${kept.length} files`}`}
       </div>
-      <ul className={styles.previewList} aria-label="Changes">
+      <ul className={styles.previewList} aria-label={tx("Changes")}>
         {files.map((f) => (
           <FileGroup
             key={f.path}

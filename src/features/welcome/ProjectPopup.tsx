@@ -7,6 +7,7 @@ import type { ProjectPopupProps } from "@/workbench/contributions";
 import { askRemoveRecent, ProjectBadge, recentMenu } from "./RecentList";
 import { filterRecent, loadRecent, openRecent, useRecent, type RecentMatch } from "./recent";
 import styles from "./ProjectPopup.module.css";
+import { tx } from "@/platform/i18n";
 
 type Entry =
   { kind: "action"; id: string; label: string; icon: IconName } | { kind: "project"; open: boolean; m: RecentMatch };
@@ -120,7 +121,7 @@ export function ProjectPopup({ anchor, onClose }: ProjectPopupProps) {
         onKeyDown={onKeyDown}
         className={styles.inner}
         role="listbox"
-        aria-label="Projects"
+        aria-label={tx("Projects")}
       >
         {query && (
           <div className={styles.search} aria-live="polite">

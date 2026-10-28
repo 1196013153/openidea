@@ -16,6 +16,7 @@ import { openLocation, readFileLines } from "./ipc";
 import { showUsageResults, usageCount, useUsagesPopup, type Usage, type UsageGroup } from "./usages";
 import { UsagePreview } from "./UsagesView";
 import styles from "./UsagesPopup.module.css";
+import { tx } from "@/platform/i18n";
 
 const close = () => useUsagesPopup.setState({ open: false });
 
@@ -118,8 +119,8 @@ function UsagesPopupInner() {
       <div className={styles.focus} tabIndex={0} data-autofocus onKeyDown={onKeyDown}>
         <div className={styles.header}>
           <span className={styles.title}>
-            Usages{symbol ? ` of ${symbol}` : ""}{" "}
-            <span className={styles.count}>{filter ? `${items.length} of ${total}` : total} found</span>
+            {symbol ? tx`Usages of ${symbol}` : tx("Usages")}{" "}
+            <span className={styles.count}>{filter ? tx`${items.length} of ${total} found` : tx`${total} found`}</span>
           </span>
           {filter && (
             <span className={clsx(styles.filter, !items.length && styles.noMatch)} role="status">
@@ -135,7 +136,8 @@ function UsagesPopupInner() {
             onClick={() => setUsagesPopupPreview(!preview)}
           />
           <button type="button" className={styles.link} onClick={openInFindWindow}>
-            Open in Find Window{keys ? ` ${keys}` : ""}
+            {tx("Open in Find Window")}
+            {keys ? ` ${keys}` : ""}
           </button>
         </div>
         {note && <div className={styles.note}>{note}</div>}
@@ -150,7 +152,7 @@ function UsagesPopupInner() {
             rowHeight={ROW}
             aria-label="Usages"
             onActivate={pick}
-            empty={<div className={styles.empty}>Nothing matches '{filter}'</div>}
+            empty={<div className={styles.empty}>{tx`Nothing matches '${filter}'`}</div>}
             renderItem={(u) => (
               <div className={styles.row}>
                 <Icon name={fileIconName(basename(u.path))} size={14} className={styles.icon} />
@@ -234,7 +236,7 @@ function UsageCodePreview({ usage }: { usage: Usage | null }) {
   }, [usage, loaded]);
 
   return (
-    <div className={styles.preview} role="region" aria-label="Preview">
+    <div className={styles.preview} role="region" aria-label={tx("Preview")}>
       <div ref={host} className={clsx(styles.previewEditor, loaded !== path && styles.previewHidden)} />
     </div>
   );

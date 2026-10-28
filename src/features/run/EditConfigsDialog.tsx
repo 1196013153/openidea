@@ -29,6 +29,7 @@ import { targetName } from "./remote";
 import { saveUserConfigs, selectConfig, useRun } from "./store";
 import { blankTemplate, COMPOUND, missingParams, newConfigOfType, templateId, typeFor } from "./types";
 import styles from "./Run.module.css";
+import { tx } from "@/platform/i18n";
 
 export { envFromRows } from "./EnvDialog";
 
@@ -364,7 +365,7 @@ function EditConfigsDialog() {
         <div className={styles.editSidebar}>
           {mode === "configs" ? (
             <>
-              <div className={styles.editToolbar} role="toolbar" aria-label="Configurations">
+              <div className={styles.editToolbar} role="toolbar" aria-label={tx("Configurations")}>
                 <IconButton
                   ref={addRef}
                   icon="plus"
@@ -420,7 +421,7 @@ function EditConfigsDialog() {
                   onClick={() => move(1)}
                 />
               </div>
-              <div className={styles.editList} role="tree" aria-label="Run configurations">
+              <div className={styles.editList} role="tree" aria-label={tx("Run configurations")}>
                 {rows.map((r) => {
                   if (r.type === "group")
                     return (
@@ -522,7 +523,7 @@ function EditConfigsDialog() {
                   <T>Templates</T>
                 </span>
               </div>
-              <div className={styles.editList} role="listbox" aria-label="Configuration templates">
+              <div className={styles.editList} role="listbox" aria-label={tx("Configuration templates")}>
                 {templateTypes.map((t) => {
                   const sel = selection?.type === "template" && selection.kind === t.id;
                   return (

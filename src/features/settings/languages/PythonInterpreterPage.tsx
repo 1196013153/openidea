@@ -15,6 +15,7 @@ import { AddInterpreterDialog } from "./AddInterpreterDialog";
 import { useSetting } from "../components/context";
 import { SdkField, tildify } from "./components";
 import styles from "./Sdk.module.css";
+import { tx } from "@/platform/i18n";
 
 type Op = "install" | "upgrade" | "uninstall";
 
@@ -167,7 +168,7 @@ export function PythonInterpreterPage() {
       )}
 
       <div className={styles.tablePanel}>
-        <div className={styles.tableToolbar} role="toolbar" aria-label="Packages">
+        <div className={styles.tableToolbar} role="toolbar" aria-label={tx("Packages")}>
           <IconButton
             icon="plus"
             size="small"
@@ -235,7 +236,7 @@ export function PythonInterpreterPage() {
           </form>
         )}
         <div className={styles.tableScroll}>
-          <table className={styles.table} aria-label="Installed packages">
+          <table className={styles.table} aria-label={tx("Installed packages")}>
             <thead>
               <tr>
                 <th scope="col">
@@ -274,7 +275,7 @@ export function PythonInterpreterPage() {
             </div>
           )}
           {python && !error && packages && shown.length === 0 && (
-            <div className={styles.empty}>{query ? "No packages match" : "No packages installed"}</div>
+            <div className={styles.empty}>{query ? tx("No packages match") : tx("No packages installed")}</div>
           )}
           {python && !error && !packages && loading && (
             <div className={styles.empty}>
@@ -288,7 +289,8 @@ export function PythonInterpreterPage() {
         <div className={styles.status}>
           <Spinner size={14} label="Working" />
           <span>
-            {job.op === "install" ? "Installing" : job.op === "upgrade" ? "Upgrading" : "Uninstalling"} {job.target}…
+            {job.op === "install" ? tx("Installing") : job.op === "upgrade" ? tx("Upgrading") : tx("Uninstalling")}{" "}
+            {job.target}…
           </span>
           <Button size="small" variant="ghost" onClick={job.cancel}>
             <T>Cancel</T>
@@ -301,7 +303,7 @@ export function PythonInterpreterPage() {
         </div>
       )}
       {log.length > 0 && (
-        <pre className={styles.log} aria-label="pip output">
+        <pre className={styles.log} aria-label={tx("pip output")}>
           {log.join("\n")}
         </pre>
       )}

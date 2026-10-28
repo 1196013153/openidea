@@ -17,6 +17,7 @@ import {
 } from "./changelists";
 import { useCommit } from "./commitStore";
 import { confirmDialog, openDialog } from "./dialogs";
+import { fileCount } from "./model";
 import { useVcs } from "./store";
 import styles from "./common.module.css";
 import { tx } from "@/platform/i18n";
@@ -230,10 +231,8 @@ function MoveDialog({ paths, onClose }: { paths: readonly string[]; onClose: () 
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <div className={styles.form} role="radiogroup" aria-label="Target changelist">
-        <div className={styles.hint}>
-          {paths.length} file{paths.length === 1 ? "" : "s"}
-        </div>
+      <div className={styles.form} role="radiogroup" aria-label={tx("Target changelist")}>
+        <div className={styles.hint}>{fileCount(paths.length)}</div>
         <label className={styles.radioRow}>
           <input
             type="radio"

@@ -117,6 +117,13 @@ describe("t / locales", () => {
     expect(tx(undefined)).toBeUndefined();
   });
 
+  it("translates a tx tag without values like the same text as a string", async () => {
+    await setLocale("zh");
+    expect(tx`Sync with OS`).toBe("与操作系统同步");
+    expect(tx`Sync with OS`).toBe(tx("Sync with OS"));
+    expect(tx`Some text nobody translated`).toBe("Some text nobody translated");
+  });
+
   it("matches source-text templates, translating the substituted text", async () => {
     expect(txTemplate("Push failed")).toBe("Push failed");
     await setLocale("zh");

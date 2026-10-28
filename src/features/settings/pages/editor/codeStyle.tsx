@@ -17,6 +17,7 @@ import type { PageSpec } from "../spec";
 import { CODE_STYLE_SCOPE, CodeStyleMain, SchemeRow, formatterLabels } from "./codeStyleScheme";
 import { editorPage, sectionLabels, type EditorSection } from "./kit";
 import styles from "./Editor.module.css";
+import { tx } from "@/platform/i18n";
 
 function VisualGuidesRow() {
   const [guides, setGuides] = useSetting<number[]>("editor.codeStyle.visualGuides");
@@ -44,7 +45,9 @@ function VisualGuidesRow() {
         }}
         onBlur={() => setDraft(null)}
       />
-      <span className={styles.suffix}>columns</span>
+      <span className={styles.suffix}>
+        <T>columns</T>
+      </span>
     </Row>
   );
 }
@@ -155,7 +158,7 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
   return (
     <div className={styles.page}>
       <SchemeRow />
-      <section aria-label="Tabs and Indents">
+      <section aria-label={tx("Tabs and Indents")}>
         <div className={styles.previewTitle}>
           <T>Tabs and Indents</T>
         </div>
@@ -183,7 +186,7 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
           />
         </Row>
       </section>
-      <section aria-label="Wrapping">
+      <section aria-label={tx("Wrapping")}>
         <div className={styles.previewTitle}>
           <T>Wrapping</T>
         </div>
@@ -200,7 +203,7 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
         </Row>
       </section>
       {lang.lineComment && (
-        <section aria-label="Comment Code">
+        <section aria-label={tx("Comment Code")}>
           <div className={styles.previewTitle}>
             <T>Comment Code</T>
           </div>
@@ -225,7 +228,9 @@ function LanguageStyle({ lang }: { lang: LanguageInfo }) {
           <T>Reset to Language Defaults</T>
         </Button>
         <span className={styles.inherited}>
-          Defaults from the {lang.name} language definition: {base.useTab ? "tab" : `${base.tabSize} spaces`}.
+          {base.useTab
+            ? tx`Defaults from the ${lang.name} language definition: tab.`
+            : tx`Defaults from the ${lang.name} language definition: ${base.tabSize} spaces.`}
         </span>
       </div>
     </div>

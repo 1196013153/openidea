@@ -82,7 +82,7 @@ export function RecognizedFileTypes() {
           aria-label="Filter file types"
           onChange={(e) => setFilter(e.target.value)}
         />
-        <div className={styles.typeList} role="listbox" aria-label="Recognized file types">
+        <div className={styles.typeList} role="listbox" aria-label={tx("Recognized file types")}>
           {shown.map((l) => {
             const sample = sampleFileName(l);
             return (
@@ -96,7 +96,11 @@ export function RecognizedFileTypes() {
               >
                 <Icon name={sample ? fileIconName(sample) : "file-text"} size={16} />
                 <span className={styles.typeName}>{l.name}</span>
-                {current[l.id] && <span className={styles.modified}>modified</span>}
+                {current[l.id] && (
+                  <span className={styles.modified}>
+                    <T>modified</T>
+                  </span>
+                )}
               </button>
             );
           })}

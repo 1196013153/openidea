@@ -14,6 +14,7 @@ import { ACCENT_PRESETS, DEFAULT_ACCENT } from "@/workbench/theme";
 import { reopenEnabled, setReopenPreference, useSession } from "./session";
 import styles from "./Welcome.module.css";
 import { BUILTIN_THEMES, isBuiltinTheme, type BuiltinThemeId } from "@/platform/themes";
+import { tx } from "@/platform/i18n";
 
 type Theme = BuiltinThemeId;
 
@@ -130,7 +131,7 @@ export function CustomizePage() {
           />
         </Field>
         <Field label="Accent color">
-          <div className={styles.swatches} role="radiogroup" aria-label="Accent color">
+          <div className={styles.swatches} role="radiogroup" aria-label={tx("Accent color")}>
             {ACCENT_PRESETS.map((p) => (
               <button
                 key={p.value}

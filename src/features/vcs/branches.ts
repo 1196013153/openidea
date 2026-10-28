@@ -1,5 +1,6 @@
 /** Branches popup model: grouping, ordering and filtering (pure). */
 import type { Branch } from "@/bindings";
+import { tx } from "@/platform/i18n";
 import { fuzzyMatch } from "@/ui/match";
 
 export interface PopupAction {
@@ -69,7 +70,7 @@ export function buildBranchRows(
   };
 
   for (const a of actions) {
-    const m = match(a.label);
+    const m = match(tx(a.label));
     if (m === false) continue;
     rows.push({ type: "action", key: `action:${a.id}`, action: a, matches: m });
   }

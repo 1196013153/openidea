@@ -414,7 +414,7 @@ export function TodoView() {
           <span className={clsx(styles.fileName, state.selected && styles.selectedText)}>{name}</span>
           <span className={styles.muted}>{relativeDir(root, n.group.path)}</span>
           <span className={styles.count}>
-            {n.group.items.length} item{n.group.items.length === 1 ? "" : "s"}
+            {n.group.items.length === 1 ? tx`${n.group.items.length} item` : tx`${n.group.items.length} items`}
           </span>
         </span>
       );

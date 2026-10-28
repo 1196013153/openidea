@@ -48,7 +48,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
         <div className={styles.hint}>
           {branch?.upstream
             ? `Update ${branch.head ?? "HEAD"} from ${branch.upstream}${branch.behind ? ` (${branch.behind} incoming)` : ""}`
-            : "The current branch has no tracked branch; git pull may fail."}
+            : tx("The current branch has no tracked branch; git pull may fail.")}
         </div>
         <div className={styles.fieldLabel}>
           <T>Update type:</T>
@@ -237,7 +237,11 @@ function MultiPushDialog({ onClose }: { onClose: () => void }) {
             onActivate={(r, _i, e) => {
               if (r.type === "repo" && !(e.target as HTMLElement | null)?.closest?.("label")) toggle(r.repo.root);
             }}
-            empty={<span>Everything is up to date</span>}
+            empty={
+              <span>
+                <T>Everything is up to date</T>
+              </span>
+            }
             renderItem={(r) =>
               r.type === "repo" ? (
                 <span className={styles.commitRow} style={{ flex: 1, padding: 0 }}>
@@ -390,12 +394,12 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
     >
       <div className={styles.section}>
         {!head
-          ? "HEAD is detached; check out a branch to push."
+          ? tx("HEAD is detached; check out a branch to push.")
           : upstream
             ? `${head}${revision ? ` up to ${revision.slice(0, 8)}` : ""} → ${remote}/`
             : revision
-              ? `${head} has no upstream: commits up to ${revision.slice(0, 8)} will be pushed as a new branch:`
-              : `${head} has no upstream: it will be pushed as a new branch and tracked:`}
+              ? tx`${head} has no upstream: commits up to ${revision.slice(0, 8)} will be pushed as a new branch:`
+              : tx`${head} has no upstream: it will be pushed as a new branch and tracked:`}
         {head && (
           <Input
             aria-label="Target branch"
@@ -421,7 +425,7 @@ function PushDialog({ target: pushTarget, onClose }: { target: PushTarget; onClo
             rowHeight={22}
             aria-label="Outgoing commits"
             className={styles.boxList}
-            empty={<span>{upstream ? "Everything is up to date" : "No commits"}</span>}
+            empty={<span>{upstream ? tx("Everything is up to date") : "No commits"}</span>}
             renderItem={(c) => (
               <span className={styles.commitRow} style={{ flex: 1, padding: 0 }}>
                 <span className={styles.commitHash}>{c.shortId}</span>

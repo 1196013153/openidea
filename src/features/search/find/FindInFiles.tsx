@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { openEditorPaths, useEditorRegistry } from "@/editor/api";
 import { executeAction } from "@/platform/actions";
 import { setContext } from "@/platform/context";
-import { useTxTemplate } from "@/platform/i18n";
+import { useTxTemplate, tx } from "@/platform/i18n";
 import { call, commands, type SearchScope } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { useProjectModules } from "@/platform/projectRoots";
@@ -477,7 +477,7 @@ function FindInFilesDialog() {
     >
       <div className={styles.root} onKeyDown={onKeyDown}>
         <header className={styles.header}>
-          <span className={styles.title}>{s.replace ? "Replace in Files" : "Find in Files"}</span>
+          <span className={styles.title}>{s.replace ? tx("Replace in Files") : tx("Find in Files")}</span>
           <span className={styles.status} aria-live="polite">
             {state.status === "searching" || state.status === "validating" ? <Spinner size={12} /> : null}
             {summary}
@@ -490,7 +490,7 @@ function FindInFilesDialog() {
               className={styles.maskInput}
               value={s.mask}
               placeholder="*.kt, !*Test*"
-              aria-label="File mask"
+              aria-label={tx("File mask")}
               spellCheck={false}
               onChange={(e) => set({ mask: e.target.value, maskEnabled: true })}
               onBlur={() => s.maskEnabled && rememberMask(s.mask)}
@@ -604,8 +604,8 @@ function FindInFilesDialog() {
               <input
                 className={styles.dirInput}
                 value={displayDirectory(s.directory, root)}
-                placeholder="Directory (relative to project root)"
-                aria-label="Directory"
+                placeholder={tx("Directory (relative to project root)")}
+                aria-label={tx("Directory")}
                 spellCheck={false}
                 // Keep the raw text (resolved only when searching), or a typed "/" would be stripped.
                 onChange={(e) => set({ directory: e.target.value })}
@@ -746,7 +746,7 @@ function FindInFilesDialog() {
           <span className={styles.spacer} />
           {s.replace && progress && (
             <span className={styles.hint} aria-live="polite">
-              Replacing… {progress.done}/{progress.total} files
+              {tx`Replacing… ${progress.done}/${progress.total} files`}
             </span>
           )}
           {s.replace && running && (

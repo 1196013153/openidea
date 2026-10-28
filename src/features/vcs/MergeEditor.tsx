@@ -296,7 +296,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
   if (resolved)
     return (
       <div className={styles.message}>
-        {baseName(path)} has been resolved and staged.
+        {tx`${baseName(path)} has been resolved and staged.`}
         <Button onClick={() => void editorService().openFile(path, { focus: true })}>
           <T>Open File</T>
         </Button>
@@ -305,7 +305,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
 
   return (
     <div className={styles.root}>
-      <div className={styles.toolbar} role="toolbar" aria-label="Merge">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Merge")}>
         <IconButton icon="arrow-up" title="Previous Conflict" size="small" onClick={() => goto(-1)} />
         <IconButton icon="arrow-down" title="Next Conflict" size="small" onClick={() => goto(1)} />
         <span className={styles.sep} />
@@ -317,7 +317,7 @@ export function MergeEditor({ input }: { input: EditorInput }) {
         </Button>
         <IconButton icon="refresh" title="Reload from Disk" size="small" onClick={() => void load()} />
         <span className={clsx(styles.status, !left && styles.statusDone)}>
-          {left ? `${left} conflict${left === 1 ? "" : "s"} left` : "All conflicts resolved"}
+          {left ? `${left} conflict${left === 1 ? "" : "s"} left` : tx("All conflicts resolved")}
         </span>
         <Button size="small" variant="primary" onClick={() => void apply()}>
           <T>Apply</T>
@@ -336,9 +336,9 @@ export function MergeEditor({ input }: { input: EditorInput }) {
         </div>
       ) : null}
       <div className={styles.panes} hidden={!state || lang === null}>
-        <div ref={oursRef} className={styles.pane} aria-label="Your version" role="region" />
-        <div ref={resultRef} className={styles.pane} aria-label="Result" role="region" />
-        <div ref={theirsRef} className={styles.pane} aria-label="Their version" role="region" />
+        <div ref={oursRef} className={styles.pane} aria-label={tx("Your version")} role="region" />
+        <div ref={resultRef} className={styles.pane} aria-label={tx("Result")} role="region" />
+        <div ref={theirsRef} className={styles.pane} aria-label={tx("Their version")} role="region" />
       </div>
     </div>
   );

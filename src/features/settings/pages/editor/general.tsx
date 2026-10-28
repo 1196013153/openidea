@@ -13,6 +13,7 @@ import { SearchLabel, Select } from "../../components/Form";
 import { useLabelMatch, useSetting } from "../../components/context";
 import { editorPage, type Item } from "./kit";
 import styles from "./Editor.module.css";
+import { tx } from "@/platform/i18n";
 
 const P = "editor";
 const ms = (key: string, max = 5000) => ({ kind: "number" as const, key, min: 0, max, unit: "ms" });
@@ -472,13 +473,13 @@ function TabRows() {
     </label>
   );
   return (
-    <div className={clsx(styles.radioBlock, matched && styles.matched)} role="radiogroup" aria-label="Show tabs in">
+    <div className={clsx(styles.radioBlock, matched && styles.matched)} role="radiogroup" aria-label={tx("Show tabs in")}>
       <div className={clsx(styles.radioLabel, disabled && styles.dim)}>
         <SearchLabel text="Show tabs in" />:
       </div>
       <div className={styles.radios}>
         {radio("One row, and if tabs don't fit:", !multiple, () => setMultiple(false))}
-        <div className={styles.children} role="radiogroup" aria-label="If tabs don't fit">
+        <div className={styles.children} role="radiogroup" aria-label={tx("If tabs don't fit")}>
           {radio("Scroll the tabs panel", !multiple && overflow !== "squeeze", () => setOverflow("scroll"), disabled || multiple)}
           {radio("Squeeze tabs", !multiple && overflow === "squeeze", () => setOverflow("squeeze"), disabled || multiple)}
         </div>

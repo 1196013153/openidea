@@ -98,7 +98,7 @@ function EditMacrosDialog({ onClose }: { onClose: () => void }) {
             </Button>
           </div>
         </div>
-        <ol className={styles.steps} aria-label="Recorded steps">
+        <ol className={styles.steps} aria-label={tx("Recorded steps")}>
           {macro?.steps.map((step, i) => (
             <li key={i} className={styles.step}>
               {describeStep(step, actionTitle)}

@@ -42,6 +42,7 @@ import {
 import { DB_VIEW_FOCUS, openTableData } from "./treeActions";
 import { newMenu, nodeMenu } from "./treeMenu";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 const GROUP_LABELS: Record<Group, string> = {
   columns: "columns",
@@ -427,7 +428,7 @@ export function DatabaseView() {
                   <span className={styles.nodeIcon}>
                     <Icon name={i} size={16} />
                     {/* IDEA: a green dot on the data source icon while connected. */}
-                    {live && <span className={styles.connectedDot} title="Connected" />}
+                    {live && <span className={styles.connectedDot} title={tx("Connected")} />}
                   </span>
                 )}
                 <span className={labelClass}>{label(n)}</span>
@@ -490,7 +491,7 @@ function DatabaseToolbar() {
   const active = !!target && [...connected].some((t) => splitTarget(t).id === splitTarget(target).id);
   const button = { size: "small", iconSize: 16 } as const;
   return (
-    <div className={styles.dbToolbar} role="toolbar" aria-label="Database actions">
+    <div className={styles.dbToolbar} role="toolbar" aria-label={tx("Database actions")}>
       <IconButton
         ref={plus}
         {...button}
@@ -520,7 +521,7 @@ function DatabaseToolbar() {
       <button
         type="button"
         className={styles.textTool}
-        aria-label="Go to DDL"
+        aria-label={tx("Go to DDL")}
         disabled={!table}
         onClick={() => void executeAction("db.goToDdl")}
         {...tooltipAttrs("Go to DDL", shortcutLabel("db.goToDdl"))}

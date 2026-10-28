@@ -33,6 +33,7 @@ import {
 } from "./model";
 import { cycleSwitcher, hideRecentPopup, showRecentPopup, useRecentPopup } from "./store";
 import styles from "./RecentPopups.module.css";
+import { tx } from "@/platform/i18n";
 
 export function RecentPopupsOverlay() {
   const open = useRecentPopup((s) => s.open);
@@ -233,7 +234,7 @@ function RecentFilesDialog() {
                 value={query}
                 spellCheck={false}
                 autoComplete="off"
-                aria-label="Filter recent files"
+                aria-label={tx("Filter recent files")}
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setFileIndex(null);
@@ -248,7 +249,7 @@ function RecentFilesDialog() {
                 showRecentPopup("files");
                 inputRef.current?.focus();
               }}
-              label={<>Show edited only {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}</>}
+              label={<><T>Show edited only</T> {recentShortcut && <span className={styles.hint}>{recentShortcut}</span>}</>}
             />
           </>
         )}
@@ -304,12 +305,12 @@ function RecentFilesDialog() {
               paths && (
                 <span>
                   {switcher
-                    ? "No open files"
+                    ? tx("No open files")
                     : editedOnly
-                      ? "No edited files"
+                      ? tx("No edited files")
                       : query
-                        ? "No matching files"
-                        : "No recent files"}
+                        ? tx("No matching files")
+                        : tx("No recent files")}
                 </span>
               )
             }
@@ -506,7 +507,7 @@ function RecentLocationsDialog() {
   return (
     <Dialog open onClose={hideRecentPopup} width={720} aria-label="Recent Locations" className={styles.dialog}>
       <header className={styles.header}>
-        <span className={styles.title}>{changedOnly ? "Recently Changed Locations" : "Recent Locations"}</span>
+        <span className={styles.title}>{changedOnly ? tx("Recently Changed Locations") : tx("Recent Locations")}</span>
         <span className={clsx(styles.speed, styles.speedWide, query && styles.speedActive)}>
           <Icon name="search" size={14} className={styles.filterIcon} />
           <input
@@ -514,10 +515,10 @@ function RecentLocationsDialog() {
             data-autofocus
             className={styles.filter}
             value={query}
-            placeholder="Type to filter by file name or code"
+            placeholder={tx("Type to filter by file name or code")}
             spellCheck={false}
             autoComplete="off"
-            aria-label="Filter recent locations"
+            aria-label={tx("Filter recent locations")}
             onChange={(e) => {
               setQuery(e.target.value);
               setIndex(0);
@@ -552,7 +553,7 @@ function RecentLocationsDialog() {
           focusable={false}
           rowHeight={LOCATION_ROW}
           aria-label="Recent locations"
-          empty={<span>{changedOnly ? "No changed locations" : "No recent locations"}</span>}
+          empty={<span>{changedOnly ? tx("No changed locations") : tx("No recent locations")}</span>}
           renderItem={(l) => (
             <div className={styles.location}>
               <div className={styles.locationHeader}>
@@ -564,7 +565,9 @@ function RecentLocationsDialog() {
                   tone="strong"
                 />
                 <span className={styles.dir}>{breadcrumbOf(outlines.get(l.path), l) || l.rel}</span>
-                {l.changed && <span className={styles.changed}>changed</span>}
+                {l.changed && <span className={styles.changed}>
+                    <T>changed</T>
+                  </span>}
                 <span className={styles.time}>{locationTime(l.time, now)}</span>
               </div>
               <SnippetCode path={l.path} lines={dedent(l.snippet)} first={l.snippetStart} caret={l.line} />

@@ -148,7 +148,7 @@ export function DataView(props: DataViewProps) {
         />
         {filter.size > 0 && (
           <div className={styles.filterPill} role="status">
-            {shown} of {rowCount} rows
+            {tx`${shown} of ${rowCount} rows`}
             <button type="button" className={styles.filterPillClear} onClick={() => setFilter(new Map())}>
               <T>Clear local filter</T>
             </button>
@@ -219,7 +219,7 @@ function FilterPopup(props: {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      <div className={styles.filterValues} role="group" aria-label="Values">
+      <div className={styles.filterValues} role="group" aria-label={tx("Values")}>
         {list.map(({ value: v, count }) => (
           <div key={v ?? "\u0000null"} className={styles.filterValue}>
             <Checkbox
@@ -270,7 +270,7 @@ function SidePanel(props: {
 }) {
   const { range, value, columns } = props;
   return (
-    <aside className={styles.sidePanel} aria-label="Value panel">
+    <aside className={styles.sidePanel} aria-label={tx("Value panel")}>
       <div className={styles.sidePanelHead}>
         <Tabs
           variant="compact"

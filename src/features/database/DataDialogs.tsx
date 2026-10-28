@@ -225,7 +225,7 @@ export function ImportDialog({ id, schema, table }: { id: string; schema: string
           <T>Columns:</T>
         </span>
         <span className={styles.formHint}>
-          {mapped.length ? mapped.join(", ") : "No column of the file matches the table"}
+          {mapped.length ? mapped.join(", ") : tx("No column of the file matches the table")}
         </span>
       </div>
       {preview.length > 0 && (

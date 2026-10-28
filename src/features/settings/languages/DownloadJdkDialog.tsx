@@ -8,6 +8,7 @@ import { downloadJdk, TEMURIN, type JdkDownload } from "@/platform/jdk";
 import { Dialog, IconButton, Input, ProgressBar, Select, type SelectOption, T } from "@/ui";
 import { choosePath, rememberSdk } from "./api";
 import styles from "./Sdk.module.css";
+import { tx } from "@/platform/i18n";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -148,8 +149,7 @@ export function DownloadJdkDialog({
           </div>
         </div>
         <div className={styles.note}>
-          {vendorName} {version ?? ""} is unpacked into a folder of its own in {location || "…"}, where JDK detection
-          finds it.
+          {tx`${vendorName} ${version ?? ""} is unpacked into a folder of its own in ${location || "…"}, where JDK detection finds it.`}
         </div>
         {progress && (
           <div className={styles.downloadProgress}>

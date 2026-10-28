@@ -41,7 +41,7 @@ export function VimSettingsPage() {
         label="Enable Vim emulation"
       />
 
-      <section className={styles.section} aria-label="Vim rc file">
+      <section className={styles.section} aria-label={tx("Vim rc file")}>
         <div className={styles.header}>
           <span>
             <T>Configuration file</T>
@@ -66,7 +66,7 @@ export function VimSettingsPage() {
           </T>
         </p>
         {rc.ignored.length > 0 && (
-          <ul className={styles.ignored} aria-label="Ignored lines">
+          <ul className={styles.ignored} aria-label={tx("Ignored lines")}>
             {rc.ignored.map((i) => (
               <li key={i.line}>
                 <span className={styles.mono}>
@@ -79,7 +79,7 @@ export function VimSettingsPage() {
         )}
       </section>
 
-      <section className={styles.section} aria-label="Shortcut conflicts">
+      <section className={styles.section} aria-label={tx("Shortcut conflicts")}>
         <div className={styles.header}>
           <span>
             <T>Shortcut conflicts</T>

@@ -458,7 +458,11 @@ function BreakpointsDialog() {
                         {r.bp.line != null ? `:${r.bp.line + 1}` : ""}
                       </span>
                     )}
-                    {st && !st.verified && isLive(activeSession()) && <span className={styles.bpCond}>unverified</span>}
+                    {st && !st.verified && isLive(activeSession()) && (
+                      <span className={styles.bpCond}>
+                        <T>unverified</T>
+                      </span>
+                    )}
                   </div>
                 );
               }
@@ -486,7 +490,11 @@ function BreakpointsDialog() {
                   </span>
                   <span className={styles.bpDir}>{relativePath(root, r.path)}</span>
                   {isConditional(r.bp) && <span className={styles.bpCond}>{suspends(r.bp) ? "if" : "log"}</span>}
-                  {r.bp.temporary && <span className={styles.bpCond}>temp</span>}
+                  {r.bp.temporary && (
+                    <span className={styles.bpCond}>
+                      <T>temp</T>
+                    </span>
+                  )}
                 </div>
               );
             }}
@@ -514,7 +522,7 @@ function ExceptionBreakpoints({ open }: { open: boolean }) {
     if (open) void refreshExceptionFilters();
   }, [open]);
   return (
-    <section className={styles.exceptions} aria-label="Exception breakpoints">
+    <section className={styles.exceptions} aria-label={tx("Exception breakpoints")}>
       <div className={styles.exceptionsTitle}>
         <T>Exception Breakpoints</T>
       </div>
@@ -564,7 +572,7 @@ function BreakpointDetail({ row, onGo }: { row: BpRow; onGo: () => void }) {
           <T>Remove</T>
         </Button>
       </div>
-      {st && <div className={styles.statusLine}>{st.verified ? "Verified" : (st.message ?? "Not verified")}</div>}
+      {st && <div className={styles.statusLine}>{st.verified ? tx("Verified") : (st.message ?? "Not verified")}</div>}
       <BreakpointFields path={path} bp={bp} />
       <Checkbox
         checked={!!bp.temporary}
@@ -595,7 +603,7 @@ function SpecialDetail({ bp, onGo }: { bp: SpecialBreakpoint; onGo: () => void }
           <T>Remove</T>
         </Button>
       </div>
-      {st && <div className={styles.statusLine}>{st.verified ? "Verified" : (st.message ?? "Not verified")}</div>}
+      {st && <div className={styles.statusLine}>{st.verified ? tx("Verified") : (st.message ?? "Not verified")}</div>}
       <Checkbox checked={bp.enabled} onChange={(enabled) => updateSpecial(bp.id, { enabled })} label="Enabled" />
       {bp.kind === "method" ? (
         <label className={styles.field}>
@@ -614,7 +622,7 @@ function SpecialDetail({ bp, onGo }: { bp: SpecialBreakpoint; onGo: () => void }
         </label>
       ) : (
         <>
-          <div className={styles.statusLine}>Watching {bp.dataId}</div>
+          <div className={styles.statusLine}>{tx`Watching ${bp.dataId}`}</div>
           <label className={styles.field}>
             <span className={styles.label}>
               <T>Suspend on</T>
@@ -776,7 +784,7 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
               spellCheck={false}
               autoComplete="off"
               data-autofocus=""
-              aria-label="Expression"
+              aria-label={tx("Expression")}
               placeholder={paused ? "Expression to evaluate in the selected frame" : "Pause the program to evaluate"}
             />
             <span ref={historyButton}>
@@ -805,7 +813,7 @@ function EvaluateDialogInner({ initial }: { initial: string }) {
             <VariablesView roots={[result]} session={session?.id ?? null} aria-label="Evaluation result" />
           ) : (
             <div className={styles.empty}>
-              {paused ? "Press Enter to evaluate" : "Evaluation is available while the program is suspended"}
+              {paused ? tx("Press Enter to evaluate") : tx("Evaluation is available while the program is suspended")}
             </div>
           )}
         </div>
@@ -938,7 +946,11 @@ function AttachPopup() {
             focusable={false}
             aria-label="Processes"
             className={styles.attachList}
-            empty={<div className={styles.empty}>No attachable processes{filter ? " match the filter" : ""}.</div>}
+            empty={
+              <div className={styles.empty}>
+                {filter ? tx`No attachable processes match the filter.` : tx`No attachable processes.`}
+              </div>
+            }
             renderItem={(r) =>
               r.kind === "process" ? (
                 <div className={styles.chooserRow} title={r.process.commandLine}>

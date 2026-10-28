@@ -44,7 +44,7 @@ describe("pull request model", () => {
     const c = (status: PrCheck["status"]): PrCheck => ({ name: status, workflow: null, status, url: null });
     const s = checksSummary([c("failure"), c("success"), c("success"), c("pending"), c("skipped")]);
     expect(s).toEqual({ failed: 1, pending: 1, passed: 2, other: 1 });
-    expect(checksText(s)).toBe("1 failing, 1 pending, 2 successful, 1 skipped");
+    expect(checksText(s)).toBe("1 failing, 1 pending, 2 passed, 1 skipped");
     expect(checksText(checksSummary([]))).toBe("No checks");
   });
 

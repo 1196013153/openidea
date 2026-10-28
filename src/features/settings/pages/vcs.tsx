@@ -36,7 +36,7 @@ function MappingsTable() {
   const project = useProject((s) => s.project);
   return (
     <div className={styles.tableBox}>
-      <table className={styles.table} aria-label="Directory mappings">
+      <table className={styles.table} aria-label={tx("Directory mappings")}>
         <thead>
           <tr>
             <th>
@@ -58,9 +58,9 @@ function MappingsTable() {
             <tr>
               <td title={project.root}>
                 <Icon name="folder" size={16} className={styles.mappingIcon} />
-                &lt;Project&gt; {project.root}
+                {tx("<Project>")} {project.root}
               </td>
-              <td>{project.isGit ? "Git" : "<none>"}</td>
+              <td>{project.isGit ? "Git" : tx("<none>")}</td>
             </tr>
           )}
         </tbody>
@@ -221,10 +221,11 @@ function IssueTable() {
       stacked
       hint={
         <>
-          Matches of an Issue ID regular expression in commit messages (Git log, commit details) become links; $0 is the
-          whole match, $1… the groups.
+          {tx(
+            "Matches of an Issue ID regular expression in commit messages (Git log, commit details) become links; $0 is the whole match, $1… the groups.",
+          )}
           {invalid.length > 0 && (
-            <span className={styles.error}> Invalid pattern: {invalid.map((l) => l.pattern).join(", ")}</span>
+            <span className={styles.error}> {tx`Invalid pattern: ${invalid.map((l) => l.pattern).join(", ")}`}</span>
           )}
         </>
       }

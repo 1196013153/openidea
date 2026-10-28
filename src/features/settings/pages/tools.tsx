@@ -435,7 +435,7 @@ function ExternalToolsEditor() {
   return (
     <div className={styles.toolsLayout}>
       <div className={styles.tableBox}>
-        <div className={styles.toolbar} role="toolbar" aria-label="External tools actions">
+        <div className={styles.toolbar} role="toolbar" aria-label={tx("External tools actions")}>
           <IconButton icon="plus" title="Add" size="small" onClick={() => add()} />
           <IconButton icon="minus" title="Remove" size="small" disabled={!current} onClick={remove} />
           <IconButton
@@ -454,7 +454,7 @@ function ExternalToolsEditor() {
             onClick={() => move(1)}
           />
         </div>
-        <div className={styles.toolList} role="listbox" aria-label="External tools">
+        <div className={styles.toolList} role="listbox" aria-label={tx("External tools")}>
           {tools.length === 0 && (
             <div className={clsx(styles.toolRow, styles.empty)}>
               <T>No external tools. Click + to add one.</T>

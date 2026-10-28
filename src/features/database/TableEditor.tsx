@@ -297,7 +297,7 @@ export function TableEditor({ input }: { input: EditorInput }) {
       </div>
       {page && !editable && (
         <div className={styles.notice}>
-          {pk.length ? "Read-only data source." : "Read-only: the table has no primary key to identify rows."}
+          {pk.length ? tx("Read-only data source.") : tx("Read-only: the table has no primary key to identify rows.")}
         </div>
       )}
       {error ? (

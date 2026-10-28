@@ -179,10 +179,10 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
       <div className={styles.testHeader}>
         <StatusIcon status={status} />
         <span className={styles.testCounts}>
-          {counts.failed > 0 && <span className={styles.failed}>{counts.failed} failed</span>}
-          {counts.passed > 0 && <span>{counts.passed} passed</span>}
-          {counts.skipped > 0 && <span className={styles.skipped}>{counts.skipped} ignored</span>}
-          {counts.total === 0 && <span className={styles.skipped}>{running ? "Running…" : "No tests"}</span>}
+          {counts.failed > 0 && <span className={styles.failed}>{tx`${counts.failed} failing`}</span>}
+          {counts.passed > 0 && <span>{tx`${counts.passed} passed`}</span>}
+          {counts.skipped > 0 && <span className={styles.skipped}>{tx`${counts.skipped} ignored`}</span>}
+          {counts.total === 0 && <span className={styles.skipped}>{running ? tx("Running…") : tx("No tests")}</span>}
           {duration !== undefined && <span className={styles.skipped}>{formatDuration(duration)}</span>}
         </span>
         <span className={styles.spacer} />
@@ -235,7 +235,7 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
         }}
         empty={
           <div className={styles.testEmpty}>
-            {running ? "Waiting for test results…" : results.isEmpty ? "No test results" : "Passed tests are hidden"}
+            {running ? tx("Waiting for test results…") : results.isEmpty ? tx("No test results") : tx("Passed tests are hidden")}
           </div>
         }
       />

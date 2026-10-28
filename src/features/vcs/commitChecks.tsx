@@ -180,10 +180,6 @@ export interface CommitProblem {
   details?: { label: string; run: () => void };
 }
 
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
-
 // ---------------------------------------------------------------------------
 
 export interface CommitCandidate {
@@ -289,7 +285,11 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
         title: "TODO",
         text: (
           <>
-            <div>{plural(hits.length, "TODO item")} found in the changed lines:</div>
+            <div>
+              {hits.length === 1
+                ? tx`${hits.length} TODO item found in the changed lines:`
+                : tx`${hits.length} TODO items found in the changed lines:`}
+            </div>
             <ul className={styles.todoList}>
               {hits.slice(0, 20).map((h, i) => (
                 <li key={i}>
@@ -325,13 +325,14 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
         }
       }
       if (crlf.length) {
+        const crlfNames = crlf.slice(0, 5).map(baseName).join(", ") + (crlf.length > 5 ? ", …" : "");
         problems.push({
           title: "Line separators",
           text: (
             <>
-              {plural(crlf.length, "file")} ({crlf.slice(0, 5).map(baseName).join(", ")}
-              {crlf.length > 5 ? ", …" : ""}) contain CRLF line separators and core.autocrlf is not set, so they would be
-              committed with CRLF. Convert them with the line separator widget in the status bar, or set{" "}
+              {crlf.length === 1
+                ? tx`${crlf.length} file (${crlfNames}) contain CRLF line separators and core.autocrlf is not set, so they would be committed with CRLF. Convert them with the line separator widget in the status bar, or set`
+                : tx`${crlf.length} files (${crlfNames}) contain CRLF line separators and core.autocrlf is not set, so they would be committed with CRLF. Convert them with the line separator widget in the status bar, or set`}{" "}
               <code>git config core.autocrlf input</code>.
             </>
           ),

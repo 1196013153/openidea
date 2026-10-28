@@ -342,13 +342,13 @@ function DialogInner({
                 type="button"
                 tabIndex={-1}
                 className={clsx(styles.light, styles.lightClose)}
-                aria-label="Close"
+                aria-label={tx("Close")}
                 onClick={onClose}
               >
                 <Icon name="close" size={10} className={styles.lightGlyph} />
               </button>
-              <button type="button" tabIndex={-1} disabled className={styles.light} aria-label="Minimize" />
-              <button type="button" tabIndex={-1} disabled className={styles.light} aria-label="Zoom" />
+              <button type="button" tabIndex={-1} disabled className={styles.light} aria-label={tx("Minimize")} />
+              <button type="button" tabIndex={-1} disabled className={styles.light} aria-label={tx("Zoom")} />
             </span>
             <span className={styles.title}>{title}</span>
           </div>
@@ -383,7 +383,7 @@ function DialogInner({
           : hasFooter && (
               <div className={styles.footer} data-dialog-footer="">
                 {onHelp && (
-                  <button type="button" className={styles.help} aria-label="Help" onClick={onHelp}>
+                  <button type="button" className={styles.help} aria-label={tx("Help")} onClick={onHelp}>
                     ?
                   </button>
                 )}

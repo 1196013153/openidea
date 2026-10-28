@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Dialog, Input } from "@/ui";
 import { editorController, useEditorStatus, useGotoLine } from "../controller";
 import styles from "./EditorArea.module.css";
+import { tx } from "@/platform/i18n";
 
 export function parseLineCol(text: string): { line: number; col: number } | null {
   const m = /^\s*(\d+)\s*(?:[:,]\s*(\d+))?\s*$/.exec(text);
@@ -53,7 +54,7 @@ function GotoLineInner() {
           placeholder="line[:column]"
         />
         <span className={styles.gotoHint}>
-          {status ? `Current position ${status.line + 1}:${status.col + 1}` : "No active editor"}
+          {status ? tx`Current position ${status.line + 1}:${status.col + 1}` : tx("No active editor")}
         </span>
       </form>
     </Dialog>

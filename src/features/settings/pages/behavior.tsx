@@ -306,7 +306,7 @@ function OpenProjectInRow() {
   const name = useId();
   return (
     <Row label="Open project in">
-      <div className={styles.radios} role="radiogroup" aria-label="Open project in">
+      <div className={styles.radios} role="radiogroup" aria-label={tx("Open project in")}>
         {OPEN_IN.map((o) => (
           <label key={o.value} className={styles.radio}>
             <input type="radio" name={name} checked={value === o.value} onChange={() => set(o.value)} />
@@ -365,7 +365,9 @@ function IdleSaveRow() {
     <div className={clsx(styles.fontRow, matched && styles.matched)}>
       <Checkbox checked={on} onChange={setOn} label={<SearchLabel text="Save files if the IDE is idle for" />} />
       <NumberInput value={seconds} onChange={setSeconds} {...IDLE_LIMITS} integer aria-label="Idle seconds" />
-      <span className={clsx(!on && styles.disabled)}>seconds</span>
+      <span className={clsx(!on && styles.disabled)}>
+        <T>seconds</T>
+      </span>
     </div>
   );
 }
@@ -438,7 +440,7 @@ function NotificationGroupsTable() {
     setGroups(all);
   };
   return (
-    <table className={styles.table} aria-label="Notification groups">
+    <table className={styles.table} aria-label={tx("Notification groups")}>
       <thead>
         <tr>
           <th>

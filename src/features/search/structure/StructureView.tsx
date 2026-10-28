@@ -36,6 +36,7 @@ import {
 } from "./outline";
 import { useLiveOutline, useOutline, useStructureOptions } from "./store";
 import styles from "./StructureView.module.css";
+import { tx } from "@/platform/i18n";
 
 function useOutlineNodes() {
   const items = useOutline((s) => s.items);
@@ -228,7 +229,7 @@ function StructureToolbar() {
   const narrowed = useStructureOptions((s) => !s.showFields || !s.showNonPublic || s.sortByVisibility);
   const hasOptions = viewOptionItems(items ?? []).length > 0;
   return (
-    <div className={styles.toolbar} role="toolbar" aria-label="Structure actions">
+    <div className={styles.toolbar} role="toolbar" aria-label={tx("Structure actions")}>
       <IconButton
         icon="sort"
         title="Sort Alphabetically"
@@ -417,7 +418,7 @@ function FileStructureDialog() {
       aria-label="File Structure"
       title={
         <span className={styles.popupTitle}>
-          {path ? basename(path) : "File Structure"}
+          {path ? basename(path) : tx("File Structure")}
           <span className={styles.popupHint}>{shortcutLabel("navigate.fileStructure")}</span>
         </span>
       }
@@ -428,7 +429,7 @@ function FileStructureDialog() {
           className={styles.filter}
           value={query}
           placeholder={path ? "Type to filter symbols" : "No active editor"}
-          aria-label="Filter symbols"
+          aria-label={tx("Filter symbols")}
           spellCheck={false}
           autoComplete="off"
           onChange={(e) => {
@@ -490,7 +491,7 @@ function FileStructureDialog() {
           onActivate={(n) => choose(n)}
           rowHeight={POPUP_ROW}
           indent={16}
-          empty={<span className={styles.popupEmpty}>{!path ? "Open a file first" : loading && !items ? "Loading…" : "No symbols"}</span>}
+          empty={<span className={styles.popupEmpty}>{!path ? tx("Open a file first") : loading && !items ? "Loading…" : "No symbols"}</span>}
           renderNode={(n, s) => {
             const matched = filter.matches.get(n.key);
             return <SymbolRow node={n} indices={matched} selected={s.selected} dim={!!query.trim() && !matched} />;

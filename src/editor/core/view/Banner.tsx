@@ -3,6 +3,7 @@ import { Icon, T } from "@/ui";
 import { useEditorBanners, type EditorBannerContribution } from "@/workbench/contributions";
 import { useDocMeta } from "../model/document";
 import styles from "./EditorArea.module.css";
+import { tx } from "@/platform/i18n";
 
 const TEXT = {
   binary: "This file appears to be binary and is shown read-only.",
@@ -30,7 +31,7 @@ export function VirtualBanner({ decompiled, description }: { decompiled: boolean
     <div className={`${styles.banner} ${styles.libraryBanner}`} role="status">
       <Icon name={decompiled ? "info" : "lock"} size={14} className={styles.bannerIcon} />
       <span className={styles.bannerText}>
-        {decompiled ? "Decompiled .class file: sources are not available." : "Library source (read-only)."}
+        {decompiled ? tx("Decompiled .class file: sources are not available.") : tx("Library source (read-only).")}
       </span>
       {description && (
         <span className={styles.bannerDetail} title={description}>

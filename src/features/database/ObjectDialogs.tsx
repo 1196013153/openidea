@@ -120,7 +120,7 @@ function RenameDialog({ id, object }: { id: string; object: DbObjectRef | null }
     >
       <div className={styles.dialogBody}>
         <label className={styles.formLabelLeft} htmlFor="db-rename">
-          Rename {what} '{initial}' to:
+          {tx`Rename ${what} '${initial}' to:`}
         </label>
         <Input
           id="db-rename"
@@ -156,7 +156,8 @@ function DropDialog({ id, object }: { id: string; object: DbObjectRef }) {
     >
       <div className={styles.dialogBody}>
         <div className={styles.dialogLead}>
-          Drop {KIND_LABEL[object.kind]} <strong>{reference(driver, object)}</strong>? This cannot be undone.
+          {tx`Drop ${KIND_LABEL[object.kind]}`} <strong>{reference(driver, object)}</strong>
+          {tx`? This cannot be undone.`}
         </div>
         <Checkbox
           checked={ifExists}
@@ -387,7 +388,7 @@ function ModifyTableForm({
                 onClick={remove}
               />
             </div>
-            <div role="listbox" aria-label="Columns" className={styles.modifyList}>
+            <div role="listbox" aria-label={tx("Columns")} className={styles.modifyList}>
               {columns.map((c) => (
                 <div
                   key={c.key}
@@ -521,7 +522,7 @@ function SourceUrlDialog() {
         />
         <span className={styles.formHint}>
           {url.trim() && !parsed
-            ? "Not a URL of PostgreSQL, MySQL, SQLite or a compatible database"
+            ? tx("Not a URL of PostgreSQL, MySQL, SQLite or a compatible database")
             : "postgresql://, mysql://, mariadb://, redshift://, tidb://…, jdbc:…, sqlite:path"}
         </span>
       </div>

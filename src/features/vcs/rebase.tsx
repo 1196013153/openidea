@@ -260,7 +260,7 @@ function MessageDialog({
       <div className={styles.form}>
         <textarea
           data-autofocus
-          aria-label="Commit message"
+          aria-label={tx("Commit message")}
           className={styles.textarea}
           rows={8}
           value={message}
@@ -306,7 +306,7 @@ function InteractiveRebaseDialog({ range, onClose }: { range: RebaseRange; onClo
       <div className={styles.section}>
         <T>Commits are applied from top to bottom.</T>
       </div>
-      <div className={styles.rebaseList} role="list" aria-label="Commits to rebase">
+      <div className={styles.rebaseList} role="list" aria-label={tx("Commits to rebase")}>
         {rows.map((r, i) => (
           <div key={r.commit.id} className={styles.rebaseRow} role="listitem">
             <Select<RebaseAction>

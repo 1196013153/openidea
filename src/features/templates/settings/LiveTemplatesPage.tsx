@@ -88,7 +88,7 @@ export function LiveTemplatesPage() {
               aria-label="Filter templates"
             />
           </div>
-          <div className={styles.items} role="listbox" aria-label="Live templates">
+          <div className={styles.items} role="listbox" aria-label={tx("Live templates")}>
             {groups.map(([group, list]) => (
               <div key={group} role="group" aria-label={group}>
                 <div className={styles.groupHeader}>{group}</div>
@@ -180,7 +180,7 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         className={styles.body}
         value={t.body}
         spellCheck={false}
-        aria-label="Template text"
+        aria-label={tx("Template text")}
         onChange={(e) => update({ body: e.target.value })}
         onKeyDown={(e) => {
           if (e.key !== "Tab") return;
@@ -193,8 +193,9 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         }}
       />
       <div className={styles.hint}>
-        <code>$NAME$</code> variables (repeated ones are linked), <code>$END$</code> caret, <code>$SELECTION$</code>{" "}
-        surrounded text, <code>$$</code> a dollar sign. Leading tabs are indent units.
+        <code>$NAME$</code> <T>variables (repeated ones are linked),</T> <code>$END$</code> <T>caret,</T>{" "}
+        <code>$SELECTION$</code> <T>surrounded text,</T> <code>$$</code>{" "}
+        <T>a dollar sign. Leading tabs are indent units.</T>
       </div>
       <div className={styles.row}>
         <span className={styles.label}>
@@ -269,7 +270,7 @@ function TemplateEditor({ template: t }: { template: LiveTemplate }) {
         </table>
       )}
       <div className={styles.hint}>
-        Functions: <code>className()</code> <code>methodName()</code> <code>fileName()</code>{" "}
+        <T>Functions:</T> <code>className()</code> <code>methodName()</code> <code>fileName()</code>{" "}
         <code>fileNameWithoutExtension()</code> <code>date(&quot;yyyy-MM-dd&quot;)</code> <code>time()</code>{" "}
         <code>user()</code> <code>clipboard()</code> <code>complete()</code> <code>suggestVariableName()</code>{" "}
         <code>commentStart()</code> <code>capitalize(…)</code> <code>camelCase(…)</code> <code>snakeCase(…)</code>

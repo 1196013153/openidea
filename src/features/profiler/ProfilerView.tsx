@@ -11,6 +11,7 @@ import { editorService } from "@/workbench/contributions";
 import { colorSlot, flameLayout, formatWeight, frameLocation, matchingFrames, share } from "./model";
 import { activeSnapshot, closeSnapshot, useProfiler, type ProfilerTab } from "./store";
 import styles from "./Profiler.module.css";
+import { tx } from "@/platform/i18n";
 
 const ROW = 18;
 
@@ -67,11 +68,11 @@ function FlameGraph({ profile, query }: { profile: Profile; query: string }) {
       {focus !== 0 && (
         <div className={styles.flameBar}>
           <IconButton icon="close" size="small" title="Reset Zoom" onClick={() => setFocus(0)} />
-          <span className={styles.muted}>Zoomed into {profile.frames[profile.nodes[focus]!.frame]!.name}</span>
+          <span className={styles.muted}>{tx`Zoomed into ${profile.frames[profile.nodes[focus]!.frame]!.name}`}</span>
         </div>
       )}
       <div className={styles.flameScroll} ref={ref}>
-        <div className={styles.flame} style={{ height: layout.depth * ROW }} role="tree" aria-label="Flame graph">
+        <div className={styles.flame} style={{ height: layout.depth * ROW }} role="tree" aria-label={tx("Flame graph")}>
           {width > 0 &&
             layout.rects.map((r) => {
               const node = profile.nodes[r.node]!;

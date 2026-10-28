@@ -5,6 +5,7 @@ import { IpcError, call, commands } from "@/platform/ipc";
 import { toolWindowService } from "@/workbench/contributions";
 import { basename } from "@/platform/project";
 import { caretContext, hint, lspRequest, reportError, withDocument, type CaretContext } from "./ipc";
+import { tx } from "@/platform/i18n";
 
 export type HierarchyMode = "call" | "type";
 
@@ -56,9 +57,21 @@ export function resetHierarchy() {
   }));
 }
 
+/** The empty-result line of the hierarchy tree. */
+export function noneFoundLabel(mode: HierarchyMode, direction: HierarchyDirection): string {
+  if (mode === "call") return direction === "incoming" ? tx`— no callers found` : tx`— no callees found`;
+  return direction === "incoming" ? tx`— no supertypes found` : tx`— no subtypes found`;
+}
+
 export function directionLabel(mode: HierarchyMode, direction: HierarchyDirection): string {
-  if (mode === "call") return direction === "incoming" ? "Callers" : "Callees";
-  return direction === "incoming" ? "Supertypes" : "Subtypes";
+  if (mode === "call") return direction === "incoming" ? tx("Callers") : tx("Callees");
+  return direction === "incoming" ? tx("Supertypes") : tx("Subtypes");
+}
+
+/** The tab title of the hierarchy tree, e.g. "Callers of main". */
+export function hierarchyTitle(mode: HierarchyMode, direction: HierarchyDirection, name: string): string {
+  if (mode === "call") return direction === "incoming" ? tx`Callers of ${name}` : tx`Callees of ${name}`;
+  return direction === "incoming" ? tx`Supertypes of ${name}` : tx`Subtypes of ${name}`;
 }
 
 function request(mode: HierarchyMode, doc: number, line: number, col: number, direction: HierarchyDirection) {

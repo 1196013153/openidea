@@ -15,6 +15,7 @@ import { symbolChain } from "./outline";
 import { NavChildrenPopup } from "./NavBarPopup";
 import type { NavSegment } from "./navBar";
 import styles from "./EditorArea.module.css";
+import { tx } from "@/platform/i18n";
 
 function useActiveMeta() {
   const path = useEditorStatus((s) => s.status?.path ?? null);
@@ -95,7 +96,7 @@ export function Breadcrumbs() {
       nav: { kind: "symbol", path, label: item.name, item },
     });
   return (
-    <nav className={styles.status} aria-label="Breadcrumbs">
+    <nav className={styles.status} aria-label={tx("Breadcrumbs")}>
       {segments.map((s, i) => (
         <Fragment key={i}>
           {i > 0 && <Icon name="chevron-right" size={12} className={styles.statusSep} />}
@@ -152,7 +153,7 @@ export function CodeBreadcrumbs({
   return (
     <nav
       className={clsx(styles.codeCrumbs, position === "top" ? styles.codeCrumbsTop : styles.codeCrumbsBottom)}
-      aria-label="Code breadcrumbs"
+      aria-label={tx("Code breadcrumbs")}
     >
       {chain.map((item, i) => (
         <Fragment key={i}>

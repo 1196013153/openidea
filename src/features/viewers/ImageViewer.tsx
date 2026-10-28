@@ -14,6 +14,7 @@ import { formatSize, isSvgPath } from "./fileKinds";
 import { fitZoom, initialZoom, stepZoom, zoomLabel } from "./imageZoom";
 import { useForwardFocus } from "./forwardFocus";
 import styles from "./Viewers.module.css";
+import { tx } from "@/platform/i18n";
 
 export interface ImageViewerHandle {
   zoom(dir: 1 | -1): void;
@@ -147,7 +148,7 @@ export function ImageViewer({ input }: { input: EditorInput }) {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setContext("imageViewerFocus", false);
       }}
     >
-      <div className={styles.toolbar} role="toolbar" aria-label="Image viewer">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Image viewer")}>
         <IconButton icon="zoom-in" size="small" action="image.zoomIn" />
         <IconButton icon="zoom-out" size="small" action="image.zoomOut" />
         <IconButton icon="actual-size" size="small" action="image.actualSize" />
@@ -176,7 +177,7 @@ export function ImageViewer({ input }: { input: EditorInput }) {
         )}
       </div>
       {error ? (
-        <div className={styles.message}>Cannot show the image: {error}</div>
+        <div className={styles.message}>{tx`Cannot show the image: ${error}`}</div>
       ) : (
         <div ref={canvasRef} className={styles.canvas} onWheel={onWheel}>
           {src && (

@@ -225,7 +225,7 @@ export function ColorSwatches({ value, presets, onChange, allowCustom = true, ..
         <>
           <label
             className={clsx(styles.swatch, styles.custom, !isPreset && styles.swatchOn)}
-            title="Custom colour"
+            title={tx("Custom colour")}
             aria-checked={!isPreset}
             role="radio"
           >
@@ -233,7 +233,7 @@ export function ColorSwatches({ value, presets, onChange, allowCustom = true, ..
             <input
               type="color"
               className={styles.colorNative}
-              aria-label="Custom colour"
+              aria-label={tx("Custom colour")}
               value={HEX_COLOR.test(value) && value.length === 7 ? value : "#808080"}
               onChange={(e) => onChange(e.target.value)}
             />

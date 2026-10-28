@@ -6,7 +6,7 @@
 import { useMemo, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { call, commands, type MavenDependency, type MavenProject } from "@/platform/ipc";
-import { useTx, useTxTemplate } from "@/platform/i18n";
+import { useTx, useTxTemplate, tx } from "@/platform/i18n";
 import { editorService, notifications, type EditorInput } from "@/workbench/contributions";
 import {
   Button,
@@ -207,7 +207,7 @@ function UsagesPane({
           </span>
         </div>
       )}
-      <div className={styles.usageList} aria-label="Usages">
+      <div className={styles.usageList} aria-label={tx("Usages")}>
         {usages.map((u, i) => (
           <UsageBlock key={i} usage={u} module={module} pom={pom} />
         ))}
@@ -302,7 +302,7 @@ export function DependencyAnalyzer(_props: { input: EditorInput }) {
 
   return (
     <div className={styles.view}>
-      <div className={styles.toolbar} role="toolbar" aria-label="Dependency Analyzer">
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Dependency Analyzer")}>
         <Select
           aria-label="Module"
           className={styles.module}

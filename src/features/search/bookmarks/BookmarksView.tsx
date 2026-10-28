@@ -186,7 +186,7 @@ export function BookmarksView() {
   if (!items.length && !paths.length && lists.length === 1) {
     return (
       <EmptyState>
-        No bookmarks yet. Toggle a line bookmark with {shortcutLabel("navigate.toggleBookmark") ?? "F3"}
+        {tx`No bookmarks yet. Toggle a line bookmark with ${shortcutLabel("navigate.toggleBookmark") ?? "F3"}`}
       </EmptyState>
     );
   }

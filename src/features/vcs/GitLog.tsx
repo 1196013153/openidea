@@ -53,7 +53,7 @@ import {
   useGitLog,
 } from "./logStore";
 import { refLabels, useLogOptions, type LogOptions } from "./logOptions";
-import { KIND_COLOR, baseName, formatTime, relTo, type EffectiveKind } from "./model";
+import { KIND_COLOR, baseName, fileCount, formatTime, relTo, type EffectiveKind } from "./model";
 import { clearConsole, useVcsConsole } from "./ops";
 import { currentRepo, loadBranches, useVcs } from "./store";
 import { loadFavoriteBranches, newBranch, useFavoriteBranches } from "./branchOps";
@@ -166,7 +166,7 @@ function branchDetail(n: BranchTreeNode): string | undefined {
   const b = n.branch;
   if (!b) return undefined;
   const sync = [b.behind > 0 ? `↓${b.behind}` : "", b.ahead > 0 ? `↑${b.ahead}` : ""].filter(Boolean).join(" ");
-  return [b.current ? "current" : "", sync].filter(Boolean).join("  ") || undefined;
+  return [b.current ? tx("current") : "", sync].filter(Boolean).join("  ") || undefined;
 }
 
 export function BranchesPanel() {
@@ -219,7 +219,7 @@ export function BranchesPanel() {
   };
   return (
     <div className={styles.branches} onKeyDownCapture={onKeyDownCapture}>
-      <div className={styles.branchesBar} role="toolbar" aria-label="Branches">
+      <div className={styles.branchesBar} role="toolbar" aria-label={tx("Branches")}>
         <SearchField
           className={styles.branchSearch}
           value={query}
@@ -235,7 +235,7 @@ export function BranchesPanel() {
         key={`${root ?? ""}:${branchesLoaded}`}
         roots={roots}
         getKey={(n) => n.key}
-        getLabel={(n) => n.label}
+        getLabel={(n) => (n.kind === "head" || n.kind === "group" ? tx(n.label) : n.label)}
         getChildren={(n) => n.children}
         isExpandable={(n) => !!n.children}
         defaultExpanded={[
@@ -317,15 +317,15 @@ function FilterButton({
       <button type="button" className={styles.filterMain} onClick={onOpen} aria-haspopup="menu">
         {value ? (
           <>
-            {label}: <span className={styles.filterValue}>{value}</span>
+            {tx(label)}: <span className={styles.filterValue}>{value}</span>
           </>
         ) : (
-          label
+          tx(label)
         )}
         {!value && <Icon name="chevron-down" size={12} className={styles.filterChevron} />}
       </button>
       {value && (
-        <button type="button" className={styles.filterClear} aria-label={`Clear ${label} filter`} onClick={onClear}>
+        <button type="button" className={styles.filterClear} aria-label={tx`Clear ${tx(label)} filter`} onClick={onClear}>
           <Icon name="close" size={12} />
         </button>
       )}
@@ -443,7 +443,7 @@ function FilterBar() {
     ]);
 
   return (
-    <div className={styles.filters} role="toolbar" aria-label="Log filters">
+    <div className={styles.filters} role="toolbar" aria-label={tx("Log filters")}>
       <SearchField
         className={styles.textFilter}
         value={text}
@@ -724,14 +724,14 @@ function CommitList() {
         ref={scrollRef}
         className={styles.list}
         role="listbox"
-        aria-label="Commits"
+        aria-label={tx("Commits")}
         aria-multiselectable
         aria-activedescendant={selectedIndex >= 0 ? `commit-${selectedIndex}` : undefined}
         tabIndex={0}
         onKeyDown={onKeyDown}
       >
         {!commits.length && !loading && finished && (
-          <div className={styles.message}>{headCommit ? "No commits match the filters" : "No commits yet"}</div>
+          <div className={styles.message}>{headCommit ? tx("No commits match the filters") : tx("No commits yet")}</div>
         )}
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {items.map((v) => {
@@ -986,10 +986,10 @@ export function CommitDetails({ commits }: { commits: Commit[] }) {
       <SplitGroup orientation="vertical" id="git-log-details">
         <SplitPanel id="files" defaultSize="60%" minSize="60px">
           <div className={styles.filesPane}>
-            <div className={styles.detailsBar} role="toolbar" aria-label="Changed files">
+            <div className={styles.detailsBar} role="toolbar" aria-label={tx("Changed files")}>
               <span className={styles.detailsCount}>
-                {files ? `${files.length} file${files.length === 1 ? "" : "s"}` : ""}
-                {many ? ` in ${chosen.length} commits` : ""}
+                {files ? fileCount(files.length) : ""}
+                {many ? " " + tx`in ${chosen.length} commits` : ""}
               </span>
               <span className={styles.grow} />
               <IconButton
@@ -1062,16 +1062,16 @@ function CommitMessage({ commit, compact = false }: { commit: Commit; compact?: 
         <button
           type="button"
           className={clsx(styles.linkButton, styles.hash)}
-          title="Copy revision number"
+          title={tx("Copy revision number")}
           onClick={() => void navigator.clipboard?.writeText(commit.id)}
         >
           {commit.shortId}
         </button>{" "}
         {commit.author} &lt;{commit.email}&gt;
-        {commit.timeMs ? ` on ${new Date(commit.timeMs).toLocaleString()}` : ""}
+        {commit.timeMs ? " " + tx`on ${new Date(commit.timeMs).toLocaleString()}` : ""}
       </div>
       {commit.parents.length > 1 && (
-        <div className={styles.meta}>Merge of {commit.parents.map((p) => p.slice(0, 8)).join(", ")}</div>
+        <div className={styles.meta}>{tx`Merge of ${commit.parents.map((p) => p.slice(0, 8)).join(", ")}`}</div>
       )}
       {commit.refs.length > 0 && (
         <div className={styles.meta}>
@@ -1088,9 +1088,7 @@ function ChangedFileRow({ node }: { node: FileTreeNode<ChangedFile> }) {
       <span className={styles.fileRow}>
         <Icon name="folder" size={16} className={styles.fileIcon} />
         <span className={styles.fileName}>{node.name}</span>
-        <span className={styles.fileDir}>
-          {node.count} file{node.count === 1 ? "" : "s"}
-        </span>
+        <span className={styles.fileDir}>{fileCount(node.count)}</span>
       </span>
     );
   const f = node.file;
@@ -1101,7 +1099,7 @@ function ChangedFileRow({ node }: { node: FileTreeNode<ChangedFile> }) {
       <span className={styles.fileName} style={{ color: KIND_COLOR[kind] }}>
         {node.name}
       </span>
-      {f.oldPath && <span className={styles.fileDir}>renamed from {baseName(f.oldPath)}</span>}
+      {f.oldPath && <span className={styles.fileDir}>{tx`renamed from ${baseName(f.oldPath)}`}</span>}
     </span>
   );
 }
@@ -1126,7 +1124,7 @@ function ConsoleView() {
         ref={ref}
         className={styles.console}
         role="log"
-        aria-label="Git console"
+        aria-label={tx("Git console")}
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;

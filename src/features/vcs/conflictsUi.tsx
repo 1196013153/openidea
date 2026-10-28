@@ -14,6 +14,7 @@ import { runOp, writeFileText } from "./ops";
 import { executeAction } from "@/platform/actions";
 import { conflictedFiles, useVcs } from "./store";
 import styles from "./common.module.css";
+import { tx } from "@/platform/i18n";
 
 export function showConflictsDialog() {
   if (!conflictedFiles().length) {
@@ -99,8 +100,10 @@ function ConflictsDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={styles.section}>
         {files.length
-          ? `${files.length} file${files.length === 1 ? "" : "s"} with conflicts`
-          : "All conflicts resolved"}
+          ? files.length === 1
+            ? tx`${files.length} file with conflicts`
+            : tx`${files.length} files with conflicts`
+          : tx("All conflicts resolved")}
       </div>
       <div style={{ height: 240, display: "flex", flexDirection: "column", padding: "0 14px 14px" }}>
         <List

@@ -7,6 +7,7 @@ import { FRAME_BUDGET_MS, keystrokeLatencies, supportsEntryType, type EventEntry
 import { RollingWindow, type Summary } from "./stats";
 import { refreshMetrics, usePerf } from "./store";
 import styles from "./perf.module.css";
+import { tx } from "@/platform/i18n";
 
 const IPC_PING_MS = 2000;
 const REPAINT_MS = 500;
@@ -70,7 +71,7 @@ function PerfPanel({ onClose }: { onClose: () => void }) {
   }, [eventTiming, longTasks]);
 
   return (
-    <section className={styles.overlay} aria-label="Performance overlay (dev diagnostics)">
+    <section className={styles.overlay} aria-label={tx("Performance overlay (dev diagnostics)")}>
       <div className={styles.overlayHeader}>
         <span className={styles.overlayTitle}>
           <T>Performance (dev diagnostics)</T>
@@ -109,7 +110,7 @@ function Block({ title, summary, budget, note }: { title: string; summary?: Summ
         <span className={styles.value}>{s ? [s.last, s.p50, s.p95, s.max].map(formatMs).join(" · ") : "–"}</span>
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Over budget ({budget})</span>
+        <span className={styles.label}>{tx`Over budget (${budget})`}</span>
         <span className={s && s.overBudget > 0 ? `${styles.value} ${styles.warn}` : styles.value}>
           {s ? s.overBudget : "–"}
         </span>

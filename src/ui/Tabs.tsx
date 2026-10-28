@@ -320,11 +320,11 @@ export function Tabs({
                   {typeof item.label === "string" ? <T>{item.label}</T> : item.label}
                 </span>
                 {item.trailing}
-                {item.modified && !closable && <span className={styles.modified} aria-label="Modified" />}
+                {item.modified && !closable && <span className={styles.modified} aria-label={tx("Modified")} />}
               </button>
               {closable && (
                 <span className={styles.closeSlot} data-tab-close>
-                  {item.modified && <span className={styles.modified} aria-label="Modified" />}
+                  {item.modified && <span className={styles.modified} aria-label={tx("Modified")} />}
                   <IconButton
                     icon="close"
                     title="Close Tab"

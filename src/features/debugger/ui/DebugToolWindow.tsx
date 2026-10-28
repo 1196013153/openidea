@@ -152,8 +152,8 @@ export function DebugToolWindow() {
 
   return (
     <div className={styles.root}>
-      <div className={styles.toolbar} role="toolbar" aria-label="Debugger actions">
-        <div role="tablist" aria-label="Debug views" className={styles.tabs}>
+      <div className={styles.toolbar} role="toolbar" aria-label={tx("Debugger actions")}>
+        <div role="tablist" aria-label={tx("Debug views")} className={styles.tabs}>
           {(
             [
               ["variables", "Threads & Variables"],
@@ -262,7 +262,7 @@ function FramesPane({ session }: { session: DebugSession }) {
       <div
         className={styles.frameList}
         role="listbox"
-        aria-label="Frames"
+        aria-label={tx("Frames")}
         tabIndex={0}
         onKeyDown={onKeyDown}
         onFocus={() =>
@@ -276,7 +276,7 @@ function FramesPane({ session }: { session: DebugSession }) {
         }
         onBlur={() => blurDebugView("frames")}
       >
-        {!paused && <div className={styles.note}>{session.status === "terminated" ? "Finished" : "Running…"}</div>}
+        {!paused && <div className={styles.note}>{session.status === "terminated" ? tx("Finished") : "Running…"}</div>}
         {items.map((item) =>
           item.kind === "hidden" ? (
             <button
@@ -285,7 +285,7 @@ function FramesPane({ session }: { session: DebugSession }) {
               className={clsx(styles.frame, styles.hiddenFrames)}
               onClick={() => setShowAll(true)}
             >
-              {item.count} library frames hidden
+              {tx`${item.count} library frames hidden`}
             </button>
           ) : (
             <button
@@ -496,7 +496,7 @@ function VariablesPane({ session }: { session: DebugSession }) {
             }
           }}
           placeholder={frame != null ? "Evaluate expression (↩) or add a watch (⇧⌘↩)" : "Evaluate expression"}
-          aria-label="Evaluate expression"
+          aria-label={tx("Evaluate expression")}
           spellCheck={false}
           autoComplete="off"
           disabled={frame == null}
@@ -516,7 +516,9 @@ function VariablesPane({ session }: { session: DebugSession }) {
       </div>
       {frame == null && !watches.length && !lastEval ? (
         <div className={styles.note}>
-          {session.status === "terminated" ? "The session has finished." : "Variables are available while suspended."}
+          {session.status === "terminated"
+            ? tx("The session has finished.")
+            : tx("Variables are available while suspended.")}
         </div>
       ) : (
         <VariablesView
@@ -589,7 +591,7 @@ function ConsoleView({ session }: { session: DebugSession }) {
           showContextMenu(e, [{ label: "Clear All", icon: "trash", run: () => clearConsole(session.id) }]);
         }}
         role="log"
-        aria-label="Debug console"
+        aria-label={tx("Debug console")}
         tabIndex={0}
       >
         {(lines ?? []).map((l) => (
@@ -609,7 +611,7 @@ function ConsoleView({ session }: { session: DebugSession }) {
           onKeyDown={onKeyDown}
           placeholder={isLive(session) ? "Evaluate in the debug console" : "Session finished"}
           disabled={!isLive(session)}
-          aria-label="Debug console input"
+          aria-label={tx("Debug console input")}
           spellCheck={false}
           autoComplete="off"
         />

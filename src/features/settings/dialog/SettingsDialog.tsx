@@ -350,7 +350,7 @@ function SettingsStatus() {
     <span className={styles.footerStatus} role="status">
       {error && (
         <span className={styles.error}>
-          <Icon name="error" size={14} /> Could not save: {error}
+          <Icon name="error" size={14} /> {tx`Could not save: ${error}`}
         </span>
       )}
     </span>

@@ -9,6 +9,7 @@ import { loadPreviewText } from "./preview";
 import type { PreviewLine } from "./replaceFlow";
 import styles from "./parts.module.css";
 import { T } from "@/ui";
+import { tx } from "@/platform/i18n";
 
 /** A result line with matches highlighted; in replace mode shows `old → new` inline. */
 export function MatchText({
@@ -169,7 +170,7 @@ export function CodePreview({
 
   const placeholder = !path ? <T>Select a result to preview</T> : error && !current ? error : null;
   return (
-    <div className={styles.preview} role="region" aria-label="Preview">
+    <div className={styles.preview} role="region" aria-label={tx("Preview")}>
       <div ref={hostRef} className={clsx(styles.previewEditor, (!current || placeholder) && styles.previewHidden)} />
       {placeholder && <div className={styles.previewEmpty}>{placeholder}</div>}
     </div>
@@ -189,7 +190,7 @@ export function ReplaceDiffPreview({ lines, line }: { lines: readonly PreviewLin
   const from = Math.max(0, focus - WINDOW);
   const shown = lines.slice(from, Math.max(focus, 0) + WINDOW);
   return (
-    <div ref={scrollRef} className={styles.preview} role="region" aria-label="Replace preview">
+    <div ref={scrollRef} className={styles.preview} role="region" aria-label={tx("Replace preview")}>
       <pre className={styles.pre}>
         {shown.map((l, i) => (
           <div

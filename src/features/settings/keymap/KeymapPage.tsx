@@ -295,7 +295,7 @@ export function KeymapPage() {
         <span className={styles.spacer} />
         {overrideCount > 0 && (
           <span className={styles.modifiedNote}>
-            {overrideCount} modified {overrideCount === 1 ? "action" : "actions"}
+            {overrideCount === 1 ? tx`${overrideCount} modified action` : tx`${overrideCount} modified actions`}
           </span>
         )}
       </div>

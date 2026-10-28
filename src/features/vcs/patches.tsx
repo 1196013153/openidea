@@ -114,7 +114,7 @@ function CreatePatchDialog({ origin, onClose }: { origin: PatchOrigin; onClose: 
             : `${origin.commits.length} commits`}
         </div>
       )}
-      <div className={styles.form} role="radiogroup" aria-label="Patch destination">
+      <div className={styles.form} role="radiogroup" aria-label={tx("Patch destination")}>
         <label className={styles.radioRow}>
           <input type="radio" name="dest" checked={toFile} onChange={() => setToFile(true)} />
           <span className={styles.radioText}>
@@ -220,7 +220,9 @@ function ApplyPatchDialog({ patch, source, onClose }: { patch: string; source: s
       footerStart={
         files && failing > 0 ? (
           <span className={styles.hint}>
-            {failing} file{failing === 1 ? "" : "s"} will be merged; conflicts open in the merge tool
+            {failing === 1
+              ? tx`${failing} file will be merged; conflicts open in the merge tool`
+              : tx`${failing} files will be merged; conflicts open in the merge tool`}
           </span>
         ) : undefined
       }

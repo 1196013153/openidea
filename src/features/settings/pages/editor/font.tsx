@@ -209,7 +209,7 @@ function Preview() {
       </div>
       <textarea
         className={styles.previewArea}
-        aria-label="Font preview"
+        aria-label={tx("Font preview")}
         spellCheck={false}
         value={text}
         onChange={(e) => setText(e.target.value)}

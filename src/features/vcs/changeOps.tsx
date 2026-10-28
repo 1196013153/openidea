@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { FileStatus, PartialCommitFile } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
-import { Checkbox, Dialog, Icon, Input, fileIconName } from "@/ui";
+import { Checkbox, Dialog, Icon, Input, T, fileIconName } from "@/ui";
 import { notifications } from "@/workbench/contributions";
 import { commitRepos, groupOf, planCommit, renamedFromPath } from "./changes";
 import { useChangelists, withListDefaults } from "./changelists";
@@ -222,10 +222,11 @@ function RollbackDialog({ files, onClose }: { files: FileStatus[]; onClose: () =
       ]}
     >
       <div className={styles.section}>
-        {selected.size} of {files.length} file{files.length === 1 ? "" : "s"} will be reverted to their last committed
-        state. Uncommitted changes are lost.
+        {files.length === 1
+          ? tx`${selected.size} of ${files.length} file will be reverted to their last committed state. Uncommitted changes are lost.`
+          : tx`${selected.size} of ${files.length} files will be reverted to their last committed state. Uncommitted changes are lost.`}
       </div>
-      <div className={styles.fileList} role="group" aria-label="Files to roll back">
+      <div className={styles.fileList} role="group" aria-label={tx("Files to roll back")}>
         {files.map((f) => {
           const kind = effectiveKind(f) ?? "modified";
           return (
@@ -337,8 +338,10 @@ function StashDialog({
           submit();
         }}
       >
-        {branch && <div className={styles.hint}>Current branch: {branch}</div>}
-        <label className={styles.fieldLabel}>Message:</label>
+        {branch && <div className={styles.hint}>{tx`Current branch: ${branch}`}</div>}
+        <label className={styles.fieldLabel}>
+          <T>Message:</T>
+        </label>
         <Input
           data-autofocus
           aria-label="Message"
@@ -428,8 +431,12 @@ function UnstashDialog({ initial, onClose }: { initial: number; onClose: () => v
           submit();
         }}
       >
-        <div className={styles.choiceList} role="radiogroup" aria-label="Stashes">
-          {stashes.length === 0 && <div className={styles.hint}>No stashes</div>}
+        <div className={styles.choiceList} role="radiogroup" aria-label={tx("Stashes")}>
+          {stashes.length === 0 && (
+            <div className={styles.hint}>
+              <T>No stashes</T>
+            </div>
+          )}
           {stashes.map((s) => (
             <label key={s.index} className={styles.radioRow}>
               <input type="radio" name="stash" checked={chosen?.index === s.index} onChange={() => setIndex(s.index)} />
@@ -446,7 +453,9 @@ function UnstashDialog({ initial, onClose }: { initial: number; onClose: () => v
           onChange={setReinstateIndex}
           label="Reinstate index"
         />
-        <label className={styles.fieldLabel}>As new branch:</label>
+        <label className={styles.fieldLabel}>
+          <T>As new branch:</T>
+        </label>
         <Input mono aria-label="As new branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
       </form>
     </Dialog>

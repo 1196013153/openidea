@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import clsx from "clsx";
 import { T } from "./T";
 import styles from "./SourcePreview.module.css";
+import { tx } from "@/platform/i18n";
 
 export interface SourceHighlight {
   line: number;
@@ -85,7 +86,7 @@ export function SourcePreview({ path, line, highlights = [], load, version = 0, 
     );
   }
   return (
-    <div ref={scrollRef} className={clsx(styles.preview, className)} role="region" aria-label="Preview">
+    <div ref={scrollRef} className={clsx(styles.preview, className)} role="region" aria-label={tx("Preview")}>
       <pre className={styles.pre}>{rows}</pre>
     </div>
   );

@@ -25,6 +25,7 @@ import { hasMermaid, MERMAID_SELECTOR, renderMermaidIn, subscribeTheme, themeKey
 import { modeOf, useMarkdownModes } from "./modes";
 import { ANCHOR_PREFIX, previewOffsetForLine, renderMarkdown, resolveLink, slugify } from "./render";
 import styles from "./Markdown.module.css";
+import { tx } from "@/platform/i18n";
 
 /** Loaded local images by absolute path (data URLs), shared by all previews. */
 const imageCache = new Map<string, Promise<string>>();
@@ -52,7 +53,7 @@ export function MarkdownEditor({ path, children }: { path: string; tabId: string
     <div className={clsx(styles.split, styles[`mode-${mode}`])}>
       <div className={styles.editor}>{children}</div>
       {mode !== "editor" && <MarkdownPreview path={path} sync={mode === "split"} />}
-      <div className={styles.modeBar} role="toolbar" aria-label="Markdown editor layout">
+      <div className={styles.modeBar} role="toolbar" aria-label={tx("Markdown editor layout")}>
         <IconButton
           icon="edit"
           size="small"
@@ -174,7 +175,7 @@ function MarkdownPreview({ path, sync }: { path: string; sync: boolean }) {
       style={{ "--markdown-font-zoom": `${fontZoom}px` } as CSSProperties}
       tabIndex={-1}
       role="document"
-      aria-label="Markdown preview"
+      aria-label={tx("Markdown preview")}
       onClick={onClick}
       dangerouslySetInnerHTML={{ __html: html }}
     />

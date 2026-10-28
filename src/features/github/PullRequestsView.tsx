@@ -35,14 +35,9 @@ import {
 import { addComment, checkoutPullRequest, openCommentLocation, openFileDiff, openUrl, submitReview } from "./ops";
 import { cancelBusy, loadDetails, refreshAll, select, setQuery, useGithub, type DetailTab } from "./store";
 import styles from "./Github.module.css";
-import { tx } from "@/platform/i18n";
+import { t, tx } from "@/platform/i18n";
 
-const STATES: Array<{ value: PrStateFilter; label: string }> = [
-  { value: "open", label: "Open" },
-  { value: "merged", label: "Merged" },
-  { value: "closed", label: "Closed" },
-  { value: "all", label: "All" },
-];
+const STATES: PrStateFilter[] = ["open", "merged", "closed", "all"];
 
 function Unavailable({ availability }: { availability: GhAvailability }) {
   const retry = (
@@ -138,7 +133,10 @@ function Filters() {
         className={styles.search}
       />
       <div className={styles.filterRow}>
-        <Select value={query.state} options={STATES} onChange={(state) => setQuery({ state })} aria-label="State" />
+        <Select
+          value={query.state}
+          options={STATES.map((value) => ({ value, label: t(`github.prState.${value}`) }))}
+          onChange={(state) => setQuery({ state })} aria-label="State" />
         <Checkbox checked={query.authorMe} onChange={(authorMe) => setQuery({ authorMe })} label="Mine" />
         <Checkbox
           checked={query.reviewRequested}
@@ -247,7 +245,7 @@ function Overview({ pr }: { pr: PullRequestDetails }) {
     <div className={styles.scroll}>
       <Markdown text={pr.body} />
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>Checks · {checksText(summary)}</h3>
+        <h3 className={styles.sectionTitle}>{tx`Checks · ${checksText(summary)}`}</h3>
         {pr.checks.map((c, i) => (
           <div key={i} className={styles.checkRow}>
             <Icon name={CHECK_ICON[c.status]} size={14} className={styles[`check-${c.status}`]} />
@@ -303,7 +301,7 @@ function Overview({ pr }: { pr: PullRequestDetails }) {
               ))}
             </div>
           )}
-          {pr.assignees.length > 0 && <div className={styles.dim}>Assignees: {pr.assignees.join(", ")}</div>}
+          {pr.assignees.length > 0 && <div className={styles.dim}>{tx`Assignees: ${pr.assignees.join(", ")}`}</div>}
         </section>
       )}
     </div>
@@ -318,7 +316,7 @@ function Files({ pr }: { pr: PullRequestDetails }) {
     return m;
   }, [comments]);
   return (
-    <div className={styles.scroll} role="list" aria-label="Changed files">
+    <div className={styles.scroll} role="list" aria-label={tx("Changed files")}>
       {pr.files.map((f) => {
         const slash = f.path.lastIndexOf("/");
         return (
@@ -334,7 +332,7 @@ function Files({ pr }: { pr: PullRequestDetails }) {
             <span className={clsx(styles.fileName, styles[`change-${f.changeType}`])}>{f.path.slice(slash + 1)}</span>
             <span className={clsx(styles.dim, styles.ellipsis)}>{slash > 0 ? f.path.slice(0, slash) : ""}</span>
             <span className={styles.flex} />
-            {counts.get(f.path) ? <span className={styles.dim}>{counts.get(f.path)} comments</span> : null}
+            {counts.get(f.path) ? <span className={styles.dim}>{tx`${counts.get(f.path)} comments`}</span> : null}
             <span className={styles.added}>+{f.additions}</span>
             <span className={styles.deleted}>−{f.deletions}</span>
           </button>
@@ -346,7 +344,7 @@ function Files({ pr }: { pr: PullRequestDetails }) {
 
 function Commits({ pr }: { pr: PullRequestDetails }) {
   return (
-    <div className={styles.scroll} role="list" aria-label="Commits">
+    <div className={styles.scroll} role="list" aria-label={tx("Commits")}>
       {pr.commits.map((c) => (
         <div
           key={c.oid}
@@ -406,7 +404,11 @@ function Conversation({ pr }: { pr: PullRequestDetails }) {
             <button type="button" className={styles.link} onClick={() => void openCommentLocation(pr, t.root.path)}>
               {t.root.path}:{t.root.line ?? t.root.originalLine ?? "?"}
             </button>
-            {t.root.line == null && <span className={styles.dim}>outdated</span>}
+            {t.root.line == null && (
+              <span className={styles.dim}>
+                <T>outdated</T>
+              </span>
+            )}
           </header>
           {[t.root, ...t.replies].map((c) => (
             <div key={c.id} className={styles.threadItem}>
@@ -421,8 +423,8 @@ function Conversation({ pr }: { pr: PullRequestDetails }) {
       ))}
       <div className={styles.newComment}>
         <textarea
-          aria-label="New comment"
-          placeholder="Add a comment (Markdown)"
+          aria-label={tx("New comment")}
+          placeholder={tx("Add a comment (Markdown)")}
           className={styles.textarea}
           rows={4}
           value={draft}
@@ -565,7 +567,11 @@ export function PullRequestsView() {
     if (!useGithub.getState().availability) void refreshAll();
   }, []);
   if (!availability)
-    return <div className={styles.loading}>{checking && <Spinner size={14} />} Connecting to GitHub…</div>;
+    return (
+      <div className={styles.loading}>
+        {checking && <Spinner size={14} />} {tx("Connecting to GitHub…")}
+      </div>
+    );
   if (availability.kind !== "ready")
     return (
       <div className={styles.view}>

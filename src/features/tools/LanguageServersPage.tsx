@@ -313,8 +313,9 @@ export function LanguageServersPage() {
   return (
     <div className={styles.page}>
       <p className={styles.intro}>
-        Language servers and debug adapters used by the IDE. Missing tools can be installed into the IDE&apos;s own
-        tools folder; nothing is downloaded until you click Install.
+        {tx(
+          "Language servers and debug adapters used by the IDE. Missing tools can be installed into the IDE's own tools folder; nothing is downloaded until you click Install.",
+        )}
       </p>
       {error && (
         <div className={styles.error} role="alert">
@@ -351,7 +352,7 @@ export function LanguageServersPage() {
               aria-label="Filter language servers"
             />
           </div>
-          <div className={styles.segmented} role="radiogroup" aria-label="Show">
+          <div className={styles.segmented} role="radiogroup" aria-label={tx("Show")}>
             {(["all", "missing", "installed"] as const).map((f) => (
               <button
                 key={f}
@@ -365,7 +366,7 @@ export function LanguageServersPage() {
               </button>
             ))}
           </div>
-          <ul className={styles.list} aria-label="Language servers and debug adapters" onKeyDown={onListKey}>
+          <ul className={styles.list} aria-label={tx("Language servers and debug adapters")} onKeyDown={onListKey}>
             {group("Available", ready)}
             {group("Missing", missing)}
             {loaded && shown.length === 0 && (

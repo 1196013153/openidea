@@ -417,7 +417,9 @@ function scanTypeScript(): Scan {
     const where = (node: ts.Node) => `${path}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1}`;
     const visit = (node: ts.Node) => {
       if (checked && ts.isTaggedTemplateExpression(node) && ts.isIdentifier(node.tag) && exact.has(node.tag.text)) {
-        const use: Use = { text: tagText(node.template), at: where(node), match: "shape" };
+        // Without `${}` the tag looks its text up as written.
+        const match = ts.isNoSubstitutionTemplateLiteral(node.template) ? "exact" : "shape";
+        const use: Use = { text: tagText(node.template), at: where(node), match };
         translated.push(use);
         if (
           ts.isTemplateExpression(node.template) &&

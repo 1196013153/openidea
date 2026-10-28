@@ -9,6 +9,7 @@ import clsx from "clsx";
 import { Icon, showContextMenu, type MenuItem } from "@/ui";
 import { toCsv, toTsv, type Cell } from "./model";
 import styles from "./Database.module.css";
+import { tx } from "@/platform/i18n";
 
 export interface GridColumn {
   name: string;
@@ -291,7 +292,7 @@ export function Grid(props: GridProps) {
                     type="button"
                     className={clsx(styles.headerFilter, props.filtered?.(ci) && styles.headerFilterOn)}
                     aria-label={`Filter ${c.name}`}
-                    title="Local filter"
+                    title={tx("Local filter")}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();

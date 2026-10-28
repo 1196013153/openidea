@@ -50,7 +50,7 @@ export function TodoSettingsPage() {
           }
         />
       </div>
-      <div className={styles.list} role="list" aria-label="TODO patterns">
+      <div className={styles.list} role="list" aria-label={tx("TODO patterns")}>
         {s.patterns.map((p) => (
           <div key={p.id} className={styles.row} role="listitem">
             <Checkbox

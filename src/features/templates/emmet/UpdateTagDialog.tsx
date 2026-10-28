@@ -3,6 +3,7 @@ import { useState } from "react";
 import { create } from "zustand";
 import { Dialog, Input } from "@/ui";
 import styles from "./Emmet.module.css";
+import { tx } from "@/platform/i18n";
 
 interface Pending {
   tag: string;
@@ -36,7 +37,7 @@ function PromptDialog({ tag, resolve }: Pending) {
     >
       <div className={styles.body}>
         <label className={styles.label} htmlFor="emmet-update-tag">
-          Abbreviation for &lt;{tag}&gt;, e.g. <code>section.card#main[data-x=1]</code>
+          {tx`Abbreviation for <${tag}>, e.g.`} <code>section.card#main[data-x=1]</code>
         </label>
         <Input
           id="emmet-update-tag"

@@ -6,7 +6,7 @@
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { call, commands, IpcError, type RemoteEntry } from "@/platform/ipc";
-import { useTx } from "@/platform/i18n";
+import { useTx, tx } from "@/platform/i18n";
 import type { DeploymentServerValid } from "@/platform/remoteSettings";
 import { Badge, Button, Checkbox, Dialog, Icon, IconButton, Input, Spinner, T, Tabs } from "@/ui";
 import { GlobListEditor, Row } from "../components/Form";
@@ -198,7 +198,7 @@ function RemoteFolderDialog({
           <ul
             className={styles.folderList}
             role="listbox"
-            aria-label="Remote folders"
+            aria-label={tx("Remote folders")}
             tabIndex={0}
             onKeyDown={onListKey}
           >
@@ -369,7 +369,7 @@ function MappingsTab({
   return (
     <div className={styles.panel}>
       <div className={workflow.tableBox}>
-        <div className={workflow.toolbar} role="toolbar" aria-label="Mappings actions">
+        <div className={workflow.toolbar} role="toolbar" aria-label={tx("Mappings actions")}>
           <IconButton
             icon="plus"
             title="Add"
@@ -391,7 +391,7 @@ function MappingsTab({
             }}
           />
         </div>
-        <table className={styles.mappingTable} aria-label="Mappings">
+        <table className={styles.mappingTable} aria-label={tx("Mappings")}>
           <thead>
             <tr>
               {MAPPING_COLUMNS.map((c) => (
@@ -505,7 +505,7 @@ function DeploymentServersEditor() {
   return (
     <div className={styles.layout}>
       <div className={workflow.tableBox}>
-        <div className={workflow.toolbar} role="toolbar" aria-label="Deployment servers actions">
+        <div className={workflow.toolbar} role="toolbar" aria-label={tx("Deployment servers actions")}>
           <IconButton icon="plus" title="Add" size="small" onClick={() => add()} />
           <IconButton icon="minus" title="Remove" size="small" disabled={!current} onClick={remove} />
           <IconButton
@@ -523,7 +523,7 @@ function DeploymentServersEditor() {
             onClick={() => current && setDefaultServer(current.id)}
           />
         </div>
-        <div className={styles.serverList} role="listbox" aria-label="Deployment servers">
+        <div className={styles.serverList} role="listbox" aria-label={tx("Deployment servers")}>
           {list.length === 0 && (
             <div className={styles.empty}>
               <T>No servers. Click + to add one.</T>

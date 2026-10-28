@@ -171,7 +171,9 @@ function DuplicatesDialog({ onClose }: { onClose: () => void }) {
             onChange={(e) => setMinText(e.target.value)}
             aria-label="Minimum duplicate size in tokens"
           />
-          <span className={styles.hint}>tokens</span>
+          <span className={styles.hint}>
+            <T>tokens</T>
+          </span>
         </label>
         <Checkbox
           checked={options.anonymizeIdentifiers}
@@ -355,7 +357,7 @@ function ReplacePreviewDialog({ files, onClose }: { files: StructuralFile[]; onC
         { label: "Cancel", role: "cancel" },
       ]}
     >
-      <ul className={styles.previewList} aria-label="Replacements">
+      <ul className={styles.previewList} aria-label={tx("Replacements")}>
         {files.flatMap((f) =>
           f.matches.map((m, i) => {
             const key = matchKey(f.path, i);

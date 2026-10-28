@@ -7,6 +7,7 @@ import type { TerminalSearchOptions, TerminalSearchResult } from "./session";
 import { activeSession } from "./store";
 import styles from "./Terminal.module.css";
 import { hasPrimaryModifier } from "@/platform/keymap";
+import { tx } from "@/platform/i18n";
 
 export const useTerminalFind = create<{ open: boolean; seq: number; query: string; options: TerminalSearchOptions }>(
   () => ({
@@ -101,7 +102,7 @@ export function TerminalFindBar({ sessionKey }: { sessionKey: string | null }) {
     <div
       className={styles.find}
       role="search"
-      aria-label="Find in terminal"
+      aria-label={tx("Find in terminal")}
       data-terminal-find=""
       onKeyDown={onKeyDown}
     >

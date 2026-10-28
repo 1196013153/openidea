@@ -205,7 +205,7 @@ function NameStep({
           onKeyDown={onKeyDown}
         />
         {template.kinds.length > 1 && (
-          <div className={styles.kinds} role="listbox" aria-label="Kind">
+          <div className={styles.kinds} role="listbox" aria-label={tx("Kind")}>
             {template.kinds.map((k, i) => (
               <div
                 key={k.id}

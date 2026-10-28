@@ -42,7 +42,7 @@ export function StatusBar() {
   return (
     <footer
       className={styles.bar}
-      aria-label="Status bar"
+      aria-label={tx("Status bar")}
       onContextMenu={(e) => {
         if (e.defaultPrevented) return;
         e.preventDefault();

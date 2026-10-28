@@ -534,7 +534,7 @@ export function SourceDialog({
           {sshOn && (
             <>
               <span />
-              <span className={styles.formHint}>Reached from the SSH host {sshLabel({ ssh: sshUsed })}.</span>
+              <span className={styles.formHint}>{tx`Reached from the SSH host ${sshLabel({ ssh: sshUsed })}.`}</span>
             </>
           )}
           <label className={styles.formLabel} htmlFor="db-user">
@@ -916,8 +916,10 @@ export function SourceDialog({
           </Button>
           <span className={styles.formHint}>
             {initial?.id
-              ? "The Database tree shows only the checked names and patterns (* and ?); the connected database always shows."
-              : "Save the data source to pick from the server's names; patterns (* and ?) work any time."}
+              ? tx(
+                  "The Database tree shows only the checked names and patterns (* and ?); the connected database always shows.",
+                )
+              : tx("Save the data source to pick from the server's names; patterns (* and ?) work any time.")}
           </span>
         </div>
       </div>

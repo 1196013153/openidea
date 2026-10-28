@@ -239,7 +239,9 @@ export function RecentList({ exclude, compact, autoFocus, onOpened, className, t
           showContextMenu(e, recentMenu(m.project, onOpened));
         }}
         renderItem={(m, s) => <RecentRow m={m} active={s.active} compact={compact} onOpened={onOpened} />}
-        empty={<span className={styles.noMatches}>{query ? "No matching projects" : "No recent projects"}</span>}
+        empty={
+          <span className={styles.noMatches}>{query ? tx("No matching projects") : tx("No recent projects")}</span>
+        }
       />
     </div>
   );

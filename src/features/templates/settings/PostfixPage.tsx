@@ -39,7 +39,7 @@ export function PostfixPage() {
         <code>items.for</code>
         <T>, then press Tab.</T>
       </div>
-      <div className={styles.tabs} role="tablist" aria-label="Languages">
+      <div className={styles.tabs} role="tablist" aria-label={tx("Languages")}>
         {POSTFIX_GROUPS.map((g) => (
           <button
             key={g.id}
@@ -53,7 +53,7 @@ export function PostfixPage() {
           </button>
         ))}
       </div>
-      <div className={styles.list} role="list" aria-label="Postfix templates">
+      <div className={styles.list} role="list" aria-label={tx("Postfix templates")}>
         {list.map((t) => (
           <div key={t.id} className={styles.listRow} role="listitem">
             <Checkbox

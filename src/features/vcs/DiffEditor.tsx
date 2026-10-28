@@ -19,7 +19,7 @@ import { setContext } from "@/platform/context";
 import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { tx } from "@/platform/i18n";
-import { IconButton, Select, Spinner } from "@/ui";
+import { IconButton, Select, Spinner, T } from "@/ui";
 import { editorService, type EditorInput } from "@/workbench/contributions";
 import { languageFor, viewerBase } from "./cm";
 import { applyChunk, arrowControls, hoverRevert } from "./diffControls";
@@ -591,7 +591,7 @@ export function DiffEditor({ input }: { input: EditorInput }) {
             ? ""
             : chunkInfo.count === 0
               ? identical
-                ? "Contents are identical"
+                ? tx("Contents are identical")
                 : "No differences"
               : chunkInfo.current >= 0
                 ? `${chunkInfo.current + 1} of ${chunkInfo.count} differences`
@@ -602,11 +602,13 @@ export function DiffEditor({ input }: { input: EditorInput }) {
         <div className={styles.labels}>
           <span className={styles.label} title={sideLabel(left)}>
             {sideLabel(left)}
-            {editableA && <span className={styles.badge}>editable</span>}
+            {editableA && <span className={styles.badge}>
+                <T>editable</T>
+              </span>}
           </span>
           <span className={styles.label} title={sideLabel(right)}>
             {sideLabel(right)}
-            {editableB && <span className={styles.badge}>{left.type === "rev" ? "working copy" : "editable"}</span>}
+            {editableB && <span className={styles.badge}>{left.type === "rev" ? tx("working copy") : "editable"}</span>}
           </span>
         </div>
       ) : (

@@ -6,6 +6,10 @@ contributors as part of the IntelliJ Platform (https://github.com/JetBrains/inte
 https://github.com/JetBrains/intellij-plugins), licensed under the Apache License 2.0.
 Copyright 2000-2026 JetBrains s.r.o. and contributors.
 
+Some Simplified Chinese UI terms follow the Visual Studio Code Simplified Chinese
+language pack (https://github.com/microsoft/vscode-loc), Copyright (c) Microsoft
+Corporation, licensed under the MIT License.
+
 OpenIDEA is not affiliated with, endorsed by or sponsored by JetBrains s.r.o.
 IntelliJ and IntelliJ IDEA are trademarks of JetBrains s.r.o.
 

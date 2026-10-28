@@ -42,6 +42,7 @@ import { renderCode, renderMarkup } from "./markdown";
 import { describeSummary } from "./workspaceEdit";
 import { useUsagesStatus } from "./navigation";
 import styles from "./Popups.module.css";
+import { tx } from "@/platform/i18n";
 
 export function BulbIcon({ fix }: { fix?: boolean }) {
   return <Icon name={fix ? "bulb-fix" : "bulb"} size={16} className={styles.bulb} />;
@@ -58,7 +59,7 @@ function ListPreviewPanel({ preview }: { preview: ListPreview | null | "loading"
   if (preview === "loading") return <div className={styles.previewPanel} aria-busy="true" />;
   if (!preview) return null;
   return (
-    <div className={styles.previewPanel} aria-label="Preview">
+    <div className={styles.previewPanel} aria-label={tx("Preview")}>
       {preview.kind === "text" ? (
         <div className={styles.previewText}>{preview.text}</div>
       ) : (
@@ -316,7 +317,7 @@ function RenamePopup({ popup }: { popup: Extract<LspPopup, { kind: "rename" }> }
           aria-label="New name"
         />
         {suggestions.length > 1 && (
-          <ul className={styles.renameSuggestions} aria-label="Suggested names">
+          <ul className={styles.renameSuggestions} aria-label={tx("Suggested names")}>
             {suggestions.map((s) => (
               <li key={s}>
                 <button
@@ -556,7 +557,7 @@ function PreviewDialog({ popup }: { popup: Extract<LspPopup, { kind: "preview" }
       ))}
       <div className={styles.previewSummary}>{describeSummary(summary)}</div>
       {popup.occurrences ? (
-        <ul className={styles.previewList} aria-label="Occurrences">
+        <ul className={styles.previewList} aria-label={tx("Occurrences")}>
           {popup.occurrences.map((o, i) => {
             const lead = o.text.length - o.text.trimStart().length;
             const text = o.text.trim();
@@ -575,7 +576,7 @@ function PreviewDialog({ popup }: { popup: Extract<LspPopup, { kind: "preview" }
           })}
         </ul>
       ) : (
-        <ul className={styles.previewList} aria-label="Changes">
+        <ul className={styles.previewList} aria-label={tx("Changes")}>
           {summary.entries.map((e) => (
             <li key={e.path} className={styles.previewRow}>
               <Icon name={fileIconName(basename(e.path))} size={14} className={styles.itemIcon} />

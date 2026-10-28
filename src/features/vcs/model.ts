@@ -172,3 +172,8 @@ export function commitWebUrl(remoteUrl: string, sha: string): string | null {
   if (!base) return null;
   return `${base}/${/bitbucket\.org\//.test(base) ? "commits" : "commit"}/${sha}`;
 }
+
+/** "N file(s)", worded for the locale. */
+export function fileCount(n: number): string {
+  return n === 1 ? tx`${n} file` : tx`${n} files`;
+}

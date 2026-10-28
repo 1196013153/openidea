@@ -8,6 +8,7 @@ import { Dialog, IconButton, Input, Select, Spinner, type SelectOption, T } from
 import { choosePath, createVenv, rememberSdk } from "./api";
 import { tildify, useDetected } from "./components";
 import styles from "./Sdk.module.css";
+import { tx } from "@/platform/i18n";
 
 type Mode = "new" | "existing";
 
@@ -80,7 +81,7 @@ export function AddInterpreterDialog({
       ]}
     >
       <div className={styles.dialogBody}>
-        <ul className={styles.kinds} aria-label="Interpreter type">
+        <ul className={styles.kinds} aria-label={tx("Interpreter type")}>
           <li>
             <button type="button" className={`${styles.kind} ${styles.kindOn}`} aria-current="true">
               <T>Virtualenv Environment</T>
@@ -88,14 +89,14 @@ export function AddInterpreterDialog({
           </li>
         </ul>
         <div className={styles.form}>
-          <div className={styles.radios} role="radiogroup" aria-label="Environment">
+          <div className={styles.radios} role="radiogroup" aria-label={tx("Environment")}>
             <label className={styles.radio}>
               <input type="radio" name="env" checked={mode === "new"} onChange={() => setMode("new")} />{" "}
               <T>New environment</T>
             </label>
             <label className={styles.radio}>
               <input type="radio" name="env" checked={mode === "existing"} onChange={() => setMode("existing")} />{" "}
-              Existing environment
+              <T>Existing environment</T>
             </label>
           </div>
           {mode === "new" ? (
@@ -143,7 +144,7 @@ export function AddInterpreterDialog({
                 />
               </div>
               <div className={styles.note}>
-                Runs “&lt;base&gt; -m venv &lt;location&gt;”; the new interpreter becomes the project interpreter.
+                {tx("Runs “<base> -m venv <location>”; the new interpreter becomes the project interpreter.")}
               </div>
             </>
           ) : (
