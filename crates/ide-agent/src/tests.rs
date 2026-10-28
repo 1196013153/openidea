@@ -66,6 +66,7 @@ impl Handler for FakeAgent {
                     "availableCommands": [{"name": "review", "description": "Review", "input": {"hint": "focus"}}]}),
                 );
                 self.update(&session, json!({"sessionUpdate": "usage_update", "used": 50, "size": 1000}));
+                self.update(&session, json!({"sessionUpdate": "session_info_update", "title": "Lexer fix"}));
                 self.say(&session, "Hi");
                 self.update(
                     &session,
@@ -226,6 +227,7 @@ async fn a_task_runs_asks_for_permission_and_survives_a_restart() {
         assert_eq!((modes.via, modes.current.as_deref()), (AgentConfigVia::Mode, Some("ask")));
         assert_eq!(t.commands.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["review"]);
         assert_eq!(t.usage.as_ref().map(|u| (u.used, u.size)), Some((50, 1000)));
+        assert_eq!(t.title, "Lexer fix", "the agent's title replaces the prompt's first line");
     }
     mgr.set_config(&task.id, "mode", "code".into()).await.unwrap();
     assert!(agent.calls.lock().contains(&"session/set_mode \"code\"".to_owned()));
@@ -260,6 +262,7 @@ async fn a_task_runs_asks_for_permission_and_survives_a_restart() {
     let agent2 = Arc::new(FakeAgent::default());
     let mgr2 = manager(tmp.path(), agent2.clone());
     assert_eq!(mgr2.entries(&task.id).unwrap().len(), 5);
+    assert_eq!(mgr2.task(&task.id).unwrap().state.lock().task.title, "Lexer fix");
     assert_eq!(mgr2.providers().iter().find(|p| p.id == "claude").unwrap().config.len(), 2);
     mgr2.prompt(&task.id, text("again"), false).await.unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;

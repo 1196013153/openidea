@@ -882,6 +882,16 @@ impl Task {
 
     fn on_update(self: &Arc<Self>, update: &Value) {
         let kind = update.get("sessionUpdate").and_then(Value::as_str).unwrap_or_default();
+        if kind == "session_info_update" {
+            // The agent's own title for the session replaces the first line of the prompt.
+            let title = update.get("title").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty());
+            if let Some(title) = title {
+                self.state.lock().task.title = title.to_owned();
+                self.persist();
+                self.emit_task();
+            }
+            return;
+        }
         // Session state (also while `session/load` replays history).
         let provider = self.state.lock().task.provider.clone();
         let task_changed = {
