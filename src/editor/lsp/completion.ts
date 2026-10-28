@@ -35,14 +35,21 @@ import {
   type RequestId,
 } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
-import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter } from "./completionItems";
+import {
+  completionSymbolKind,
+  identifierEnd,
+  toCmCompletion,
+  triggerCharacter,
+  typeColumnText,
+  withoutDuplicates,
+} from "./completionItems";
 import { lspSnippetToCm, snippetVariables } from "./snippet";
 import { docOf, isUnavailable, lspDoc, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, posToOffset, textEditsToChanges } from "./positions";
 import { isEmptyMarkup, renderCode, renderMarkup } from "./markdown";
 import { selectableText } from "@/ui/selectableText";
 import { iconNode } from "./iconMarkup";
-import { triggerSignatureHelp } from "./signature";
+import { parameterInfoOrLeave, triggerSignatureHelp } from "./signature";
 import { serverBackoff } from "./availability";
 import { pathCompletionSource } from "./fileReferences";
 import { editorPrefs } from "@/platform/editorSettings";
@@ -71,16 +78,41 @@ const isLsp = (c: Completion): c is LspCompletion => "lsp" in c;
 // Resolve (documentation, lazily computed edits)
 
 const resolving = new WeakMap<CompletionItem, Promise<CompletionItem>>();
+/** Items whose resolve has answered, for accepting them synchronously. */
+const resolvedItems = new WeakMap<CompletionItem, CompletionItem>();
 
 function resolveItem(doc: number, item: CompletionItem): Promise<CompletionItem> {
   if (item.data == null && !isEmptyMarkup(item.documentation)) return Promise.resolve(item);
   let p = resolving.get(item);
   if (!p) {
-    p = lspRequest(() => commands.lspResolveCompletion(doc, item)).catch(() => item);
+    p = lspRequest(() => commands.lspResolveCompletion(doc, item)).then(
+      (r) => {
+        resolvedItems.set(item, r);
+        return r;
+      },
+      () => item,
+    );
     resolving.set(item, p);
   }
   return p;
 }
+
+/**
+ * Resolves the selected lookup item ahead of acceptance: some servers compute
+ * its extra edits (rust-analyzer's `use` import) only on resolve, against the
+ * text as it was, so resolving after the insertion finds nothing.
+ */
+const prefetchResolve = ViewPlugin.fromClass(
+  class {
+    private last: Completion | null = null;
+    update(u: ViewUpdate) {
+      const c = selectedCompletion(u.state);
+      if (c === this.last) return;
+      this.last = c;
+      if (c && isLsp(c) && c.lsp.data != null && !c.lsp.additionalEdits.length) void resolveItem(c.req.doc, c.lsp);
+    }
+  },
+);
 
 /**
  * F1 in the lookup (IDEA's documentation popup next to the lookup): docs then
@@ -166,7 +198,7 @@ export function applyLspCompletion(
 ) {
   if (!isLsp(completion)) return;
   const { req } = completion;
-  const item = completion.resolved ?? completion.lsp;
+  const item = completion.resolved ?? resolvedItems.get(completion.lsp) ?? completion.lsp;
   const state = view.state;
   const delta = to - req.pos;
   const mapOld = (offset: number) =>
@@ -191,6 +223,7 @@ export function applyLspCompletion(
     .filter((c) => c.to <= start || c.from >= end);
 
   let insertedParens: ReturnType<typeof callParens> = null;
+  let bareCall: number | null = null;
   if (item.isSnippet) {
     if (extra.length) {
       const tr = state.update({ changes: extra, userEvent: "input.complete" });
@@ -199,6 +232,19 @@ export function applyLspCompletion(
       end = tr.changes.mapPos(end, 1);
     }
     snippet(lspSnippetToCm(item.insertText, snippetVariables(req.path)))(view, completion, start, end);
+    // A call snippet without a stop (`ArrayList<>()`): the caret goes inside until
+    // signature help says there is nothing to pass.
+    const head = view.state.selection.main.head;
+    if (
+      editorPrefs().completion.insertParentheses &&
+      CALLABLE.has(item.kind ?? "") &&
+      /\(\)$/.test(item.insertText) &&
+      !/\$/.test(item.insertText) &&
+      view.state.sliceDoc(head - 2, head) === "()"
+    ) {
+      view.dispatch({ selection: EditorSelection.cursor(head - 1) });
+      bareCall = head - 1;
+    }
   } else {
     const parens = editorPrefs().completion.insertParentheses
       ? callParens(item, state.doc.lineAt(start), start, end)
@@ -215,9 +261,15 @@ export function applyLspCompletion(
     });
   }
 
-  if (!completion.resolved && !item.additionalEdits.length && item.data != null)
+  if (item === completion.lsp && !item.additionalEdits.length && item.data != null)
     void applyLateEdits(view, completion, start);
-  if (insertedParens === "inside" && !item.command) setTimeout(() => triggerSignatureHelp(view), 0);
+  // Parameter info for a call left open, plain (`()` added here) or a server snippet (`fly(${1})`).
+  const callSnippet = item.isSnippet && CALLABLE.has(item.kind ?? "") && /\(\$\{?\d/.test(item.insertText);
+  // Unless the item's command asks for it itself (other commands, like jdtls's
+  // `java.completion.onDidSelect`, are bookkeeping).
+  const hintsCommand = item.command?.command === "editor.action.triggerParameterHints";
+  if ((insertedParens === "inside" || callSnippet) && !hintsCommand) setTimeout(() => triggerSignatureHelp(view), 0);
+  else if (bareCall !== null) void parameterInfoOrLeave(view, bareCall);
   runCommand(view, item);
 }
 
@@ -314,7 +366,13 @@ export function makeCompletion(item: CompletionItem, req: RequestContext): LspCo
   return Object.assign(cm, {
     lsp: item,
     req,
-    apply: applyLsp,
+    // CodeMirror merges options with the same label, detail and `apply`: overloads
+    // sharing a filterText (`times(other: Int)`, `times(other: Long)`…) and the same
+    // name imported from different modules need their own.
+    apply:
+      cm.displayLabel || (item.filterText && item.filterText !== item.label) || item.additionalEdits.length
+        ? (...a: Parameters<typeof applyLsp>) => applyLsp(...a)
+        : applyLsp,
     info: (c: Completion) => renderInfo(c as LspCompletion),
   });
 }
@@ -369,7 +427,10 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
   });
   let list;
   try {
-    list = await lspRequest(() => commands.lspCompletion(id, doc.doc, offsetToPos(ctx.state.doc, ctx.pos), trigger));
+    list = await lspRequest(
+      () => commands.lspCompletion(id, doc.doc, offsetToPos(ctx.state.doc, ctx.pos), trigger),
+      () => inflight === id,
+    );
   } catch (e) {
     if (isUnavailable(e)) {
       serverBackoff.mark(doc.doc);
@@ -383,9 +444,18 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
   const req: RequestContext = { doc: doc.doc, path: doc.path, language: doc.uiMode, pos: ctx.pos, text: ctx.state.doc };
   const prefs = editorPrefs().completion;
   const typed = word?.text ?? "";
-  const items = prefs.matchCase
-    ? list.items.filter((it) => matchesCase(it.filterText ?? it.label, typed, prefs.caseSensitivity))
-    : list.items;
+  let items = withoutDuplicates(
+    prefs.matchCase
+      ? list.items.filter((it) => matchesCase(it.filterText ?? it.label, typed, prefs.caseSensitivity))
+      : list.items,
+  );
+  // A server snippet named like a live template (jdtls `sout`, `fori`) would be listed twice; the template wins.
+  if (items.some((it) => it.kind === "snippet")) {
+    const own = await contributedSource(ctx);
+    if (ctx.aborted) return null;
+    const names = new Set(own?.options.map((o) => o.label));
+    if (names.size) items = items.filter((it) => it.kind !== "snippet" || !names.has(it.label));
+  }
   return {
     from: word ? word.from : ctx.pos,
     options: items.map((item) => makeCompletion(item, req)),
@@ -616,11 +686,11 @@ function kindBadge(c: Completion): Node | null {
 }
 
 function typeColumn(c: Completion): Node | null {
-  const detail = isLsp(c) ? c.lsp.detail : (c as RichCompletion).typeText;
+  const detail = isLsp(c) ? typeColumnText(c.lsp) : (c as RichCompletion).typeText?.replace(/\s+/g, " ");
   if (!detail) return null;
   const span = document.createElement("span");
   span.className = "cm-lsp-type";
-  span.textContent = detail.replace(/\s+/g, " ");
+  span.textContent = detail;
   return span;
 }
 
@@ -684,6 +754,7 @@ const completionFooter = ViewPlugin.fromClass(
 export function completionExtension() {
   return [
     lookupKeys,
+    prefetchResolve,
     autocompletion({
       override: [gated(lspCompletionSource), gated(contributedSource), gated(pathCompletionSource)],
       icons: false,

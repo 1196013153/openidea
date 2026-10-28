@@ -52,6 +52,7 @@ import {
   removePane,
   reopenClosed,
   setActivePane,
+  splitAtEdge,
   sortTabs,
   splitPane,
   tabOptions,
@@ -784,7 +785,7 @@ export class EditorController implements SlotHost {
     this.navSuppress++;
     try {
       let s = useTabs.getState();
-      let paneId = s.activePane;
+      let paneId = o.pane && s.panes[o.pane] ? o.pane : s.activePane;
       if (o.side) {
         const right = neighbourPane(s, paneId);
         if (right) paneId = right;
@@ -799,7 +800,7 @@ export class EditorController implements SlotHost {
       }
       const found = findTab(s, input.key, paneId);
       let tabId: string;
-      if (found && (!o.side || found.paneId === paneId)) {
+      if (found && (!(o.side || o.pane) || found.paneId === paneId)) {
         paneId = found.paneId;
         s = activateTab(setActivePane(s, paneId), paneId, found.tab.id);
         if (!o.preview) s = promoteTab(s, paneId, found.tab.id);
@@ -934,6 +935,20 @@ export class EditorController implements SlotHost {
     const slot = this.slots.get(tabId);
     if (slot?.view) slot.focus();
     else if (slot) slot.wantsFocus = true;
+  }
+  /** Files dropped on an editor: opened in that pane, or in a new split at `edge`. */
+  async openFilesIn(paths: readonly string[], paneId: string, edge: SplitEdge | "center") {
+    const s = useTabs.getState();
+    if (!s.panes[paneId] || !paths.length) return;
+    let target = paneId;
+    if (edge !== "center") {
+      const r = splitAtEdge(s, paneId, edge);
+      useTabs.setState(r.state, true);
+      target = r.paneId;
+    }
+    for (const [i, path] of paths.entries()) await this.openFile(path, { pane: target, focus: i === paths.length - 1 });
+    const pane = useTabs.getState().panes[target];
+    if (pane && !pane.tabs.length) this.apply((st) => removePane(st, target));
   }
   /** IDEA "Move to Opposite Group"; without a split, "Split and Move Right". */
   moveToOpposite(paneId: string, tabId: string) {

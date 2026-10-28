@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { CompletionItem } from "@/bindings";
-import { completionSymbolKind, identifierEnd, toCmCompletion, triggerCharacter } from "./completionItems";
+import type { EditorDocContext } from "@/editor/api";
+import { lspDoc } from "./lsp";
+import {
+  completionSymbolKind,
+  identifierEnd,
+  toCmCompletion,
+  triggerCharacter,
+  typeColumnText,
+  withoutDuplicates,
+} from "./completionItems";
 import {
   applyLspCompletion,
   callParens,
@@ -61,6 +70,23 @@ describe("toCmCompletion", () => {
     const c = toCmCompletion(item({ label: "@GetMapping", filterText: "GetMapping" }));
     expect(c.label).toBe("GetMapping");
     expect(c.displayLabel).toBe("@GetMapping");
+  });
+
+  it("filters on the label when filterText only adds the call or body", () => {
+    for (const filterText of ["String(${0})", "List<>()", "Runnable() {\n\t${0}\n};"]) {
+      const label = filterText.match(/^\w+/)![0];
+      const c = toCmCompletion(item({ label, filterText }));
+      expect(c.label).toBe(label);
+      expect(c.displayLabel).toBeUndefined();
+    }
+    expect(toCmCompletion(item({ label: "foo", filterText: "foo_bar" })).label).toBe("foo_bar");
+  });
+
+  it("lists identical items once", () => {
+    const ctor = item({ label: "String()", kind: "constructor", data: "1" });
+    const overload = item({ label: "String()", kind: "constructor", labelDetail: "(bytes: ByteArray)" });
+    const out = withoutDuplicates([ctor, { ...ctor, data: "2" }, overload, { ...ctor, server: 2 }]);
+    expect(out).toEqual([ctor, overload, { ...ctor, server: 2 }]);
   });
 
   it("boosts preselected and demotes deprecated items", () => {
@@ -122,10 +148,29 @@ describe("applying completions", () => {
     expect(view.state.selection.main.head).toBe(14);
   });
 
+  it("keeps overloads sharing a filterText apart", () => {
+    const { req } = setup("x.ti|");
+    const [a, b] = ["times(other: Int)", "times(other: Long)"].map((label) =>
+      makeCompletion(item({ label, filterText: "times" }), req),
+    );
+    expect([a!.label, b!.label]).toEqual(["times", "times"]);
+    expect(a!.apply).not.toBe(b!.apply);
+  });
+
   it("replaces the rest of the identifier with ⇥", () => {
     const { view, req } = setup("service.cr|Order()");
     applyLspCompletion(view, makeCompletion(item({ insertText: "create" }), req), 8, 10, "replace");
     expect(view.state.doc.toString()).toBe("service.create()");
+  });
+
+  it("leaves the caret inside a call snippet without stops, past `)` once nothing takes arguments", async () => {
+    const { view, req } = setup("new Arr|");
+    view.dispatch({ effects: StateEffect.appendConfig.of(lspDoc.of({ doc: 1 } as EditorDocContext)) });
+    apply(view, makeCompletion(item({ kind: "constructor", insertText: "ArrayList<>()", isSnippet: true }), req), 4);
+    expect(view.state.doc.toString()).toBe("new ArrayList<>()");
+    expect(view.state.selection.main.head).toBe(16);
+    // Signature help fails outside Tauri: nothing to pass.
+    await vi.waitFor(() => expect(view.state.selection.main.head).toBe(17));
   });
 
   it("uses the server's ⇥ range when given", () => {
@@ -278,5 +323,29 @@ describe("explicit completion", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(view.state.doc.toString()).toBe("pri");
     view.destroy();
+  });
+});
+
+describe("typeColumnText", () => {
+  const edit = (new_text: string) => [{ range: { start: { line: 0, col: 0 }, end: { line: 0, col: 0 } }, new_text }];
+
+  it("names the module an auto-import comes from", () => {
+    expect(typeColumnText({ detail: "Auto-import", additionalEdits: edit("\nfrom collections import OrderedDict") })).toBe(
+      "collections",
+    );
+    expect(typeColumnText({ detail: "Map<K, V>", additionalEdits: edit("import java.util.HashMap;\n") })).toBe(
+      "Map<K, V> (java.util)",
+    );
+    expect(typeColumnText({ detail: null, additionalEdits: edit("use std::collections::HashMap;\n") })).toBe(
+      "std::collections",
+    );
+    expect(typeColumnText({ detail: null, additionalEdits: edit('import { a } from "./money";\n') })).toBe("./money");
+  });
+
+  it("keeps a detail that already says where", () => {
+    expect(typeColumnText({ detail: "java.util.ArrayList", additionalEdits: edit("import java.util.ArrayList;\n") })).toBe(
+      "java.util.ArrayList",
+    );
+    expect(typeColumnText({ detail: "fn()  ", additionalEdits: [] })).toBe("fn() ");
   });
 });

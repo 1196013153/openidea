@@ -7,7 +7,7 @@
  */
 import { indentUnit } from "@codemirror/language";
 import { isolateHistory } from "@codemirror/commands";
-import type { Text } from "@codemirror/state";
+import type { EditorState, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
@@ -63,6 +63,12 @@ function formattedHint(view: EditorView, lines: number) {
   });
 }
 
+/** LSP `FormattingOptions`: with spaces the indent width is the indent unit, not the tab size. */
+export function formatOptionsOf(state: EditorState): { tabSize: number; insertSpaces: boolean } {
+  const unit = state.facet(indentUnit);
+  return unit.includes("\t") ? { tabSize: state.tabSize, insertSpaces: false } : { tabSize: unit.length || state.tabSize, insertSpaces: true };
+}
+
 export async function formatDocument(
   view: EditorView,
   opts: { explicit: boolean; selectionOnly?: boolean } = { explicit: true },
@@ -90,7 +96,7 @@ async function format(view: EditorView, opts: { explicit: boolean; selectionOnly
   const sel = state.selection.main;
   const useSelection = (opts.selectionOnly ?? true) && !sel.empty;
   const range = useSelection ? { start: offsetToPos(state.doc, sel.from), end: offsetToPos(state.doc, sel.to) } : null;
-  const options = { tabSize: state.tabSize, insertSpaces: !state.facet(indentUnit).includes("\t") };
+  const options = formatOptionsOf(state);
   let edits;
   try {
     edits = await lspRequest(() => commands.lspFormat(doc.doc, range, options));
@@ -114,6 +120,45 @@ async function format(view: EditorView, opts: { explicit: boolean; selectionOnly
     scrollIntoView: false,
   });
   return { applied: true, changes: changes.length, lines: formattedLines(state.doc, changes) };
+}
+
+/** Whether `after` has a non-blank line at column 0 where all of `before` was indented. */
+export function dedentsToColumnZero(before: string, after: string): boolean {
+  const minIndent = (t: string) =>
+    Math.min(...t.split("\n").filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
+  return minIndent(before) > 0 && minIndent(after) === 0;
+}
+
+/**
+ * Reformats lines `from..to` silently (generated code: quick fixes, Generate),
+ * merged into the edit's undo step. False when the server can't format ranges.
+ */
+export async function formatLines(view: EditorView, from: number, to: number): Promise<boolean> {
+  const doc = docOf(view);
+  if (!doc || doc.readOnly) return false;
+  const { project, settings } = useProject.getState();
+  if (formatExcluded(doc.path, project?.root ?? null, formatGuardOptions(settings).doNotFormat)) return false;
+  await whenSynced(view);
+  const state = view.state;
+  const range = { start: offsetToPos(state.doc, from), end: offsetToPos(state.doc, to) };
+  const options = formatOptionsOf(state);
+  let edits;
+  try {
+    edits = await lspRequest(() => commands.lspFormat(doc.doc, range, options));
+  } catch {
+    return false;
+  }
+  if (view.state.doc !== state.doc) return false;
+  // Only inside the range: some servers answer a range request with whole-file edits.
+  const changes = textEditsToChanges(state.doc, edits).filter((c) => c.from >= from && c.to <= to && state.sliceDoc(c.from, c.to) !== c.insert);
+  if (!changes.length) return true;
+  // A server formatting the range out of context (kotlin-language-server) moves
+  // indented code to column 0: its answer is ignored then.
+  const delta = changes.reduce((d, c) => d + c.insert.length - (c.to - c.from), 0);
+  const next = state.update({ changes }).state.doc;
+  if (dedentsToColumnZero(state.sliceDoc(from, to), next.sliceString(from, to + delta))) return false;
+  view.dispatch({ changes, userEvent: "format", scrollIntoView: false });
+  return true;
 }
 
 function applyContributedFormat(

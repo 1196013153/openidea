@@ -4,7 +4,7 @@
  * decorations, middle-click close, Alt+click close others, double-click to
  * keep a preview / maximize the editor, context menu) and the active editor.
  */
-import { Fragment, useMemo, useRef, useState, type DragEvent, type FocusEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { useShallow } from "zustand/react/shallow";
 import { executeAction } from "@/platform/actions";
@@ -32,6 +32,8 @@ import {
   SplitPanel,
   Tabs,
   showContextMenu,
+  registerDropTarget,
+  FILES_DRAG,
   type TabItem,
   type TabsDnd,
 } from "@/ui";
@@ -197,6 +199,33 @@ function PaneView({ paneId }: { paneId: string }) {
     return { all: strip(0), rest: strip(pinnedCount) };
   }, [ctrl, paneId, pinnedCount]);
 
+  // Dropping a tab or project files on the editor: an edge splits, the middle opens / moves here.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const hasPane = !!pane;
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const zoneAt = (x: number, y: number) => dropZoneAt(x, y, el.getBoundingClientRect());
+    return registerDropTarget(el, {
+      accepts: (type) => type === EDITOR_TAB_MIME || type === FILES_DRAG,
+      over: (_, x, y) => setDropZone(zoneAt(x, y)),
+      leave: () => setDropZone(null),
+      drop: (data, x, y) => {
+        const zone = zoneAt(x, y);
+        setDropZone(null);
+        if (data.type === FILES_DRAG) {
+          void ctrl.openFilesIn(data.payload.split("\n").filter(Boolean), paneId, zone);
+          return;
+        }
+        const p = parseTabPayload(data.payload);
+        if (!p) return;
+        const target = useTabs.getState().panes[paneId];
+        if (zone === "center") ctrl.moveTab(p.paneId, p.tabId, paneId, target?.tabs.length ?? 0);
+        else ctrl.moveTabToSplit(p.paneId, p.tabId, paneId, zone);
+      },
+    });
+  }, [ctrl, paneId, hasPane]);
+
   if (!pane) return null;
   const active = pane.tabs.find((t) => t.id === pane.active) ?? null;
 
@@ -206,33 +235,6 @@ function PaneView({ paneId }: { paneId: string }) {
   };
   const onBlur = (e: FocusEvent) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setContext("editorFocus", false);
-  };
-
-  // Dropping a tab on the editor: an edge splits, the middle moves the tab here.
-  const isTabDrag = (e: DragEvent) => [...e.dataTransfer.types].includes(EDITOR_TAB_MIME);
-  const contentDnd = {
-    onDragOverCapture: (e: DragEvent<HTMLDivElement>) => {
-      if (!isTabDrag(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = "move";
-      const zone = dropZoneAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
-      if (zone !== dropZone) setDropZone(zone);
-    },
-    onDragLeave: (e: DragEvent<HTMLDivElement>) => {
-      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropZone(null);
-    },
-    onDropCapture: (e: DragEvent<HTMLDivElement>) => {
-      if (!isTabDrag(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const zone = dropZoneAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
-      setDropZone(null);
-      const p = parseTabPayload(e.dataTransfer.getData(EDITOR_TAB_MIME));
-      if (!p) return;
-      if (zone === "center") ctrl.moveTab(p.paneId, p.tabId, paneId, pane.tabs.length);
-      else ctrl.moveTabToSplit(p.paneId, p.tabId, paneId, zone);
-    },
   };
 
   const hidden = tabPrefs.placement === "none" || distractionFree;
@@ -299,7 +301,7 @@ function PaneView({ paneId }: { paneId: string }) {
         role="tabpanel"
         id={active ? `editor-${paneId}-panel-${active.id}` : undefined}
         aria-labelledby={active ? `editor-${paneId}-tab-${active.id}` : undefined}
-        {...contentDnd}
+        ref={contentRef}
       >
         {active ? <PaneContent paneId={paneId} tab={active} /> : <EmptyEditor />}
         {dropZone && <div className={clsx(styles.dropZone, styles[`drop-${dropZone}`])} aria-hidden="true" />}

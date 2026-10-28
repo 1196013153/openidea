@@ -192,6 +192,12 @@ export function whenSynced(view: EditorView): Promise<void> {
   return view.state.facet(documentSynced)?.() ?? Promise.resolve();
 }
 
+/** Every open editor's edits reached the backend (language servers answer from its copy). */
+export function whenAllSynced(): Promise<void> {
+  const editors = useEditorRegistry.getState().editors;
+  return editors.size ? Promise.all([...editors].map((e) => whenSynced(e.view))).then(() => {}) : Promise.resolve();
+}
+
 /** True for doc changes that did not originate from typing in *this* view. */
 export function isExternalChange(tr: Transaction): boolean {
   return !!tr.annotation(remoteChange) || !!tr.annotation(mirroredChange);

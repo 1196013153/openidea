@@ -20,7 +20,7 @@ vi.mock("@/platform/ipc", async (importOriginal) => {
 
 const { emitLocalIdeEvent } = await import("@/platform/ipc");
 const { useProject } = await import("@/platform/project");
-const { installServerEvents, useServers } = await import("./servers");
+const { installServerEvents, serversSummary, useServers } = await import("./servers");
 
 describe("server status", () => {
   let dispose = () => {};
@@ -38,5 +38,20 @@ describe("server status", () => {
     await vi.waitFor(() => expect(useServers.getState().servers.get(id)?.languages).toEqual([]));
     await new Promise((r) => setTimeout(r, 0));
     expect(useServers.getState().servers.get(id)).toMatchObject({ status: "missing", message: "install jdtls" });
+  });
+});
+
+describe("serversSummary", () => {
+  const entry = (id: number, name: string, status: ServerInfo["status"]) => ({
+    id: id as ServerId,
+    name,
+    status,
+    message: null,
+    languages: ["typescript"],
+    root: "/p",
+  });
+  it("doesn't flag a missing server whose languages another one serves", () => {
+    expect(serversSummary([entry(1, "vtsls", "missing"), entry(2, "typescript-language-server", "ready")])?.tone).toBe("ok");
+    expect(serversSummary([entry(1, "vtsls", "missing")])?.tone).toBe("error");
   });
 });

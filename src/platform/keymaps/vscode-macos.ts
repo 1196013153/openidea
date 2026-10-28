@@ -83,6 +83,7 @@ export const vscodeMacos: Record<string, string[]> = {
   "code.quickDocumentation": ["Meta+K Meta+I"],
   "code.quickDefinition": ["Alt+F12"],
   "code.showIntentions": ["Meta+."],
+  "code.applyQuickFix": [],
   "code.generate": [],
   "code.reformat": ["Alt+Shift+F"],
   "code.reformatDialog": [],

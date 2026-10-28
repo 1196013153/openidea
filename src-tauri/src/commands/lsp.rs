@@ -309,6 +309,13 @@ pub fn lsp_servers(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<
     ide_host::ops::lsp::lsp_servers(&state.host, window.label())
 }
 
+/// Re-emits the language servers' current diagnostics (the UI loaded after they arrived).
+#[tauri::command]
+#[specta::specta]
+pub fn lsp_resend_diagnostics(window: Window, state: State<'_, AppState>) -> IdeResult<()> {
+    ide_host::ops::lsp::lsp_resend_diagnostics(&state.host, window.label())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn lsp_restart(window: Window, state: State<'_, AppState>, server: ServerId) -> IdeResult<()> {

@@ -1,6 +1,6 @@
 /** Commit tool window: change list with inclusion checkboxes, message, stashes. */
 import { useWorkflowSettings } from "@/platform/workflowSettings";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { tx } from "@/platform/i18n";
 import clsx from "clsx";
 import { executeAction } from "@/platform/actions";
@@ -18,7 +18,9 @@ import {
   Tabs,
   Tree,
   fileIconName,
+  registerDropTarget,
   showContextMenu,
+  startPointerDrag,
   type MenuItem,
   type TreeHandle,
   T,
@@ -424,35 +426,38 @@ function ChangesPanel() {
                     {n.label}
                   </span>
                 );
+                // Pointer-driven (HTML5 drag and drop never reaches the Tauri webview):
+                // files and folders drag; any row takes them into its changelist.
+                const list = n.changelist;
                 const dnd =
-                  n.changelist !== undefined
-                    ? {
-                        draggable: n.type !== "group",
-                        onDragStart: (e: DragEvent<HTMLSpanElement>) => {
-                          const paths =
-                            selected.has(n.key) && selected.size > 1
-                              ? filesOf(selectedNodes()).map((f) => f.path)
-                              : n.files.map((f) => f.path);
-                          e.dataTransfer.setData(CHANGES_MIME, paths.map(stripSlash).join("\n"));
-                          e.dataTransfer.effectAllowed = "move";
-                        },
-                        onDragOver: (e: DragEvent<HTMLSpanElement>) => {
-                          if (![...e.dataTransfer.types].includes(CHANGES_MIME)) return;
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                          if (dropTarget !== n.changelist) setDropTarget(n.changelist ?? null);
-                        },
-                        onDragLeave: () => setDropTarget(null),
-                        onDrop: (e: DragEvent<HTMLSpanElement>) => {
-                          const data = e.dataTransfer.getData(CHANGES_MIME);
-                          setDropTarget(null);
-                          if (!data || !n.changelist) return;
-                          e.preventDefault();
-                          moveToChangelist(data.split("\n"), n.changelist);
-                        },
-                        onDragEnd: () => setDropTarget(null),
-                      }
-                    : {};
+                  list === undefined
+                    ? {}
+                    : {
+                        ref: (el: HTMLSpanElement | null) =>
+                          el
+                            ? registerDropTarget(el, {
+                                accepts: (type) => type === CHANGES_MIME,
+                                over: () => setDropTarget(list),
+                                leave: () => setDropTarget(null),
+                                drop: (data) => {
+                                  setDropTarget(null);
+                                  moveToChangelist(data.payload.split("\n"), list);
+                                },
+                              })
+                            : undefined,
+                        ...(n.type !== "group" && {
+                          onPointerDown: (e: PointerEvent<HTMLSpanElement>) => {
+                            const paths =
+                              selected.has(n.key) && selected.size > 1
+                                ? filesOf(selectedNodes()).map((f) => f.path)
+                                : n.files.map((f) => f.path);
+                            startPointerDrag(e, e.currentTarget, {
+                              type: CHANGES_MIME,
+                              payload: paths.map(stripSlash).join("\n"),
+                            });
+                          },
+                        }),
+                      };
                 return (
                   <span
                     className={clsx(

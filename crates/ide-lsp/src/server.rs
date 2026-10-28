@@ -461,6 +461,11 @@ impl Server {
         d.iter().flat_map(|(p, items)| items.iter().map(move |i| (p.clone(), i.clone()))).collect()
     }
 
+    /// The current diagnostics of each file that has some.
+    pub fn diagnostics_by_path(&self) -> Vec<(PathBuf, Vec<lsp::Diagnostic>)> {
+        self.diagnostics.lock().iter().map(|(p, d)| (p.clone(), d.clone())).collect()
+    }
+
     pub fn take_diagnostic_paths(&self) -> Vec<PathBuf> {
         self.published.lock().clear();
         self.diagnostics.lock().drain().map(|(p, _)| p).collect()

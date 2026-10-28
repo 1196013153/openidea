@@ -161,6 +161,19 @@ pub fn jdtls_jdks(min_java: u32) -> Arc<[Jdk]> {
     }
 }
 
+/// For a server with `max-java`: when the `JAVA_HOME` it would get (its env,
+/// else the IDE's) is a newer JDK, points it at the newest of `jdks` that fits.
+pub fn cap_java_home(cfg: &mut LanguageServerConfig, jdks: &[Jdk]) {
+    let Some(max) = cfg.max_java else { return };
+    let current = cfg.env.get("JAVA_HOME").cloned().or_else(|| std::env::var("JAVA_HOME").ok());
+    if current.as_deref().and_then(|h| jdk_at(Path::new(h))).is_some_and(|j| j.major <= max) {
+        return;
+    }
+    if let Some(jdk) = jdks.iter().filter(|j| j.major <= max).max_by_key(|j| j.major) {
+        cfg.env.insert("JAVA_HOME".into(), jdk.home.to_string_lossy().into_owned());
+    }
+}
+
 /// Oldest Java version jdtls runs on when its install can't tell (its launcher's check).
 pub const JDTLS_MIN_JAVA: u32 = 21;
 

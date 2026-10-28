@@ -425,21 +425,29 @@ export function moveTabToNewSplit(
   const tab = src?.tabs.find((t) => t.id === tabId);
   if (!src || !tab || !s.panes[targetPane]) return null;
   if (fromPane === targetPane && src.tabs.length === 1) return null;
-  let next = { ...removeTabs(s, fromPane, new Set([tabId])), closed: s.closed };
+  const next = { ...removeTabs(s, fromPane, new Set([tabId])), closed: s.closed };
   // The source pane may have collapsed away; split the target if it survived, else the active pane.
   const anchor = next.panes[targetPane] ? targetPane : next.activePane;
-  const id = nextId("pane");
   const moved: Tab = { ...tab, preview: false };
-  const pane: Pane = { id, tabs: [moved], active: moved.id, mru: [moved.id] };
+  return splitAtEdge(next, anchor, edge, { tabs: [moved], active: moved.id, mru: [moved.id] });
+}
+
+/** A new pane (empty unless `content` is given) at `edge` of `anchor`, made active. */
+export function splitAtEdge(
+  s: TabsState,
+  anchor: string,
+  edge: SplitEdge,
+  content: Omit<Pane, "id"> = { tabs: [], active: null, mru: [] },
+): { state: TabsState; paneId: string } {
+  const id = nextId("pane");
   const dir = edge === "left" || edge === "right" ? "row" : "column";
   const before = edge === "left" || edge === "top";
-  const layout = mapLayout(next.layout, (n) => {
+  const layout = mapLayout(s.layout, (n) => {
     if (n.kind === "pane" && n.paneId === anchor) {
       const added: LayoutNode = { kind: "pane", paneId: id };
       return { kind: "split", id: nextId("split"), dir, children: before ? [added, n] : [n, added] };
     }
     return n;
   })!;
-  next = { ...next, layout, panes: { ...next.panes, [id]: pane }, activePane: id };
-  return { state: next, paneId: id };
+  return { state: { ...s, layout, panes: { ...s.panes, [id]: { id, ...content } }, activePane: id }, paneId: id };
 }

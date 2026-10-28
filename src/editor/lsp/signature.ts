@@ -107,6 +107,25 @@ async function fetchSignature(view: EditorView, explicit: boolean) {
   }
 }
 
+/**
+ * The caret was left inside the `()` of a completed call whose snippet doesn't
+ * say whether it takes arguments (jdtls `new ArrayList<>()`): parameter info
+ * when some signature has parameters, else the caret moves past `)`.
+ */
+export async function parameterInfoOrLeave(view: EditorView, inside: number) {
+  const doc = docOf(view);
+  const state = view.state;
+  let help: SignatureHelp | null = null;
+  try {
+    if (doc) help = await lspRequest(() => commands.lspSignatureHelp(doc.doc, offsetToPos(state.doc, inside)));
+  } catch {
+    // No signature help: treated as nothing to fill in.
+  }
+  if (view.state.doc !== state.doc || view.state.selection.main.head !== inside) return;
+  if (help?.signatures.some((sig) => sig.parameters.length)) view.dispatch({ effects: setSignature.of({ pos: inside, help }) });
+  else view.dispatch({ selection: EditorSelection.cursor(inside + 1) });
+}
+
 /** ⌘P or the completion command `editor.action.triggerParameterHints`. */
 export function triggerSignatureHelp(view: EditorView, explicit = false) {
   void fetchSignature(view, explicit);

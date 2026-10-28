@@ -11,7 +11,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -21,6 +20,7 @@ import { Icon, type IconName } from "./icons";
 import { IconButton } from "./Button";
 import { Menu, type MenuItem } from "./Menu";
 import { tooltipAttrs } from "./Tooltip";
+import { registerDropTarget, startPointerDrag } from "./pointerDrag";
 import { T } from "./T";
 import styles from "./Tabs.module.css";
 import { tx } from "@/platform/i18n";
@@ -148,37 +148,36 @@ export function Tabs({
     [register],
   );
 
-  const accepts = (e: DragEvent) => !!dnd && [...e.dataTransfer.types].includes(dnd.type);
-  const indexAt = (e: DragEvent) =>
-    dropIndex(
-      vertical ? e.clientY : e.clientX,
-      items.map((it) => {
-        const r = tabRefs.current.get(it.id)?.parentElement?.getBoundingClientRect();
-        return vertical ? { left: r?.top ?? 0, width: r?.height ?? 0 } : { left: r?.left ?? 0, width: r?.width ?? 0 };
-      }),
-    );
-  const dropHandlers = dnd
-    ? {
-        onDragOver: (e: DragEvent<HTMLDivElement>) => {
-          if (!accepts(e)) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          const i = indexAt(e);
-          if (i !== drop) setDrop(i);
-        },
-        onDragLeave: (e: DragEvent<HTMLDivElement>) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null);
-        },
-        onDrop: (e: DragEvent<HTMLDivElement>) => {
-          if (!accepts(e)) return;
-          e.preventDefault();
-          const payload = e.dataTransfer.getData(dnd.type);
-          const i = indexAt(e);
-          setDrop(null);
-          if (payload) dnd.onDrop(payload, i);
-        },
-      }
-    : {};
+  const stripRef = useRef<HTMLDivElement>(null);
+  // Re-read on every drag event: items and handlers change while the strip stays registered.
+  const dropState = useRef({ items, dnd, vertical });
+  useLayoutEffect(() => {
+    dropState.current = { items, dnd, vertical };
+  });
+  const dndType = dnd?.type;
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || !dndType) return;
+    const indexAt = (x: number, y: number) => {
+      const { items, vertical } = dropState.current;
+      return dropIndex(
+        vertical ? y : x,
+        items.map((it) => {
+          const r = tabRefs.current.get(it.id)?.parentElement?.getBoundingClientRect();
+          return vertical ? { left: r?.top ?? 0, width: r?.height ?? 0 } : { left: r?.left ?? 0, width: r?.width ?? 0 };
+        }),
+      );
+    };
+    return registerDropTarget(el, {
+      accepts: (type) => type === dropState.current.dnd?.type,
+      over: (_, x, y) => setDrop(indexAt(x, y)),
+      leave: () => setDrop(null),
+      drop: (data, x, y) => {
+        setDrop(null);
+        dropState.current.dnd?.onDrop(data.payload, indexAt(x, y));
+      },
+    });
+  }, [dndType]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -249,7 +248,7 @@ export function Tabs({
         closePosition === "left" && styles.closeLeft,
         className,
       )}
-      {...dropHandlers}
+      ref={stripRef}
     >
       {vertical && trailing && <div className={styles.trailing}>{trailing}</div>}
       <div
@@ -279,17 +278,17 @@ export function Tabs({
                 item.tint && styles.tinted,
               )}
               style={item.tint ? ({ "--tab-tint": item.tint } as CSSProperties) : undefined}
-              draggable={!!dnd}
-              onDragStart={
+              onPointerDown={
                 dnd
                   ? (e) => {
-                      e.dataTransfer.setData(dnd.type, dnd.payload(item.id));
-                      e.dataTransfer.effectAllowed = "move";
-                      setDragging(item.id);
+                      if ((e.target as Element).closest("[data-tab-close]")) return;
+                      startPointerDrag(e, e.currentTarget, { type: dnd.type, payload: dnd.payload(item.id) }, {
+                        onStart: () => setDragging(item.id),
+                        onEnd: () => setDragging(null),
+                      });
                     }
                   : undefined
               }
-              onDragEnd={dnd ? () => (setDragging(null), setDrop(null)) : undefined}
               onMouseDown={(e) => {
                 if (e.button === 1 && closable) {
                   e.preventDefault();
@@ -324,7 +323,7 @@ export function Tabs({
                 {item.modified && !closable && <span className={styles.modified} aria-label="Modified" />}
               </button>
               {closable && (
-                <span className={styles.closeSlot}>
+                <span className={styles.closeSlot} data-tab-close>
                   {item.modified && <span className={styles.modified} aria-label="Modified" />}
                   <IconButton
                     icon="close"

@@ -379,6 +379,8 @@ export interface OpenOptions {
   preview?: boolean;
   /** Open to the side (split right). */
   side?: boolean;
+  /** Open in this editor pane, in a tab of its own even when another pane shows the file. */
+  pane?: string;
   focus?: boolean;
   /** Open in the text editor even when a file editor provider claims the file (SVG as text). */
   asText?: boolean;

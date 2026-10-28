@@ -202,7 +202,8 @@ export const lspTheme = EditorView.theme({
   ".cm-lsp-diag-warning .cm-lsp-diag-icon": { color: "var(--warning)" },
   ".cm-lsp-diag-info .cm-lsp-diag-icon, .cm-lsp-diag-hint .cm-lsp-diag-icon": { color: "var(--info)" },
   ".cm-lsp-diag-message": { color: "var(--fg-strong)", whiteSpace: "pre-wrap", lineHeight: "18px" },
-  ".cm-lsp-diag-meta": { display: "flex", gap: "12px", marginTop: "6px", alignItems: "baseline" },
+  ".cm-lsp-diag-meta": { display: "flex", flexWrap: "wrap", columnGap: "12px", rowGap: "2px", marginTop: "6px", alignItems: "baseline" },
+  ".cm-lsp-diag-meta > *": { whiteSpace: "nowrap" },
   ".cm-lsp-diag-source": { color: "var(--fg-subtle)", fontSize: "var(--fs-small)" },
   ".cm-lsp-link-button": {
     border: "none",
@@ -311,9 +312,12 @@ export const lspTheme = EditorView.theme({
     color: "var(--fg-bulb, var(--warning))",
     cursor: "pointer",
   },
+  // Above the sticky gutters (z-index 200).
+  ".cm-lsp-bulb-gutter": { zIndex: "201", backgroundColor: "var(--bg-editor-gutter, var(--bg-editor))" },
   ".cm-lsp-bulb .cm-openidea-icon": { display: "inline-flex", borderRadius: "var(--radius-small)", padding: "1px" },
   ".cm-lsp-bulb:hover .cm-openidea-icon": { backgroundColor: "var(--bg-toolbar-hover)" },
-  ".cm-lsp-bulb-fix": { color: "var(--danger)" },
+  ".cm-lsp-bulb .cm-lsp-bulb-fix-icon, .cm-lsp-bulb-fix .cm-openidea-icon:first-child": { display: "none" },
+  ".cm-lsp-bulb-fix .cm-lsp-bulb-fix-icon": { display: "inline-flex" },
 
   // --- inlay hints (rounded grey chips) -------------------------------------
   ".cm-lsp-inlay": {

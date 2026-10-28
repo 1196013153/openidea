@@ -57,6 +57,12 @@ function ensureListening() {
   });
 }
 
+/** Resolves once backend events reach this window's handlers. */
+export async function ideEventsReady(): Promise<void> {
+  ensureListening();
+  await unlisten;
+}
+
 /** Subscribes to one backend event type (or `"*"`); returns an unsubscribe function. */
 export function onIdeEvent<K extends IdeEvent["type"]>(type: K | "*", handler: (event: EventOf<K>) => void): () => void {
   ensureListening();

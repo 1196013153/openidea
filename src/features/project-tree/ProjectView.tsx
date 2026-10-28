@@ -28,14 +28,17 @@ import { useEffectiveRoots } from "@/platform/projectRoots";
 import { macStroke, strokeOf } from "@/platform/keymap";
 import { prepareMenuGroups, useFileDecoration } from "@/workbench/contributions";
 import {
+  FILES_DRAG,
   HighlightedText,
   Icon,
   Popup,
+  dragSession,
   Tree,
   acquirePopup,
   fileIconName,
   folderIconName,
   showContextMenu,
+  type DragSession,
   type TreeHandle,
   type TreeRowState,
 } from "@/ui";
@@ -443,6 +446,8 @@ export function ProjectView() {
       startY = e.clientY;
     let active = false;
     let paths: string[] = [];
+    // Files (not folders) can also be dropped on an editor to open them there.
+    let files: DragSession | null = null;
     const move = (ev: PointerEvent) => {
       if (!active) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return;
@@ -454,10 +459,14 @@ export function ProjectView() {
         const nodes = keys.map((k) => m.byKey.get(k)).filter((n): n is ProjectNode => !!n && !n.root && !n.placeholder);
         paths = nodes.map((n) => n.path);
         if (!paths.length) return cleanup();
+        const filePaths = nodes.filter((n) => !n.dir).map((n) => n.path);
+        if (filePaths.length) files = dragSession({ type: FILES_DRAG, payload: filePaths.join("\n") });
       }
       const target = folderAt(containerRef.current, ev.clientX, ev.clientY);
       const valid = target && !paths.some((p) => target.path === p || isInside(target.path, p));
       setDropTarget(valid ? target.key : null);
+      if (target) files?.cancel();
+      else files?.move(ev.clientX, ev.clientY);
       setDrag({
         paths,
         label: paths.length === 1 ? nameOf(paths[0]!) : tx`${paths.length} items`,
@@ -469,8 +478,11 @@ export function ProjectView() {
     const up = (ev: PointerEvent) => {
       const target = active ? folderAt(containerRef.current, ev.clientX, ev.clientY) : null;
       const valid = target && !paths.some((p) => target.path === p || isInside(target.path, p));
+      const session = files;
+      files = null;
       cleanup();
       if (active && valid) void dropPaths(paths, target.path, ev.altKey);
+      else if (active && !target) session?.drop(ev.clientX, ev.clientY);
     };
     const key = (ev: KeyboardEvent) => {
       if (ev.key === "Escape" && active) {
@@ -483,6 +495,7 @@ export function ProjectView() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("keydown", key, true);
+      files?.cancel();
       setDropTarget(null);
       setDrag(null);
     };

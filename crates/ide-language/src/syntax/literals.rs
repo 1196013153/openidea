@@ -79,20 +79,24 @@ fn is_name_leaf(kind: &str) -> bool {
     kind.contains("identifier") || kind == "name"
 }
 
+/// Node kinds whose `name` field is a use, not a declaration.
+const USE_PARENTS: &[&str] =
+    &["invocation", "call", "access", "scoped", "reference", "expression", "selector", "qualified", "use_", "import"];
+
 /// Whether the identifier leaf under `cursor` is the name a declaration
 /// introduces (`fn name`, `let pattern`, `int *declarator`, parameters,
 /// `name = …` assignments) rather than a use of one.
 fn declares(cursor: &TreeCursor<'_>, node: &Node<'_>) -> bool {
     let parent = node.parent().map(|p| p.kind()).unwrap_or_default();
-    // Paths and calls name what is declared elsewhere (`use a::b::name`, `a.name()`).
-    let reference = ["scoped", "qualified", "invocation", "member_access", "use_", "import", "call"]
-        .iter()
-        .any(|k| parent.contains(k));
     match cursor.field_name() {
-        Some("name") => !reference,
+        // Uses name their target with a `name` field too: Java `s.substring()`,
+        // C# `a.Name`, Rust `use a::b::name`.
+        Some("name") => !USE_PARENTS.iter().any(|p| parent.contains(p)),
         Some("pattern" | "declarator") => true,
         Some("left") => parent.contains("assignment") || parent.contains("declarator"),
-        _ => parent.contains("parameter"),
+        // A parameter's name, not its type (`String text`).
+        Some("type") => false,
+        _ => parent.contains("parameter") && !node.kind().contains("type"),
     }
 }
 

@@ -41,7 +41,7 @@ export function completionSymbolKind(kind: CompletionKind | null): string {
  * original label is shown through `displayLabel`.
  */
 export function toCmCompletion(item: CompletionItem): Completion {
-  const filter = item.filterText && item.filterText !== item.label ? item.filterText : null;
+  const filter = item.filterText && item.filterText !== item.label && !extendsLabel(item) ? item.filterText : null;
   const c: Completion = {
     label: filter ?? item.label,
     type: completionSymbolKind(item.kind),
@@ -53,6 +53,62 @@ export function toCmCompletion(item: CompletionItem): Completion {
   else if (item.deprecated) c.boost = -20;
   if (item.commitCharacters.length) c.commitCharacters = item.commitCharacters;
   return c;
+}
+
+/**
+ * A `filterText` that is the label plus what the item inserts after it (jdtls
+ * `String(${0})`, `List<>()`): typing a word never reaches that part, and
+ * matching on it would rank the exact `String` like `StringBuilder`.
+ */
+function extendsLabel(item: CompletionItem): boolean {
+  const rest = item.filterText!.slice(item.label.length);
+  return item.filterText!.startsWith(item.label) && /^[^\p{L}\p{N}_$]/u.test(rest);
+}
+
+/**
+ * Items that look and insert the same, listed once. kotlin-language-server
+ * repeats a class once per classpath entry declaring it (`String()` ×3);
+ * these all have their own `apply` (see `makeCompletion`), so CodeMirror
+ * wouldn't merge them.
+ */
+export function withoutDuplicates(items: readonly CompletionItem[]): CompletionItem[] {
+  const seen = new Set<string>();
+  return items.filter((it) => {
+    const key = JSON.stringify([it.server, it.label, it.labelDetail, it.detail, it.kind, it.insertText, it.additionalEdits]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const IMPORT_SOURCE = [
+  /^\s*from\s+([\w.]+)\s+import\b/m, // Python
+  /^\s*import\s+(?:static\s+)?([\w.]+?)\.\w+;?\s*$/m, // Java, Kotlin
+  /^\s*use\s+([\w:]+)::/m, // Rust
+  /\bfrom\s+["']([^"']+)["']/, // JS / TS
+];
+
+/**
+ * Where an auto-import item comes from (`collections`, `java.util`): the
+ * module its import edit names. Servers like pyright put it nowhere else, so
+ * same-named items (`OrderedDict` from typing / collections) look identical.
+ */
+export function importSource(item: Pick<CompletionItem, "additionalEdits">): string | null {
+  for (const e of item.additionalEdits) {
+    for (const re of IMPORT_SOURCE) {
+      const m = re.exec(e.new_text);
+      if (m) return m[1]!;
+    }
+  }
+  return null;
+}
+
+/** Text of the right-aligned type column: the detail, with the import source when it lacks one. */
+export function typeColumnText(item: Pick<CompletionItem, "detail" | "additionalEdits">): string | null {
+  const detail = item.detail?.replace(/\s+/g, " ") || null;
+  const source = importSource(item);
+  if (!source || detail?.includes(source)) return detail;
+  return !detail || /^auto[- ]?import$/i.test(detail) ? source : `${detail} (${source})`;
 }
 
 const WORD_CHAR = /[\p{L}\p{N}_$]/u;

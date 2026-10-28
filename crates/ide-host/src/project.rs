@@ -119,6 +119,7 @@ impl Host {
                 let effective = settings.effective();
                 ide_sdk::apply::server_launch_overrides(cfg, &effective);
                 ide_sdk::apply::configure_server(cfg, &root, server_root, &effective);
+                ide_sdk::java::cap_java_home(cfg, &ide_sdk::java::installed_jdks());
                 if cfg.name == "jdtls" {
                     let bundles: Vec<PathBuf> =
                         ide_tools::managed_bundle(&data_dir, "java-debug").into_iter().collect();

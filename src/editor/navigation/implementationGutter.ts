@@ -14,7 +14,7 @@ import { RangeSet, StateEffect, StateField, type Extension, type Text } from "@c
 import { EditorView, GutterMarker, ViewPlugin, gutter, type ViewUpdate } from "@codemirror/view";
 import type { EditorDocContext } from "@/editor/api";
 import { docOf, debounce, isUnavailable, lspRequest } from "@/editor/lsp/lsp";
-import { serverBackoff } from "@/editor/lsp/availability";
+import { onServerSettled, serverBackoff } from "@/editor/lsp/availability";
 import { readManyFileLines, withDocument } from "@/editor/lsp/files";
 import { locationItems, navigateTo, pinToFind } from "@/editor/lsp/navigation";
 import { openPopup } from "@/editor/lsp/popupStore";
@@ -22,7 +22,6 @@ import {
   commands,
   isCancelled,
   nextRequestId,
-  onIdeEvent,
   type HierarchyItem,
   type Location,
   type OutlineItem,
@@ -241,8 +240,7 @@ class MarkersPlugin {
       if (s.settings !== prev.settings) this.refresh();
     });
     // Answers given while a server was starting or indexing may be incomplete.
-    this.offServers = onIdeEvent("languageServer", (e) => {
-      if (e.status !== "ready") return;
+    this.offServers = onServerSettled(() => {
       this.invalidate();
       this.refresh();
     });

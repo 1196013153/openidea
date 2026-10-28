@@ -7,7 +7,7 @@ import {
   protectedRegions,
   type FormatGuardOptions,
 } from "@/platform/formatGuard";
-import { formattedLines } from "./format";
+import { dedentsToColumnZero, formattedLines } from "./format";
 
 describe("formattedLines", () => {
   const doc = Text.of(["fn  main(){", "let x=1;", "}", "", "fn other() {}"]);
@@ -95,5 +95,13 @@ describe("formatter markers and Do not format", () => {
     expect(formatExcluded("/p/docs/a.md", "/p", globs)).toBe(true);
     expect(formatExcluded("/p/src/app.js", "/p", globs)).toBe(false);
     expect(formatExcluded("/p/other/docs.md", "/p", globs)).toBe(false);
+  });
+});
+
+describe("dedentsToColumnZero", () => {
+  it("spots range formatting done without the surrounding code", () => {
+    expect(dedentsToColumnZero("\n    override fun f() { }\n", "\noverride fun f() {}\n")).toBe(true);
+    expect(dedentsToColumnZero("\n\tfun f() {\n\t}\n", "\n    fun f() {\n    }\n")).toBe(false);
+    expect(dedentsToColumnZero("fun f() {}\n", "fun f() { }\n")).toBe(false);
   });
 });

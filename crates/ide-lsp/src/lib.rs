@@ -56,6 +56,12 @@ use types::*;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const COMPLETION_TIMEOUT: Duration = Duration::from_secs(5);
 const LONG_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long a server may take to answer `initialize`. Some import the whole
+/// build there (kotlin-lsp, jdtls on a large Gradle project) and need minutes
+/// on a cold start; the status shows "starting" meanwhile, and a crash still
+/// ends the wait at once.
+const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(300);
 /// How long a request waits for a server that is still initializing.
 const START_WAIT: Duration = Duration::from_secs(10);
 /// File moves may start a server (jdtls takes a while to import).
@@ -421,7 +427,7 @@ impl LspManager {
         };
 
         let init = self.initialize_params(&server);
-        let result = tokio::time::timeout(Duration::from_secs(60), peer.request::<_, Value>("initialize", init, None))
+        let result = tokio::time::timeout(INITIALIZE_TIMEOUT, peer.request::<_, Value>("initialize", init, None))
             .await
             .unwrap_or(Err(RpcError::Timeout));
         let caps = match result {
@@ -1951,6 +1957,24 @@ impl LspManager {
 
     pub fn set_apply_edit_hook(&self, hook: Box<dyn Fn(WorkspaceEdit) -> bool + Send + Sync>) {
         *self.apply_edit_hook.write() = Some(Arc::from(hook));
+    }
+
+    /// Emits every server's current diagnostics again: a UI that (re)loaded
+    /// after they were published has missed those events.
+    pub fn resend_diagnostics(&self) {
+        let servers: Vec<Arc<Server>> = self.servers.lock().clone();
+        for server in servers {
+            let encoding = server.running().map(|r| r.caps.read().encoding).unwrap_or_default();
+            let conv = self.conv(encoding);
+            for (path, items) in server.diagnostics_by_path() {
+                let items = items.into_iter().map(|d| convert::diagnostic(&conv, &path, d, &server.name)).collect();
+                self.sink.emit(ide_core::IdeEvent::Diagnostics {
+                    path: path.into(),
+                    source: server.name.clone(),
+                    items,
+                });
+            }
+        }
     }
 
     pub fn servers(&self) -> Vec<ServerInfo> {

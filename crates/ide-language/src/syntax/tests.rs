@@ -1320,4 +1320,13 @@ fn spelling_regions_cover_declared_names_only() {
         .map(|r| &rs[r.start..r.end])
         .collect();
     assert_eq!(names, ["run", "n"]);
+    let java = "class Bird { String fly(String text) { return text.substring(1); } }\n";
+    let names: Vec<&str> = syntax()
+        .spelling_regions(&lang("java"), java)
+        .unwrap()
+        .iter()
+        .filter(|r| r.kind == SpellingKind::Name)
+        .map(|r| &java[r.start..r.end])
+        .collect();
+    assert_eq!(names, ["Bird", "fly", "text"]);
 }
