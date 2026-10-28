@@ -1073,7 +1073,7 @@ export type AgentTask = {
 	branch: string | null,
 	/**  Branch (or revision) the worktree was created from. */
 	base: string | null,
-	/**  Commit the task's changes are compared against. */
+	/**  Commit the task's changes are compared against (worktree tasks; local ones use `HEAD`). */
 	baseCommit: string | null,
 	/**  Why the task failed, when it did. */
 	error: string | null,
