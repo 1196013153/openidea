@@ -15,7 +15,10 @@ import styles from "../../components/Form.module.css";
 function NaturalLanguagesPage() {
   return (
     <Section title="Languages">
-      <Row label="English (USA)" hint="Bundled Hunspell dictionary (SCOWL en_US) and common programming terms.">
+      <Row
+        label="English (USA, UK)"
+        hint="Bundled Hunspell dictionaries (SCOWL en_US and en_GB) and common programming terms."
+      >
         <span className={styles.hint}>
           <T>Used by Proofreading › Typo</T>
         </span>
