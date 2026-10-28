@@ -406,6 +406,12 @@ export const VCS_PAGES: PageSpec[] = [
             label: "Highlight directories that contain modified files in the Project tree",
           },
           {
+            kind: "toggle",
+            key: "vcs.inlineBlame",
+            label: "Show Git blame for the current line",
+            hint: "Shows the author, date and subject of the last commit that changed the caret line at its end.",
+          },
+          {
             kind: "select",
             key: "vcs.confirmation.onPatchCreated",
             label: "When patch is created",

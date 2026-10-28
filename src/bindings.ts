@@ -5690,6 +5690,8 @@ export type VcsSettings = {
 	commit?: CommitSettings,
 	confirmation?: VcsConfirmationSettings,
 	shelf?: ShelfSettings,
+	/**  Inline blame: author, date and subject of the caret line's commit at its end. */
+	inlineBlame?: boolean,
 	/**  Issue Navigation: commit-message patterns turned into links. */
 	issueNavigation?: IssueLink[],
 };

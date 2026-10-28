@@ -4498,6 +4498,8 @@
   "Highlight directories that contain modified files in the Project tree": "在项目树中高亮显示包含已修改文件的目录",
   "When patch is created": "创建补丁后",
   "Warn when committing files larger than": "提交大于以下大小的文件时发出警告",
+  "Show Git blame for the current line": "显示当前行的 Git Blame 信息",
+  "Shows the author, date and subject of the last commit that changed the caret line at its end.": "在光标所在行的行尾显示最后一次修改该行的提交的作者、时间和摘要。",
   "Warn when committing files with names that might cause issues on other systems": "提交文件名可能在其他系统上引发问题的文件时发出警告",
   "Show Push dialog for Commit and Push": "提交并推送时显示推送对话框",
   "Show Push dialog only when committing to protected branches": "仅在提交到受保护分支时显示推送对话框",
