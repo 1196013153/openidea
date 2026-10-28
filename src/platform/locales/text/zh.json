@@ -4168,7 +4168,6 @@
   "0 results": "0 个结果",
   "Time the agent took to answer": "智能体回答所用的时间",
   "Time the agent spent on this task": "智能体在此任务上花费的时间",
-  "Edit and Resend": "编辑后重新发送",
   "Send Again": "再次发送",
   "Customize IDE appearance and behavior: change themes and font size, configure system settings and notifications.": "自定义 IDE 的外观和行为：更改主题和字号，配置系统设置和通知。",
   "Configure code editing: completion, folding, tabs, fonts, colors, code style and inspections.": "配置代码编辑：补全、折叠、标签页、字体、配色、代码样式和检查。",
@@ -4566,6 +4565,6 @@
   "Copy to a New Task": "复制为新任务",
   "Couldn't copy the task": "无法复制任务",
   "Copy to a New Task From Here": "从此处复制为新任务",
-  "Undo From Here": "从此处撤销",
-  "Remove this message and everything after it from the conversation? Files the agent changed stay as they are.": "从对话中移除这条消息及其后的所有内容？Agent 改动过的文件保持不变。"
+  "Run Again From Here": "从此处重新运行",
+  "The messages after this one are replaced. Files the agent changed stay as they are.": "这条之后的消息会被替换。Agent 改动过的文件保持不变。"
 }

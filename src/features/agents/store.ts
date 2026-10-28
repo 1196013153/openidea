@@ -13,8 +13,6 @@ import type {
 } from "@/bindings";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { editorService, notifications } from "@/workbench/contributions";
-import { confirm } from "@/workbench/messages";
-import { tx } from "@/platform/i18n";
 import { canSend, emptyDraft, toPrompt, type ComposerDraft, type FileRef } from "./composerModel";
 import { withQuote } from "./conversation";
 import {
@@ -347,13 +345,6 @@ export function quoteInComposer(task: string, text: string) {
   focusComposer(task);
 }
 
-/** Puts an earlier message back into the composer to edit and send again. */
-export function editMessage(task: string, text: string) {
-  const current = composerDraft(task).text;
-  updateComposer(task, { text: current.trim() ? `${text}\n${current}` : text });
-  focusComposer(task);
-}
-
 /** Copies the task's conversation into a new task (up to its first `turns` turns) and opens it. */
 export async function forkTask(task: string, turns: number | null): Promise<void> {
   const copy = await call(commands.agentFork(task, turns));
@@ -363,16 +354,32 @@ export async function forkTask(task: string, turns: number | null): Promise<void
   openTask(copy.id);
 }
 
-/** Drops the task's turns after its first `turns` and puts the first dropped message back in the composer. */
-export async function rewindTask(task: string, turns: number): Promise<void> {
-  const ok = await confirm({
-    title: "Undo From Here",
-    message: tx`Remove this message and everything after it from the conversation? Files the agent changed stay as they are.`,
-    ok: "Undo",
+/**
+ * Runs the conversation again from turn `turn` with `text` as its message: the agent is
+ * stopped if it works, that turn and the later ones are dropped, then `text` is sent.
+ */
+export async function rerunFrom(task: string, turn: number, text: string): Promise<void> {
+  if (isBusy(useAgents.getState().tasks.get(task)?.status ?? "ready")) {
+    await cancelTask(task);
+    await settled(task);
+  }
+  await call(commands.agentRollback(task, turn));
+  await call(commands.agentPrompt(task, { text, files: [], images: [] }, false));
+}
+
+/** Resolves once the task's turn has ended (or after a while). */
+function settled(task: string, timeoutMs = 15_000): Promise<void> {
+  const done = () => !isBusy(useAgents.getState().tasks.get(task)?.status ?? "ready");
+  if (done()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      stop();
+      clearTimeout(timer);
+      resolve();
+    };
+    const stop = useAgents.subscribe(() => done() && finish());
+    const timer = setTimeout(finish, timeoutMs);
   });
-  if (!ok) return;
-  const message = await call(commands.agentRollback(task, turns));
-  if (message?.text) editMessage(task, message.text);
 }
 
 /** Sends an earlier message again (queued while the agent works). */

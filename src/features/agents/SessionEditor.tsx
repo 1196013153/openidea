@@ -48,10 +48,9 @@ import {
   loadEntries,
   markVisible,
   refreshChanges,
-  editMessage,
   editQueued,
   forkTask,
-  rewindTask,
+  rerunFrom,
   quoteInComposer,
   removeQueued,
   resendMessage,
@@ -664,14 +663,29 @@ function UserMessage({
   turnCount: number;
 }) {
   const tx = useTx();
-  const fail = (e: unknown) =>
-    notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) });
+  const [editing, setEditing] = useState(false);
   const failed = (title: string) => (e: unknown) => notifications().notify({ level: "error", title, body: String(e) });
+  const fail = failed("Couldn't send the message");
   const archived = task.status === "archived";
   const idle = !archived && !isBusy(task.status) && turn !== null;
   const { fork = false, rollback = false } = task.capabilities ?? {};
+  // Editing and running again from a message need an agent that can drop turns.
+  const inPlace = !archived && rollback && turn !== null;
   // A copy up to an earlier turn drops the later ones from the copied session.
   const canFork = idle && fork && (rollback || turn === turnCount - 1);
+  if (editing && turn !== null) {
+    return (
+      <MessageEditor
+        initial={entry.text}
+        later={turn < turnCount - 1}
+        onCancel={() => setEditing(false)}
+        onSend={(text) => {
+          setEditing(false);
+          void rerunFrom(task.id, turn, text).catch(fail);
+        }}
+      />
+    );
+  }
   return (
     <div className={styles.message}>
       <div className={styles.user}>
@@ -695,25 +709,22 @@ function UserMessage({
         )}
         {entry.sentMs != null && entry.doneMs != null && (
           <span className={styles.muted} title={tx("Time the agent took to answer")}>
-            {`\u00a0· ${formatDuration(entry.doneMs - entry.sentMs)}`}
+            {` · ${formatDuration(entry.doneMs - entry.sentMs)}`}
           </span>
         )}
         <span className={styles.messageActions}>
           <IconButton icon="copy" title="Copy" size="small" onClick={() => void copyText(entry.text)} />
-          {!archived && entry.text && (
-            <IconButton
-              icon="edit"
-              title="Edit and Resend"
-              size="small"
-              onClick={() => editMessage(task.id, entry.text)}
-            />
+          {inPlace && entry.text && (
+            <IconButton icon="edit" title="Edit" size="small" onClick={() => setEditing(true)} />
           )}
           {!archived && entry.text && entry.attachments.length === 0 && (
             <IconButton
               icon="refresh"
-              title="Send Again"
+              title={inPlace ? "Run Again From Here" : "Send Again"}
               size="small"
-              onClick={() => void resendMessage(task.id, entry.text).catch(fail)}
+              onClick={() =>
+                void (inPlace ? rerunFrom(task.id, turn, entry.text) : resendMessage(task.id, entry.text)).catch(fail)
+              }
             />
           )}
           {canFork && (
@@ -724,14 +735,63 @@ function UserMessage({
               onClick={() => void forkTask(task.id, turn + 1).catch(failed("Couldn't copy the task"))}
             />
           )}
-          {idle && rollback && (
-            <IconButton
-              icon="undo"
-              title="Undo From Here"
-              size="small"
-              onClick={() => void rewindTask(task.id, turn).catch(failed("Couldn't undo the turns"))}
-            />
-          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** An earlier message edited where it is: sending runs the conversation again from it. */
+function MessageEditor({
+  initial,
+  later,
+  onCancel,
+  onSend,
+}: {
+  initial: string;
+  /** Turns follow it (they are dropped on send). */
+  later: boolean;
+  onCancel: () => void;
+  onSend: (text: string) => void;
+}) {
+  const tx = useTx();
+  const [text, setText] = useState(initial);
+  const send = () => {
+    if (text.trim()) onSend(text.trim());
+  };
+  return (
+    <div className={styles.message}>
+      <textarea
+        className={styles.editMessage}
+        value={text}
+        rows={Math.min(Math.max(text.split("\n").length, 2), 12)}
+        autoFocus
+        aria-label={tx("Message")}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={(e) => e.currentTarget.setSelectionRange(text.length, text.length)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            send();
+          }
+        }}
+      />
+      <div className={styles.editBar}>
+        {later && (
+          <span className={styles.muted}>
+            <T>The messages after this one are replaced. Files the agent changed stay as they are.</T>
+          </span>
+        )}
+        <span className={styles.editButtons}>
+          <Button size="small" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button size="small" variant="primary" disabled={!text.trim()} onClick={send}>
+            Send
+          </Button>
         </span>
       </div>
     </div>
