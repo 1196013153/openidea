@@ -164,22 +164,14 @@ interface StreamProps {
 }
 
 function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps) {
-  const tx = useTx();
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const [atBottom, setAtBottom] = useState(true);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   });
   const waiting = entries?.some((e) => e.type === "permission" && !e.chosen);
   const lastUser = entries?.findLast((e): e is UserEntry => e.type === "user");
-  const toBottom = () => {
-    const el = ref.current;
-    if (!el) return;
-    stick.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  };
   return (
     <div className={styles.streamArea}>
       {finding && <FindBar streamRef={ref} focus={findFocus} onClose={onCloseFind} />}
@@ -191,7 +183,6 @@ function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps)
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-          setAtBottom(stick.current);
         }}
         // Copy, plus Quote for a selection: replies to it in the composer.
         onContextMenu={(e) => {
@@ -218,14 +209,6 @@ function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps)
           </div>
         )}
       </div>
-      {!atBottom && (
-        <IconButton
-          icon="arrow-down"
-          title={tx("Jump to Bottom")}
-          className={styles.jumpToBottom}
-          onClick={toBottom}
-        />
-      )}
     </div>
   );
 }

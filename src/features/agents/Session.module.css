@@ -96,7 +96,7 @@
   cursor: default;
 }
 
-/* The conversation plus what floats over it (find bar, Jump to Bottom). */
+/* The conversation with its find bar. */
 .streamArea {
   position: relative;
   flex: 1;
@@ -155,16 +155,6 @@
 .messageActions:focus-within {
   opacity: 1;
   pointer-events: auto;
-}
-
-.jumpToBottom {
-  position: absolute;
-  right: 16px;
-  bottom: 12px;
-  background: var(--bg-popup);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  box-shadow: var(--shadow-tooltip);
 }
 
 .findBar {
