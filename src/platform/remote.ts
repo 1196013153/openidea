@@ -96,15 +96,21 @@ export async function restoreRemote(): Promise<RemoteSession | null> {
   return session;
 }
 
-/** Where the connection in progress is (`null`: none). */
-export const useRemoteProgress = create<{ progress: RemoteProgress | null }>(() => ({ progress: null }));
+/** Where the connection in progress is, and to which location (`null`: none). */
+export const useRemoteProgress = create<{ progress: RemoteProgress | null; location: string | null }>(() => ({
+  progress: null,
+  location: null,
+}));
 
 /** Opens `path` on the host of SSH configuration `sshConfig` in this window. */
 export async function connectRemote(sshConfig: string, path: string) {
   useProject.setState({ opening: true });
   const onProgress = new Channel<RemoteProgress>();
   onProgress.onmessage = (progress) => useRemoteProgress.setState({ progress });
-  useRemoteProgress.setState({ progress: { stage: "connecting", fraction: null } });
+  useRemoteProgress.setState({
+    progress: { stage: "connecting", fraction: null },
+    location: remoteLocation(sshConfig, path),
+  });
   try {
     const r = await call(commands.remoteConnect(sshConfig, path, onProgress));
     enableRemote({ sshConfig: r.sshConfig, root: r.root, host: r.host, commands: r.commands });
@@ -119,7 +125,7 @@ export async function connectRemote(sshConfig: string, path: string) {
     return r;
   } finally {
     useProject.setState({ opening: false });
-    useRemoteProgress.setState({ progress: null });
+    useRemoteProgress.setState({ progress: null, location: null });
   }
 }
 

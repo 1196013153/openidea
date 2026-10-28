@@ -7,9 +7,10 @@ import type { Action } from "@/platform/actions";
 import { t } from "@/platform/i18n";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { basename, confirmLeaveProject, openProject, provideStartupLaunch, useProject } from "@/platform/project";
+import { connectRemote } from "@/platform/remote";
 import { holdSplash } from "@/platform/splash";
 import { notifications } from "@/workbench/contributions";
-import { ask } from "@/workbench/messages";
+import { chooseProjectWindow } from "@/workbench/projectWindow";
 
 export const LAUNCH_EVENT = "openidea://launch";
 
@@ -58,42 +59,14 @@ export async function openProjectInWindow(path: string, newWindow: boolean): Pro
   }
 }
 
-/** System Settings › Project › "Open project in": `new` | `same` | `ask`. */
-export function openPolicy(): "ask" | "new" | "same" {
-  const v = useProject.getState().settings?.general?.openProjectIn;
-  return v === "new" || v === "same" ? v : "ask";
-}
-
 /** Opens `path` following "Open project in" when this window already has a project. */
 export async function openProjectWithPolicy(path: string): Promise<void> {
   if (desktopOnly()) return;
   const current = useProject.getState().project;
   if (!current) return openProjectInWindow(path, false);
   if (current.root === path) return;
-  let mode = openPolicy();
-  if (mode === "ask") {
-    const r = await ask({
-      title: t("app.window.askTitle"),
-      body: t("app.window.askBody", { name: basename(path) }),
-      buttons: [
-        { id: "new", label: t("app.window.askNew") },
-        { id: "same", label: t("app.window.askThis"), primary: true },
-        { id: "cancel", label: t("common.cancel") },
-      ],
-      checkbox: t("app.window.askRemember"),
-    });
-    if (r.button !== "same" && r.button !== "new") return;
-    mode = r.button;
-    if (r.checked) {
-      try {
-        useProject.setState({
-          settings: await call(commands.settingsSet("global", "general.openProjectIn", JSON.stringify(mode))),
-        });
-      } catch {
-        /* the choice still applies to this open */
-      }
-    }
-  }
+  const mode = await chooseProjectWindow(basename(path));
+  if (!mode) return;
   if (mode === "new") return openProjectInWindow(path, true);
   try {
     // A window that already has the project is focused instead.
@@ -121,6 +94,17 @@ export async function consumeLaunch(): Promise<void> {
   if (!isTauri()) return;
   const launch = await commands.windowTakeLaunch().catch(() => null);
   if (launch?.project) await openHere(launch.project);
+  else if (launch?.remote) {
+    const { sshConfig, path } = launch.remote;
+    await connectRemote(sshConfig, path).catch((e) =>
+      notifications().notify({
+        level: "error",
+        title: t("app.window.openFailed", { name: basename(path) }),
+        body: errorText(e),
+        key: `app.open:${path}`,
+      }),
+    );
+  }
 }
 
 export function windowActions(): Action[] {

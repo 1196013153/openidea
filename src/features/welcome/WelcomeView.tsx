@@ -6,7 +6,7 @@ import { useT, useTx } from "@/platform/i18n";
 import { isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { useRemoteProgress } from "@/platform/remote";
-import { stageLabel } from "@/features/remote-dev/model";
+import { stageLabel, useConnectDialog } from "@/features/remote-dev/model";
 import { Icon, IconButton, Menu, ProgressBar, Spinner, type MenuItem, T } from "@/ui";
 import { useSettingsPages } from "@/workbench/contributions";
 import { ErrorBoundary, Slot } from "@/workbench/ErrorBoundary";
@@ -113,7 +113,7 @@ function useFolderDrop(): boolean {
   return over;
 }
 
-/** The last session's project opening at startup; a remote one shows how far connecting is. */
+/** A project opening at startup or in a new window; a remote one shows how far connecting is. */
 function Reopening({ location }: { location: string }) {
   const tx = useTx();
   const progress = useRemoteProgress((s) => s.progress);
@@ -139,6 +139,10 @@ export function WelcomeView() {
   const t = useT();
   const version = useRecent((s) => s.version);
   const reopening = useSession((s) => s.reopening);
+  // A remote project connecting with no dialog or list row to show it (a new window's).
+  const connecting = useRemoteProgress((s) => s.location);
+  const connectDialog = useConnectDialog((s) => s.open);
+  const listOpening = useRecent((s) => s.opening);
   const opening = useProject((s) => s.opening);
   const Plugins = useSettingsPages((s) => s.pages.get(PLUGINS_PAGE)?.component);
   const [page, setPage] = useState<WelcomePage>("projects");
@@ -150,6 +154,7 @@ export function WelcomeView() {
   }, []);
 
   if (reopening) return <Reopening location={reopening} />;
+  if (connecting && !connectDialog && !listOpening) return <Reopening location={connecting} />;
 
   return (
     <div className={styles.welcome}>

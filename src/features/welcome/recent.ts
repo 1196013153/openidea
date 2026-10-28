@@ -7,6 +7,7 @@ import { connectRemote, forgetRemote, parseRemoteLocation, recentRemotes, remote
 import { tx } from "@/platform/i18n";
 import { fuzzyMatch } from "@/ui";
 import { notifications } from "@/workbench/contributions";
+import { openRemoteProject } from "@/workbench/projectWindow";
 
 interface RecentState {
   projects: RecentProject[];
@@ -131,10 +132,11 @@ async function openRemote(
   project: Pick<RecentProject, "path" | "name">,
   remote: { sshConfig: string; path: string },
 ): Promise<boolean> {
-  useRecent.setState({ opening: project.path });
   try {
-    await connectRemote(remote.sshConfig, remote.path);
-    return true;
+    return await openRemoteProject(remote.sshConfig, remote.path, async () => {
+      useRecent.setState({ opening: project.path });
+      await connectRemote(remote.sshConfig, remote.path);
+    });
   } catch (e) {
     notifications().notify({
       level: "error",

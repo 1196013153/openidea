@@ -578,6 +578,11 @@ export const commands = {
 	 *  itself (`current`). A project already open in some window is focused instead.
 	 */
 	windowOpenProject: (path: string, newWindow: boolean) => typedError<OpenOutcome, IdeError>(__TAURI_INVOKE("window_open_project", { path, newWindow })),
+	/**
+	 *  [`window_open_project`] for folder `path` on the host of SSH configuration
+	 *  `ssh_config` (Remote Development); a new window connects itself.
+	 */
+	windowOpenRemote: (sshConfig: string, path: string, newWindow: boolean) => typedError<OpenOutcome, IdeError>(__TAURI_INVOKE("window_open_remote", { sshConfig, path, newWindow })),
 	/**  Opens an empty (welcome) window; returns its label. */
 	windowNew: () => typedError<string, IdeError>(__TAURI_INVOKE("window_new")),
 	/**
@@ -593,6 +598,8 @@ export const commands = {
 	windowTakeLaunch: () => __TAURI_INVOKE<{
 	/**  Project folder to open. */
 	project: IpcPath | null,
+	/**  Remote project to open (Remote Development). */
+	remote: RemoteLaunch | null,
 	/**  Settings windows: the page to show. */
 	settingsPage: string | null,
 	/**  Settings windows: edit the global layer only ("Settings for New Projects"). */
@@ -3510,6 +3517,8 @@ export type LanguagesSettings = {
 export type Launch = {
 	/**  Project folder to open. */
 	project: IpcPath | null,
+	/**  Remote project to open (Remote Development). */
+	remote: RemoteLaunch | null,
 	/**  Settings windows: the page to show. */
 	settingsPage: string | null,
 	/**  Settings windows: edit the global layer only ("Settings for New Projects"). */
@@ -4459,6 +4468,12 @@ export type RemoteEntry = {
 	mtime: number | null,
 	/**  `rwxr-xr-x`. */
 	permissions: string,
+};
+
+/**  A project folder on the host of an SSH configuration. */
+export type RemoteLaunch = {
+	sshConfig: string,
+	path: string,
 };
 
 export type RemoteOp = { op: "fetch" } | { op: "pull"; rebase: boolean } | { op: "push"; force_with_lease: boolean; set_upstream: boolean; 

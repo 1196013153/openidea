@@ -1,6 +1,6 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import type { RecentProject } from "@/platform/ipc";
+import { call, commands, type RecentProject } from "@/platform/ipc";
 import { parseRemoteLocation } from "@/platform/remote";
 import {
   HighlightedText,
@@ -39,8 +39,8 @@ export function ProjectBadge({ name, className }: { name: string; className?: st
 }
 
 export function recentMenu(project: RecentProject, onOpened?: () => void): MenuItem[] {
-  // A remote project opens in this window only, and has no local folder.
-  const local = parseRemoteLocation(project.path) === null;
+  // A remote project has no local folder.
+  const remote = parseRemoteLocation(project.path);
   const items: MenuItem[] = [
     {
       id: "open",
@@ -48,7 +48,17 @@ export function recentMenu(project: RecentProject, onOpened?: () => void): MenuI
       icon: "folder-open",
       run: () => void openRecent(project).then((ok) => ok && onOpened?.()),
     },
-    { kind: "action", action: "file.openInNewWindow", arg: project.path, label: "Open in New Window" },
+    remote
+      ? {
+          id: "openInNewWindow",
+          label: "Open in New Window",
+          icon: "folder-open",
+          run: () =>
+            void call(commands.windowOpenRemote(remote.sshConfig, remote.path, true))
+              .then(() => onOpened?.())
+              .catch(() => undefined),
+        }
+      : { kind: "action", action: "file.openInNewWindow", arg: project.path, label: "Open in New Window" },
     {
       id: "reveal",
       label: "Show in Finder",
@@ -71,9 +81,7 @@ export function recentMenu(project: RecentProject, onOpened?: () => void): MenuI
       run: () => void askRemoveRecent(project),
     },
   ];
-  return local
-    ? items
-    : items.filter((i) => !("id" in i && i.id === "reveal") && !("action" in i && i.action === "file.openInNewWindow"));
+  return remote ? items.filter((i) => !("id" in i && i.id === "reveal")) : items;
 }
 
 function relativeTime(ms: number | null): string | null {

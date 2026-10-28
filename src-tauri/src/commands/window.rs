@@ -17,6 +17,19 @@ pub async fn window_open_project(app: AppHandle, path: PathBuf, new_window: bool
     windows::open_project_window(&app, &path, new_window)
 }
 
+/// [`window_open_project`] for folder `path` on the host of SSH configuration
+/// `ssh_config` (Remote Development); a new window connects itself.
+#[tauri::command]
+#[specta::specta]
+pub async fn window_open_remote(
+    app: AppHandle,
+    ssh_config: String,
+    path: String,
+    new_window: bool,
+) -> IdeResult<OpenOutcome> {
+    windows::open_remote_window(&app, &ssh_config, &path, new_window)
+}
+
 /// Opens an empty (welcome) window; returns its label.
 #[tauri::command]
 #[specta::specta]

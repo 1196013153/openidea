@@ -47,6 +47,16 @@ impl Connections {
         self.0.lock().get(window).cloned()
     }
 
+    /// The window connected to folder `root` on the host of SSH configuration `ssh_config`.
+    pub fn window_of(&self, ssh_config: &str, root: &str) -> Option<String> {
+        let root = root.trim_end_matches('/');
+        self.0
+            .lock()
+            .iter()
+            .find(|(_, c)| c.ssh_config == ssh_config && c.root.trim_end_matches('/') == root)
+            .map(|(label, _)| label.clone())
+    }
+
     pub fn disconnect(&self, window: &str) {
         if let Some(c) = self.0.lock().remove(window) {
             c.peer.kill();

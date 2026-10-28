@@ -1,12 +1,13 @@
-/** Picks an SSH configuration and a folder on that host, then opens it in this window. */
+/** Picks an SSH configuration and a folder on that host, then opens it in this or a new window. */
 import { useState } from "react";
 import { executeAction } from "@/platform/actions";
 import { useTx } from "@/platform/i18n";
 import { call, commands, type RemoteEntry } from "@/platform/ipc";
-import { connectRemote, useRemoteProgress } from "@/platform/remote";
+import { useRemoteProgress } from "@/platform/remote";
 import { sshLabel } from "@/platform/remoteSettings";
 import { useWorkflowSettings } from "@/platform/workflowSettings";
 import { Button, Dialog, Icon, Input, ProgressBar, Select, Spinner } from "@/ui";
+import { openRemoteProject } from "@/workbench/projectWindow";
 import {
   browsableFolders,
   closeConnectDialog,
@@ -52,8 +53,9 @@ function ConnectDialog() {
     setError(null);
     setBusy(true);
     try {
-      await connectRemote(ssh, path.trim() || "~");
-      closeConnectDialog();
+      const target = path.trim() || "~";
+      if (await openRemoteProject(ssh, target)) closeConnectDialog();
+      else setBusy(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -62,6 +64,7 @@ function ConnectDialog() {
 
   const options = configs.map((c) => ({ value: c.id, label: c.name.trim() || sshLabel(c), detail: sshLabel(c) }));
   const ready = !!ssh && !busy && !!path.trim();
+  const connecting = useRemoteProgress((s) => s.progress !== null);
 
   return (
     <Dialog
@@ -70,7 +73,7 @@ function ConnectDialog() {
       onClose={closeConnectDialog}
       width={560}
       buttons={[
-        { label: busy ? "Connecting…" : "Open", role: "default", disabled: !ready, onClick: () => void connect() },
+        { label: connecting ? "Connecting…" : "Open", role: "default", disabled: !ready, onClick: () => void connect() },
         { label: "Cancel", role: "cancel" },
       ]}
     >
@@ -83,7 +86,7 @@ function ConnectDialog() {
       >
         <p className={styles.hint}>
           {tx(
-            "The project runs on the remote host; this window shows it. The IDE backend is installed there on first use.",
+            "The project runs on the remote host; the IDE backend is installed there on first use.",
           )}
         </p>
         <label className={styles.label}>{tx("SSH configuration:")}</label>

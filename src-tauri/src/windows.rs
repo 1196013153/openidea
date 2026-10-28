@@ -38,10 +38,20 @@ const SETTINGS_MIN_SIZE: (f64, f64) = (640.0, 420.0);
 pub struct Launch {
     /// Project folder to open.
     pub project: Option<ide_core::IpcPath>,
+    /// Remote project to open (Remote Development).
+    pub remote: Option<RemoteLaunch>,
     /// Settings windows: the page to show.
     pub settings_page: Option<String>,
     /// Settings windows: edit the global layer only ("Settings for New Projects").
     pub new_projects: bool,
+}
+
+/// A project folder on the host of an SSH configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteLaunch {
+    pub ssh_config: String,
+    pub path: String,
 }
 
 #[derive(Default)]
@@ -184,7 +194,7 @@ pub fn find_project_window(app: &AppHandle, root: &Path) -> Option<WebviewWindow
 }
 
 fn has_project(app: &AppHandle, label: &str) -> bool {
-    app.try_state::<AppState>().is_some_and(|s| s.project(label).is_ok())
+    app.try_state::<AppState>().is_some_and(|s| s.project(label).is_ok() || s.remote_dev.get(label).is_some())
 }
 
 /// The focused window, else the last focused, else any.
@@ -272,12 +282,17 @@ pub fn create_main_window(app: &AppHandle) -> IdeResult<WebviewWindow> {
 
 /// Creates a new project window; `project` is opened by its frontend on load.
 pub fn create_window(app: &AppHandle, project: Option<PathBuf>) -> IdeResult<WebviewWindow> {
+    let title = project.as_deref().and_then(Path::file_name).map(|n| n.to_string_lossy().into_owned());
+    create_window_for(app, title, Launch { project: project.map(Into::into), ..Default::default() })
+}
+
+fn create_window_for(app: &AppHandle, title: Option<String>, launch: Launch) -> IdeResult<WebviewWindow> {
     let windows = app.webview_windows();
     let label = next_label(windows.keys().map(String::as_str));
     let mut config = window_config(app)?;
     config.label = label.clone();
-    if let Some(name) = project.as_deref().and_then(Path::file_name) {
-        config.title = name.to_string_lossy().into_owned();
+    if let Some(title) = title {
+        config.title = title;
     }
     // Cascade from the window the user is looking at; window-state overrides
     // this with the remembered geometry when it has one for the label.
@@ -289,7 +304,7 @@ pub fn create_window(app: &AppHandle, project: Option<PathBuf>) -> IdeResult<Web
         config.y = Some(pos.y + CASCADE);
         config.center = false;
     }
-    app.state::<WindowsState>().set_launch(&label, Launch { project: project.map(Into::into), ..Default::default() });
+    app.state::<WindowsState>().set_launch(&label, launch);
     let window = build_project_window(app, config)?;
     focus(&window);
     Ok(window)
@@ -329,6 +344,25 @@ pub fn open_project_window(app: &AppHandle, path: &Path, new_window: bool) -> Id
         return Ok(OpenOutcome::Current);
     }
     let window = create_window(app, Some(root))?;
+    Ok(OpenOutcome::Opened { label: window.label().to_owned() })
+}
+
+/// [`open_project_window`] for folder `path` on the host of SSH configuration
+/// `ssh_config` (Remote Development).
+pub fn open_remote_window(app: &AppHandle, ssh_config: &str, path: &str, new_window: bool) -> IdeResult<OpenOutcome> {
+    tracing::info!("open_remote_window {ssh_config}:{path} new_window={new_window}");
+    let windows = app.webview_windows();
+    let open = app.try_state::<AppState>().and_then(|s| s.remote_dev.window_of(ssh_config, path));
+    if let Some(w) = open.and_then(|label| windows.get(&label)) {
+        focus(w);
+        return Ok(OpenOutcome::Focused { label: w.label().to_owned() });
+    }
+    if !new_window {
+        return Ok(OpenOutcome::Current);
+    }
+    let title = path.trim_end_matches('/').rsplit('/').next().filter(|n| !n.is_empty() && *n != "~").map(str::to_owned);
+    let remote = RemoteLaunch { ssh_config: ssh_config.to_owned(), path: path.to_owned() };
+    let window = create_window_for(app, title, Launch { remote: Some(remote), ..Default::default() })?;
     Ok(OpenOutcome::Opened { label: window.label().to_owned() })
 }
 
@@ -402,7 +436,7 @@ pub fn open_settings_window(
     let windows = app.state::<WindowsState>();
     if let Some(existing) = app.get_webview_window(&label) {
         if page.is_some() || new_projects {
-            windows.set_launch(&label, Launch { project: None, settings_page: page, new_projects });
+            windows.set_launch(&label, Launch { settings_page: page, new_projects, ..Default::default() });
             let _ = app.emit_to(label.as_str(), LAUNCH_EVENT, ());
         }
         focus(&existing);
@@ -425,7 +459,7 @@ pub fn open_settings_window(
     if let Some(color) = background.as_deref().and_then(hex_color) {
         config.background_color = Some(color);
     }
-    windows.set_launch(&label, Launch { project: None, settings_page: page, new_projects });
+    windows.set_launch(&label, Launch { settings_page: page, new_projects, ..Default::default() });
     let window = WebviewWindowBuilder::from_config(app, &config)
         .and_then(|b| b.parent(&parent))
         .and_then(|b| b.build())

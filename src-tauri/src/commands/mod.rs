@@ -296,6 +296,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         sdk::sdk_python_packages,
         sdk::sdk_python_pip,
         window::window_open_project,
+        window::window_open_remote,
         window::window_new,
         window::window_open_settings,
         window::window_cycle,
