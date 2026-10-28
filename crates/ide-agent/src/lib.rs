@@ -191,7 +191,7 @@ struct Task {
     dirty: Mutex<BTreeSet<usize>>,
     flush_scheduled: AtomicBool,
     stderr: Mutex<VecDeque<String>>,
-    /// Set by `delete`; held while saving, so a late save can't bring the file back.
+    /// Set by `delete`; held while saving.
     deleted: Mutex<bool>,
 }
 
@@ -598,6 +598,11 @@ impl Task {
     }
 
     fn persist(&self) {
+        // Held from snapshot to rename, so saves land in order and none follows a delete.
+        let deleted = self.deleted.lock();
+        if *deleted {
+            return;
+        }
         let bytes = {
             let s = self.state.lock();
             serde_json::to_vec(&TaskFile {
@@ -608,10 +613,6 @@ impl Task {
             })
         };
         let path = self.shared.paths.store_dir.join(format!("{}.json", self.id));
-        let deleted = self.deleted.lock();
-        if *deleted {
-            return;
-        }
         if let Err(e) = bytes.map_err(|e| e.to_string()).and_then(|b| write_file(&path, &b)) {
             tracing::warn!("saving agent task {}: {e}", self.id);
         }
