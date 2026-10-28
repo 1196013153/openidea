@@ -15,6 +15,14 @@ args = ["--stdio"]
 root-markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]
 install-hint = "pip install basedpyright (or: uv tool install basedpyright)"
 
+# basedpyright defaults to "recommended", which flags unannotated attributes and
+# every unknown type. "standard" reports real problems; a project's own
+# `[tool.basedpyright]` / pyrightconfig.json still takes precedence.
+[language-servers.initialization-options.settings.basedpyright.analysis]
+typeCheckingMode = "standard"
+# Off whenever analysis settings are sent without it: `src/` layouts would stop resolving.
+autoSearchPaths = true
+
 [[language-servers]]
 name = "pyright"
 # Alternative: used only when the server above is not installed.

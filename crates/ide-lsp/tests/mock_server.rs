@@ -207,6 +207,7 @@ fn server_cfg(name: &str) -> LanguageServerConfig {
         install_hint: Some(format!("install {name}")),
         connect: None,
         fallback: false,
+        max_java: None,
         launch_error: None,
     }
 }
@@ -521,6 +522,15 @@ async fn diagnostics_become_events_and_feed_code_actions() {
         assert!(items[0].unnecessary);
         assert_eq!(items[0].range, rng(0, 4, 0, 10));
     }
+
+    // A reloaded UI asks for them again.
+    h.events.lock().clear();
+    h.mgr.resend_diagnostics();
+    let again = h.events.lock().iter().find_map(|e| match e {
+        IdeEvent::Diagnostics { path, items, .. } => Some((path.clone(), items.len())),
+        _ => None,
+    });
+    assert_eq!(again, Some((path.clone().into(), 2)));
 
     s.respond(
         "textDocument/codeAction",

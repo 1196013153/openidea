@@ -91,6 +91,10 @@ pub struct LanguageServerConfig {
     /// basedpyright): only used while none of those is installed.
     #[serde(default)]
     pub fallback: bool,
+    /// Newest Java release the server runs on (kotlin-language-server: 21). A
+    /// newer `JAVA_HOME` is replaced by the newest installed JDK that fits.
+    #[serde(default)]
+    pub max_java: Option<u32>,
     /// Set by the settings hook when the server can't run here (jdtls without
     /// a JDK 21+); reported as the failure instead of launching it.
     #[serde(skip)]

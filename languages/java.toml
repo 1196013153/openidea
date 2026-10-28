@@ -38,6 +38,11 @@ eclipse = { downloadSources = true }
 references = { includeDecompiledSources = true }
 signatureHelp = { enabled = true }
 configuration = { updateBuildConfiguration = "automatic" }
+# Generated code (implement methods, getters, toString…) indents like the editor (`indent` above).
+format = { insertSpaces = true, tabSize = 4 }
+# Calls complete as `name()` with the caret inside and parameter info, not guessed arguments;
+# JDK internals (`sun.*`, `com.sun.*`, `jdk.*`) and AWT's `List` stay out of completion and auto-import.
+completion = { guessMethodArguments = "off", filteredTypes = ["java.awt.List", "com.sun.*", "sun.*", "jdk.*", "org.graalvm.*", "io.micrometer.shaded.*"] }
 
 [language-servers.initialization-options.settings.java.import]
 # Keep Eclipse metadata (.project, .classpath, .settings) out of the project.

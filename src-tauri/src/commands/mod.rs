@@ -174,6 +174,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         lsp::lsp_call_hierarchy,
         lsp::lsp_type_hierarchy,
         lsp::lsp_servers,
+        lsp::lsp_resend_diagnostics,
         lsp::lsp_restart,
         lsp::apply_workspace_edit,
         lsp::lsp_execute_command,

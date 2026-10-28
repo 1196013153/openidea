@@ -162,6 +162,14 @@ fn software_terms() -> &'static HashSet<&'static str> {
     })
 }
 
+/// A software term, or its plural (`endpoints`, `regexes`).
+fn software_term(lower: &str) -> bool {
+    let terms = software_terms();
+    terms.contains(lower)
+        || lower.strip_suffix('s').is_some_and(|w| terms.contains(w))
+        || lower.strip_suffix("es").is_some_and(|w| terms.contains(w))
+}
+
 /// Words of a custom dictionary file: a plain word list or a Hunspell `.dic`
 /// (leading count line and `/FLAGS` ignored). Cached by modification time.
 fn dictionary_file(path: &Path) -> Arc<HashSet<String>> {
@@ -230,9 +238,7 @@ impl Speller {
     }
 
     fn user_word(&self, lower: &str) -> bool {
-        self.accepted.contains(lower)
-            || software_terms().contains(lower)
-            || self.custom.iter().any(|d| d.contains(lower))
+        self.accepted.contains(lower) || software_term(lower) || self.custom.iter().any(|d| d.contains(lower))
     }
 
     /// In a dictionary, in any case style.
@@ -437,6 +443,14 @@ mod tests {
             assert!(s.is_correct(ok), "{ok}");
         }
         assert!(!s.is_correct("lenght"));
+    }
+
+    #[test]
+    fn software_terms_and_their_plurals() {
+        let s = Speller::default();
+        for ok in ["breakpoint", "breakpoints", "endpoints", "datasets", "regexes"] {
+            assert!(s.is_correct(ok), "{ok}");
+        }
     }
 
     #[test]

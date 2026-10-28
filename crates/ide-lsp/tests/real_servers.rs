@@ -74,6 +74,7 @@ async fn missing_binary_is_reported_with_install_hint() {
         install_hint: Some("npm i -g nope-ls".into()),
         connect: None,
         fallback: false,
+        max_java: None,
         launch_error: None,
     };
     let (mgr, events) = manager(dir.path(), LanguageRegistry::from_configs(vec![lang("nope", "nope", server)]));
@@ -203,6 +204,7 @@ async fn typescript_language_server_end_to_end() {
         install_hint: None,
         connect: None,
         fallback: false,
+        max_java: None,
         launch_error: None,
     };
     let (mgr, events) = manager(&root, LanguageRegistry::from_configs(vec![lang("typescript", "ts", server)]));
@@ -246,6 +248,7 @@ fn npm_server(tools: &Path, name: &str, bin: &str, init: Option<serde_json::Valu
         install_hint: None,
         connect: None,
         fallback: false,
+        max_java: None,
         launch_error: None,
     }
 }

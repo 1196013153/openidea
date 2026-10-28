@@ -132,7 +132,11 @@ impl ClientHandler {
                 .iter()
                 // vtsls asks for the whole configuration as section `""`.
                 .map(|item| match item.get("section").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-                    Some(section) if section == self.server.name => options.clone(),
+                    // The server's own section: its block under `settings` (basedpyright asks
+                    // `basedpyright` and `basedpyright.analysis`), else the options themselves.
+                    Some(section) if section == self.server.name => {
+                        options.get("settings").and_then(|s| s.get(section)).unwrap_or(&options).clone()
+                    }
                     // Servers that take settings under `initializationOptions.settings`
                     // (jdtls) ask for the same sections later.
                     Some(section) => [&options, options.get("settings").unwrap_or(&Value::Null)]

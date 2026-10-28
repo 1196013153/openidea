@@ -32,6 +32,7 @@ fn server(name: &str) -> LanguageServerConfig {
         install_hint: None,
         connect: None,
         fallback: false,
+        max_java: None,
         launch_error: None,
     }
 }
@@ -597,4 +598,30 @@ fn vue_language_server_gets_a_typescript_with_the_language_service_api() {
     configure_server(&mut cfg, &project, &project, &s);
     let lib = project.join("node_modules/typescript/lib");
     assert_eq!(cfg.args, [format!("--tsdk={}", lib.to_string_lossy())]);
+}
+
+#[test]
+fn max_java_picks_an_older_jdk() {
+    let dir = tempfile::tempdir().unwrap();
+    let jdk = |major: u32| {
+        let home = dir.path().join(format!("jdk-{major}"));
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::write(home.join("release"), format!("JAVA_VERSION=\"{major}.0.1\"\n")).unwrap();
+        std::fs::write(home.join("bin").join(exe("java")), "").unwrap();
+        crate::java::jdk_at(&home).unwrap()
+    };
+    let (j17, j21, j25) = (jdk(17), jdk(21), jdk(25));
+    let jdks = [j25.clone(), j21.clone(), j17];
+    let mut cfg = LanguageServerConfig { max_java: Some(21), ..server("kotlin-language-server") };
+    cfg.env.insert("JAVA_HOME".into(), j25.home.to_string_lossy().into_owned());
+    crate::java::cap_java_home(&mut cfg, &jdks);
+    assert_eq!(cfg.env["JAVA_HOME"], j21.home.to_string_lossy());
+
+    // A JAVA_HOME that fits, or no limit: left alone.
+    crate::java::cap_java_home(&mut cfg, &[]);
+    assert_eq!(cfg.env["JAVA_HOME"], j21.home.to_string_lossy());
+    let mut free = server("other");
+    free.env.insert("JAVA_HOME".into(), j25.home.to_string_lossy().into_owned());
+    crate::java::cap_java_home(&mut free, &jdks);
+    assert_eq!(free.env["JAVA_HOME"], j25.home.to_string_lossy());
 }
