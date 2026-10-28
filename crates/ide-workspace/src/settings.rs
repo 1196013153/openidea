@@ -98,7 +98,8 @@ fn json_to_toml(value: &Json) -> IdeResult<toml_edit::Value> {
         }
         Json::Object(map) => {
             let mut t = toml_edit::InlineTable::new();
-            for (k, v) in map {
+            // TOML has no null: an unset optional field is left out.
+            for (k, v) in map.iter().filter(|(_, v)| !v.is_null()) {
                 t.insert(k, json_to_toml(v)?);
             }
             t.into()
@@ -361,6 +362,11 @@ mod tests {
         assert_eq!(s.files.exclude, vec!["**/dist".to_string()]);
         let s = store.set(SettingsScope::Global, "editor.lineHeight", json!(22.5)).unwrap();
         assert_eq!(s.editor.line_height, 22.5);
+        // An unset optional field (null) inside an object is left out.
+        let ssh = json!([{ "id": "a", "name": "mac", "host": "macmini", "port": null, "user": "" }]);
+        let s = store.set(SettingsScope::Global, "ssh.configs", ssh).unwrap();
+        assert_eq!(s.ssh.configs[0].port, None);
+        assert!(!std::fs::read_to_string(cfg.join("settings.toml")).unwrap().contains("port"));
         // Map-valued setting whose keys contain dots, replaced as a whole.
         let s = store
             .set(
