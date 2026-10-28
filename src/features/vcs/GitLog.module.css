@@ -405,3 +405,70 @@
   color: var(--link-hover);
   text-decoration: underline;
 }
+
+.branchFilterPopup {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.branchFilterSearch {
+  flex: none;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-popup);
+}
+.branchFilterList {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 4px 0;
+  box-sizing: content-box;
+}
+.branchFilterListBody {
+  flex: 1;
+}
+.branchFilterSection {
+  padding: 0 10px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-small);
+}
+.branchFilterRow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.branchFilterIcon {
+  flex: none;
+  color: var(--fg-subtle);
+}
+.branchFilterCurrent {
+  flex: none;
+  color: var(--accent);
+}
+.branchFilterLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.branchFilterCheck {
+  flex: none;
+  color: var(--accent);
+}
+.branchFilterEmpty {
+  color: var(--fg-faint);
+}
+.branchFilterMore {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border-popup);
+  text-align: left;
+}
+.branchFilterMore:hover {
+  background: var(--bg-tree-hover);
+}
