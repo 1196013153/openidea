@@ -65,6 +65,16 @@ describe("toCmCompletion", () => {
     expect(c.displayLabel).toBe("@GetMapping");
   });
 
+  it("filters on the label when filterText only adds the call or body", () => {
+    for (const filterText of ["String(${0})", "List<>()", "Runnable() {\n\t${0}\n};"]) {
+      const label = filterText.match(/^\w+/)![0];
+      const c = toCmCompletion(item({ label, filterText }));
+      expect(c.label).toBe(label);
+      expect(c.displayLabel).toBeUndefined();
+    }
+    expect(toCmCompletion(item({ label: "foo", filterText: "foo_bar" })).label).toBe("foo_bar");
+  });
+
   it("boosts preselected and demotes deprecated items", () => {
     expect(toCmCompletion(item({ preselect: true })).boost).toBe(99);
     expect(toCmCompletion(item({ deprecated: true })).boost).toBeLessThan(0);

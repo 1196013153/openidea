@@ -41,7 +41,7 @@ export function completionSymbolKind(kind: CompletionKind | null): string {
  * original label is shown through `displayLabel`.
  */
 export function toCmCompletion(item: CompletionItem): Completion {
-  const filter = item.filterText && item.filterText !== item.label ? item.filterText : null;
+  const filter = item.filterText && item.filterText !== item.label && !extendsLabel(item) ? item.filterText : null;
   const c: Completion = {
     label: filter ?? item.label,
     type: completionSymbolKind(item.kind),
@@ -53,6 +53,16 @@ export function toCmCompletion(item: CompletionItem): Completion {
   else if (item.deprecated) c.boost = -20;
   if (item.commitCharacters.length) c.commitCharacters = item.commitCharacters;
   return c;
+}
+
+/**
+ * A `filterText` that is the label plus what the item inserts after it (jdtls
+ * `String(${0})`, `List<>()`): typing a word never reaches that part, and
+ * matching on it would rank the exact `String` like `StringBuilder`.
+ */
+function extendsLabel(item: CompletionItem): boolean {
+  const rest = item.filterText!.slice(item.label.length);
+  return item.filterText!.startsWith(item.label) && /^[^\p{L}\p{N}_$]/u.test(rest);
 }
 
 const IMPORT_SOURCE = [

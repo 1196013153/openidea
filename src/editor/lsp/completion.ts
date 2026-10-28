@@ -363,7 +363,9 @@ export function makeCompletion(item: CompletionItem, req: RequestContext): LspCo
     // sharing a filterText (`times(other: Int)`, `times(other: Long)`…) and the same
     // name imported from different modules need their own.
     apply:
-      cm.displayLabel || item.additionalEdits.length ? (...a: Parameters<typeof applyLsp>) => applyLsp(...a) : applyLsp,
+      cm.displayLabel || (item.filterText && item.filterText !== item.label) || item.additionalEdits.length
+        ? (...a: Parameters<typeof applyLsp>) => applyLsp(...a)
+        : applyLsp,
     info: (c: Completion) => renderInfo(c as LspCompletion),
   });
 }
