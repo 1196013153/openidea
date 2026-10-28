@@ -194,6 +194,12 @@ pub enum AgentEntry {
         text: String,
         /// Names of the files and images sent with it.
         attachments: Vec<String>,
+        /// When it was sent (ms since the epoch); `None` in tasks saved before this was kept.
+        #[serde(default)]
+        sent_ms: Option<f64>,
+        /// When the turn it started ended; `None` while it runs or when it was cut off.
+        #[serde(default)]
+        done_ms: Option<f64>,
     },
     Agent {
         text: String,

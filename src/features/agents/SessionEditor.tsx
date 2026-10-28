@@ -1,16 +1,32 @@
 /** An agent task as an editor tab: the conversation, a composer and the task's changed files. */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
 import type { AgentChange, AgentEntry, AgentTask } from "@/bindings";
 import { executeAction } from "@/platform/actions";
 import { call, commands } from "@/platform/ipc";
 import { basename, relativeDir, useProject } from "@/platform/project";
 import { editorService, notifications, type EditorInput } from "@/workbench/contributions";
-import { Button, EmptyState, Icon, IconButton, Spinner, T, Tree, fileIconName } from "@/ui";
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  SearchField,
+  Spinner,
+  T,
+  Tree,
+  copyMenuFor,
+  copyText,
+  fileIconName,
+  selectableText,
+  showContextMenu,
+} from "@/ui";
+import { useTx } from "@/platform/i18n";
 import { TaskStatusIcon } from "./AgentsView";
 import { Composer } from "./Composer";
 import { canSend, emptyDraft, usageLabel } from "./composerModel";
 import { ConfigPickers } from "./ConfigPickers";
+import { findRanges, formatDuration, formatSentAt } from "./conversation";
 import { Markdown } from "./Markdown";
 import { branchLabel, isBusy, providerIcon, statusLabel } from "./model";
 import {
@@ -19,8 +35,11 @@ import {
   loadEntries,
   markVisible,
   refreshChanges,
+  editMessage,
   editQueued,
+  quoteInComposer,
   removeQueued,
+  resendMessage,
   respond,
   sendMessage,
   sendQueuedNow,
@@ -28,6 +47,7 @@ import {
   useAgentCommands,
   useAgents,
 } from "./store";
+import { setFocusedSession, focusedSession, type FocusedSession } from "./sessionFocus";
 import styles from "./Session.module.css";
 
 export function SessionEditor({ input }: { input: EditorInput }) {
@@ -40,13 +60,41 @@ export function SessionEditor({ input }: { input: EditorInput }) {
     void refreshChanges(id);
     return markVisible(id);
   }, [id]);
+  const [finding, setFinding] = useState(false);
+  const [findFocus, setFindFocus] = useState(0);
+  const [session] = useState<FocusedSession>(() => ({
+    openFind: () => {
+      setFinding(true);
+      setFindFocus((n) => n + 1);
+    },
+  }));
+  useEffect(
+    () => () => {
+      if (focusedSession() === session) setFocusedSession(null);
+    },
+    [session],
+  );
   if (!task) return <EmptyState title="This agent task no longer exists" />;
   return (
-    <div className={styles.session}>
+    <div
+      className={styles.session}
+      onFocusCapture={() => setFocusedSession(session)}
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null) && focusedSession() === session) {
+          setFocusedSession(null);
+        }
+      }}
+    >
       <div className={styles.conversation}>
         <Header task={task} />
         <PermissionBanner task={task} entries={entries ?? null} />
-        <Stream task={task} entries={entries ?? null} />
+        <Stream
+          task={task}
+          entries={entries ?? null}
+          finding={finding}
+          findFocus={findFocus}
+          onCloseFind={() => setFinding(false)}
+        />
         <SessionComposer task={task} entries={entries ?? null} />
       </div>
       <ChangesPane task={task} changes={changes ?? null} />
@@ -106,7 +154,16 @@ function Usage({ task }: { task: AgentTask }) {
   );
 }
 
-function Stream({ task, entries }: { task: AgentTask; entries: AgentEntry[] | null }) {
+interface StreamProps {
+  task: AgentTask;
+  entries: AgentEntry[] | null;
+  finding: boolean;
+  /** Bumped by Find in Conversation: focus the find field again. */
+  findFocus: number;
+  onCloseFind: () => void;
+}
+
+function Stream({ task, entries, finding, findFocus, onCloseFind }: StreamProps) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useLayoutEffect(() => {
@@ -114,26 +171,207 @@ function Stream({ task, entries }: { task: AgentTask; entries: AgentEntry[] | nu
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   });
   const waiting = entries?.some((e) => e.type === "permission" && !e.chosen);
+  const lastUser = entries?.findLast((e): e is UserEntry => e.type === "user");
   return (
-    <div
-      ref={ref}
-      className={styles.stream}
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-      }}
-    >
-      {entries === null ? (
-        <Spinner />
-      ) : (
-        entries.map((entry, i) => <Entry key={i} task={task} entry={entry} />)
-      )}
-      {(task.status === "running" || task.status === "starting") && !waiting && (
-        <div className={styles.working}>
-          <Spinner size={12} />
-          <T>{task.status === "starting" ? "Starting the agent…" : "Working…"}</T>
-        </div>
-      )}
+    <div className={styles.streamArea}>
+      {finding && <FindBar streamRef={ref} focus={findFocus} onClose={onCloseFind} />}
+      <div
+        ref={ref}
+        // The conversation is read and copied like a document; focusable so ⌘F reaches it.
+        className={clsx(styles.stream, selectableText)}
+        tabIndex={-1}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        }}
+        // Copy, plus Quote for a selection: replies to it in the composer.
+        onContextMenu={(e) => {
+          const text = selectionIn(e.currentTarget);
+          const items = copyMenuFor(e.target) ?? [];
+          if (text.trim() && task.status !== "archived") {
+            items.push({ id: "quote", label: "Quote", icon: "edit", run: () => quoteInComposer(task.id, text) });
+          }
+          if (!items.length) return;
+          e.preventDefault();
+          showContextMenu(e, items);
+        }}
+      >
+        {entries === null ? (
+          <Spinner />
+        ) : (
+          entries.map((entry, i) => <Entry key={i} task={task} entry={entry} />)
+        )}
+        {(task.status === "running" || task.status === "starting") && !waiting && (
+          <div className={styles.working}>
+            <Spinner size={12} />
+            <T>{task.status === "starting" ? "Starting the agent…" : "Working…"}</T>
+            {lastUser?.sentMs != null && !lastUser.doneMs && <Elapsed since={lastUser.sentMs} />}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type UserEntry = Extract<AgentEntry, { type: "user" }>;
+
+/** Time since `since`, ticking every second. */
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className={styles.muted}>{formatDuration(now - since)}</span>;
+}
+
+/** Text selected in `stream`, or "" when the selection is elsewhere. */
+function selectionIn(stream: HTMLElement): string {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+  return stream.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.toString() : "";
+}
+
+interface RangeSet {
+  clear(): void;
+  add(range: Range): void;
+}
+const highlights = (globalThis as { CSS?: { highlights?: Map<string, RangeSet> } }).CSS?.highlights;
+const HighlightCtor = (globalThis as { Highlight?: new () => RangeSet }).Highlight;
+
+/**
+ * Sets the ranges of highlight `name`. One registered highlight per name, changed in
+ * place: WebKit doesn't repaint where a replaced highlight object was.
+ */
+function setHighlight(name: string, ranges: Range[]) {
+  if (!highlights || !HighlightCtor) return;
+  let set = highlights.get(name);
+  if (!set) {
+    set = new HighlightCtor();
+    highlights.set(name, set);
+  }
+  set.clear();
+  for (const r of ranges) set.add(r);
+}
+
+/** Scrolls `range` into view in `stream`, opening the collapsed tool output or thought holding it. */
+function revealRange(range: Range, stream: HTMLElement) {
+  for (let el = range.startContainer.parentElement; el && el !== stream; el = el.parentElement) {
+    if (el instanceof HTMLDetailsElement) el.open = true;
+  }
+  const r = range.getBoundingClientRect();
+  const box = stream.getBoundingClientRect();
+  if (r.top < box.top + 24 || r.bottom > box.bottom - 24) {
+    stream.scrollTop += r.top - box.top - box.height / 3;
+  }
+}
+
+/** Find in Conversation: every match highlighted, Enter / ⇧Enter step through them. */
+function FindBar({
+  streamRef,
+  focus,
+  onClose,
+}: {
+  streamRef: RefObject<HTMLDivElement | null>;
+  focus: number;
+  onClose: () => void;
+}) {
+  const tx = useTx();
+  const input = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
+  const [ranges, setRanges] = useState<Range[]>([]);
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, [focus]);
+
+  // Matches follow the conversation as it streams in (and as code gets highlighted).
+  useEffect(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setRanges(findRanges(stream, query.trim())));
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(stream, { subtree: true, childList: true, characterData: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [query, streamRef]);
+
+  const index = ranges.length ? Math.min(current, ranges.length - 1) : -1;
+  // Expanding or collapsing a tool output shows or hides its matches.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const stream = streamRef.current;
+    const toggled = () => setShown((n) => n + 1);
+    stream?.addEventListener("toggle", toggled, true);
+    return () => stream?.removeEventListener("toggle", toggled, true);
+  }, [streamRef]);
+  useEffect(() => {
+    // Only rendered matches: WebKit paints those in collapsed <details> over the text next to them.
+    const visible = (r: Range) => r.getClientRects().length > 0;
+    const current = index >= 0 ? ranges[index]! : null;
+    setHighlight("agent-find", ranges.filter(visible));
+    setHighlight("agent-find-current", current && visible(current) ? [current] : []);
+  }, [ranges, index, shown]);
+  useEffect(
+    () => () => {
+      setHighlight("agent-find", []);
+      setHighlight("agent-find-current", []);
+    },
+    [],
+  );
+
+  const step = (dir: 1 | -1) => {
+    const stream = streamRef.current;
+    if (!ranges.length || !stream) return;
+    const next = (index + dir + ranges.length) % ranges.length;
+    setCurrent(next);
+    revealRange(ranges[next]!, stream);
+  };
+  const close = () => {
+    onClose();
+    streamRef.current?.focus();
+  };
+
+  return (
+    <div className={styles.findBar} role="search">
+      <SearchField
+        ref={input}
+        value={query}
+        onChange={(v) => {
+          setQuery(v);
+          setCurrent(0);
+        }}
+        aria-label={tx("Find in Conversation")}
+        placeholder={tx("Find in conversation")}
+        className={styles.findField}
+        trailing={
+          query.trim() ? (
+            <span className={styles.findCount}>{ranges.length ? `${index + 1}/${ranges.length}` : tx("0 results")}</span>
+          ) : null
+        }
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            step(e.shiftKey ? -1 : 1);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+          }
+        }}
+      />
+      <IconButton icon="arrow-up" title={tx("Previous Occurrence")} size="small" disabled={!ranges.length} onClick={() => step(-1)} />
+      <IconButton icon="arrow-down" title={tx("Next Occurrence")} size="small" disabled={!ranges.length} onClick={() => step(1)} />
+      <IconButton icon="close" title={tx("Close")} size="small" onClick={close} />
     </div>
   );
 }
@@ -152,23 +390,9 @@ const TOOL_ICONS: Record<string, string> = {
 function Entry({ task, entry }: { task: AgentTask; entry: AgentEntry }) {
   switch (entry.type) {
     case "user":
-      return (
-        <div className={styles.user}>
-          {entry.text}
-          {entry.attachments.length > 0 && (
-            <div className={styles.attachments}>
-              {entry.attachments.map((a, i) => (
-                <span key={i} className={styles.attachment}>
-                  <Icon name={fileIconName(a)} size={12} />
-                  {a}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      );
+      return <UserMessage task={task} entry={entry} />;
     case "agent":
-      return <Markdown text={entry.text} />;
+      return <Markdown text={entry.text} cwd={task.cwd} />;
     case "thought":
       return (
         <details className={styles.thought}>
@@ -204,6 +428,60 @@ function Entry({ task, entry }: { task: AgentTask; entry: AgentEntry }) {
         </div>
       );
   }
+}
+
+function UserMessage({ task, entry }: { task: AgentTask; entry: UserEntry }) {
+  const tx = useTx();
+  const fail = (e: unknown) => notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) });
+  const archived = task.status === "archived";
+  return (
+    <div className={styles.message}>
+      <div className={styles.user}>
+        {entry.text}
+        {entry.attachments.length > 0 && (
+          <div className={styles.attachments}>
+            {entry.attachments.map((a, i) => (
+              <span key={i} className={styles.attachment}>
+                <Icon name={fileIconName(a)} size={12} />
+                {a}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className={styles.messageMeta}>
+        {entry.sentMs != null && (
+          <span className={styles.muted} title={new Date(entry.sentMs).toLocaleString()}>
+            {formatSentAt(entry.sentMs)}
+          </span>
+        )}
+        {entry.sentMs != null && entry.doneMs != null && (
+          <span className={styles.muted} title={tx("Time the agent took to answer")}>
+            {`\u00a0· ${formatDuration(entry.doneMs - entry.sentMs)}`}
+          </span>
+        )}
+        <span className={styles.messageActions}>
+          <IconButton icon="copy" title="Copy" size="small" onClick={() => void copyText(entry.text)} />
+          {!archived && entry.text && (
+            <IconButton
+              icon="edit"
+              title="Edit and Resend"
+              size="small"
+              onClick={() => editMessage(task.id, entry.text)}
+            />
+          )}
+          {!archived && entry.text && entry.attachments.length === 0 && (
+            <IconButton
+              icon="refresh"
+              title="Send Again"
+              size="small"
+              onClick={() => void resendMessage(task.id, entry.text).catch(fail)}
+            />
+          )}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function ToolEntry({ task, entry }: { task: AgentTask; entry: Extract<AgentEntry, { type: "tool" }> }) {

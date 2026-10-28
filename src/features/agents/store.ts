@@ -14,6 +14,7 @@ import type {
 import { call, commands, isTauri } from "@/platform/ipc";
 import { editorService, notifications } from "@/workbench/contributions";
 import { canSend, emptyDraft, toPrompt, type ComposerDraft, type FileRef } from "./composerModel";
+import { withQuote } from "./conversation";
 import { HOME_KEY, HOME_KIND, SESSION_KIND, attentionChange, isBusy, sessionKey, upsertEntry } from "./model";
 
 /** New Task page settings (its text lives in the `HOME` composer). */
@@ -44,6 +45,8 @@ interface AgentsState {
   lastComposer: string;
   /** First messages of past tasks, newest first (New Task page ↑). */
   history: string[];
+  /** The composer asked to take focus (`seq` tells repeated requests apart). */
+  focus: { key: string; seq: number } | null;
 }
 
 const DRAFT_KEY = "openidea.agents.draft.v2";
@@ -80,6 +83,7 @@ export const useAgents = create<AgentsState>(() => ({
   composers: new Map(),
   lastComposer: HOME,
   history: load<string[]>(HISTORY_KEY, []),
+  focus: null,
 }));
 
 export function updateDraft(patch: Partial<Draft>) {
@@ -306,6 +310,28 @@ export async function sendMessage(task: string, now: boolean): Promise<void> {
   await call(commands.agentPrompt(task, toPrompt(composer), now));
   updateComposer(task, emptyDraft());
 }
+
+/** Moves the caret to the end of composer `key`. */
+export function focusComposer(key: string) {
+  useAgents.setState((s) => ({ focus: { key, seq: (s.focus?.seq ?? 0) + 1 } }));
+}
+
+/** Quotes `text` (a selection of the conversation) in the task's composer, to reply to it. */
+export function quoteInComposer(task: string, text: string) {
+  updateComposer(task, { text: withQuote(composerDraft(task).text, text) });
+  focusComposer(task);
+}
+
+/** Puts an earlier message back into the composer to edit and send again. */
+export function editMessage(task: string, text: string) {
+  const current = composerDraft(task).text;
+  updateComposer(task, { text: current.trim() ? `${text}\n${current}` : text });
+  focusComposer(task);
+}
+
+/** Sends an earlier message again (queued while the agent works). */
+export const resendMessage = (task: string, text: string) =>
+  call(commands.agentPrompt(task, { text, files: [], images: [] }, false));
 
 /** Takes a queued message back into the composer to edit it. */
 export async function editQueued(task: string, queued: string): Promise<void> {

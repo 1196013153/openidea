@@ -96,6 +96,15 @@
   cursor: default;
 }
 
+/* The conversation with its find bar. */
+.streamArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .stream {
   flex: 1;
   min-height: 0;
@@ -104,6 +113,60 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.stream:focus {
+  outline: none;
+}
+
+/* Your message with its actions, shown on hover. */
+.message {
+  position: relative;
+}
+.messageMeta {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  padding-left: 12px;
+  font-size: var(--fs-small);
+}
+.messageActions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.message:hover .messageActions,
+.messageActions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.findBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.findField {
+  flex: 1;
+  min-width: 0;
+}
+.findCount {
+  color: var(--fg-subtle);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+::highlight(agent-find) {
+  background-color: var(--bg-text-search-result);
+}
+::highlight(agent-find-current) {
+  background-color: var(--bg-text-search-result-current);
 }
 
 .user {
@@ -140,6 +203,79 @@
 .markdown :global(pre code) {
   padding: 0;
   background: none;
+}
+.markdown :global(pre) {
+  position: relative;
+}
+.codeCopy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-small);
+  background: var(--bg-elev);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  opacity: 0;
+}
+.markdown :global(pre:hover) .codeCopy,
+.codeCopy:focus-visible {
+  opacity: 1;
+}
+.codeCopy:hover {
+  background: var(--bg-hover);
+}
+.fileLink {
+  color: var(--link);
+  cursor: pointer;
+}
+.fileLink:hover {
+  text-decoration: underline;
+}
+
+/* Lezer classHighlighter tokens in fenced code (same colours as the Markdown preview). */
+.markdown :global(.tok-keyword),
+.markdown :global(.tok-modifier),
+.markdown :global(.tok-controlKeyword),
+.markdown :global(.tok-operatorKeyword) {
+  color: var(--syn-keyword);
+}
+.markdown :global(.tok-string),
+.markdown :global(.tok-string2) {
+  color: var(--syn-string);
+}
+.markdown :global(.tok-number),
+.markdown :global(.tok-bool),
+.markdown :global(.tok-atom) {
+  color: var(--syn-number);
+}
+.markdown :global(.tok-typeName),
+.markdown :global(.tok-className),
+.markdown :global(.tok-namespace) {
+  color: var(--syn-type);
+}
+.markdown :global(.tok-comment) {
+  color: var(--syn-comment);
+}
+.markdown :global(.tok-meta),
+.markdown :global(.tok-macroName) {
+  color: var(--syn-annotation);
+}
+.markdown :global(.tok-propertyName) {
+  color: var(--syn-property);
+}
+.markdown :global(.tok-variableName.tok-definition) {
+  color: var(--syn-function);
+}
+.markdown :global(.tok-punctuation),
+.markdown :global(.tok-operator) {
+  color: var(--syn-punct);
 }
 .markdown :global(ul),
 .markdown :global(ol) {
