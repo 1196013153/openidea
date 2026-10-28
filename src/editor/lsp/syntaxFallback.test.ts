@@ -447,6 +447,7 @@ describe("modifier-hover navigation recovery", () => {
       await vi.advanceTimersByTimeAsync(3001);
       cmd.lspGoto.mockReturnValueOnce(ok([target]));
       move(view);
+      await vi.advanceTimersByTimeAsync(0);
       expect(cmd.lspGoto).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();

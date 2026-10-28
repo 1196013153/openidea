@@ -46,6 +46,30 @@ export function onLspRefresh(kind: LspRefreshKind, fn: () => void): () => void {
   };
 }
 
+/** A busy spell at least this long is indexing / a build, not the server answering a request. */
+const LONG_BUSY_MS = 1500;
+
+/**
+ * Calls `fn` when a server becomes ready after starting or after a long busy
+ * spell (indexing), when earlier answers may have been incomplete. Short busy
+ * spells are ignored: jdtls reports progress for the very requests a caller
+ * sends, and re-asking on each of them would never stop.
+ */
+export function onServerSettled(fn: () => void): () => void {
+  if (!isTauri()) return () => {};
+  const since = new Map<number, number>();
+  return onIdeEvent("languageServer", (e) => {
+    if (e.status === "starting") since.set(e.server, -Infinity);
+    else if (e.status === "busy") {
+      if (!since.has(e.server)) since.set(e.server, Date.now());
+    } else if (e.status === "ready") {
+      const t = since.get(e.server);
+      since.delete(e.server);
+      if (t !== undefined && Date.now() - t >= LONG_BUSY_MS) fn();
+    } else since.delete(e.server);
+  });
+}
+
 export function installAvailabilityEvents(): () => void {
   return onIdeEvent("languageServer", (e) => {
     if (e.status === "ready") serverBackoff.clear();

@@ -3,15 +3,18 @@
  * intentions popup (quick fixes first, preferred in bold), Optimize Imports and
  * Generate. Refactor This and the Refactor menu live in `@/editor/refactor`.
  */
-import { StateEffect, StateField, type Extension } from "@codemirror/state";
+import { StateEffect, StateField, type Extension, type Text } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { forEachDiagnostic } from "@codemirror/lint";
+import { indentUnit } from "@codemirror/language";
 import { commands, isCancelled, type CodeAction } from "@/platform/ipc";
-import { contributedIntentions, whenSynced } from "@/editor/api";
+import { contributedIntentions, intentionProviders, whenSynced } from "@/editor/api";
 import { shortcutLabel } from "@/platform/keymap";
 import { debounce, docOf, isUnavailable, lspRequest, reportLspError } from "./lsp";
 import { offsetsToRange } from "./positions";
 import { showHint } from "./hint";
+import { formatLines } from "./format";
+import { pythonMemberIntentions } from "./pythonMembers";
 import { caretAnchor, openPopup, type ListPopupItem, type ListPreview } from "./popupStore";
 import { editPreviewLines } from "./workspaceEdit";
 import { serverBackoff } from "./availability";
@@ -88,6 +91,43 @@ async function fetchIntentions(view: EditorView): Promise<CodeAction[]> {
   return actions;
 }
 
+/** Enabled quick fixes of the problem at `from..to`, preferred first. */
+export async function quickFixesAt(view: EditorView, from: number, to: number): Promise<CodeAction[]> {
+  const doc = docOf(view);
+  if (!doc) return [];
+  await whenSynced(view);
+  const actions = await lspRequest(() => commands.lspCodeActions(doc.doc, offsetsToRange(view.state.doc, from, to), ["quickfix"]));
+  return sortCodeActions(actions.filter((a) => isQuickFix(a) && !a.disabledReason));
+}
+
+/**
+ * ⌥⇧↵: applies the preferred (else first) quick fix of the most severe problem
+ * at the caret, or of one elsewhere on the caret line.
+ */
+export async function applyQuickFix(view: EditorView) {
+  const state = view.state;
+  const caret = state.selection.main.head;
+  const line = state.doc.lineAt(caret);
+  const problems: Array<PlacedProblem & { rank: number }> = [];
+  forEachDiagnostic(state, (d, from, to) => {
+    if (d.severity === "hint" || to < line.from || from > line.to) return;
+    const rank = (d.severity === "error" ? 0 : d.severity === "warning" ? 1 : 2) + (from <= caret && caret <= to ? 0 : 3);
+    problems.push({ from, to, severity: d.severity, rank });
+  });
+  problems.sort((a, b) => a.rank - b.rank);
+  try {
+    for (const p of problems) {
+      const fix = (await quickFixesAt(view, p.from, p.to))[0];
+      if (view.state.doc !== state.doc) return;
+      if (fix) return applyCodeAction(view, fix);
+    }
+  } catch (e) {
+    reportLspError(view, e, true);
+    return;
+  }
+  showHint(view, "No quick fixes available");
+}
+
 export async function applyCodeAction(view: EditorView, action: CodeAction) {
   const doc = docOf(view);
   if (!doc) return;
@@ -95,11 +135,72 @@ export async function applyCodeAction(view: EditorView, action: CodeAction) {
     showHint(view, action.disabledReason);
     return;
   }
+  const before = view.state.doc;
   try {
     await lspRequest(() => commands.lspApplyCodeAction(doc.doc, action));
   } catch (e) {
     reportLspError(view, e, true);
+    return;
   }
+  if (!action.kind?.startsWith("source.organizeImports") && !action.kind?.startsWith("source.fixAll"))
+    await reformatGenerated(view, before);
+}
+
+/**
+ * Code the server generated follows its own indentation (jdtls tabs,
+ * tsserver 4 spaces); like IDEA, the lines an action inserted are reformatted
+ * to the file's style.
+ */
+async function reformatGenerated(view: EditorView, before: Text) {
+  for (let i = 0; i < 100 && view.state.doc === before; i++) await new Promise((r) => setTimeout(r, 20));
+  const after = view.state.doc;
+  const lines = changedLines(before, after);
+  if (!lines || lines.to - lines.from < 1) return;
+  const shift = indentUnderBrace(after, lines.from, lines.to, view.state.facet(indentUnit));
+  // A server that generated code without its context formats ranges the same
+  // way (back to column 0): its range formatting is skipped then.
+  if (shift.length) view.dispatch({ changes: shift, userEvent: "format", scrollIntoView: false });
+  else await formatLines(view, after.line(lines.from).from, after.line(lines.to).to);
+}
+
+/**
+ * Generated lines right under a `{` line but not indented past it (servers
+ * that format the snippet on its own, kotlin-language-server): the block moves
+ * one level in, keeping its own nesting. Never applies to indentation-based
+ * languages, whose blocks don't open with `{`.
+ */
+export function indentUnderBrace(doc: Text, fromLine: number, toLine: number, unit: string): Array<{ from: number; insert: string }> {
+  if (fromLine < 2) return [];
+  const prev = doc.line(fromLine - 1).text;
+  if (!prev.trimEnd().endsWith("{")) return [];
+  const lead = (t: string) => t.slice(0, t.length - t.trimStart().length);
+  const target = lead(prev) + unit;
+  let first: string | null = null;
+  for (let n = fromLine; n <= toLine && first === null; n++) if (doc.line(n).text.trim()) first = lead(doc.line(n).text);
+  if (first === null || first.length > lead(prev).length || !target.startsWith(first)) return [];
+  const extra = target.slice(first.length);
+  const out: Array<{ from: number; insert: string }> = [];
+  for (let n = fromLine; n <= toLine; n++) {
+    const line = doc.line(n);
+    if (line.text.trim()) out.push({ from: line.from, insert: extra });
+  }
+  return out;
+}
+
+/** 1-based lines of `after` that differ from `before` (common head and tail lines excluded); null if equal. */
+export function changedLines(before: Text, after: Text): { from: number; to: number } | null {
+  if (before.eq(after)) return null;
+  let head = 0;
+  while (head < before.lines && head < after.lines && before.line(head + 1).text === after.line(head + 1).text) head++;
+  let tail = 0;
+  while (
+    tail < before.lines - head &&
+    tail < after.lines - head &&
+    before.line(before.lines - tail).text === after.line(after.lines - tail).text
+  )
+    tail++;
+  const from = Math.min(head + 1, after.lines);
+  return { from, to: Math.max(from, after.lines - tail) };
 }
 
 /**
@@ -127,8 +228,17 @@ export async function applyKindSilently(view: EditorView, kind: string): Promise
   return true;
 }
 
+/**
+ * Sorted, one action per title: servers can report the same action under two
+ * kinds (jdtls: "Generate toString()" as quickassist and source.generate).
+ */
+export function listedCodeActions(actions: readonly CodeAction[]): CodeAction[] {
+  const seen = new Set<string>();
+  return sortCodeActions(actions).filter((a) => !seen.has(a.title) && !!seen.add(a.title));
+}
+
 function actionItems(view: EditorView, actions: CodeAction[], resolved?: Map<CodeAction, Promise<CodeAction>>): ListPopupItem[] {
-  return sortCodeActions(actions).map((a, i) => ({
+  return listedCodeActions(actions).map((a, i) => ({
     id: `${i}`,
     label: a.title,
     icon: isQuickFix(a) ? "bulb-fix" : "bulb",
@@ -217,7 +327,7 @@ export async function showIntentions(view: EditorView) {
     } catch (e) {
       failure = { error: e };
     }
-    const sorted = sortCodeActions(actions);
+    const sorted = listedCodeActions(actions);
     const resolved = new Map<CodeAction, Promise<CodeAction>>();
     const items = withInspectionControls(view, [...local, ...actionItems(view, sorted, resolved)]);
     if (!items.length) {
@@ -305,6 +415,16 @@ function noActionReason(view: EditorView, none: string): string {
 // ---------------------------------------------------------------------------
 // Lightbulb
 
+/**
+ * Fixes and refactorings light the bulb; source actions (organize imports,
+ * generate…) and server extras (gopls "Browse documentation") are offered on
+ * almost every line and only appear in the ⌥↵ list.
+ */
+export function lightsBulb(a: CodeAction): boolean {
+  const kind = a.kind ?? "";
+  return !kind || kind === "quickassist" || /^(quickfix|refactor)(\.|$)/.test(kind);
+}
+
 interface Bulb {
   line: number;
   quickFix: boolean;
@@ -331,11 +451,19 @@ const bulbPlugin = ViewPlugin.fromClass(
       this.lookup();
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.selectionSet) this.lookup();
+      if (u.docChanged || u.selectionSet || (u.focusChanged && u.view.hasFocus)) this.lookup();
+      else if (u.focusChanged) {
+        this.lookup.cancel();
+        // A blur dispatched from inside the update is not allowed.
+        queueMicrotask(() => {
+          if (!this.view.hasFocus && this.view.state.field(bulbField, false)) this.view.dispatch({ effects: setBulb.of(null) });
+        });
+      }
     }
     async run() {
       const doc = docOf(this.view);
-      if (!doc || doc.readOnly || !this.view.dom.isConnected) return;
+      // As in IDEA, only the focused editor shows the bulb.
+      if (!doc || doc.readOnly || !this.view.dom.isConnected || !this.view.hasFocus) return;
       const state = this.view.state;
       const typoFix = spellingIntentions(this.view).length > 0;
       const local = typoFix || contributedIntentions(this.view).length > 0;
@@ -350,9 +478,9 @@ const bulbPlugin = ViewPlugin.fromClass(
           if (!local) return;
         }
       }
-      if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
+      if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus) return;
       const line = state.doc.lineAt(state.selection.main.head).number;
-      const any = actions.length > 0 || local;
+      const any = actions.some(lightsBulb) || local;
       this.view.dispatch({
         effects: setBulb.of(any ? { line, quickFix: typoFix || actions.some(isQuickFix) } : null),
       });
@@ -365,21 +493,20 @@ const bulbPlugin = ViewPlugin.fromClass(
 
 /**
  * New-UI bulb: floats at the start of the text on the caret line, or on the
- * line below / above when the caret line's text starts at the left edge.
+ * line below / above when the caret line's text starts at the left edge; in
+ * the gutter when none of them has room.
  */
 const BULB_COLUMNS = 3;
 
-function bulbLine(state: EditorView["state"], line: number): number {
+export function bulbLine(state: EditorView["state"], line: number): { line: number; gutter: boolean } {
   const doc = state.doc;
   const free = (n: number) => {
     if (n < 1 || n > doc.lines) return false;
     const text = doc.line(n).text;
     return text.length - text.trimStart().length >= BULB_COLUMNS || !text.trim();
   };
-  if (free(line)) return line;
-  if (free(line + 1)) return line + 1;
-  if (free(line - 1)) return line - 1;
-  return line;
+  for (const n of [line, line + 1, line - 1]) if (free(n)) return { line: n, gutter: false };
+  return { line, gutter: true };
 }
 
 class FloatingBulb {
@@ -393,6 +520,7 @@ class FloatingBulb {
     this.dom.setAttribute("aria-label", "Show intentions");
     this.dom.style.display = "none";
     this.dom.appendChild(iconNode("bulb", 16));
+    this.dom.appendChild(iconNode("bulb-fix", 16, "cm-lsp-bulb-fix-icon"));
     this.dom.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -420,18 +548,24 @@ class FloatingBulb {
     this.view.requestMeasure({
       key: this,
       read: (view) => {
-        const line = view.state.doc.line(bulbLine(view.state, bulb.line));
-        const block = view.lineBlockAt(line.from);
+        const at = bulbLine(view.state, bulb.line);
+        const line = view.state.doc.line(at.line);
         const content = view.contentDOM.getBoundingClientRect();
         const scroller = view.scrollDOM.getBoundingClientRect();
+        // The text row: the line's block also holds inline widgets above it (code vision).
+        const coords = view.coordsAtPos(line.from, 1);
+        const block = view.lineBlockAt(line.from);
+        const textTop = coords ? coords.top - scroller.top : block.top + view.documentTop - scroller.top;
         return {
-          top: block.top + (view.documentTop - scroller.top) + view.scrollDOM.scrollTop,
-          left: content.left - scroller.left + view.scrollDOM.scrollLeft + 4,
-          height: block.height,
+          top: textTop + view.scrollDOM.scrollTop,
+          left: content.left - scroller.left + view.scrollDOM.scrollLeft + (at.gutter ? -20 : 4),
+          height: coords ? coords.bottom - coords.top : block.height,
+          gutter: at.gutter,
         };
       },
-      write: ({ top, left, height }) => {
+      write: ({ top, left, height, gutter }) => {
         this.dom.style.display = "";
+        this.dom.classList.toggle("cm-lsp-bulb-gutter", gutter);
         this.dom.style.top = `${top}px`;
         this.dom.style.left = `${left}px`;
         this.dom.style.height = `${Math.min(height, this.view.defaultLineHeight)}px`;
@@ -447,5 +581,5 @@ class FloatingBulb {
 const floatingBulb = ViewPlugin.fromClass(FloatingBulb);
 
 export function intentionsExtension(): Extension {
-  return [bulbField, bulbPlugin, floatingBulb];
+  return [bulbField, bulbPlugin, floatingBulb, intentionProviders.of(pythonMemberIntentions)];
 }

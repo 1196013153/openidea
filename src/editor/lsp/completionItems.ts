@@ -55,6 +55,36 @@ export function toCmCompletion(item: CompletionItem): Completion {
   return c;
 }
 
+const IMPORT_SOURCE = [
+  /^\s*from\s+([\w.]+)\s+import\b/m, // Python
+  /^\s*import\s+(?:static\s+)?([\w.]+?)\.\w+;?\s*$/m, // Java, Kotlin
+  /^\s*use\s+([\w:]+)::/m, // Rust
+  /\bfrom\s+["']([^"']+)["']/, // JS / TS
+];
+
+/**
+ * Where an auto-import item comes from (`collections`, `java.util`): the
+ * module its import edit names. Servers like pyright put it nowhere else, so
+ * same-named items (`OrderedDict` from typing / collections) look identical.
+ */
+export function importSource(item: Pick<CompletionItem, "additionalEdits">): string | null {
+  for (const e of item.additionalEdits) {
+    for (const re of IMPORT_SOURCE) {
+      const m = re.exec(e.new_text);
+      if (m) return m[1]!;
+    }
+  }
+  return null;
+}
+
+/** Text of the right-aligned type column: the detail, with the import source when it lacks one. */
+export function typeColumnText(item: Pick<CompletionItem, "detail" | "additionalEdits">): string | null {
+  const detail = item.detail?.replace(/\s+/g, " ") || null;
+  const source = importSource(item);
+  if (!source || detail?.includes(source)) return detail;
+  return !detail || /^auto[- ]?import$/i.test(detail) ? source : `${detail} (${source})`;
+}
+
 const WORD_CHAR = /[\p{L}\p{N}_$]/u;
 
 /** End of the identifier starting at `pos` in `line` (for ⇥ Replace without a server range). */

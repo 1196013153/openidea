@@ -82,6 +82,7 @@ export const intellijMacos: Record<string, string[]> = {
   "code.quickDocumentation": ["F1", "Ctrl+J"],
   "code.quickDefinition": ["Alt+Space", "Meta+Y"],
   "code.showIntentions": ["Alt+Enter"],
+  "code.applyQuickFix": ["Alt+Shift+Enter"],
   "code.reformat": ["Meta+Alt+L"],
   "code.reformatDialog": ["Meta+Alt+Shift+L"],
   "code.optimizeImports": ["Ctrl+Alt+O"],

@@ -128,6 +128,22 @@ export function pinToFind(symbol: string, locations: readonly Location[]) {
   };
 }
 
+/** When each editor's document last changed (`performance.now()`). */
+const editedAt = new WeakMap<EditorView, number>();
+
+/**
+ * Some servers analyse an edit asynchronously and answer from the previous
+ * version meanwhile (kotlin-language-server: nothing for ~300 ms after typing).
+ * An empty answer right after an edit is asked again a few times.
+ */
+async function gotoAfterEdits(view: EditorView, request: () => Promise<DeclarationTarget[]>) {
+  for (let attempt = 0; ; attempt++) {
+    const locs = await request();
+    if (locs.length || attempt >= 3 || performance.now() - (editedAt.get(view) ?? -Infinity) > 1500) return locs;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number) {
   const offset = at ?? view.state.selection.main.head;
   if (kind === "definition" || kind === "declaration") {
@@ -142,7 +158,7 @@ export async function gotoTargets(view: EditorView, kind: GotoKind, at?: number)
   const declaration = kind === "definition" || kind === "declaration";
   let serverDown = false;
   try {
-    locs = dedupeLocations(await lspRequest(() => commands.lspGoto(doc.doc, pos, kind)));
+    locs = dedupeLocations(await gotoAfterEdits(view, () => lspRequest(() => commands.lspGoto(doc.doc, pos, kind))));
   } catch (e) {
     if (isCancelled(e) || !declaration) {
       reportLspError(view, e, true);
@@ -630,6 +646,9 @@ const highlightPlugin = ViewPlugin.fromClass(
 
 export function navigationExtension(): Extension {
   return [
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged) editedAt.set(u.view, performance.now());
+    }),
     linkField,
     linkPlugin,
     highlightField,

@@ -178,10 +178,6 @@
 }
 .bulb {
   flex: none;
-  color: var(--warning);
-}
-.bulbFix {
-  color: var(--danger);
 }
 .empty {
   font-size: var(--fs-ui);

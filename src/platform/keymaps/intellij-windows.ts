@@ -83,6 +83,7 @@ export const intellijWindows: Record<string, string[]> = {
   "code.quickDocumentation": ["Ctrl+Q"],
   "code.quickDefinition": ["Ctrl+Shift+I"],
   "code.showIntentions": ["Alt+Enter"],
+  "code.applyQuickFix": ["Alt+Shift+Enter"],
   "code.reformat": ["Ctrl+Alt+L"],
   "code.reformatDialog": ["Ctrl+Alt+Shift+L"],
   "code.optimizeImports": ["Ctrl+Alt+O"],

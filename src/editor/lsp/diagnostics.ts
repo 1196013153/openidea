@@ -9,7 +9,8 @@ import { EditorSelection, StateEffect, StateField } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 import { forEachDiagnostic, linter, setDiagnostics, type Diagnostic as LintDiagnostic } from "@codemirror/lint";
 import type { Diagnostic, Severity } from "@/bindings";
-import { onIdeEvent } from "@/platform/ipc";
+import { commands, ideEventsReady, isTauri, onIdeEvent } from "@/platform/ipc";
+import { useProject } from "@/platform/project";
 import { publishLocalDiagnostics } from "@/platform/localDiagnostics";
 import { scrollbarMarks, type ScrollbarMark } from "@/editor/api";
 import { rangeToOffsets } from "./positions";
@@ -89,11 +90,20 @@ export function subscribeDiagnostics(path: string, l: Listener): () => void {
 
 export function installDiagnosticsEvents(): () => void {
   const off = onIdeEvent("diagnostics", (e) => storeDiagnostics(e.path, e.source, e.items));
+  // Diagnostics published before this window (re)loaded were missed: ask for them again.
+  const resend = () => {
+    if (isTauri()) void ideEventsReady().then(() => commands.lspResendDiagnostics()).catch(() => {});
+  };
+  if (useProject.getState().project) resend();
+  const offProject = useProject.subscribe((s, prev) => {
+    if (s.project?.root !== prev.project?.root && s.project) resend();
+  });
   // Another inspection profile (or edits to it) re-filters every open file.
   const offProfile = subscribeInspectionProfile(() => listeners.forEach((set) => set.forEach((l) => l())));
   return () => {
     off();
     offProfile();
+    offProject();
   };
 }
 
@@ -118,12 +128,15 @@ export function toLintDiagnostics(doc: Text, items: readonly Diagnostic[]): Lint
       to,
       severity: d.severity,
       message: d.message,
-      source: [d.source, d.code].filter(Boolean).join(" ") || undefined,
+      source: [d.source, isInternalCode(d.code) ? null : d.code].filter(Boolean).join(" ") || undefined,
       markClass: classes.length ? classes.join(" ") : undefined,
     };
   });
   return out.sort((a, b) => a.from - b.from || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
 }
+
+/** Problem ids that mean nothing to a reader (jdtls: `67109264`); short ones (TS `2322`) stay. */
+const isInternalCode = (code: string | null | undefined) => !!code && /^\d{6,}$/.test(code);
 
 const MARK_COLOR: Partial<Record<Severity, string>> = {
   error: "var(--danger)",
@@ -218,6 +231,13 @@ const lintTheme = EditorView.theme({
   },
   ".cm-lintRange.cm-lsp-unnecessary *": { color: "var(--fg-unused, var(--fg-faint))" },
   ".cm-lintRange.cm-lsp-deprecated": { textDecoration: "line-through", textDecorationColor: "var(--fg-muted)" },
+  // An error or warning on the same range (merged into one mark) keeps its underline.
+  ".cm-lintRange-error.cm-lsp-typo, .cm-lintRange-error.cm-lsp-unnecessary": {
+    textDecoration: "var(--editor-error-decoration, underline wavy var(--danger))",
+  },
+  ".cm-lintRange-warning.cm-lsp-typo, .cm-lintRange-warning.cm-lsp-unnecessary": {
+    textDecoration: "var(--editor-warning-decoration, underline wavy var(--warning))",
+  },
   ".cm-lintRange-active": { backgroundColor: "transparent" },
   ".cm-lintRange-warning.cm-lintRange-active": { backgroundColor: "var(--editor-warning-background, transparent)" },
   ".cm-lintPoint:after": { display: "none" },

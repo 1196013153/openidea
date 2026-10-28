@@ -10,7 +10,8 @@ import { quickDefinition, quickDocumentation } from "./hover";
 import { expressionTypeInfo } from "./typeInfo";
 import { gotoTargets, highlightUsages } from "./navigation";
 import { gotoDiagnostic } from "./diagnostics";
-import { applyKindSilently, runKindAction, showIntentions } from "./intentions";
+import { applyKindSilently, applyQuickFix, runKindAction, showIntentions } from "./intentions";
+import { implementPythonAbstractMethods } from "./pythonMembers";
 import { workflowSettings, type ActionsOnSaveValid } from "@/platform/workflowSettings";
 import { startRename } from "./rename";
 import { formatDocument, reformatDialog } from "./format";
@@ -154,6 +155,9 @@ export function registerLspActions(): () => void {
     editorAction("code.showIntentions", "Show Context Actions", "Code", showIntentions, {
       keywords: ["intention", "quick fix", "lightbulb"],
     }),
+    editorAction("code.applyQuickFix", "Apply Quick Fix", "Code", applyQuickFix, {
+      keywords: ["fix error", "problem", "lightbulb"],
+    }),
     editorAction("code.reformat", "Reformat Code", "Code", reformat, {
       keywords: ["format", "prettier"],
     }),
@@ -228,7 +232,12 @@ export function registerLspActions(): () => void {
     // Implement / Override Methods: the server's code actions for them (jdtls "Override/Implement
     // Methods…", rust-analyzer "Implement missing members", TS "Implement interface"…).
     editorAction("code.implementMethods", "Implement Methods…", "Code", (v) =>
-      runKindAction(v, "", { title: IMPLEMENT_TITLE, none: "Nothing to implement", label: "Implement Members" }),
+      runKindAction(v, "", {
+        title: IMPLEMENT_TITLE,
+        none: "Nothing to implement",
+        label: "Implement Members",
+        fallback: () => implementPythonAbstractMethods(v),
+      }),
     ),
     editorAction("code.overrideMethods", "Override Methods…", "Code", (v) =>
       runKindAction(v, "", { title: OVERRIDE_TITLE, none: "Nothing to override", label: "Override Members" }),

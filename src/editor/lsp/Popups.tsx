@@ -44,7 +44,7 @@ import { useUsagesStatus } from "./navigation";
 import styles from "./Popups.module.css";
 
 export function BulbIcon({ fix }: { fix?: boolean }) {
-  return <Icon name="bulb" size={16} className={clsx(styles.bulb, fix && styles.bulbFix)} />;
+  return <Icon name={fix ? "bulb-fix" : "bulb"} size={16} className={styles.bulb} />;
 }
 
 function ItemIcon({ item }: { item: ListPopupItem }) {

@@ -247,6 +247,7 @@ const ICONS = {
   list: "general/listFiles",
   keyboard: "general/keyboard",
   bulb: "codeInsight/intentionBulb",
+  "bulb-fix": "codeInsight/quickfixBulb",
   package: "nodes/package",
   plugin: "nodes/plugin",
   "soft-wrap": "general/softWrap",

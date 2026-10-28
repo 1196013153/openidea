@@ -31,6 +31,7 @@ import { docWindowVisible, moveDocPopupToWindow, showInDocWindow } from "./docs"
 import { structure } from "@/editor/structure";
 import { basename } from "@/platform/project";
 import { iconNode } from "./iconMarkup";
+import { applyCodeAction, quickFixesAt } from "./intentions";
 import { editorPrefs } from "@/platform/editorSettings";
 import { CONTRIBUTED_HOVER, contributedAt, type ContributedHover } from "@/editor/api";
 import { navigationModifierHeld, onNavigationModifier, pointerTarget } from "@/platform/navigationModifier";
@@ -60,7 +61,7 @@ export async function requestHover(view: EditorView, pos: number): Promise<Hover
 function renderDiagnostics(view: EditorView, diags: PlacedDiagnostic[]): HTMLElement {
   const box = document.createElement("div");
   box.className = "cm-lsp-hover-diagnostics";
-  for (const { diagnostic: d, from } of diags) {
+  for (const { diagnostic: d, from, to } of diags) {
     const row = document.createElement("div");
     row.className = `cm-lsp-diag cm-lsp-diag-${d.severity}`;
     row.appendChild(
@@ -87,6 +88,7 @@ function renderDiagnostics(view: EditorView, diags: PlacedDiagnostic[]): HTMLEle
     fix.className = "cm-lsp-link-button";
     const keys = shortcutLabel("code.showIntentions");
     fix.textContent = keys ? `More actions… ${keys}` : "More actions…";
+    if (d.severity === "error" || d.severity === "warning") offerQuickFix(view, meta, fix, from, to);
     fix.addEventListener("mousedown", (e) => e.preventDefault());
     fix.addEventListener("click", () => {
       view.dispatch({ selection: EditorSelection.cursor(from) });
@@ -98,6 +100,28 @@ function renderDiagnostics(view: EditorView, diags: PlacedDiagnostic[]): HTMLEle
     box.appendChild(row);
   }
   return box;
+}
+
+/** IDEA's hover link to the problem's preferred quick fix, shown once the server named one. */
+function offerQuickFix(view: EditorView, meta: HTMLElement, before: HTMLElement, from: number, to: number) {
+  const doc = view.state.doc;
+  void quickFixesAt(view, from, to)
+    .then(([action]) => {
+      if (!action || view.state.doc !== doc || !before.isConnected) return;
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "cm-lsp-link-button";
+      const keys = shortcutLabel("code.applyQuickFix");
+      link.textContent = keys ? `${action.title} ${keys}` : action.title;
+      link.addEventListener("mousedown", (e) => e.preventDefault());
+      link.addEventListener("click", () => {
+        view.dispatch({ effects: closeHoverTooltips });
+        view.focus();
+        void applyCodeAction(view, action);
+      });
+      meta.insertBefore(link, before);
+    })
+    .catch(() => {});
 }
 
 /**

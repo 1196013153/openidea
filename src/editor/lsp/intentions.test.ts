@@ -28,7 +28,8 @@ vi.mock("@/platform/ipc", async (orig) => {
   return { ...actual, isTauri: () => true, commands: { ...actual.commands, lspResolveCodeAction } };
 });
 
-const { intentionPreview, withInspectionControls } = await import("./intentions");
+const { bulbLine, changedLines, indentUnderBrace, intentionPreview, lightsBulb, listedCodeActions, withInspectionControls } =
+  await import("./intentions");
 const { setFileDiagnostics } = await import("./diagnostics");
 const { lspDoc } = await import("./lsp");
 
@@ -107,5 +108,65 @@ describe("intention preview", () => {
     });
     await intentionPreview(view, action, cache, signal);
     expect(lspResolveCodeAction).toHaveBeenCalledOnce();
+  });
+});
+
+describe("listedCodeActions", () => {
+  const action = (title: string, kind: string): CodeAction => ({ ...resolved, title, kind, edit: null });
+  it("lists one action per title, quick fixes first", () => {
+    const list = listedCodeActions([
+      action("Generate toString()", "quickassist"),
+      action("Add unimplemented methods", "quickfix"),
+      action("Generate toString()", "source.generate.toString"),
+    ]);
+    expect(list.map((a) => [a.title, a.kind])).toEqual([
+      ["Add unimplemented methods", "quickfix"],
+      ["Generate toString()", "quickassist"],
+    ]);
+  });
+});
+
+describe("changedLines", () => {
+  const text = (s: string) => EditorState.create({ doc: s }).doc;
+  it("spans the lines an edit inserted", () => {
+    expect(changedLines(text("class A {\n}\n"), text("class A {\n  f() {\n  }\n}\n"))).toEqual({ from: 2, to: 3 });
+  });
+  it("is null for equal texts", () => {
+    expect(changedLines(text("a\nb"), text("a\nb"))).toBeNull();
+  });
+});
+
+describe("bulbLine", () => {
+  const state = (s: string) => EditorState.create({ doc: s });
+  it("prefers an indented caret line, then the lines around it", () => {
+    expect(bulbLine(state("    x\ny"), 1)).toEqual({ line: 1, gutter: false });
+    expect(bulbLine(state("x\n\ny"), 1)).toEqual({ line: 2, gutter: false });
+  });
+  it("falls back to the gutter when no nearby line has room", () => {
+    expect(bulbLine(state("x\n  y\nz"), 1)).toEqual({ line: 1, gutter: true });
+  });
+});
+
+describe("lightsBulb", () => {
+  const kinds = (k: string | null) => lightsBulb({ ...resolved, kind: k });
+  it("lights for fixes and refactorings only", () => {
+    expect([null, "quickfix", "refactor.extract", "quickassist"].map(kinds)).toEqual([true, true, true, true]);
+    expect(["source.organizeImports", "source.doc", "gopls.doc.features"].map(kinds)).toEqual([false, false, false]);
+  });
+});
+
+describe("indentUnderBrace", () => {
+  const text = (s: string) => EditorState.create({ doc: s }).doc;
+  it("moves code generated at the brace's column one level in", () => {
+    const doc = text("class A : B {\noverride fun f() {\n    g()\n}\n}");
+    expect(indentUnderBrace(doc, 2, 4, "    ").map((c) => [doc.lineAt(c.from).number, c.insert])).toEqual([
+      [2, "    "],
+      [3, "    "],
+      [4, "    "],
+    ]);
+  });
+  it("leaves code already indented, or not under a brace", () => {
+    expect(indentUnderBrace(text("class A {\n    f()\n}"), 2, 2, "    ")).toEqual([]);
+    expect(indentUnderBrace(text("class A:\npass\nx"), 2, 3, "    ")).toEqual([]);
   });
 });
