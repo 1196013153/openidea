@@ -1,6 +1,6 @@
 //! Spell checking for IDEA's "Proofreading › Typo" inspection: words of
 //! comments, string literals and declared names (regions come from the
-//! syntax layer), checked against the bundled en_US Hunspell dictionary, a
+//! syntax layer), checked against the bundled en_US / en_GB Hunspell dictionary, a
 //! list of programming terms and the user's accepted words and dictionaries.
 //! Regular agent nouns of known words (`checkpointer`) pass everywhere; in
 //! identifiers so do closed compounds of known words (`codebase`).
@@ -98,12 +98,17 @@ impl SpellScope {
 /// At most this many typos are reported per text.
 pub const MAX_TYPOS: usize = 2000;
 
+/// The en_GB entries en_US lacks (`colour`, `behaviour`, `normalise`), in the
+/// same affix scheme: either spelling passes.
+const EN_GB_EXTRA: &str = include_str!("dict/en_GB-extra.dic");
+
+/// The en_US dictionary plus [`EN_GB_EXTRA`].
 fn english() -> &'static spellbook::Dictionary {
     static DICT: OnceLock<spellbook::Dictionary> = OnceLock::new();
     DICT.get_or_init(|| {
         let aff = include_str!("dict/en_US.aff");
-        let dic = include_str!("dict/en_US.dic");
-        spellbook::Dictionary::new(aff, dic).expect("bundled en_US dictionary parses")
+        let dic = format!("{}{EN_GB_EXTRA}", include_str!("dict/en_US.dic"));
+        spellbook::Dictionary::new(aff, &dic).expect("bundled en dictionary parses")
     })
 }
 
@@ -114,6 +119,7 @@ fn lemmas() -> &'static HashSet<&'static str> {
         include_str!("dict/en_US.dic")
             .lines()
             .skip(1)
+            .chain(EN_GB_EXTRA.lines())
             .map(|l| l.split('/').next().unwrap_or(l).trim())
             .filter(|w| !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase()))
             .collect()
@@ -136,13 +142,12 @@ fn doubles_final_consonant(stem: &str) -> bool {
     }
 }
 
-/// Whether dropping one letter or swapping two adjacent ones gives a dictionary
+/// Whether dropping one letter or swapping two adjacent ones gives a `known`
 /// word: then a compound (`writ`+`ting`) is more likely a typo of
 /// it (`writing`), as Hunspell's CHECKCOMPOUNDREP reasons.
-fn near_word(lower: &str) -> bool {
+fn near_word(lower: &str, known: impl Fn(&str) -> bool) -> bool {
     let b = lower.as_bytes();
-    let dict = english();
-    let check = |v: &[u8]| std::str::from_utf8(v).is_ok_and(|w| dict.check(w));
+    let check = |v: &[u8]| std::str::from_utf8(v).is_ok_and(&known);
     (0..b.len()).any(|i| check(&[&b[..i], &b[i + 1..]].concat()))
         || (0..b.len().saturating_sub(1)).any(|i| {
             let mut v = b.to_vec();
@@ -151,23 +156,41 @@ fn near_word(lower: &str) -> bool {
         })
 }
 
-fn software_terms() -> &'static HashSet<&'static str> {
+fn term_list(text: &'static str) -> HashSet<&'static str> {
+    text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).collect()
+}
+
+/// Hand-picked programming terms: short ones (`url`) may be part of a compound.
+fn curated_terms() -> &'static HashSet<&'static str> {
+    static TERMS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    TERMS.get_or_init(|| term_list(include_str!("dict/software.txt")))
+}
+
+/// Imported programming terms, tool and library names, and abbreviations:
+/// never part of a compound.
+fn other_terms() -> &'static HashSet<&'static str> {
     static TERMS: OnceLock<HashSet<&'static str>> = OnceLock::new();
     TERMS.get_or_init(|| {
-        include_str!("dict/software.txt")
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .collect()
+        let mut terms = term_list(include_str!("dict/cspell-terms.txt"));
+        terms.extend(term_list(include_str!("dict/code-words.txt")));
+        terms
     })
 }
 
-/// A software term, or its plural (`endpoints`, `regexes`).
+fn term(lower: &str) -> bool {
+    curated_terms().contains(lower) || other_terms().contains(lower)
+}
+
+/// A software term, or the plural of one Hunspell doesn't know (`endpoints`,
+/// `regexes`; not `filess`, `contextes`, `checkings`). [`other_terms`] need
+/// 4+ letters for that (`acses` stays flagged).
 fn software_term(lower: &str) -> bool {
-    let terms = software_terms();
-    terms.contains(lower)
-        || lower.strip_suffix('s').is_some_and(|w| terms.contains(w))
-        || lower.strip_suffix("es").is_some_and(|w| terms.contains(w))
+    let plural_of = |w: &str| (curated_terms().contains(w) || w.len() >= MIN_PART && term(w)) && !english().check(w);
+    term(lower)
+        || lower.strip_suffix('s').is_some_and(|w| !w.ends_with('s') && plural_of(w))
+        || lower
+            .strip_suffix("es")
+            .is_some_and(|w| ["s", "x", "z", "ch", "sh"].iter().any(|e| w.ends_with(e)) && plural_of(w))
 }
 
 /// Words of a custom dictionary file: a plain word list or a Hunspell `.dic`
@@ -224,11 +247,15 @@ impl Speller {
 
     /// Whether `word` (of prose, a comment or a string) is spelt correctly.
     /// Case is forgiven the way identifiers need it: `url` passes for `URL`,
-    /// `paris` for `Paris`. Regular agent nouns of known words pass too
-    /// (`checkpointer`, `serializers`).
+    /// `paris` for `Paris`. Possessives (`backend's`), regular agent nouns
+    /// (`checkpointer`, `serializers`) and `-ed` / `-ing` / `-able` forms of
+    /// programming terms (`stringified`) pass too.
     pub fn is_correct(&self, word: &str) -> bool {
+        if let Some(base) = word.strip_suffix("'s") {
+            return self.is_correct(base);
+        }
         let lower = word.to_lowercase();
-        self.listed(word, &lower) || self.agent_noun(&lower)
+        self.listed(word, &lower) || self.agent_noun(&lower) || self.term_form(&lower)
     }
 
     /// [`Self::is_correct`] for a part of an identifier, which may also be two
@@ -261,30 +288,63 @@ impl Speller {
         let singular = lower.strip_suffix('s').unwrap_or(lower);
         let Some(before_r) = singular.strip_suffix('r') else { return false };
         let Some(before_er) = before_r.strip_suffix('e') else { return false };
-        // (stem, root the `-or` noun would be built on)
-        let mut stems = vec![(before_r.to_string(), before_er)];
+        let mut stems = vec![before_r.to_string()];
         if let Some(y) = before_er.strip_suffix('i') {
-            stems.push((format!("{y}y"), before_er));
+            stems.push(format!("{y}y"));
         } else if !before_er.ends_with('e') && !doubles_final_consonant(before_er) {
-            stems.push((before_er.to_string(), before_er));
+            stems.push(before_er.to_string());
         }
-        stems.into_iter().any(|(stem, root)| {
-            stem.len() >= MIN_PART
-                && (lemmas().contains(stem.as_str()) || self.user_word(&stem))
-                && !english().check(&format!("{root}or"))
-        })
+        let or_noun = format!("{before_er}or");
+        stems
+            .into_iter()
+            .any(|stem| stem.len() >= MIN_PART && (lemmas().contains(stem.as_str()) || self.term_stem(&stem)))
+            && !self.listed(&or_noun, &or_noun)
+    }
+
+    /// A programming term or accepted word of 5+ letters Hunspell doesn't know
+    /// (`stringify`; not `calls` or `calc`), to derive other words from.
+    fn term_stem(&self, s: &str) -> bool {
+        s.len() > MIN_PART && self.user_word(s) && !english().check(s)
+    }
+
+    /// `<term>ed` / `<term>ing` / `<term>able` of a programming term or an
+    /// accepted word of 5+ letters: `stringified` (stringify), `memoizing`
+    /// (memoize), `upserted`. Dictionary words only take the endings Hunspell
+    /// knows: `falled`, `quiting` stay flagged. Not when one letter off a known
+    /// word (`preprocesssing`).
+    fn term_form(&self, lower: &str) -> bool {
+        if !lower.bytes().all(|c| c.is_ascii_lowercase()) {
+            return false;
+        }
+        let stem = |s: &str| self.term_stem(s);
+        let derived = ["ed", "ing", "able"].into_iter().any(|suffix| {
+            let Some(root) = lower.strip_suffix(suffix) else { return false };
+            let b = root.as_bytes();
+            (stem(root) && !doubles_final_consonant(root))
+                || stem(&format!("{root}e"))
+                || (suffix != "ing" && root.strip_suffix('i').is_some_and(|y| stem(&format!("{y}y"))))
+                || (b.len() > 2 && b[b.len() - 1] == b[b.len() - 2] && stem(&root[..root.len() - 1]))
+        });
+        derived && !near_word(lower, |w| english().check(w) || self.user_word(w))
     }
 
     /// Two known words run together, each at least [`MIN_PART`] letters (or a
-    /// 3-letter programming term: `urlpath`). Proper nouns don't count.
+    /// hand-picked or accepted 3-letter term: `urlpath`). Proper nouns and
+    /// [`other_terms`] don't count (`guid` + `lines` would pass `guidlines`).
     fn compound(&self, lower: &str) -> bool {
         if lower.len() < 6 || !lower.bytes().all(|c| c.is_ascii_lowercase()) || NOT_COMPOUNDS.contains(&lower) {
             return false;
         }
-        let part = |p: &str| {
-            (p.len() >= 3 && self.user_word(p)) || (p.len() >= MIN_PART && (english().check(p) || self.agent_noun(p)))
+        let known = |p: &str| {
+            self.accepted.contains(p) || curated_terms().contains(p) || self.custom.iter().any(|d| d.contains(p))
         };
-        (3..=lower.len() - 3).any(|i| part(&lower[..i]) && part(&lower[i..])) && !near_word(lower)
+        let part = |p: &str| match p.len() {
+            0..3 => false,
+            3 => known(p),
+            _ => known(p) || english().check(p) || self.agent_noun(p),
+        };
+        (3..=lower.len() - 3).any(|i| part(&lower[..i]) && part(&lower[i..]))
+            && !near_word(lower, |w| english().check(w))
     }
 
     /// Replacements for `word`, best first, in the word's case style.
@@ -299,6 +359,14 @@ impl Speller {
         out.retain(|s| s != word && seen.insert(s.clone()));
         out.truncate(limit);
         out
+    }
+
+    /// Whether the letter run `w` was split from is a known term as a whole:
+    /// `IntelliJ` (`Intelli` + `J`), `PostgreSQL` (`Postgre` + `SQL`).
+    fn known_run(&self, text: &str, w: &WordSpan) -> bool {
+        let start = text[..w.start].rfind(|c: char| !c.is_alphabetic()).map_or(0, |i| i + 1);
+        let end = text[w.end..].find(|c: char| !c.is_alphabetic()).map_or(text.len(), |i| w.end + i);
+        (start, end) != (w.start, w.end) && self.user_word(&text[start..end].to_lowercase())
     }
 
     /// Misspelt words of `regions` (document order) in `text`; `None` when
@@ -319,7 +387,7 @@ impl Speller {
                 let ok = *verdicts
                     .entry((word, name))
                     .or_insert_with(|| if name { self.is_correct_identifier(word) } else { self.is_correct(word) });
-                if !ok {
+                if !ok && !self.known_run(text, w) {
                     bad.push((*w, r.kind));
                 }
             }
@@ -451,6 +519,45 @@ mod tests {
         for ok in ["breakpoint", "breakpoints", "endpoints", "datasets", "regexes"] {
             assert!(s.is_correct(ok), "{ok}");
         }
+        for ok in
+            ["stringify", "instanceof", "keydown", "submenu", "truthy", "vitest", "gradle", "unstaged", "rebasing"]
+        {
+            assert!(s.is_correct(ok), "{ok}");
+        }
+        for bad in ["filess", "contextes", "checkings", "acses"] {
+            assert!(!s.is_correct(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn british_spellings() {
+        let s = Speller::default();
+        for ok in ["colour", "behaviours", "normalised", "centred", "analyse", "cancelled", "dialogs"] {
+            assert!(s.is_correct(ok), "{ok}");
+        }
+        for bad in ["colur", "behavour", "normalsed"] {
+            assert!(!s.is_correct(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn split_terms_checked_whole() {
+        let s = Speller::default();
+        let text = "// Open IntelliJ or PostgreSQL, not Intelli alone";
+        let words: Vec<_> =
+            s.check(text, &whole(text, RegionKind::Comment), &|| false).unwrap().into_iter().map(|t| t.word).collect();
+        assert_eq!(words, ["Intelli"]);
+    }
+
+    #[test]
+    fn possessives_and_term_forms() {
+        let s = Speller::default();
+        for ok in ["backend's", "commit's", "stringified", "memoizing", "upserted"] {
+            assert!(s.is_correct(ok), "{ok}");
+        }
+        for bad in ["recieve's", "falled", "quiting", "preprocesssing", "perfer", "callser"] {
+            assert!(!s.is_correct(bad), "{bad}");
+        }
     }
 
     #[test]
@@ -471,7 +578,7 @@ mod tests {
         for ok in ["filepath", "dataframe", "username", "codebase", "pathname", "urlpath", "timestampfile"] {
             assert!(s.is_correct_identifier(ok), "{ok}");
         }
-        assert!(!s.is_correct("dataframe"));
+        assert!(!s.is_correct("timestampfile"));
         for bad in ["eachother", "everytime", "publically", "mesage", "lenght", "recieve", "comming", "withold"] {
             assert!(!s.is_correct_identifier(bad), "{bad}");
         }

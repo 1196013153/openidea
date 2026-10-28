@@ -79,14 +79,24 @@ user's app-data directory only when the user asks; none of them ships with OpenI
   unmodified, and its source is available from the repository above.
 - **Eclipse JDT Language Server** (jdtls): EPL-2.0, from download.eclipse.org.
 
-## en_US Hunspell dictionary
+## en_US / en_GB Hunspell dictionaries
 
 `crates/ide-spell/src/dict/en_US.{aff,dic}` (the spell checker's bundled dictionary) is the
 SCOWL-derived en_US Hunspell dictionary (version 2020.12.07, from the `dictionary-en` npm
 package 4.0.0), copied unmodified. Copyright Kevin Atkinson and the SCOWL / Hunspell
 dictionary contributors; MIT- and BSD-style licences, full text in
-`crates/ide-spell/src/dict/LICENSE-en_US`. It is checked with the
+`crates/ide-spell/src/dict/LICENSE-en_US`. `crates/ide-spell/src/dict/en_GB-extra.dic` holds the
+entries of the matching en_GB dictionary (`dictionary-en-gb` npm package 3.0.0, same SCOWL
+version, licence and affix file) that en_US lacks. They are checked with the
 [spellbook](https://github.com/helix-editor/spellbook) crate (MPL-2.0).
+
+## cspell-dicts word lists
+
+`crates/ide-spell/src/dict/cspell-terms.txt` (programming terms the spell checker accepts)
+is derived from the software-terms, typescript, node, rust, fullstack, golang, java, cpp,
+shell and css dictionaries of [cspell-dicts](https://github.com/streetsidesoftware/cspell-dicts)
+(October 2026): lowercased, filtered and merged by OpenIDEA. Copyright Street Side Software;
+MIT licence, full text in `crates/ide-spell/src/dict/LICENSE-cspell-dicts`.
 
 ## nvim-treesitter queries
 
