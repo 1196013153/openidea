@@ -330,7 +330,7 @@ impl Default for AppearanceSettings {
             ide_antialiasing: "greyscale".into(),
             editor_antialiasing: "greyscale".into(),
             show_tool_window_bars: true,
-            show_tool_window_names: true,
+            show_tool_window_names: false,
             widescreen_tool_windows: false,
             status_bar_widgets: BTreeMap::new(),
             main_toolbar: None,

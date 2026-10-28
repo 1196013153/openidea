@@ -274,7 +274,7 @@ let dragEnded = false;
 
 /**
  * Stripe groups (IDEA New UI): each stripe's upper group holds its side,
- * primary windows then split ones after a separator; the lower group of the
+ * primary windows then split ones (a separator marks the boundary while dragging); the lower group of the
  * left stripe holds Bottom Left, that of the right stripe Bottom Right.
  */
 function lowerSlot(side: StripeSide): ToolWindowSlot {
@@ -473,7 +473,7 @@ export function ToolWindowStripe({
   side,
   windows,
   visible,
-  showNames = true,
+  showNames = false,
   buttonWidth,
 }: {
   side: StripeSide;
@@ -494,7 +494,7 @@ export function ToolWindowStripe({
   const moreWindows = windows.filter((w) => !onStripe.includes(w));
   const focused = useToolWindowLayout((s) => s.focused);
   const drop = useStripeDrag((s) => s.drop);
-  // While a button is dragged the separator shows even without split windows, as a drop target.
+  // The separator between primary and split windows only shows while a button is dragged, as a drop target.
   const dragging = useStripeDrag((s) => !!s.id);
 
   const indicator = (slot: ToolWindowSlot, before: string | null) =>
@@ -528,12 +528,8 @@ export function ToolWindowStripe({
       onKeyDown={onStripeKeyDown}
     >
       {renderGroup(side, primary)}
-      {(split.length > 0 || dragging) && (
-        <>
-          <div className={styles.stripeSeparator} data-stripe-separator="" role="separator" />
-          {renderGroup(`${side}-split`, split)}
-        </>
-      )}
+      {dragging && <div className={styles.stripeSeparator} data-stripe-separator="" role="separator" />}
+      {(split.length > 0 || dragging) && renderGroup(`${side}-split`, split)}
       {side === "left" && <StripeMore windows={moreWindows} />}
       <div className={styles.stripeSpacer} data-stripe-spacer="" />
       {renderGroup(lowerSlot(side), lower)}
@@ -925,7 +921,7 @@ function useToolWindowAppearance() {
   const distractionFree = useDistractionFree((s) => s.active);
   return {
     bars: a?.showToolWindowBars !== false && !distractionFree,
-    names: a?.showToolWindowNames !== false,
+    names: a?.showToolWindowNames === true,
     widescreen: a?.widescreenToolWindows === true,
   };
 }

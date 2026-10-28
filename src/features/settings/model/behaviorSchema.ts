@@ -81,7 +81,7 @@ export const DEFAULT_APPEARANCE_EXTRAS: AppearanceExtras = {
   ideAntialiasing: "greyscale",
   editorAntialiasing: "greyscale",
   showToolWindowBars: true,
-  showToolWindowNames: true,
+  showToolWindowNames: false,
   widescreenToolWindows: false,
 };
 

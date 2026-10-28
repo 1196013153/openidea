@@ -249,8 +249,8 @@ describe("tool window stripe", () => {
     expect(ids("bottom")).toEqual(["terminal"]);
     expect(ids("right")).toEqual(["db"]);
     expect(ids("bottom-split")).toEqual(["services"]);
-    // Only the left stripe has split windows: one separator.
-    expect(document.querySelectorAll("[data-stripe-separator]")).toHaveLength(1);
+    // The separator only shows while a button is dragged.
+    expect(document.querySelectorAll("[data-stripe-separator]")).toHaveLength(0);
     unmount();
   });
 });

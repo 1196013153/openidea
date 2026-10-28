@@ -35,7 +35,7 @@ export function activate(): () => void {
       title: "Agents",
       icon: "toolwindow-agents",
       anchor: "left",
-      order: 30,
+      order: 0.5,
       component: lazyComponent(() => import("./AgentsView").then((m) => m.AgentsView)),
       headerActions: lazyComponent(() => import("./AgentsView").then((m) => m.AgentsHeaderActions)),
       useBadge: () => {
