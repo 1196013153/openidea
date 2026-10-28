@@ -5,23 +5,34 @@
  */
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
+import { executeAction } from "@/platform/actions";
 import { lazyComponent } from "@/ui";
 import { isVirtualUri } from "@/platform/virtualDocs";
 import {
   registerEditorKind,
   registerMenuGroup,
-  registerOverlay,
+  registerSettingsPage,
   registerStatusItem,
   registerToolWindow,
   toolWindowService,
 } from "@/workbench/contributions";
-import { AddAgentHost } from "./AddAgentHost";
 import { AgentsStatus } from "./AgentsStatus";
-import { HOME_KIND, SESSION_KIND, TOOL_WINDOW } from "./model";
+import { HOME_KIND, REGISTRY_PAGE, SESSION_KIND, TOOL_WINDOW } from "./model";
 import { sendPaths, sendSelection } from "./references";
-import { openAddAgent } from "./registry";
 import { focusedSession } from "./sessionFocus";
 import { connect, disconnect, openHome, useAgents } from "./store";
+
+/** Settings › Tools › Agents (also used by the Settings window). */
+export function activateSettingsPages(): () => void {
+  return registerSettingsPage({
+    id: REGISTRY_PAGE,
+    title: "Agents",
+    group: "Tools",
+    order: 500,
+    keywords: ["agent", "acp", "registry", "install", "update", "coding agent"],
+    component: lazyComponent(() => import("./AgentRegistryPage").then((m) => m.AgentRegistryPage)),
+  });
+}
 
 export function activate(): () => void {
   const sync = (root: string | null | undefined) => {
@@ -30,6 +41,7 @@ export function activate(): () => void {
   };
   sync(useProject.getState().project?.root);
   const disposers = [
+    activateSettingsPages(),
     useProject.subscribe((s, prev) => {
       if (s.project?.root !== prev.project?.root) sync(s.project?.root);
     }),
@@ -64,7 +76,6 @@ export function activate(): () => void {
       icon: () => "toolwindow-agents",
       restorable: true,
     }),
-    registerOverlay({ id: "agents.addAgent", component: AddAgentHost }),
     registerStatusItem({ id: "agents.status", align: "right", priority: 3, title: "Agents", component: AgentsStatus }),
     registerMenuGroup({
       id: "agents.send",
@@ -96,12 +107,12 @@ export function activate(): () => void {
       },
       {
         id: "agents.addAgent",
-        title: "Add Agent…",
-        description: "Installs, updates or removes agents from the ACP Registry.",
+        title: "More Agents…",
+        description: "Opens Settings › Tools › Agents: installs, updates or removes agents from the ACP Registry.",
         category: "Agents",
         icon: "plugin",
         keywords: ["agent", "acp", "registry", "install", "update"],
-        run: () => openAddAgent(),
+        run: () => void executeAction("file.settings", REGISTRY_PAGE),
       },
       {
         id: "agents.sendToAgent",

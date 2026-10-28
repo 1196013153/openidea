@@ -3,9 +3,9 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { AgentProvider, AgentRegistry, InstallEvent, RegistryAgent, RequestId } from "@/bindings";
 import { IpcError } from "@/platform/ipc";
 import { tx } from "@/platform/i18n";
-import { AddAgentDialog } from "./AddAgentDialog";
+import { AgentRegistryPage } from "./AgentRegistryPage";
 import { ADD_AGENT, providerOptions } from "./providerOptions";
-import { afterRemove, matchesQuery, rowActions, type RegistryBackend } from "./registry";
+import { afterRemove, matchesQuery, rowActions, sortAgents, type RegistryBackend } from "./registry";
 
 const agent = (partial: Partial<RegistryAgent> & Pick<RegistryAgent, "id" | "name">): RegistryAgent => ({
   version: "1.0.0",
@@ -82,6 +82,23 @@ describe("registry helpers", () => {
     expect(rowActions({ ...CLINE, distribution: null })).toEqual({ install: false, update: false, remove: true });
   });
 
+  it("lists installed agents, then well-known ones, then the rest by name", () => {
+    const named = (id: string, name: string, installed: string | null = null): RegistryAgent => ({
+      ...AMP,
+      id,
+      name,
+      installed,
+    });
+    const sorted = sortAgents([
+      named("agoragentic-acp", "Agoragentic"),
+      named("zed", "Zed"),
+      named("cline", "Cline"),
+      named("amp-acp", "Amp"),
+      named("bob", "Bob", "2.0.9"),
+    ]);
+    expect(sorted.map((a) => a.name)).toEqual(["Bob", "Amp", "Cline", "Agoragentic", "Zed"]);
+  });
+
   it("drops a removed agent this system cannot install again", () => {
     const gone = afterRemove([{ ...FAST, distribution: null }], "fast-agent");
     expect(gone).toEqual([]);
@@ -121,10 +138,10 @@ describe("agent picker", () => {
   });
 });
 
-describe("Add Agent dialog", () => {
+describe("Agents settings page", () => {
   it("lists registry agents, says they are third-party, and searches them", async () => {
     const backend = new FakeBackend();
-    render(<AddAgentDialog onClose={() => {}} backend={backend} />);
+    render(<AgentRegistryPage backend={backend} />);
     await waitFor(() => expect(row("Amp")).toBeInTheDocument());
     expect(screen.getByText(/third-party software/)).toBeInTheDocument();
     expect(within(row("Amp")).getByRole("button", { name: "Install" })).toBeEnabled();
@@ -143,7 +160,7 @@ describe("Add Agent dialog", () => {
   it("installs with progress, then reports the change", async () => {
     const backend = new FakeBackend();
     const onChanged = vi.fn();
-    render(<AddAgentDialog onClose={() => {}} onChanged={onChanged} backend={backend} />);
+    render(<AgentRegistryPage onChanged={onChanged} backend={backend} />);
     await waitFor(() => expect(row("Amp")).toBeInTheDocument());
     fireEvent.click(within(row("Amp")).getByRole("button", { name: "Install" }));
     expect(backend.installs).toEqual(["amp-acp"]);
@@ -159,10 +176,9 @@ describe("Add Agent dialog", () => {
     expect(within(row("Amp")).getByRole("button", { name: "Remove" })).toBeEnabled();
   });
 
-  it("shows why an install failed, and cancels one when closed", async () => {
+  it("shows why an install failed, and cancels one when the page closes", async () => {
     const backend = new FakeBackend();
-    const onClose = vi.fn();
-    render(<AddAgentDialog onClose={onClose} backend={backend} />);
+    const { unmount } = render(<AgentRegistryPage backend={backend} />);
     await waitFor(() => expect(row("Cline")).toBeInTheDocument());
     fireEvent.click(within(row("Cline")).getByRole("button", { name: "Update" }));
     await act(async () => backend.fail(new IpcError({ kind: "unavailable", message: "npm is required" })));
@@ -171,15 +187,16 @@ describe("Add Agent dialog", () => {
     fireEvent.click(within(row("Amp")).getByRole("button", { name: "Install" }));
     fireEvent.click(within(row("Amp")).getByRole("button", { name: "Cancel" }));
     expect(backend.cancelled).toHaveLength(1);
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    expect(onClose).toHaveBeenCalled();
-    expect(backend.cancelled).toHaveLength(2);
+    // Leaving the page stops an install still running.
+    const install = backend.cancelled[0];
+    unmount();
+    expect(backend.cancelled.filter((r) => r === install)).toHaveLength(2);
   });
 
   it("removes an installed agent", async () => {
     const backend = new FakeBackend();
     const onChanged = vi.fn();
-    render(<AddAgentDialog onClose={() => {}} onChanged={onChanged} backend={backend} />);
+    render(<AgentRegistryPage onChanged={onChanged} backend={backend} />);
     await waitFor(() => expect(row("fast-agent")).toBeInTheDocument());
     fireEvent.click(within(row("fast-agent")).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(within(row("fast-agent")).getByRole("button", { name: "Install" })).toBeEnabled());
@@ -190,12 +207,12 @@ describe("Add Agent dialog", () => {
   it("falls back to the saved list with a warning, and reports a registry it cannot load", async () => {
     const backend = new FakeBackend();
     backend.registry = { agents: AGENTS, warning: "Could not reach the ACP Registry" };
-    const { unmount } = render(<AddAgentDialog onClose={() => {}} backend={backend} />);
+    const { unmount } = render(<AgentRegistryPage backend={backend} />);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Could not reach the ACP Registry"));
     unmount();
 
     backend.list.mockRejectedValueOnce(new IpcError({ kind: "io", message: "offline" }));
-    render(<AddAgentDialog onClose={() => {}} backend={backend} />);
+    render(<AgentRegistryPage backend={backend} />);
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Cannot load the ACP Registry: offline"));
   });
 });

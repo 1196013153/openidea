@@ -1,23 +1,25 @@
 /**
- * Add Agent: agents of the ACP Registry this machine can run, with Install / Update /
- * Remove. Installs run in the background with progress; closing the dialog cancels one.
+ * Settings › Tools › Agents: agents of the ACP Registry this machine can run, with
+ * Install / Update / Remove. Installs run in the background with progress; leaving the
+ * page cancels one.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentRegistry, RegistryAgent, RequestId } from "@/bindings";
 import { isCancelled, nextRequestId } from "@/platform/ipc";
 import { tx } from "@/platform/i18n";
 import { openExternalUrl } from "@/platform/openUrl";
-import { Badge, Button, Dialog, ProgressBar, SearchField, Spinner, T } from "@/ui";
+import { Badge, Button, ProgressBar, SearchField, Spinner, T } from "@/ui";
 import {
   DISTRIBUTION_LABEL,
   afterInstall,
   afterRemove,
   matchesQuery,
   rowActions,
+  sortAgents,
   tauriRegistry,
   type RegistryBackend,
 } from "./registry";
-import styles from "./AddAgent.module.css";
+import styles from "./AgentRegistry.module.css";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -28,12 +30,10 @@ interface Job {
   message: string;
 }
 
-export function AddAgentDialog({
-  onClose,
+export function AgentRegistryPage({
   onChanged,
   backend = tauriRegistry,
 }: {
-  onClose: () => void;
   /** An agent was installed, updated or removed (the agent list changed). */
   onChanged?: () => void;
   backend?: RegistryBackend;
@@ -58,7 +58,10 @@ export function AddAgentDialog({
     };
   }, [backend]);
 
-  const agents = useMemo(() => (registry?.agents ?? []).filter((a) => matchesQuery(a, query)), [registry, query]);
+  const agents = useMemo(
+    () => sortAgents((registry?.agents ?? []).filter((a) => matchesQuery(a, query))),
+    [registry, query],
+  );
   const busy = job != null || removing != null;
 
   const setError = (id: string, error: string | null) =>
@@ -67,8 +70,12 @@ export function AddAgentDialog({
       return error ? { ...rest, [id]: error } : rest;
     });
 
+  // The install in progress, for leaving the page.
+  const running = useRef<RequestId | null>(null);
+
   const install = (agent: RegistryAgent) => {
     const request = nextRequestId();
+    running.current = request;
     setError(agent.id, null);
     setJob({ id: agent.id, request, fraction: null, message: tx`Installing ${agent.name} ${agent.version}…` });
     backend
@@ -86,7 +93,10 @@ export function AddAgentDialog({
         onChanged?.();
       })
       .catch((e: unknown) => !isCancelled(e) && setError(agent.id, errorText(e)))
-      .finally(() => setJob(null));
+      .finally(() => {
+        if (running.current === request) running.current = null;
+        setJob(null);
+      });
   };
 
   const remove = (agent: RegistryAgent) => {
@@ -102,74 +112,68 @@ export function AddAgentDialog({
       .finally(() => setRemoving(null));
   };
 
-  const close = () => {
-    if (job) backend.cancel(job.request);
-    onClose();
-  };
+  // Leaving the page stops an install.
+  useEffect(
+    () => () => {
+      if (running.current != null) backend.cancel(running.current);
+    },
+    [backend],
+  );
 
   return (
-    <Dialog
-      open
-      onClose={close}
-      title="Add Agent"
-      aria-label="Add Agent"
-      width={620}
-      buttons={[{ label: "Close", role: "cancel" }]}
-    >
-      <div className={styles.body}>
-        <SearchField
-          autoFocus
-          value={query}
-          onChange={setQuery}
-          placeholder={tx("Search the ACP Registry")}
-          aria-label="Search agents"
-          clearable
-        />
-        <p className={styles.notice}>
-          <T>
-            Agents in the ACP Registry are third-party software. They run on this computer with your permissions and can
-            read and change your files. Install only agents you trust.
-          </T>
+    <div className={styles.body}>
+      <SearchField
+        autoFocus
+        value={query}
+        onChange={setQuery}
+        placeholder={tx("Search the ACP Registry")}
+        aria-label="Search agents"
+        clearable
+      />
+      <p className={styles.notice}>
+        <T>
+          Agents in the ACP Registry are third-party software. They run on this computer with your permissions and can
+          read and change your files. Install only agents you trust.
+        </T>
+      </p>
+      {registry?.warning && (
+        <p className={styles.warning} role="status">
+          {registry.warning}
         </p>
-        {registry?.warning && (
-          <p className={styles.warning} role="status">
-            {registry.warning}
+      )}
+      <div className={styles.list} aria-busy={!registry && !loadError}>
+        {loadError ? (
+          <p className={styles.error} role="alert">
+            {tx`Cannot load the ACP Registry: ${loadError}`}
           </p>
+        ) : !registry ? (
+          <div className={styles.loading}>
+            <Spinner size={14} />
+            <T>Loading the ACP Registry…</T>
+          </div>
+        ) : agents.length === 0 ? (
+          <p className={styles.empty}>
+            {query ? <T>No agents match</T> : <T>The registry has no agents for this system</T>}
+          </p>
+        ) : (
+          <ul className={styles.rows} aria-label="Registry agents">
+            {agents.map((agent) => (
+              <AgentRow
+                key={agent.id}
+                agent={agent}
+                job={job?.id === agent.id ? job : null}
+                removing={removing === agent.id}
+                disabled={busy}
+                error={errors[agent.id] ?? null}
+                onInstall={() => install(agent)}
+                onRemove={() => remove(agent)}
+                onCancel={() => job && backend.cancel(job.request)}
+              />
+            ))}
+          </ul>
         )}
-        <div className={styles.list} aria-busy={!registry && !loadError}>
-          {loadError ? (
-            <p className={styles.error} role="alert">
-              {tx`Cannot load the ACP Registry: ${loadError}`}
-            </p>
-          ) : !registry ? (
-            <div className={styles.loading}>
-              <Spinner size={14} />
-              <T>Loading the ACP Registry…</T>
-            </div>
-          ) : agents.length === 0 ? (
-            <p className={styles.empty}>
-              {query ? <T>No agents match</T> : <T>The registry has no agents for this system</T>}
-            </p>
-          ) : (
-            <ul className={styles.rows} aria-label="Registry agents">
-              {agents.map((agent) => (
-                <AgentRow
-                  key={agent.id}
-                  agent={agent}
-                  job={job?.id === agent.id ? job : null}
-                  removing={removing === agent.id}
-                  disabled={busy}
-                  error={errors[agent.id] ?? null}
-                  onInstall={() => install(agent)}
-                  onRemove={() => remove(agent)}
-                  onCancel={() => job && backend.cancel(job.request)}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
       </div>
-    </Dialog>
+    </div>
   );
 }
 

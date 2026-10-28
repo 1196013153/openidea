@@ -11,7 +11,7 @@ import { canSend, emptyDraft } from "./composerModel";
 import { ConfigPickers } from "./ConfigPickers";
 import { providerIcon } from "./model";
 import { ADD_AGENT, providerOptions as agentOptions } from "./providerOptions";
-import { HOME, NO_COMMANDS, startTask, updateDraft, useAgentCommands, useAgents } from "./store";
+import { HOME, NO_COMMANDS, refreshProviders, startTask, updateDraft, useAgentCommands, useAgents } from "./store";
 import styles from "./Home.module.css";
 
 export function HomeEditor() {
@@ -26,6 +26,13 @@ export function HomeEditor() {
   const [current, setCurrent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+
+  // Agents installed in Settings (its own window) show up when this one is back in front.
+  useEffect(() => {
+    const refresh = () => void refreshProviders();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
 
   useEffect(() => {
     call(commands.vcsBranches(null))

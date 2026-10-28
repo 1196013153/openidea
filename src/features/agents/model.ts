@@ -5,6 +5,8 @@ export const SESSION_KIND = "agent-session";
 export const HOME_KIND = "agent-home";
 export const HOME_KEY = "agent:new";
 export const TOOL_WINDOW = "agents";
+/** Settings › Tools › Agents: the ACP Registry. */
+export const REGISTRY_PAGE = "tools.agents";
 
 export const sessionKey = (task: string) => `agent:${task}`;
 

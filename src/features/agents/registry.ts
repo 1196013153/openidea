@@ -1,6 +1,5 @@
 /** Agents of the ACP Registry: listing, install / update / remove (`agent_registry_*`). */
 import { Channel } from "@tauri-apps/api/core";
-import { create } from "zustand";
 import type { AgentRegistry, InstallEvent, RegistryAgent, RegistryDistribution, RequestId } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 
@@ -59,7 +58,34 @@ export function afterRemove(agents: RegistryAgent[], id: string): RegistryAgent[
     .filter((a) => a.installed != null || a.distribution != null);
 }
 
-/** Whether the Add Agent dialog is open (`agents.addAgent`). */
-export const useAddAgent = create<{ open: boolean }>(() => ({ open: false }));
-export const openAddAgent = () => useAddAgent.setState({ open: true });
-export const closeAddAgent = () => useAddAgent.setState({ open: false });
+/**
+ * Registry ids of agents from established vendors, most familiar first. The registry has
+ * no popularity data and lists alphabetically, which puts small or unrelated projects on top.
+ */
+const FEATURED = [
+  "amp-acp",
+  "devin",
+  "factory-droid",
+  "junie",
+  "cline",
+  "kilo",
+  "antigravity-acp",
+  "grok-build",
+  "qoder",
+  "pi-acp",
+  "poolside",
+  "deepagents",
+];
+
+/** Installed agents first, then the featured ones in their order, then the rest by name. */
+export function sortAgents(agents: RegistryAgent[]): RegistryAgent[] {
+  const rank = (a: RegistryAgent) => {
+    const featured = FEATURED.indexOf(a.id);
+    return [a.installed != null ? 0 : 1, featured < 0 ? FEATURED.length : featured] as const;
+  };
+  return agents.slice().sort((a, b) => {
+    const [ia, fa] = rank(a);
+    const [ib, fb] = rank(b);
+    return ia - ib || fa - fb || a.name.localeCompare(b.name);
+  });
+}

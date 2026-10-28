@@ -14,7 +14,6 @@ export function AgentsHeaderActions() {
   return (
     <>
       <IconButton icon="plus" action="agents.newTask" size="small" />
-      <IconButton icon="plugin" action="agents.addAgent" size="small" />
     </>
   );
 }
