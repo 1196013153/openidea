@@ -232,13 +232,26 @@ function selectionIn(stream: HTMLElement): string {
   return stream.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.toString() : "";
 }
 
-const highlights = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
-const HighlightCtor = (globalThis as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
+interface RangeSet {
+  clear(): void;
+  add(range: Range): void;
+}
+const highlights = (globalThis as { CSS?: { highlights?: Map<string, RangeSet> } }).CSS?.highlights;
+const HighlightCtor = (globalThis as { Highlight?: new () => RangeSet }).Highlight;
 
+/**
+ * Sets the ranges of highlight `name`. One registered highlight per name, changed in
+ * place: WebKit doesn't repaint where a replaced highlight object was.
+ */
 function setHighlight(name: string, ranges: Range[]) {
   if (!highlights || !HighlightCtor) return;
-  if (ranges.length) highlights.set(name, new HighlightCtor(...ranges));
-  else highlights.delete(name);
+  let set = highlights.get(name);
+  if (!set) {
+    set = new HighlightCtor();
+    highlights.set(name, set);
+  }
+  set.clear();
+  for (const r of ranges) set.add(r);
 }
 
 /** Scrolls `range` into view in `stream`, opening the collapsed tool output or thought holding it. */
