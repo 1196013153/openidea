@@ -8,6 +8,7 @@
 import { executeAction, type Action } from "@/platform/actions";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
+import { setDragRequiresAlt } from "@/ui";
 import { ZOOM_LIMITS } from "./model/behaviorSchema";
 import { DEFAULT_SETTINGS, validateSettings, type ValidSettings } from "./model/schema";
 
@@ -126,16 +127,9 @@ export function zoomActions(): Action[] {
 // ---------------------------------------------------------------------------
 // Drag-and-drop with Alt pressed only (tool window buttons and editor tabs)
 
-const DRAG_SOURCES = "[data-stripe-button], [role='tab']";
-
 export function installAltDragGuard(enabled: () => boolean): () => void {
-  const onDragStart = (e: DragEvent) => {
-    if (!enabled() || e.altKey) return;
-    const el = e.target instanceof Element ? e.target : null;
-    if (el?.closest(DRAG_SOURCES)) e.preventDefault();
-  };
-  document.addEventListener("dragstart", onDragStart, true);
-  return () => document.removeEventListener("dragstart", onDragStart, true);
+  setDragRequiresAlt(enabled);
+  return () => setDragRequiresAlt(() => false);
 }
 
 // ---------------------------------------------------------------------------

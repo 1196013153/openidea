@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialTabsState, moveTabToNewSplit, openTab, paneIds, splitPane, togglePin, type TabsState } from "./tabs";
+import { initialTabsState, moveTabToNewSplit, openTab, paneIds, splitAtEdge, splitPane, togglePin, type TabsState } from "./tabs";
 import { loadSession, parseSession, restoreTabsState, serializeSession, slashPath } from "./session";
 
 const file = (path: string) => ({ kind: "file", key: `file:${path}`, path });
@@ -143,5 +143,17 @@ describe("sessions saved with Windows backslash paths", () => {
     } finally {
       localStorage.removeItem(key);
     }
+  });
+});
+
+describe("splitAtEdge", () => {
+  it("adds an empty active pane on the given side", () => {
+    const s = open(initialTabsState(), "/a");
+    const pane = s.activePane;
+    const r = splitAtEdge(s, pane, "right");
+    expect(paneIds(r.state)).toEqual([pane, r.paneId]);
+    expect(r.state.panes[r.paneId]!.tabs).toEqual([]);
+    expect(r.state.activePane).toBe(r.paneId);
+    expect(paths(r.state, pane)).toEqual(["/a"]);
   });
 });

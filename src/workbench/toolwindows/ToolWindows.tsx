@@ -15,7 +15,7 @@ import { create } from "zustand";
 import { call, commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { useProject } from "@/platform/project";
-import { Icon, IconButton, Menu, showContextMenu, tooltipAttrs, type MenuItem, T } from "@/ui";
+import { dragRequiresAlt, Icon, IconButton, Menu, showContextMenu, tooltipAttrs, type MenuItem, T } from "@/ui";
 import { FOCUSABLE } from "@/ui/popupState";
 import { TabStripRegistry } from "@/ui/Tabs";
 import { useContributions, type ToolWindowAnchor, type ToolWindowContribution } from "../contributions";
@@ -303,7 +303,7 @@ function stripeDropAt(x: number, y: number): StripeDrop | null {
 }
 
 function startStripeDrag(e: PointerEvent<HTMLButtonElement>, id: string) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || (dragRequiresAlt() && !e.altKey)) return;
   const button = e.currentTarget;
   const start = { x: e.clientX, y: e.clientY };
   let ghost: HTMLElement | null = null;
