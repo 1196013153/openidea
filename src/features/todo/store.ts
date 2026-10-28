@@ -226,7 +226,11 @@ export async function scanScope(key: string, scope: SearchScope | null): Promise
     useTodos.setState({ scoped: new Map(), scopedKey: key, scopedScanning: false });
     return;
   }
-  useTodos.setState((s) => ({ scopedScanning: true, scoped: s.scopedKey === key ? s.scoped : new Map(), scopedKey: key }));
+  useTodos.setState((s) => ({
+    scopedScanning: true,
+    scoped: s.scopedKey === key ? s.scoped : new Map(),
+    scopedKey: key,
+  }));
   const found = new Map<string, TodoItem[]>();
   try {
     const r = await run(
@@ -281,7 +285,14 @@ export function installTodoIndex(): () => void {
     const r = s.project?.root ?? null;
     if (r === root) return;
     root = r;
-    useTodos.setState({ scanned: new Map(), live: new Map(), scannedOnce: false, error: null, scoped: new Map(), scopedKey: null });
+    useTodos.setState({
+      scanned: new Map(),
+      live: new Map(),
+      scannedOnce: false,
+      error: null,
+      scoped: new Map(),
+      scopedKey: null,
+    });
     if (r) start();
   });
   let settings = useTodoSettings.getState();

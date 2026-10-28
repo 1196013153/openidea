@@ -40,7 +40,10 @@ function arrowButton(dir: "a-to-b" | "b-to-a", run: (chunkIndex: number) => void
  * `renderRevertControl` for MergeView: one or two arrows per chunk. `toB`:
  * the right side is editable (">>"); `toA`: the left side is (">>" / "<<").
  */
-export function arrowControls(getView: () => MergeView | null, sides: { toA: boolean; toB: boolean }): () => HTMLElement {
+export function arrowControls(
+  getView: () => MergeView | null,
+  sides: { toA: boolean; toB: boolean },
+): () => HTMLElement {
   return () => {
     const box = document.createElement("div");
     box.className = "cm-diffArrows";

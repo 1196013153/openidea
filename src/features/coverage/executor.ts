@@ -4,7 +4,12 @@
  */
 import { executeAction } from "@/platform/actions";
 import { call, commands, isTauri, type InstallCommand, type RunConfig } from "@/platform/ipc";
-import { notifications, toolWindowService, type ExecutorLaunch, type RunExecutorContribution } from "@/workbench/contributions";
+import {
+  notifications,
+  toolWindowService,
+  type ExecutorLaunch,
+  type RunExecutorContribution,
+} from "@/workbench/contributions";
 import { coverageSupports, formatPercent } from "./model";
 import { addSuite } from "./store";
 import { tx } from "@/platform/i18n";
@@ -35,7 +40,8 @@ export function notifyMissingTool(
   const { tool, install } = missing;
   const line = install ? [install.command, ...install.args].join(" ") : null;
   const actions = [];
-  if (install) actions.push({ label: "Install", run: () => void executeAction("run.runConfig", installConfig(tool, install)) });
+  if (install)
+    actions.push({ label: "Install", run: () => void executeAction("run.runConfig", installConfig(tool, install)) });
   if (missing.homepage) {
     const url = missing.homepage;
     actions.push({
@@ -48,7 +54,11 @@ export function notifyMissingTool(
     level: "warning",
     key: `${group}-missing-${tool}`,
     title: `${tool} is not installed`,
-    body: line ? tx`${missing.message} Install it with: ${line}` : missing.homepage ? `${missing.message} ${missing.homepage}` : missing.message,
+    body: line
+      ? tx`${missing.message} Install it with: ${line}`
+      : missing.homepage
+        ? `${missing.message} ${missing.homepage}`
+        : missing.message,
     sticky: true,
     actions,
   });
@@ -61,7 +71,13 @@ async function prepare(config: RunConfig): Promise<ExecutorLaunch | null> {
   }
   const plan = await call(commands.coveragePrepare(config));
   if (plan.status === "unsupported") {
-    notifications().notify({ group: "run", level: "info", key: "coverage-unsupported", title: `Cannot run '${config.name}' with coverage`, body: plan.reason });
+    notifications().notify({
+      group: "run",
+      level: "info",
+      key: "coverage-unsupported",
+      title: `Cannot run '${config.name}' with coverage`,
+      body: plan.reason,
+    });
     return null;
   }
   if (plan.status === "missingTool") {
@@ -90,7 +106,13 @@ async function prepare(config: RunConfig): Promise<ExecutorLaunch | null> {
             title: `Coverage of '${suite.name}': ${formatPercent(totals[0]!, totals[1]!)} lines`,
           });
         } catch (e) {
-          notifications().notify({ group: "run", level: "error", key: "coverage-done", title: `No coverage data for '${config.name}'`, body: errorText(e) });
+          notifications().notify({
+            group: "run",
+            level: "error",
+            key: "coverage-done",
+            title: `No coverage data for '${config.name}'`,
+            body: errorText(e),
+          });
         }
       })();
     },

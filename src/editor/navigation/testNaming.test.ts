@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isTestName, newTestName, rankCandidates, rustTestModuleOffset, subjectNamesFor, testNamesFor } from "./testNaming";
+import {
+  isTestName,
+  newTestName,
+  rankCandidates,
+  rustTestModuleOffset,
+  subjectNamesFor,
+  testNamesFor,
+} from "./testNaming";
 
 describe("test naming conventions (Go to Test)", () => {
   it.each([
@@ -31,9 +38,20 @@ describe("test naming conventions (Go to Test)", () => {
   });
 
   it("recognises test file names", () => {
-    for (const n of ["FooTest.java", "TestFoo.java", "FooTests.cs", "foo_test.go", "test_foo.py", "foo.test.tsx", "foo.spec.js", "foo_spec.rb", "bar_test.cc"])
+    for (const n of [
+      "FooTest.java",
+      "TestFoo.java",
+      "FooTests.cs",
+      "foo_test.go",
+      "test_foo.py",
+      "foo.test.tsx",
+      "foo.spec.js",
+      "foo_spec.rb",
+      "bar_test.cc",
+    ])
       expect(isTestName(n), n).toBe(true);
-    for (const n of ["Foo.java", "Test.java", "Testing.java", "foo.go", "foo.py", "foo.ts", "contest.py", "latest.ts"]) expect(isTestName(n), n).toBe(false);
+    for (const n of ["Foo.java", "Test.java", "Testing.java", "foo.go", "foo.py", "foo.ts", "contest.py", "latest.ts"])
+      expect(isTestName(n), n).toBe(false);
     expect(newTestName("Foo.java")).toBe("FooTest.java");
   });
 
@@ -41,7 +59,11 @@ describe("test naming conventions (Go to Test)", () => {
     const below = (p: string) => p.replace(/^\/p\/(?:a|b)\/src\/(?:main|test)\/java\//, "");
     const ranked = rankCandidates(
       "/p/a/src/main/java/com/x/Foo.java",
-      ["/p/b/src/test/java/com/y/FooTest.java", "/p/a/src/test/java/com/z/FooTest.java", "/p/a/src/test/java/com/x/FooTest.java"],
+      [
+        "/p/b/src/test/java/com/y/FooTest.java",
+        "/p/a/src/test/java/com/z/FooTest.java",
+        "/p/a/src/test/java/com/x/FooTest.java",
+      ],
       below,
     );
     expect(ranked).toEqual([

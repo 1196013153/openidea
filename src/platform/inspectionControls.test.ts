@@ -12,8 +12,14 @@ vi.mock("./ipc", async (orig) => {
 });
 vi.mock("./actions", async (orig) => ({ ...(await orig<typeof import("./actions")>()), executeAction }));
 
-const { disableInspection, intentionControls, patchOverride, problemControls, setInspectionOption, setInspectionSeverity } =
-  await import("./inspectionControls");
+const {
+  disableInspection,
+  intentionControls,
+  patchOverride,
+  problemControls,
+  setInspectionOption,
+  setInspectionSeverity,
+} = await import("./inspectionControls");
 const { diagnosticInspection, inspectionOption, SPELLING_INSPECTION } = await import("./inspections");
 const { useProject } = await import("./project");
 
@@ -36,7 +42,10 @@ describe("inspection controls", () => {
   });
 
   it("writes to the profile in effect, at its level", async () => {
-    useProject.setState({ project: null, settings: { inspections: { default: { x: { severity: "error" } } } } as never });
+    useProject.setState({
+      project: null,
+      settings: { inspections: { default: { x: { severity: "error" } } } } as never,
+    });
     await disableInspection(SPELLING_INSPECTION);
     expect(written()).toEqual({
       scope: "global",
@@ -44,13 +53,22 @@ describe("inspection controls", () => {
       value: { x: { severity: "error" }, [SPELLING_INSPECTION]: { enabled: false } },
     });
 
-    useProject.setState({ project: { root: "/p" } as never, settings: { inspections: { profile: "project" } } as never });
+    useProject.setState({
+      project: { root: "/p" } as never,
+      settings: { inspections: { profile: "project" } } as never,
+    });
     await setInspectionSeverity("lsp:ruff:F401", "weakWarning");
-    expect(written()).toEqual({ scope: "project", key: "inspections.project", value: { "lsp:ruff:F401": { severity: "weakWarning" } } });
+    expect(written()).toEqual({
+      scope: "project",
+      key: "inspections.project",
+      value: { "lsp:ruff:F401": { severity: "weakWarning" } },
+    });
 
     useProject.setState({
       project: { root: "/p" } as never,
-      settings: { inspections: { profile: "ide:strict", ideProfiles: { strict: { name: "Strict", overrides: {} } } } } as never,
+      settings: {
+        inspections: { profile: "ide:strict", ideProfiles: { strict: { name: "Strict", overrides: {} } } },
+      } as never,
     });
     await setInspectionOption(SPELLING_INSPECTION, "processCode", false);
     expect(written()).toEqual({
@@ -66,17 +84,28 @@ describe("inspection controls", () => {
 
   it("reads options with their defaults", () => {
     expect(inspectionOption({}, SPELLING_INSPECTION, "processCode")).toBe(true);
-    expect(inspectionOption({ [SPELLING_INSPECTION]: { options: { processCode: false } } }, SPELLING_INSPECTION, "processCode")).toBe(false);
+    expect(
+      inspectionOption(
+        { [SPELLING_INSPECTION]: { options: { processCode: false } } },
+        SPELLING_INSPECTION,
+        "processCode",
+      ),
+    ).toBe(false);
   });
 
   it("offers IDEA's menu rows, opening Settings on the inspection", () => {
     const ref = { id: "lsp:ruff:F401", name: "ruff F401" };
     const rows = intentionControls(ref);
-    expect(rows.map((r) => ("label" in r ? r.label : "-"))).toEqual(["Edit inspection profile setting", "Disable inspection"]);
+    expect(rows.map((r) => ("label" in r ? r.label : "-"))).toEqual([
+      "Edit inspection profile setting",
+      "Disable inspection",
+    ]);
     (rows[0] as { run: () => void }).run();
     expect(executeAction).toHaveBeenCalledWith("file.settings", "editor.inspections#lsp:ruff:F401");
 
-    useProject.setState({ settings: { inspections: { default: { "lsp:ruff:F401": { severity: "error" } } } } as never });
+    useProject.setState({
+      settings: { inspections: { default: { "lsp:ruff:F401": { severity: "error" } } } } as never,
+    });
     const menu = problemControls(ref);
     expect(menu.map((r) => ("label" in r ? r.label : "-"))).toEqual([
       "Disable Inspection 'ruff F401'",

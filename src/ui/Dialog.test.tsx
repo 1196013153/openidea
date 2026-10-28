@@ -33,7 +33,11 @@ describe("orderDialogButtons", () => {
 
   it("Windows / Linux: the default button first, then declaration order", () => {
     expect(labels(orderDialogButtons(safeDelete(), "other"))).toEqual(["View Usages", "Delete Anyway", "Cancel"]);
-    const settings: DialogButton[] = [{ label: "Cancel", role: "cancel" }, { label: "Apply" }, { label: "OK", role: "default" }];
+    const settings: DialogButton[] = [
+      { label: "Cancel", role: "cancel" },
+      { label: "Apply" },
+      { label: "OK", role: "default" },
+    ];
     expect(labels(orderDialogButtons(settings, "other"))).toEqual(["OK", "Cancel", "Apply"]);
   });
 
@@ -74,7 +78,11 @@ describe("Dialog chrome", () => {
     const onClose = vi.fn();
     show("other", onClose);
     const bar = document.querySelector("[data-dialog-titlebar]") as HTMLElement;
-    expect(within(bar).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Close"]);
+    expect(
+      within(bar)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Close"]);
     expect(footerLabels()).toEqual(["View Usages", "Delete Anyway", "Cancel"]);
     fireEvent.click(within(bar).getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -98,7 +106,15 @@ describe("Dialog chrome", () => {
   it("renders the help button and footer start on the left", () => {
     const onHelp = vi.fn();
     render(
-      <Dialog open onClose={() => {}} title="T" onHelp={onHelp} footerStart={<span>status</span>} buttons={safeDelete()} platform="mac">
+      <Dialog
+        open
+        onClose={() => {}}
+        title="T"
+        onHelp={onHelp}
+        footerStart={<span>status</span>}
+        buttons={safeDelete()}
+        platform="mac"
+      >
         <p>x</p>
       </Dialog>,
     );
@@ -126,7 +142,15 @@ describe("Dialog keyboard", () => {
   it("Enter is left to text areas, buttons and handlers that consumed it; disabled default does nothing", () => {
     const ok = vi.fn();
     const { rerender } = render(
-      <Dialog open onClose={() => {}} title="T" buttons={[{ label: "OK", role: "default", onClick: ok }, { label: "Cancel", role: "cancel" }]}>
+      <Dialog
+        open
+        onClose={() => {}}
+        title="T"
+        buttons={[
+          { label: "OK", role: "default", onClick: ok },
+          { label: "Cancel", role: "cancel" },
+        ]}
+      >
         <textarea aria-label="Message" />
         <input aria-label="Own" onKeyDown={(e) => e.key === "Enter" && e.preventDefault()} />
       </Dialog>,
@@ -139,7 +163,12 @@ describe("Dialog keyboard", () => {
     fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter", metaKey: true });
     expect(ok).toHaveBeenCalledTimes(1);
     rerender(
-      <Dialog open onClose={() => {}} title="T" buttons={[{ label: "OK", role: "default", onClick: ok, disabled: true }]}>
+      <Dialog
+        open
+        onClose={() => {}}
+        title="T"
+        buttons={[{ label: "OK", role: "default", onClick: ok, disabled: true }]}
+      >
         <input aria-label="Field" />
       </Dialog>,
     );
@@ -150,7 +179,15 @@ describe("Dialog keyboard", () => {
   it("a cancel button without a handler closes the dialog", () => {
     const onClose = vi.fn();
     render(
-      <Dialog open onClose={onClose} title="T" buttons={[{ label: "OK", role: "default", onClick: () => {} }, { label: "Cancel", role: "cancel" }]}>
+      <Dialog
+        open
+        onClose={onClose}
+        title="T"
+        buttons={[
+          { label: "OK", role: "default", onClick: () => {} },
+          { label: "Cancel", role: "cancel" },
+        ]}
+      >
         <p>x</p>
       </Dialog>,
     );

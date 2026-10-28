@@ -37,13 +37,16 @@ export function virtualParent(uri: string): string {
 export function virtualContainer(uri: string): string {
   const scheme = uri.slice(0, uri.indexOf(":"));
   const rest = uri.replace(/^[^:]+:(\/\/)?/, "").split(/[?#]/)[0]!;
-  const segs = rest.split("/").filter(Boolean).map((s) => {
-    try {
-      return decodeURIComponent(s);
-    } catch {
-      return s;
-    }
-  });
+  const segs = rest
+    .split("/")
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
   segs.pop();
   if (scheme === "jdt" && segs[0] === "contents") segs.shift();
   return segs.join(" › ");

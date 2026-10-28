@@ -188,7 +188,8 @@ export async function setTheme(next: ThemeSetting) {
   try {
     let settings = await call(commands.settingsSet("global", "appearance.theme", JSON.stringify(next)));
     // An explicit choice ends "Sync with OS", as in IDEA.
-    if (settings.appearance?.syncWithOs) settings = await call(commands.settingsSet("global", "appearance.syncWithOs", "false"));
+    if (settings.appearance?.syncWithOs)
+      settings = await call(commands.settingsSet("global", "appearance.syncWithOs", "false"));
     useProject.setState({ settings });
     useThemeOverride.setState({ theme: null });
   } catch {

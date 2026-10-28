@@ -68,7 +68,10 @@ describe("creating packages", () => {
     fs = new MemoryFs({ "/p/src/main/java/App.java": "x", "/p/pkg/__init__.py": "" }, "/p");
     setProjectFsForTests(fs, "/p");
     initProjectTree("/p", "p");
-    useProject.setState({ project: { name: "p", root: "/p", isGit: false, settings: {} } as never, settings: {} as never });
+    useProject.setState({
+      project: { name: "p", root: "/p", isGit: false, settings: {} } as never,
+      settings: {} as never,
+    });
     useProjectRoots.setState({ root: "/p", detected: MAVEN });
   });
   afterEach(() => {

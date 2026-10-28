@@ -48,7 +48,12 @@ function typeAt(outline: readonly OutlineItem[], at: Pos): OutlineItem | null {
 }
 
 /** Inherited members of `type` (declared in `path`), nearest supertypes first, up to `depth` levels. */
-export async function inheritedMembers(path: string, type: OutlineItem, deps: InheritedDeps, depth = 6): Promise<InheritedMember[]> {
+export async function inheritedMembers(
+  path: string,
+  type: OutlineItem,
+  deps: InheritedDeps,
+  depth = 6,
+): Promise<InheritedMember[]> {
   const own = new Set(type.children.map((c) => baseName(c.name)));
   const out: InheritedMember[] = [];
   const seen = new Set<string>();

@@ -23,7 +23,10 @@ function deps(files: string[], roots = ROOTS) {
 }
 
 beforeEach(() => {
-  useProject.setState({ project: { name: "p", root: "/p", isGit: false, settings: {} } as never, settings: {} as never });
+  useProject.setState({
+    project: { name: "p", root: "/p", isGit: false, settings: {} } as never,
+    settings: {} as never,
+  });
 });
 
 describe("Go to Test / Test Subject", () => {
@@ -40,7 +43,11 @@ describe("Go to Test / Test Subject", () => {
   });
 
   it("shows a chooser with Create New Test… for several tests, mirrored package first", async () => {
-    const d = deps(["/p/src/test/java/b/FooTest.java", "/p/src/test/java/a/FooTests.java", "/p/src/main/java/a/Foo.java"]);
+    const d = deps([
+      "/p/src/test/java/b/FooTest.java",
+      "/p/src/test/java/a/FooTests.java",
+      "/p/src/main/java/a/Foo.java",
+    ]);
     await gotoTestOrSubject("/p/src/main/java/a/Foo.java", "", d);
     expect(d.chosen[0]!.title).toBe("Choose Test for Foo (2 found)");
     expect(d.chosen[0]!.items.map((i) => i.label)).toEqual(["Create New Test…", "FooTests.java", "FooTest.java"]);
@@ -51,11 +58,19 @@ describe("Go to Test / Test Subject", () => {
     await gotoTestOrSubject("/p/src/main/java/a/Foo.java", "", d);
     expect(d.chosen[0]!.items.map((i) => i.label)).toEqual(["Create New Test…"]);
     await d.chosen[0]!.items[0]!.run();
-    expect(d.createTest).toHaveBeenCalledWith({ directory: "/p/src/test/java/a", name: "FooTest", extension: "java", subject: "Foo.java" });
+    expect(d.createTest).toHaveBeenCalledWith({
+      directory: "/p/src/test/java/a",
+      name: "FooTest",
+      extension: "java",
+      subject: "Foo.java",
+    });
   });
 
   it("does not take a non-test file of a test-like name as a test", async () => {
-    const d = deps(["/p/src/main/java/a/Foo.java", "/p/src/main/java/a/FooTests.java"], [root("src/main/java", "source")]);
+    const d = deps(
+      ["/p/src/main/java/a/Foo.java", "/p/src/main/java/a/FooTests.java"],
+      [root("src/main/java", "source")],
+    );
     // FooTests.java is a test by name, wherever it is.
     await gotoTestOrSubject("/p/src/main/java/a/Foo.java", "", d);
     expect(d.open).toHaveBeenCalledWith("/p/src/main/java/a/FooTests.java");

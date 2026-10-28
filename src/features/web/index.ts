@@ -46,9 +46,12 @@ function browserMenu(path: string): MenuItem {
       { kind: "action", action: "web.openInBrowser", arg: { path }, label: "Default Browser" },
       { kind: "separator" },
       ...(html ? [{ label: "Built-in Preview", icon: "eye", run: () => void showPreview(path) }] : []),
-      ...useBrowsers
-        .getState()
-        .list.map((b): MenuItem => ({ label: b.name, verbatim: true, icon: browserIcon(b.id), run: () => void openInBrowser(path, b.id) })),
+      ...useBrowsers.getState().list.map((b): MenuItem => ({
+        label: b.name,
+        verbatim: true,
+        icon: browserIcon(b.id),
+        run: () => void openInBrowser(path, b.id),
+      })),
     ],
   };
 }

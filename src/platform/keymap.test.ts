@@ -123,7 +123,9 @@ describe("keymap", () => {
       const at = (ms: number) => (t = ms);
       const shift = (type: "keydown" | "keyup", ms: number) => {
         at(ms);
-        window.dispatchEvent(new KeyboardEvent(type, { key: "Shift", code: "ShiftLeft", shiftKey: type === "keydown" }));
+        window.dispatchEvent(
+          new KeyboardEvent(type, { key: "Shift", code: "ShiftLeft", shiftKey: type === "keydown" }),
+        );
       };
       const tap = (ms: number, hold = 50) => {
         shift("keydown", ms);
@@ -201,7 +203,14 @@ describe("keymap", () => {
       const mod = (type: "keydown" | "keyup", key: "Alt" | "Control", ms: number) => {
         t = ms;
         const held = type === "keydown";
-        window.dispatchEvent(new KeyboardEvent(type, { key, code: `${key}Left`, altKey: key === "Alt" && held, ctrlKey: key === "Control" && held }));
+        window.dispatchEvent(
+          new KeyboardEvent(type, {
+            key,
+            code: `${key}Left`,
+            altKey: key === "Alt" && held,
+            ctrlKey: key === "Control" && held,
+          }),
+        );
       };
       const up = (ms: number) => {
         t = ms;
@@ -247,7 +256,14 @@ describe("keymap", () => {
     });
 
     const altGr = (key: string, code: string, target: EventTarget) => {
-      const e = new KeyboardEvent("keydown", { key, code, ctrlKey: true, altKey: true, bubbles: true, cancelable: true });
+      const e = new KeyboardEvent("keydown", {
+        key,
+        code,
+        ctrlKey: true,
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
       Object.defineProperty(e, "getModifierState", { value: (k: string) => k === "AltGraph" });
       target.dispatchEvent(e);
       return e;
@@ -273,7 +289,16 @@ describe("keymap", () => {
     it("never applies on macOS, where ⌥ shortcuts type symbols", () => {
       usePlatform.setState({ os: "macos" });
       const input = document.createElement("input");
-      const e = { key: "ƒ", code: "KeyF", target: input, metaKey: false, ctrlKey: false, altKey: true, shiftKey: false, getModifierState: () => true };
+      const e = {
+        key: "ƒ",
+        code: "KeyF",
+        target: input,
+        metaKey: false,
+        ctrlKey: false,
+        altKey: true,
+        shiftKey: false,
+        getModifierState: () => true,
+      };
       expect(isAltGrTyping(e)).toBe(false);
     });
   });

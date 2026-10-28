@@ -6,7 +6,16 @@ import type { MenuItem } from "@/ui";
 import { confirm, confirmChecked } from "@/workbench/messages";
 import { promptText } from "./dialogs";
 import { isRunning, nodeContainers, nodeLabel, shortId, type DockerTarget, type ServiceNode } from "./model";
-import { composeOp, connectionState, containerOp, prune, pullImage, refresh, removeObjects, useServices } from "./store";
+import {
+  composeOp,
+  connectionState,
+  containerOp,
+  prune,
+  pullImage,
+  refresh,
+  removeObjects,
+  useServices,
+} from "./store";
 
 export function canStart(t: DockerTarget | null): boolean {
   return !!t && nodeContainers(t.node).some((c) => !isRunning(c));
@@ -24,14 +33,18 @@ export function canRemove(t: DockerTarget | null): boolean {
 export async function start(t: DockerTarget | null) {
   if (!t) return;
   if (t.node.kind === "compose") return composeAction(t.conn, t.node, "start");
-  const ids = nodeContainers(t.node).filter((c) => !isRunning(c)).map((c) => c.id);
+  const ids = nodeContainers(t.node)
+    .filter((c) => !isRunning(c))
+    .map((c) => c.id);
   if (ids.length) await containerOp(t.conn, ids, "start");
 }
 
 export async function stop(t: DockerTarget | null) {
   if (!t) return;
   if (t.node.kind === "compose") return composeAction(t.conn, t.node, "stop");
-  const ids = nodeContainers(t.node).filter(isRunning).map((c) => c.id);
+  const ids = nodeContainers(t.node)
+    .filter(isRunning)
+    .map((c) => c.id);
   if (ids.length) await containerOp(t.conn, ids, "stop");
 }
 
@@ -42,9 +55,15 @@ export async function restart(t: DockerTarget | null) {
   if (ids.length) await containerOp(t.conn, ids, "restart");
 }
 
-function composeAction(conn: string, n: Extract<ServiceNode, { kind: "compose" }>, op: "start" | "stop" | "restart" | "down") {
+function composeAction(
+  conn: string,
+  n: Extract<ServiceNode, { kind: "compose" }>,
+  op: "start" | "stop" | "restart" | "down",
+) {
   const first = n.containers[0];
-  return composeOp(conn, n.project, first?.composeFiles ?? [], first?.composeWorkingDir ?? null, op).then(() => undefined);
+  return composeOp(conn, n.project, first?.composeFiles ?? [], first?.composeWorkingDir ?? null, op).then(
+    () => undefined,
+  );
 }
 
 function deleteQuestion(kind: "container" | "image" | "volume" | "network", label: string, running: boolean) {
@@ -87,7 +106,14 @@ export async function remove(t: DockerTarget | null) {
     checkbox: n.kind === "image" ? "Force (also untag / remove when used by stopped containers)" : undefined,
   });
   if (!answer) return;
-  const id = n.kind === "container" ? n.container.id : n.kind === "image" ? n.image.id : n.kind === "volume" ? n.volume.name : n.network.id;
+  const id =
+    n.kind === "container"
+      ? n.container.id
+      : n.kind === "image"
+        ? n.image.id
+        : n.kind === "volume"
+          ? n.volume.name
+          : n.network.id;
   await removeObjects(t.conn, what, [id], running || answer.checked);
 }
 
@@ -98,7 +124,15 @@ export function execShell(t: DockerTarget | null) {
   const snap = connectionState(t.conn).snapshot;
   void executeAction("terminal.runCommand", {
     program: snap?.executable ?? "docker",
-    args: [...(snap?.globalArgs ?? []), "exec", "-it", c.id, "sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh"],
+    args: [
+      ...(snap?.globalArgs ?? []),
+      "exec",
+      "-it",
+      c.id,
+      "sh",
+      "-c",
+      "command -v bash >/dev/null 2>&1 && exec bash || exec sh",
+    ],
     name: c.name,
   });
 }
@@ -114,7 +148,11 @@ const PRUNE: Array<[PruneTarget, string, string]> = [
   ["allImages", "Unused Images", "Remove all images not used by a container?"],
   ["volumes", "Unused Volumes", "Remove all anonymous volumes not used by a container? Their data is lost."],
   ["networks", "Unused Networks", "Remove all networks not used by a container?"],
-  ["system", "Everything Unused (System Prune)", "Remove stopped containers, unused networks, dangling images and the build cache?"],
+  [
+    "system",
+    "Everything Unused (System Prune)",
+    "Remove stopped containers, unused networks, dangling images and the build cache?",
+  ],
 ];
 
 export async function prunePrompt(conn: string, target: PruneTarget) {
@@ -167,7 +205,12 @@ export function nodeMenu(t: DockerTarget): MenuItem[] {
     items.push(
       n.container.state === "paused"
         ? { label: "Unpause", icon: "resume", run: () => void containerOp(conn, [n.container.id], "unpause") }
-        : { label: "Pause", icon: "pause", disabled: !running, run: () => void containerOp(conn, [n.container.id], "pause") },
+        : {
+            label: "Pause",
+            icon: "pause",
+            disabled: !running,
+            run: () => void containerOp(conn, [n.container.id], "pause"),
+          },
       { kind: "separator" },
       { label: "Show Log", icon: "file-log", run: () => showDetail("log") },
       { label: "Inspect", icon: "info", run: () => showDetail("inspect") },
@@ -181,13 +224,26 @@ export function nodeMenu(t: DockerTarget): MenuItem[] {
     items.push({ label: "Inspect", icon: "info", run: () => showDetail("inspect") });
     if (n.kind === "image")
       items.push(
-        { label: "Pull Again", icon: "git-pull", disabled: n.image.repository === "<none>", run: () => void pullImage(conn, nodeLabel(n)) },
+        {
+          label: "Pull Again",
+          icon: "git-pull",
+          disabled: n.image.repository === "<none>",
+          run: () => void pullImage(conn, nodeLabel(n)),
+        },
         { label: "Copy Image ID", icon: "copy", run: () => copy(shortId(n.image.id)) },
       );
   }
-  if (n.kind === "group" && n.group === "images") items.push({ label: "Pull Image…", icon: "git-pull", run: () => void pullPrompt(conn) });
+  if (n.kind === "group" && n.group === "images")
+    items.push({ label: "Pull Image…", icon: "git-pull", run: () => void pullPrompt(conn) });
   if (n.kind === "group") {
-    const target: PruneTarget = n.group === "containers" ? "containers" : n.group === "images" ? "images" : n.group === "volumes" ? "volumes" : "networks";
+    const target: PruneTarget =
+      n.group === "containers"
+        ? "containers"
+        : n.group === "images"
+          ? "images"
+          : n.group === "volumes"
+            ? "volumes"
+            : "networks";
     items.push({
       label: pruneLabel(target),
       run: () => void prunePrompt(conn, target),
@@ -200,7 +256,15 @@ export function nodeMenu(t: DockerTarget): MenuItem[] {
       { label: "Prune", submenu: pruneMenu(conn) },
     );
   if (canRemove(t)) {
-    items.push({ kind: "separator" }, { label: n.kind === "compose" ? "Compose Down" : "Delete…", icon: "trash", danger: true, run: () => void remove(t) });
+    items.push(
+      { kind: "separator" },
+      {
+        label: n.kind === "compose" ? "Compose Down" : "Delete…",
+        icon: "trash",
+        danger: true,
+        run: () => void remove(t),
+      },
+    );
   }
   return items;
 }

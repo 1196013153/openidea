@@ -129,9 +129,14 @@ export function goModuleDir(root: string, cwd: string | null): string {
  * `TestFoo in <package>`, the package being its import path (module path from
  * `go.mod`), else the `package` clause or directory.
  */
-export function goTestNamed(config: RunConfig, input: Pick<ContextInput, "root" | "content" | "goModule">, test?: string): RunConfig {
+export function goTestNamed(
+  config: RunConfig,
+  input: Pick<ContextInput, "root" | "content" | "goModule">,
+  test?: string,
+): RunConfig {
   if (config.kind !== "go" || config.args[0] !== "test") return config;
-  const pkgArg = config.args.find((a, i) => i > 0 && !a.startsWith("-") && !/^-(run|skip|bench)$/.test(config.args[i - 1]!)) ?? ".";
+  const pkgArg =
+    config.args.find((a, i) => i > 0 && !a.startsWith("-") && !/^-(run|skip|bench)$/.test(config.args[i - 1]!)) ?? ".";
   const recursive = /(^|\/)\.\.\.$/.test(pkgArg);
   const dir = pkgArg.replace(/\/?\.\.\.$/, "").replace(/^\.(?:\/|$)/, "");
   const module = input.root ? input.goModule?.(goModuleDir(input.root, config.cwd)) : undefined;
@@ -271,7 +276,8 @@ const INSTALL: Record<string, string> = {
   go: "Install Go from https://go.dev/dl (or `brew install go`).",
   rust: "Install Rust with rustup: https://rustup.rs",
   java: "Install a JDK 11+ (`brew install openjdk`), or download one in Settings › Languages & Frameworks › Java (Project JDK › Download JDK…).",
-  kotlin: "Install the Kotlin compiler (`brew install kotlin`, or https://kotlinlang.org/docs/command-line.html) so that `kotlinc` is on the PATH.",
+  kotlin:
+    "Install the Kotlin compiler (`brew install kotlin`, or https://kotlinlang.org/docs/command-line.html) so that `kotlinc` is on the PATH.",
   "kotlin-script": "Install Kotlin (`brew install kotlin`).",
   swift: "Install the Xcode command line tools (`xcode-select --install`).",
   c: "Install a C compiler: `xcode-select --install` (clang) or `brew install gcc`.",
@@ -360,7 +366,13 @@ function site(input: ContextInput): FileSite {
   };
 }
 
-function fileConfig(s: FileSite, kind: string, command: string, args: string[], debugAdapter: string | null = null): RunConfig {
+function fileConfig(
+  s: FileSite,
+  kind: string,
+  command: string,
+  args: string[],
+  debugAdapter: string | null = null,
+): RunConfig {
   return {
     id: `context:file:${s.idPath}`,
     name: s.file,
@@ -381,9 +393,10 @@ function pythonCommand(input: ContextInput, env: ToolEnv, s: FileSite): { comman
   const py = projectPython([...input.configs]);
   if (py) {
     // A venv-relative interpreter is relative to the project root.
-    const command = !s.inProject && input.root && py.command.includes("/") && !py.command.startsWith("/")
-      ? `${input.root}/${py.command.replace(/^\.\//, "")}`
-      : py.command;
+    const command =
+      !s.inProject && input.root && py.command.includes("/") && !py.command.startsWith("/")
+        ? `${input.root}/${py.command.replace(/^\.\//, "")}`
+        : py.command;
     return { command, prefix: py.prefix };
   }
   const t = pick(env, ["python3", "python"]);
@@ -496,7 +509,8 @@ function simple(
 }
 
 const hasGoMain = (content?: string) => content === undefined || /^\s*package\s+main\b/m.test(content);
-const hasRustMain = (content?: string) => content === undefined || /^(?:pub\s+)?(?:async\s+)?fn\s+main\s*\(/m.test(content);
+const hasRustMain = (content?: string) =>
+  content === undefined || /^(?:pub\s+)?(?:async\s+)?fn\s+main\s*\(/m.test(content);
 const hasCMain = (content?: string) => content === undefined || /^\s*(?:int|void)\s+main\s*\(/m.test(content);
 /** A top-level `fun main` (with or without `args`, `suspend` allowed). */
 const hasKotlinMain = (content?: string) => content === undefined || /^(?:suspend\s+)?fun\s+main\s*\(/m.test(content);
@@ -597,7 +611,11 @@ export function produceFile(input: ContextInput, env: ToolEnv): Produced | null 
     case "python": {
       const py = pythonCommand(input, env, s);
       if (!py) return { name: s.file, scope: "file", missing: missing("python", s.file, ["python3", "python"]) };
-      return { name: s.file, scope: "file", config: fileConfig(s, "python", py.command, [...py.prefix, s.arg], "debugpy") };
+      return {
+        name: s.file,
+        scope: "file",
+        config: fileConfig(s, "python", py.command, [...py.prefix, s.arg], "debugpy"),
+      };
     }
     case "shell":
     case "shebang": {
@@ -607,7 +625,12 @@ export function produceFile(input: ContextInput, env: ToolEnv): Produced | null 
         const interp = interpreterName(sb[0]!);
         if (/^python[\d.]*$/.test(interp)) {
           const py = pythonCommand(input, env, s);
-          if (py) return { name: s.file, scope: "file", config: fileConfig(s, "python", py.command, [...py.prefix, s.arg], "debugpy") };
+          if (py)
+            return {
+              name: s.file,
+              scope: "file",
+              config: fileConfig(s, "python", py.command, [...py.prefix, s.arg], "debugpy"),
+            };
         }
         const t = sb[0]!.startsWith("/") ? { command: sb[0]!, name: interp } : pick(env, [interp]);
         if (!t) return { name: s.file, scope: "file", missing: missing(lang, s.file, [interp]) };
@@ -615,14 +638,30 @@ export function produceFile(input: ContextInput, env: ToolEnv): Produced | null 
         return {
           name: s.file,
           scope: "file",
-          config: fileConfig(s, kind, t.command, [...sb.slice(1), s.arg], interp === "node" || interp === "deno" ? "js-debug" : null),
+          config: fileConfig(
+            s,
+            kind,
+            t.command,
+            [...sb.slice(1), s.arg],
+            interp === "node" || interp === "deno" ? "js-debug" : null,
+          ),
         };
       }
       // A shell script: the shell of its #! line, else by extension.
-      const preferred = sb ? interpreterName(sb[0]!) : /\.bash$/.test(s.file) ? "bash" : /\.zsh$/.test(s.file) ? "zsh" : "sh";
+      const preferred = sb
+        ? interpreterName(sb[0]!)
+        : /\.bash$/.test(s.file)
+          ? "bash"
+          : /\.zsh$/.test(s.file)
+            ? "zsh"
+            : "sh";
       const t = pick(env, [preferred]);
       if (!t) return { name: s.file, scope: "file", missing: missing("shell", s.file, tools) };
-      return { name: s.file, scope: "file", config: fileConfig(s, "shell", t.command, [...(sb?.slice(1) ?? []), s.arg]) };
+      return {
+        name: s.file,
+        scope: "file",
+        config: fileConfig(s, "shell", t.command, [...(sb?.slice(1) ?? []), s.arg]),
+      };
     }
     case "ruby":
     case "php":
@@ -684,8 +723,7 @@ export function targetEnd(lines: readonly string[], target: RunTarget, python: b
   let depth = 0;
   let opened = false;
   for (let i = start; i < lines.length; i++) {
-    const code = lines[i]!
-      .replace(/\/\/.*$/, "")
+    const code = lines[i]!.replace(/\/\/.*$/, "")
       .replace(/"(?:[^"\\]|\\.)*"/g, '""')
       .replace(/'(?:[^'\\]|\\.)*'/g, "''")
       .replace(/`(?:[^`\\]|\\.)*`/g, "``");
@@ -702,7 +740,12 @@ export function targetEnd(lines: readonly string[], target: RunTarget, python: b
 }
 
 /** The innermost run target whose declaration contains `line`. */
-export function innermostTarget(content: string, targets: readonly RunTarget[], line: number, python = false): RunTarget | null {
+export function innermostTarget(
+  content: string,
+  targets: readonly RunTarget[],
+  line: number,
+  python = false,
+): RunTarget | null {
   const lines = content.split("\n");
   let best: RunTarget | null = null;
   for (const t of targets) {
@@ -734,7 +777,8 @@ export function fileTargets(input: Pick<ContextInput, "path" | "root" | "configs
   const s = { inProject: inProject(input.path, input.root), rel: relTo(input.path, input.root) };
   const rust = /\.rs$/.test(input.path);
   if (/\.(c|cpp|cc|cxx)$/.test(input.path)) return standaloneTargets(content, input.path);
-  const cargo = s.inProject && (cargoOwner(s.rel, input.configs).length > 0 || /(^|\/)(src|tests|examples|benches)\//.test(s.rel));
+  const cargo =
+    s.inProject && (cargoOwner(s.rel, input.configs).length > 0 || /(^|\/)(src|tests|examples|benches)\//.test(s.rel));
   if (rust && !cargo) return standaloneTargets(content, input.path);
   if (!targetLanguage(input.path)) return [];
   if (!s.inProject) {
@@ -795,7 +839,8 @@ export function produceContext(input: ContextInput, env: ToolEnv): Produced | nu
  */
 export function produceContextChoices(input: ContextInput, env: ToolEnv): Produced[] {
   const produced = produceContext(input, env);
-  if (!produced?.config || produced.scope === "directory" || !inProject(input.path, input.root)) return produced ? [produced] : [];
+  if (!produced?.config || produced.scope === "directory" || !inProject(input.path, input.root))
+    return produced ? [produced] : [];
   const rel = relTo(input.path, input.root);
   const bases = testBasesFor(rel, [...input.configs]);
   if (bases.length < 2) return [produced];
@@ -841,7 +886,10 @@ export function produceDirectory(input: ContextInput): Produced | null {
       if (!cwd) return 0;
       return rel === cwd || rel.startsWith(cwd + "/") ? cwd.length : -1;
     };
-    return cands.map((c) => [c, score(c)] as const).filter(([, n]) => n >= 0).sort((a, b) => b[1] - a[1])[0]?.[0];
+    return cands
+      .map((c) => [c, score(c)] as const)
+      .filter(([, n]) => n >= 0)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
   };
   const relToCwd = (c: RunConfig) => {
     const cwd = (c.cwd ?? "").replace(/^\.\/?/, "").replace(/\/+$/, "");
@@ -863,7 +911,11 @@ export function produceDirectory(input: ContextInput): Produced | null {
       const pkg = jvmPackage[2]!.replace(/\//g, ".");
       return base.kind === "gradle"
         ? make(moduleBase, `Tests in '${pkg}'`, [...base.args, "--tests", `${pkg}.*`])
-        : make(moduleBase, `Tests in '${pkg}'`, [...base.args, `-Dtest=${pkg}.**.*`, "-Dsurefire.failIfNoSpecifiedTests=false"]);
+        : make(moduleBase, `Tests in '${pkg}'`, [
+            ...base.args,
+            `-Dtest=${pkg}.**.*`,
+            "-Dsurefire.failIfNoSpecifiedTests=false",
+          ]);
     }
   }
   const js = closest(["npm", "bun", "deno"]);
@@ -879,7 +931,11 @@ export function produceDirectory(input: ContextInput): Produced | null {
   }
   if (go) {
     const dir = relToCwd(go);
-    const p = make(go, testsIn, go.args.map((a) => (a === "./..." ? `./${dir}/...` : a)));
+    const p = make(
+      go,
+      testsIn,
+      go.args.map((a) => (a === "./..." ? `./${dir}/...` : a)),
+    );
     const config = goTestNamed(p.config!, input);
     return { ...p, name: config.name, config };
   }

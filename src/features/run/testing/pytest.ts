@@ -7,7 +7,9 @@ const OUTCOME = String.raw`(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)`;
 // `tests/test_x.py::TestC::test_y[1] PASSED   [ 50%]`
 const VERBOSE_RE = new RegExp(String.raw`^(\S+\.py::\S+)\s+${OUTCOME}(?:\s|$)`);
 // `[gw0] PASSED tests/test_x.py::test_add` (xdist) and short summary `FAILED tests/test_x.py::test_sub - msg`
-const PREFIX_RE = new RegExp(String.raw`^(?:\[gw\d+\]\s+(?:\[\s*\d+%\]\s+)?)?${OUTCOME}\s+(\S+\.py::\S+?)(?:\s+-\s+.*)?$`);
+const PREFIX_RE = new RegExp(
+  String.raw`^(?:\[gw\d+\]\s+(?:\[\s*\d+%\]\s+)?)?${OUTCOME}\s+(\S+\.py::\S+?)(?:\s+-\s+.*)?$`,
+);
 // `tests/test_x.py .F.s                                   [100%]`
 const PROGRESS_RE = /^(\S+\.py) ([.FEsxX]+)\s*(?:\[\s*\d+%\])?$/;
 const SECTION_RE = /^_{3,} (.+?) _{3,}$/;

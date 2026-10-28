@@ -92,7 +92,8 @@ export function syncCoverageViews(): () => void {
     const root = useProject.getState().project?.root;
     const decorations = new Map<string, FileDecoration>();
     if (suite && root) {
-      for (const [path, badge] of coverageBadges(coverageTree(suite.data, root, false))) decorations.set(path, { badge });
+      for (const [path, badge] of coverageBadges(coverageTree(suite.data, root, false)))
+        decorations.set(path, { badge });
     }
     setFileDecorations("coverage", decorations);
   };
@@ -148,7 +149,11 @@ export function rememberImport(report: ImportedReport) {
 
 export function forgetImport(path: string) {
   const root = useProject.getState().project?.root;
-  if (root) saveImported(root, importedReports(root).filter((r) => r.path !== path));
+  if (root)
+    saveImported(
+      root,
+      importedReports(root).filter((r) => r.path !== path),
+    );
 }
 
 /** A row of "Manage Coverage Reports": a loaded suite, or an imported report not loaded now. */

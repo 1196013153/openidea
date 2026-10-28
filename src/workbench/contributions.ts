@@ -720,7 +720,14 @@ export function projectViewRoots(map: ReadonlyMap<string, ProjectViewRootContrib
 // in `paths[0]`, the target directory (features/templates: file templates, http-client: HTTP Request).
 
 export type ContextMenuId =
-  "editor" | "projectView" | "editorTab" | "editorGutter" | "openIn" | "stopProcess" | "selectIn" | "new";
+  | "editor"
+  | "projectView"
+  | "editorTab"
+  | "editorGutter"
+  | "openIn"
+  | "stopProcess"
+  | "selectIn"
+  | "new";
 
 export interface MenuGroupContext {
   /** Files / directories the menu is for (absolute paths; a virtual URI for virtual documents). */

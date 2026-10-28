@@ -81,14 +81,19 @@ async function loadInherited(doc: number, path: string, items: readonly OutlineI
     return;
   }
   const deps = inheritedDeps(path, doc);
-  const entries = await Promise.all(types.map(async (t) => [typeKey(t), await inheritedMembers(path, t, deps).catch(() => [])] as const));
-  if (my === seq) useOutline.setState({ inheritedSupported: true, inherited: new Map(entries.filter(([, m]) => m.length)) });
+  const entries = await Promise.all(
+    types.map(async (t) => [typeKey(t), await inheritedMembers(path, t, deps).catch(() => [])] as const),
+  );
+  if (my === seq)
+    useOutline.setState({ inheritedSupported: true, inherited: new Map(entries.filter(([, m]) => m.length)) });
 }
 
 async function load(doc: number, path: string) {
   const my = ++seq;
   useOutline.setState((s) =>
-    s.path === path ? { loading: true } : { path, doc, items: null, loading: true, error: null, inheritedSupported: false, inherited: null },
+    s.path === path
+      ? { loading: true }
+      : { path, doc, items: null, loading: true, error: null, inheritedSupported: false, inherited: null },
   );
   try {
     const items = await call(commands.docOutline(doc));
@@ -108,7 +113,15 @@ function start(): () => void {
     const ctx = current();
     if (!ctx) {
       seq++;
-      useOutline.setState({ path: null, doc: null, items: null, loading: false, error: null, inheritedSupported: false, inherited: null });
+      useOutline.setState({
+        path: null,
+        doc: null,
+        items: null,
+        loading: false,
+        error: null,
+        inheritedSupported: false,
+        inherited: null,
+      });
       return;
     }
     void load(ctx.doc, ctx.path);

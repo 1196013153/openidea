@@ -24,12 +24,21 @@ export const isUnavailable = (e: unknown) => e instanceof IpcError && e.kind ===
 /** Small hint at the caret (via editor/lsp), or a notification without an editor. */
 export function hint(text: string, tone: "info" | "warning" | "error" = "info") {
   if (activeEditor()) void executeAction("editor.showHint", { text, tone });
-  else notifications().notify({ group: "lsp", level: tone === "error" ? "error" : "info", title: text, key: "code-insight.hint" });
+  else
+    notifications().notify({
+      group: "lsp",
+      level: tone === "error" ? "error" : "info",
+      title: text,
+      key: "code-insight.hint",
+    });
 }
 
 export function reportError(e: unknown) {
   if (isCancelled(e)) return;
-  hint(isUnavailable(e) ? "No language server available" : e instanceof Error ? e.message : String(e), isUnavailable(e) ? "info" : "error");
+  hint(
+    isUnavailable(e) ? "No language server available" : e instanceof Error ? e.message : String(e),
+    isUnavailable(e) ? "info" : "error",
+  );
 }
 
 export interface CaretContext {
@@ -52,7 +61,14 @@ export function caretContext(): CaretContext | null {
   if (!ed) return null;
   const head = ed.view.state.selection.main.head;
   const line = ed.view.state.doc.lineAt(head);
-  return { doc: ed.ctx.doc, path: ed.ctx.path, line: line.number - 1, col: head - line.from, word: wordAt(ed.view, head), view: ed.view };
+  return {
+    doc: ed.ctx.doc,
+    path: ed.ctx.path,
+    line: line.number - 1,
+    col: head - line.from,
+    word: wordAt(ed.view, head),
+    view: ed.view,
+  };
 }
 
 function wordAt(view: EditorView, offset: number): string | null {
@@ -93,7 +109,10 @@ export async function previewText(path: string): Promise<string> {
   return lines.join("\n");
 }
 
-export async function readManyFileLines(paths: readonly string[], concurrency = 4): Promise<Map<string, string[] | null>> {
+export async function readManyFileLines(
+  paths: readonly string[],
+  concurrency = 4,
+): Promise<Map<string, string[] | null>> {
   const out = new Map<string, string[] | null>();
   const queue = [...new Set(paths)];
   const worker = async () => {

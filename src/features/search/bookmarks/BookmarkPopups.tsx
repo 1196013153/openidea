@@ -54,7 +54,10 @@ function MnemonicChooser() {
   const target = useBookmarkPopups((s) => s.chooser)!;
   const items = useBookmarks((s) => s.items);
   const current = bookmarkAt(items, target.path, target.line);
-  const assigned = useMemo(() => new Set(items.filter((b) => b.mnemonic && b !== current).map((b) => b.mnemonic!)), [items, current]);
+  const assigned = useMemo(
+    () => new Set(items.filter((b) => b.mnemonic && b !== current).map((b) => b.mnemonic!)),
+    [items, current],
+  );
   const [description, setDescription] = useState(current?.description ?? "");
   const close = () => useBookmarkPopups.setState({ chooser: null });
   const choose = (mnemonic: string) => {
@@ -86,11 +89,7 @@ function MnemonicChooser() {
     <button
       key={m}
       type="button"
-      className={clsx(
-        styles.key,
-        m === current?.mnemonic && styles.keyCurrent,
-        assigned.has(m) && styles.keyAssigned,
-      )}
+      className={clsx(styles.key, m === current?.mnemonic && styles.keyCurrent, assigned.has(m) && styles.keyAssigned)}
       aria-pressed={m === current?.mnemonic}
       onClick={() => choose(m)}
     >
@@ -165,7 +164,11 @@ export function bookmarkRows(
     for (const p of marked.filter((p) => p.dir).sort((a, b) => a.path.localeCompare(b.path)))
       rows.push({ kind: "path", key: `d:${k}:${p.path}`, path: p.path, dir: true });
     for (const [path, f] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
-      rows.push(f.bookmarked ? { kind: "path", key: `p:${k}:${path}`, path, dir: false } : { kind: "file", key: `f:${k}:${path}`, path });
+      rows.push(
+        f.bookmarked
+          ? { kind: "path", key: `p:${k}:${path}`, path, dir: false }
+          : { kind: "file", key: `f:${k}:${path}`, path },
+      );
       for (const b of f.marks) rows.push({ kind: "mark", key: `b:${b.path}:${b.line}`, bookmark: b });
     }
   };

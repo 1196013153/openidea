@@ -3,7 +3,17 @@
  * Keys, Code Editing, Code Style). Everything here is rebuilt into the
  * `prefs` compartment when settings change.
  */
-import { EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension, type Transaction, type TransactionSpec } from "@codemirror/state";
+import {
+  EditorSelection,
+  EditorState,
+  Prec,
+  RangeSetBuilder,
+  StateEffect,
+  StateField,
+  type Extension,
+  type Transaction,
+  type TransactionSpec,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -47,7 +57,13 @@ export function matchesFilePatterns(patterns: string, path: string): boolean {
     .map((p) => p.trim())
     .filter(Boolean)
     .some((p) => {
-      const re = new RegExp(`^${p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+      const re = new RegExp(
+        `^${p
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".")}$`,
+        "i",
+      );
       return re.test(name);
     });
 }
@@ -80,7 +96,7 @@ const wrapIndent = ViewPlugin.fromClass(
       const b = new RangeSetBuilder<Decoration>();
       const tab = view.state.tabSize;
       for (const { from, to } of view.visibleRanges) {
-        for (let pos = from; pos <= to; ) {
+        for (let pos = from; pos <= to;) {
           const line = view.state.doc.lineAt(pos);
           let cols = 0;
           for (let i = 0; i < line.length; i++) {
@@ -193,7 +209,13 @@ function leadingColumns(text: string, tabSize: number): number {
 }
 
 /** Reformat on paste › Indent Block: re-indents a pasted block to the caret's indentation. */
-export function indentPastedText(text: string, targetCol: number, unit: string, tabSize: number, unitCols = tabSize): string {
+export function indentPastedText(
+  text: string,
+  targetCol: number,
+  unit: string,
+  tabSize: number,
+  unitCols = tabSize,
+): string {
   const lines = text.split("\n");
   if (lines.length < 2) return text;
   const rest = lines.slice(1).filter((l) => l.trim());
@@ -205,7 +227,8 @@ export function indentPastedText(text: string, targetCol: number, unit: string, 
   // A block opener copied from mid-line ("if x:", "fn f() {") sat one level above its body.
   if (!firstIndented && base > 0 && /[:{([]\s*$/.test(lines[0]!)) base = Math.max(0, base - unitCols);
   const delta = targetCol - base;
-  const pad = (n: number) => (unit === "\t" ? "\t".repeat(Math.floor(n / tabSize)) + " ".repeat(n % tabSize) : " ".repeat(n));
+  const pad = (n: number) =>
+    unit === "\t" ? "\t".repeat(Math.floor(n / tabSize)) + " ".repeat(n % tabSize) : " ".repeat(n);
   return lines
     .map((l, i) => {
       if (i === 0) return l.trimStart();
@@ -394,7 +417,11 @@ const OPENERS: Record<string, true> = { "(": true, "[": true, "{": true, '"': tr
 /** Typing a bracket / quote over a selection replaces it instead of wrapping it. */
 const noSurround = EditorView.inputHandler.of((view, from, to, text) => {
   if (!OPENERS[text] || from === to || view.state.selection.ranges.length !== 1) return false;
-  view.dispatch({ changes: { from, to, insert: text }, selection: EditorSelection.cursor(from + 1), userEvent: "input.type" });
+  view.dispatch({
+    changes: { from, to, insert: text },
+    selection: EditorSelection.cursor(from + 1),
+    userEvent: "input.type",
+  });
   return true;
 });
 
@@ -441,17 +468,27 @@ export function prefsExtension(o: PrefsOptions): Extension {
   if ((o.wrapOverride ?? softWrapActive(o.softWrap, prefs, o.path)) && g.softWrapIndent) out.push(wrapIndent);
   if (o.showWhitespace) {
     const a = prefs.appearance;
-    out.push(whitespaceMarks({ leading: a.whitespaceLeading, inner: a.whitespaceInner, trailing: a.whitespaceTrailing }));
+    out.push(
+      whitespaceMarks({ leading: a.whitespaceLeading, inner: a.whitespaceInner, trailing: a.whitespaceTrailing }),
+    );
   }
-  if (prefs.appearance.hardWrapGuides && !o.distractionFree) out.push(marginGuides([o.hardWrapAt, ...prefs.codeStyle.visualGuides]));
-  if (prefs.appearance.methodSeparators) out.push(EditorView.editorAttributes.of({ class: "cm-openidea-methodSeparators" }));
-  const hidden = GUTTER_ICON_GROUPS.filter((grp) => !prefs.showGutterIcons || prefs.gutterIconsDisabled.includes(grp.id));
-  if (hidden.length) out.push(EditorView.editorAttributes.of({ class: hidden.map((grp) => `cm-openidea-hideGutter-${grp.id}`).join(" ") }));
+  if (prefs.appearance.hardWrapGuides && !o.distractionFree)
+    out.push(marginGuides([o.hardWrapAt, ...prefs.codeStyle.visualGuides]));
+  if (prefs.appearance.methodSeparators)
+    out.push(EditorView.editorAttributes.of({ class: "cm-openidea-methodSeparators" }));
+  const hidden = GUTTER_ICON_GROUPS.filter(
+    (grp) => !prefs.showGutterIcons || prefs.gutterIconsDisabled.includes(grp.id),
+  );
+  if (hidden.length)
+    out.push(
+      EditorView.editorAttributes.of({ class: hidden.map((grp) => `cm-openidea-hideGutter-${grp.id}`).join(" ") }),
+    );
   if (g.wheelZoom) out.push(wheelZoom);
   if (!g.dragAndDrop) out.push(noTextDrag);
   if (g.caretScroll === "center") out.push(centerCaret);
   if (g.richTextCopy) out.push(richCopy);
-  if (!o.readOnly && (k.reformatOnPaste === "indentBlock" || k.reformatOnPaste === "indentEachLine")) out.push(pasteReindentFilter(k.reformatOnPaste));
+  if (!o.readOnly && (k.reformatOnPaste === "indentBlock" || k.reformatOnPaste === "indentEachLine"))
+    out.push(pasteReindentFilter(k.reformatOnPaste));
 
   // Pairing: closeBrackets() reads the brackets list from language data; ours comes first.
   const brackets = [...(k.pairBrackets ? ["(", "[", "{"] : []), ...(k.pairQuotes ? ["'", '"'] : [])];
@@ -469,7 +506,11 @@ export function prefsExtension(o: PrefsOptions): Extension {
       { key: "Alt-Delete", run: deleteHumpForward },
     );
   // Delete to Word Start: the whitespace before the caret and the word before it.
-  keys.push({ key: "Mod-Backspace", mac: "Alt-Backspace", run: k.camelHumps ? deleteHumpBackward : deleteWordBackward });
+  keys.push({
+    key: "Mod-Backspace",
+    mac: "Alt-Backspace",
+    run: k.camelHumps ? deleteHumpBackward : deleteWordBackward,
+  });
   if (!k.smartHome)
     keys.push(
       { key: "Home", run: cursorLineStart, shift: selectLineStart, preventDefault: true },

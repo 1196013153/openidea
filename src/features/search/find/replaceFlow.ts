@@ -237,7 +237,9 @@ export interface PreviewLine {
 /** Unified line preview of `edits` (non-overlapping, UTF-16 line/col) applied to `before`. */
 export function replacePreviewLines(before: string, edits: readonly TextEdit[]): PreviewLine[] {
   const lines = before.split("\n");
-  const sorted = [...edits].sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.col - b.range.start.col);
+  const sorted = [...edits].sort(
+    (a, b) => a.range.start.line - b.range.start.line || a.range.start.col - b.range.start.col,
+  );
   const out: PreviewLine[] = [];
   const between = (from: Pos, to: Pos) => {
     if (from.line === to.line) return (lines[from.line] ?? "").slice(from.col, to.col);
@@ -248,7 +250,7 @@ export function replacePreviewLines(before: string, edits: readonly TextEdit[]):
   };
   let next = 0;
   let delta = 0;
-  for (let i = 0; i < sorted.length; ) {
+  for (let i = 0; i < sorted.length;) {
     const first = sorted[i]!;
     const startLine = first.range.start.line;
     let endLine = first.range.end.line;

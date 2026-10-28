@@ -103,7 +103,13 @@ export interface SuperMethod {
 }
 
 /** Super methods of `method` (a member of the type at `typePos`), with their declaring types, nearest level first. */
-export async function superMethodTargets(path: string, typePos: Pos, method: string, deps: SuperDeps, depth = 3): Promise<SuperMethod[]> {
+export async function superMethodTargets(
+  path: string,
+  typePos: Pos,
+  method: string,
+  deps: SuperDeps,
+  depth = 3,
+): Promise<SuperMethod[]> {
   let level: Array<{ path: string; pos: Pos }> = [{ path, pos: typePos }];
   const seen = new Set<string>();
   for (let d = 0; d < depth && level.length; d++) {
@@ -117,7 +123,8 @@ export async function superMethodTargets(path: string, typePos: Pos, method: str
         seen.add(key);
         const methods = methodsInType(await deps.outline(s.path).catch(() => [] as OutlineItem[]), s, method);
         if (methods.length)
-          for (const m of methods) found.push({ location: { path: s.path, range: m.selection_range }, owner: s, method: m });
+          for (const m of methods)
+            found.push({ location: { path: s.path, range: m.selection_range }, owner: s, method: m });
         else next.push({ path: s.path, pos: s.selectionRange.start });
       }
     }
@@ -128,6 +135,12 @@ export async function superMethodTargets(path: string, typePos: Pos, method: str
 }
 
 /** Super methods of `method` (a member of the type at `typePos`), searching up to `depth` levels of supertypes. */
-export async function superMethods(path: string, typePos: Pos, method: string, deps: SuperDeps, depth = 3): Promise<Location[]> {
+export async function superMethods(
+  path: string,
+  typePos: Pos,
+  method: string,
+  deps: SuperDeps,
+  depth = 3,
+): Promise<Location[]> {
   return (await superMethodTargets(path, typePos, method, deps, depth)).map((s) => s.location);
 }

@@ -134,7 +134,11 @@ describe("prompt", () => {
     });
     const dialog = await screen.findByRole("dialog");
     const footer = dialog.querySelector("[data-dialog-footer]") as HTMLElement;
-    expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "This Window", "New Window"]);
+    expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
+      "Cancel",
+      "This Window",
+      "New Window",
+    ]);
     await userEvent.setup().keyboard("{Enter}");
     await expect(result).resolves.toMatchObject({ button: "new" });
     usePlatform.setState({ os });

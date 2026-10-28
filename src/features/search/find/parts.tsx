@@ -159,7 +159,8 @@ export function CodePreview({
     const { line, highlights } = latest.current;
     const doc = view.state.doc;
     const effects: StateEffect<unknown>[] = [setPreviewMarks.of(previewDecorations(doc, line, highlights))];
-    if (line >= 0 && line < doc.lines) effects.push(EditorView.scrollIntoView(doc.line(line + 1).from, { y: "center" }));
+    if (line >= 0 && line < doc.lines)
+      effects.push(EditorView.scrollIntoView(doc.line(line + 1).from, { y: "center" }));
     view.dispatch({ effects });
   }, [current, loaded, line]);
   useEffect(() => {

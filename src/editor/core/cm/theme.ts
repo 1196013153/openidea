@@ -18,7 +18,8 @@ export const openideaTheme = EditorView.theme({
     "--editor-gutter-border": "var(--border-gutter, var(--border))",
     "--editor-caret-row": "var(--bg-current-line)",
     "--editor-selection": "var(--bg-editor-selection, color-mix(in srgb, var(--accent) 24%, transparent))",
-    "--editor-selection-inactive": "var(--bg-editor-selection-inactive, color-mix(in srgb, var(--accent) 14%, transparent))",
+    "--editor-selection-inactive":
+      "var(--bg-editor-selection-inactive, color-mix(in srgb, var(--accent) 14%, transparent))",
     "--editor-indent-guide": "var(--border-indent-guide, var(--border))",
     "--editor-search": "var(--bg-search-match, color-mix(in srgb, var(--warning) 30%, transparent))",
     "--editor-search-current": "var(--bg-search-match-current, color-mix(in srgb, var(--warning) 48%, transparent))",
@@ -52,18 +53,24 @@ export const openideaTheme = EditorView.theme({
     marginLeft: "0",
     background: "color-mix(in srgb, var(--caret, var(--fg-strong)) 55%, transparent)",
   },
-  "&.cm-openidea-ligatures .cm-scroller, &.cm-openidea-ligatures .cm-openidea-sticky": { fontVariantLigatures: "normal" },
+  "&.cm-openidea-ligatures .cm-scroller, &.cm-openidea-ligatures .cm-openidea-sticky": {
+    fontVariantLigatures: "normal",
+  },
   "&.cm-openidea-methodSeparators .cm-openidea-methodSeparator": {
     boxShadow: "inset 0 1px 0 var(--border-method-separator, var(--border))",
   },
-  "&.cm-openidea-hideGutter-run .cm-openidea-gutter-run, &.cm-openidea-hideGutter-bookmarks .cm-openidea-bookmarks": { display: "none" },
+  "&.cm-openidea-hideGutter-run .cm-openidea-gutter-run, &.cm-openidea-hideGutter-bookmarks .cm-openidea-bookmarks": {
+    display: "none",
+  },
   // Inheritance markers share one gutter: each group hides its own icons.
   "&.cm-openidea-hideGutter-inheritors :is(.cm-openidea-lineMarker-implemented, .cm-openidea-lineMarker-overridden), &.cm-openidea-hideGutter-supers :is(.cm-openidea-lineMarker-implementing, .cm-openidea-lineMarker-overriding)":
     { display: "none" },
   // Distraction Free Mode: no gutter; the text column (n chars + line padding) is centred.
   "&.cm-openidea-distractionFree": { "--openidea-df-width": "calc(var(--openidea-df-columns, 80) * 1ch + 22px)" },
   "&.cm-openidea-distractionFree .cm-gutters": { display: "none" },
-  "&.cm-openidea-distractionFree .cm-content": { marginInlineStart: "max(0px, calc((100% - var(--openidea-df-width)) / 2))" },
+  "&.cm-openidea-distractionFree .cm-content": {
+    marginInlineStart: "max(0px, calc((100% - var(--openidea-df-width)) / 2))",
+  },
   "&.cm-openidea-distractionFree .cm-content.cm-lineWrapping": { maxWidth: "var(--openidea-df-width)" },
   ".cm-fat-cursor": { background: "color-mix(in srgb, var(--caret, var(--fg-strong)) 45%, transparent)" },
   ".cm-selectionBackground": { background: "var(--editor-selection-inactive)" },
@@ -71,7 +78,9 @@ export const openideaTheme = EditorView.theme({
     background: "var(--editor-selection)",
   },
   ".cm-activeLine": { backgroundColor: "var(--editor-caret-row)" },
-  ".cm-selectionMatch": { backgroundColor: "var(--bg-identifier-under-caret, color-mix(in srgb, var(--fg) 9%, transparent))" },
+  ".cm-selectionMatch": {
+    backgroundColor: "var(--bg-identifier-under-caret, color-mix(in srgb, var(--fg) 9%, transparent))",
+  },
   // IDEA's MATCHED_BRACE_ATTRIBUTES (bold in dark schemes only) and MATCHED_TAG_NAME (never bold).
   ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
     backgroundColor: "var(--editor-brace)",
@@ -214,7 +223,10 @@ export const openideaTheme = EditorView.theme({
     borderRadius: "var(--radius-popup)",
     boxShadow: "var(--shadow-popup)",
   },
-  ".cm-tooltip .cm-tooltip-arrow:before": { borderTopColor: "var(--border-popup)", borderBottomColor: "var(--border-popup)" },
+  ".cm-tooltip .cm-tooltip-arrow:before": {
+    borderTopColor: "var(--border-popup)",
+    borderBottomColor: "var(--border-popup)",
+  },
   ".cm-tooltip .cm-tooltip-arrow:after": { borderTopColor: "var(--bg-popup)", borderBottomColor: "var(--bg-popup)" },
   ".cm-panels": { backgroundColor: "var(--bg-elev)", color: "var(--fg)" },
   ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--border)" },

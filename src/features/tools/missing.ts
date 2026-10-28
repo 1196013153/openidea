@@ -19,7 +19,13 @@ export async function promptInstall(name: string): Promise<boolean> {
   // An installed alternative (typescript-language-server for vtsls) already serves these files.
   const served = useTools
     .getState()
-    .tools.some((t) => t.name !== name && t.kind === tool.kind && t.status !== "missing" && t.languages.some((l) => tool.languages.includes(l)));
+    .tools.some(
+      (t) =>
+        t.name !== name &&
+        t.kind === tool.kind &&
+        t.status !== "missing" &&
+        t.languages.some((l) => tool.languages.includes(l)),
+    );
   if (served) return false;
   const key = missingKey(name);
   const langs = tool.languages.length ? tool.languages.join(", ") : "these files";

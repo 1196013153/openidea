@@ -17,7 +17,12 @@ import { closeSessionTab, resetRuns, startRun, useRun, type RunSession } from ".
 
 const confirm = vi.hoisted(() => vi.fn(async () => true));
 const confirmTerminate = vi.hoisted(() => vi.fn(async () => true));
-vi.mock("./dialogs", () => ({ confirmRerun: confirm, confirmTerminate, promptValue: vi.fn(), RunDialogsOverlay: () => null }));
+vi.mock("./dialogs", () => ({
+  confirmRerun: confirm,
+  confirmTerminate,
+  promptValue: vi.fn(),
+  RunDialogsOverlay: () => null,
+}));
 
 const config = (id: string, extra: Partial<RunConfig> = {}): RunConfig => ({
   id,

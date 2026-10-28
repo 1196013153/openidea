@@ -10,7 +10,8 @@ vi.mock("./ipc", async (orig) => ({
   readManyFileLines: async () => new Map([["/p/b.rs", ["", "    used();"]]]),
 }));
 
-const { activeUsageSearch, openUsageTab, pinUsageTab, resetUsages, showUsageResults, useUsages } = await import("./usages");
+const { activeUsageSearch, openUsageTab, pinUsageTab, resetUsages, showUsageResults, useUsages } =
+  await import("./usages");
 
 describe("showUsageResults", () => {
   it("shows given usages in the Find Usages tool window", async () => {
@@ -19,7 +20,9 @@ describe("showUsageResults", () => {
     expect(show).toHaveBeenCalledWith("usages");
     const search = activeUsageSearch(useUsages.getState())!;
     expect(search).toMatchObject({ symbol: "used", loading: false, error: null, rerun: null });
-    expect(search.groups).toEqual([{ path: "/p/b.rs", usages: [{ path: "/p/b.rs", line: 1, col: 4, endCol: 8, text: "    used();" }] }]);
+    expect(search.groups).toEqual([
+      { path: "/p/b.rs", usages: [{ path: "/p/b.rs", line: 1, col: 4, endCol: 8, text: "    used();" }] },
+    ]);
   });
 
   it("ignores malformed arguments", async () => {
@@ -30,7 +33,15 @@ describe("showUsageResults", () => {
 });
 
 describe("usage tabs", () => {
-  const search = (id: number) => ({ id, symbol: `s${id}`, loading: false, groups: [], error: null, note: null, rerun: null });
+  const search = (id: number) => ({
+    id,
+    symbol: `s${id}`,
+    loading: false,
+    groups: [],
+    error: null,
+    note: null,
+    rerun: null,
+  });
 
   it("replace the selected tab unless it is pinned", () => {
     resetUsages();

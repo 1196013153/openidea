@@ -29,7 +29,8 @@ export function isTestName(name: string): boolean {
   if (ext === ".go") return stem.endsWith("_test");
   if (ext === ".py") return stem.startsWith("test_") || stem.endsWith("_test") || stem === "conftest";
   if (ext === ".rb") return stem.endsWith("_spec") || stem.endsWith("_test");
-  if (JVM_EXT.test(name)) return /^Test[A-Z0-9_]/.test(stem) || (/Tests?$/.test(stem) && stem !== "Test" && stem !== "Tests");
+  if (JVM_EXT.test(name))
+    return /^Test[A-Z0-9_]/.test(stem) || (/Tests?$/.test(stem) && stem !== "Test" && stem !== "Tests");
   if (C_EXT.test(name)) return stem.startsWith("test_") || stem.endsWith("_test") || stem.endsWith("_unittest");
   return false;
 }
@@ -42,7 +43,8 @@ export function testNamesFor(name: string): string[] {
   if (ext === ".py") return [`test_${stem}.py`, `${stem}_test.py`];
   if (ext === ".rb") return [`${stem}_spec.rb`, `${stem}_test.rb`];
   if (ext === ".rs") return [`${stem}.rs`, `${stem}_test.rs`, `${stem}_tests.rs`];
-  if (JVM_EXT.test(name)) return [`${stem}Test${ext}`, `${stem}Tests${ext}`, `Test${stem}${ext}`, `${stem}IT${ext}`, `${stem}Spec${ext}`];
+  if (JVM_EXT.test(name))
+    return [`${stem}Test${ext}`, `${stem}Tests${ext}`, `Test${stem}${ext}`, `${stem}IT${ext}`, `${stem}Spec${ext}`];
   if (C_EXT.test(name)) return [`${stem}_test${ext}`, `test_${stem}${ext}`, `${stem}_unittest${ext}`];
   return [`${stem}_test${ext}`, `test_${stem}${ext}`];
 }
@@ -59,13 +61,15 @@ export function subjectNamesFor(name: string): string[] {
   const out: string[] = [];
   const strip = (s: string) => out.push(`${s}${ext}`);
   if (ext === ".go" || ext === ".py" || ext === ".rb" || ext === ".rs" || C_EXT.test(name)) {
-    for (const suffix of ["_test", "_tests", "_spec", "_unittest"]) if (stem.endsWith(suffix) && stem.length > suffix.length) strip(stem.slice(0, -suffix.length));
+    for (const suffix of ["_test", "_tests", "_spec", "_unittest"])
+      if (stem.endsWith(suffix) && stem.length > suffix.length) strip(stem.slice(0, -suffix.length));
     if (stem.startsWith("test_") && stem.length > 5) strip(stem.slice(5));
     // Rust integration tests (`tests/foo.rs`) are named like their subject.
     if (ext === ".rs") strip(stem);
     return [...new Set(out)];
   }
-  for (const suffix of ["Tests", "Test", "IT", "Spec"]) if (stem.endsWith(suffix) && stem.length > suffix.length) strip(stem.slice(0, -suffix.length));
+  for (const suffix of ["Tests", "Test", "IT", "Spec"])
+    if (stem.endsWith(suffix) && stem.length > suffix.length) strip(stem.slice(0, -suffix.length));
   if (/^Test[A-Z0-9_]/.test(stem)) strip(stem.slice(4));
   return [...new Set(out)];
 }
@@ -83,7 +87,11 @@ function sharedPrefix(a: string, b: string): number {
  * Orders candidate paths for `from`: the mirrored package (same path below
  * its root) first, then the closest in the tree.
  */
-export function rankCandidates(from: string, candidates: readonly string[], relBelowRoot: (path: string) => string | null): string[] {
+export function rankCandidates(
+  from: string,
+  candidates: readonly string[],
+  relBelowRoot: (path: string) => string | null,
+): string[] {
   const own = relBelowRoot(from);
   const ownDir = own === null ? null : own.slice(0, Math.max(own.lastIndexOf("/"), 0));
   const score = (p: string) => {

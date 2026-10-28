@@ -17,7 +17,11 @@ export async function putLabel(): Promise<boolean> {
   if (!r) return false;
   try {
     await call(commands.historyPutLabel(r.value));
-    notifications().notify({ level: "info", title: `Label '${r.value}' added to Local History`, key: "localHistory.label" });
+    notifications().notify({
+      level: "info",
+      title: `Label '${r.value}' added to Local History`,
+      key: "localHistory.label",
+    });
     return true;
   } catch (e) {
     notifications().notify({ level: "error", title: "Cannot put label", body: errorMessage(e) });

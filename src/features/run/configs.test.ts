@@ -64,7 +64,11 @@ describe("config merge / override", () => {
   });
 
   it("groups by kind in order", () => {
-    const groups = groupConfigs([cfg({ id: "a", kind: "npm" }), cfg({ id: "b", kind: "cargo" }), cfg({ id: "c", kind: "npm" })]);
+    const groups = groupConfigs([
+      cfg({ id: "a", kind: "npm" }),
+      cfg({ id: "b", kind: "cargo" }),
+      cfg({ id: "c", kind: "npm" }),
+    ]);
     expect(groups.map((g) => [g.label, g.configs.map((c) => c.id)])).toEqual([
       ["npm", ["a", "c"]],
       ["Cargo", ["b"]],
@@ -97,15 +101,32 @@ describe("validateConfig", () => {
   });
 
   it("validates env table rows", () => {
-    expect(envFromRows([{ key: "A", value: "1" }, { key: "", value: "" }])).toEqual({ env: { A: "1" } });
+    expect(
+      envFromRows([
+        { key: "A", value: "1" },
+        { key: "", value: "" },
+      ]),
+    ).toEqual({ env: { A: "1" } });
     expect(envFromRows([{ key: "", value: "x" }]).error).toMatch(/empty/);
-    expect(envFromRows([{ key: "A", value: "1" }, { key: "A", value: "2" }]).error).toMatch(/Duplicate/);
+    expect(
+      envFromRows([
+        { key: "A", value: "1" },
+        { key: "A", value: "2" },
+      ]).error,
+    ).toMatch(/Duplicate/);
   });
 });
 
 describe("argument parsing", () => {
   it("splits with quotes and escapes", () => {
-    expect(parseArgs(`run --name "hello world" 'it''s' a\\ b ""`)).toEqual(["run", "--name", "hello world", "its", "a b", ""]);
+    expect(parseArgs(`run --name "hello world" 'it''s' a\\ b ""`)).toEqual([
+      "run",
+      "--name",
+      "hello world",
+      "its",
+      "a b",
+      "",
+    ]);
     expect(parseArgs("  ")).toEqual([]);
   });
 
@@ -142,7 +163,12 @@ describe("context configuration", () => {
 
   it("runs a JS test file through the closest test script", () => {
     const c = contextConfig("web/src/cart.test.ts", configs)!;
-    expect(c).toMatchObject({ args: ["run", "test", "--", "src/cart.test.ts"], cwd: "web", isTest: true, name: "cart.test.ts" });
+    expect(c).toMatchObject({
+      args: ["run", "test", "--", "src/cart.test.ts"],
+      cwd: "web",
+      isTest: true,
+      name: "cart.test.ts",
+    });
     expect(c.id).toBe("context:npm:web:test:web/src/cart.test.ts");
     expect(contextConfig("src/a.spec.js", configs)!.args).toEqual(["run", "test", "--", "src/a.spec.js"]);
   });
@@ -160,7 +186,10 @@ describe("context configuration", () => {
 
   it("finds run targets and script invocations", () => {
     expect(contextConfig("src/bin/server.rs", configs)!.id).toBe("cargo:run:server");
-    expect(contextConfig("tools/gen.py", configs)).toMatchObject({ command: ".venv/bin/python", args: ["tools/gen.py"] });
+    expect(contextConfig("tools/gen.py", configs)).toMatchObject({
+      command: ".venv/bin/python",
+      args: ["tools/gen.py"],
+    });
     expect(contextConfig("scripts/build.sh", configs)).toMatchObject({ command: "sh", args: ["scripts/build.sh"] });
     expect(contextConfig("docs/readme.md", configs)).toBeNull();
   });
@@ -186,7 +215,10 @@ describe("context configuration", () => {
     ];
     const main = "package main\nfunc main() {}";
     expect(contextConfig("api/main.go", nested, main)!.id).toBe("go:run:api");
-    expect(contextConfig("api/cmd/tool/main.go", nested, main)).toMatchObject({ args: ["run", "./cmd/tool"], cwd: "api" });
+    expect(contextConfig("api/cmd/tool/main.go", nested, main)).toMatchObject({
+      args: ["run", "./cmd/tool"],
+      cwd: "api",
+    });
     expect(contextConfig("api/main_test.go", nested)).toMatchObject({ args: ["test", "."], cwd: "api" });
   });
 

@@ -28,7 +28,9 @@ function inside(range: Range, pos: Range["start"]) {
 
 /** Null when the structure service cannot answer for this file (no grammar, no editor). */
 export async function syntaxUsages(c: CaretContext): Promise<SyntaxUsages | null> {
-  const language = c.view ? editorsFor(c.path).find((e) => e.view === c.view)?.ctx.language : editorsFor(c.path)[0]?.ctx.language;
+  const language = c.view
+    ? editorsFor(c.path).find((e) => e.view === c.view)?.ctx.language
+    : editorsFor(c.path)[0]?.ctx.language;
   if (!language) return null;
   const support = await structure.support(language);
   if (!support.tree) return null;
@@ -45,7 +47,9 @@ export async function syntaxUsages(c: CaretContext): Promise<SyntaxUsages | null
       // Re-declared in the same scope: every plain occurrence in that scope, as text.
       const occ = await structure.identifiers(c.doc, symbol.name);
       return {
-        locs: occ.filter((o) => !o.qualified && inside(symbol.scope, o.range.start)).map((o) => ({ path: c.path, range: o.range })),
+        locs: occ
+          .filter((o) => !o.qualified && inside(symbol.scope, o.range.start))
+          .map((o) => ({ path: c.path, range: o.range })),
         note: TEXT_NOTE,
       };
     }

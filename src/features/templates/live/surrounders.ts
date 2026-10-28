@@ -205,7 +205,10 @@ export interface SurroundEntry {
  * IDEA's mnemonics: surrounders get 1–9, 0, then A–Z in order; each template
  * the first character of its abbreviation not taken yet (none if all are).
  */
-export function surroundEntries(surrounders: readonly Surrounder[], templates: readonly LiveTemplate[]): SurroundEntry[] {
+export function surroundEntries(
+  surrounders: readonly Surrounder[],
+  templates: readonly LiveTemplate[],
+): SurroundEntry[] {
   const used = new Set<string>();
   const out: SurroundEntry[] = surrounders.map((s, i) => {
     const mnemonic = i < 9 ? String(i + 1) : i === 9 ? "0" : String.fromCharCode(65 + i - 10);

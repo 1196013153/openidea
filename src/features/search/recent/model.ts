@@ -167,7 +167,11 @@ export function filterLocations(
 }
 
 /** IDEA's Recent Locations time: "Just now", "14 minutes ago", then the pretty timestamp ("Yesterday 22:52"). */
-export function locationTime(ms: number, now = Date.now(), format: (ms: number, now: number) => string = formatTimestamp): string {
+export function locationTime(
+  ms: number,
+  now = Date.now(),
+  format: (ms: number, now: number) => string = formatTimestamp,
+): string {
   if (!ms) return "";
   const minutes = Math.floor((now - ms) / 60_000);
   if (minutes >= 0 && minutes < 1) return "Just now";

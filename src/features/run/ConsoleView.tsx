@@ -93,10 +93,14 @@ export type DisplayRow = { kind: "line"; index: number; fold?: Fold } | { kind: 
  * Folds runs of consecutive output lines (one or more) that contain one of
  * `patterns`; runs whose first line id is in `expanded` stay open.
  */
-export function foldRows(lines: readonly ConsoleLine[], patterns: readonly string[], expanded: ReadonlySet<number>): DisplayRow[] {
+export function foldRows(
+  lines: readonly ConsoleLine[],
+  patterns: readonly string[],
+  expanded: ReadonlySet<number>,
+): DisplayRow[] {
   const rows: DisplayRow[] = [];
   const matches = (l: ConsoleLine) => l.kind !== "system" && patterns.some((p) => l.text.includes(p));
-  for (let i = 0; i < lines.length; ) {
+  for (let i = 0; i < lines.length;) {
     if (patterns.length && matches(lines[i]!)) {
       let j = i + 1;
       while (j < lines.length && matches(lines[j]!)) j++;
@@ -139,7 +143,17 @@ export interface ConsoleViewProps {
   "aria-label"?: string;
 }
 
-export function ConsoleView({ model, version, softWrap, follow, onFollowChange, cwd, onClear, input, ...aria }: ConsoleViewProps) {
+export function ConsoleView({
+  model,
+  version,
+  softWrap,
+  follow,
+  onFollowChange,
+  cwd,
+  onClear,
+  input,
+  ...aria
+}: ConsoleViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lines = model.lines;
   const patterns = useWorkflowSettings((s) => s.console.foldPatterns);
@@ -208,7 +222,9 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
       { label: "Copy All", run: () => void navigator.clipboard?.writeText(model.text()).catch(() => undefined) },
       { kind: "separator" },
       { label: "Clear All", icon: "trash", disabled: !onClear, run: () => onClear?.() },
-      ...(input ? [{ kind: "separator" } as const, { label: "Send EOF", shortcut: "⌃D", run: () => input.onEof() }] : []),
+      ...(input
+        ? [{ kind: "separator" } as const, { label: "Send EOF", shortcut: "⌃D", run: () => input.onEof() }]
+        : []),
     ]);
   };
 
@@ -249,11 +265,22 @@ export function ConsoleView({ model, version, softWrap, follow, onFollowChange, 
   );
   const foldButton = (fold: Fold, attached: boolean) =>
     fold.expanded ? (
-      <button type="button" className={styles.foldToggle} title={tx("Collapse folded lines")} aria-label={tx("Collapse folded lines")} onClick={() => toggleFold(fold.id)}>
+      <button
+        type="button"
+        className={styles.foldToggle}
+        title={tx("Collapse folded lines")}
+        aria-label={tx("Collapse folded lines")}
+        onClick={() => toggleFold(fold.id)}
+      >
         <Icon name="chevron-up" size={10} />
       </button>
     ) : (
-      <button type="button" className={styles.fold} title={tx("Expand folded lines")} onClick={() => toggleFold(fold.id)}>
+      <button
+        type="button"
+        className={styles.fold}
+        title={tx("Expand folded lines")}
+        onClick={() => toggleFold(fold.id)}
+      >
         {`${attached ? " " : ""}${fold.count === 1 ? tx`<${fold.count} internal line>` : tx`<${fold.count} internal lines>`}`}
       </button>
     );

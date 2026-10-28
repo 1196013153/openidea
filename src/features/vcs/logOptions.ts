@@ -95,7 +95,8 @@ export function refLabels(
   const tags = refs.filter((r) => r.startsWith("tag: ")).map((r) => r.slice(5));
   const branches = refs.filter((r) => r !== "HEAD" && !r.startsWith("tag: "));
   const out: RefLabel[] = [];
-  if (refs.includes("HEAD") && (!opts.compact || !branches.length)) out.push({ kind: "head", text: "HEAD", title: "HEAD" });
+  if (refs.includes("HEAD") && (!opts.compact || !branches.length))
+    out.push({ kind: "head", text: "HEAD", title: "HEAD" });
   const locals = branches.filter((b) => !isRemote(b));
   const remotes = branches.filter(isRemote);
   const absorbed = new Set<string>();

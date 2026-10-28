@@ -34,7 +34,8 @@ export function macroValue(name: string, ctx: MacroContext): string | undefined 
   const file = ctx.filePath;
   const dir = file ? file.slice(0, Math.max(file.lastIndexOf("/"), 0)) || "/" : "";
   const base = file ? file.slice(file.lastIndexOf("/") + 1) : "";
-  const rel = (p: string) => (p === ctx.projectRoot ? "" : p.startsWith(ctx.projectRoot + "/") ? p.slice(ctx.projectRoot.length + 1) : p);
+  const rel = (p: string) =>
+    p === ctx.projectRoot ? "" : p.startsWith(ctx.projectRoot + "/") ? p.slice(ctx.projectRoot.length + 1) : p;
   switch (name) {
     case "FilePath":
       return file ?? "";
@@ -87,7 +88,14 @@ function currentContext(): MacroContext | null {
     column = sel.head - l.from + 1;
     selectedText = state.sliceDoc(sel.from, sel.to);
   }
-  return { projectRoot: project.root, projectName: project.name, filePath: ed?.ctx.path ?? null, line, column, selectedText };
+  return {
+    projectRoot: project.root,
+    projectName: project.name,
+    filePath: ed?.ctx.path ?? null,
+    line,
+    column,
+    selectedText,
+  };
 }
 
 /** The run configuration a tool expands to (no `$Prompt$` handling). */

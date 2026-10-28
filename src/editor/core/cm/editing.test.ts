@@ -54,7 +54,9 @@ function show(view: EditorView): string {
   const { doc, selection } = view.state;
   let out = doc.toString();
   for (const r of [...selection.ranges].sort((a, b) => b.from - a.from))
-    out = r.empty ? out.slice(0, r.head) + "|" + out.slice(r.head) : out.slice(0, r.from) + "[" + out.slice(r.from, r.to) + "]" + out.slice(r.to);
+    out = r.empty
+      ? out.slice(0, r.head) + "|" + out.slice(r.head)
+      : out.slice(0, r.from) + "[" + out.slice(r.from, r.to) + "]" + out.slice(r.to);
   return out;
 }
 
@@ -98,8 +100,21 @@ describe("join lines", () => {
   });
 
   it("merges consecutive line comments and keeps brackets tight", () => {
-    expect((() => { const v = make("// one|\n// two"); joinLines(v); return v.state.doc.toString(); })()).toBe("// one two");
-    expect((() => { const v = make("f(|\n  x\n)"); joinLines(v); joinLines(v); return v.state.doc.toString(); })()).toBe("f(x)");
+    expect(
+      (() => {
+        const v = make("// one|\n// two");
+        joinLines(v);
+        return v.state.doc.toString();
+      })(),
+    ).toBe("// one two");
+    expect(
+      (() => {
+        const v = make("f(|\n  x\n)");
+        joinLines(v);
+        joinLines(v);
+        return v.state.doc.toString();
+      })(),
+    ).toBe("f(x)");
   });
 
   it("does nothing on the last line", () => {
@@ -163,7 +178,10 @@ describe("multiple carets", () => {
     expect(toggleCaret(start, 3, 3).ranges.map((r) => r.head)).toEqual([1, 3, 5]);
     expect(toggleCaret(start, 5, 5).ranges.map((r) => r.head)).toEqual([1]);
     expect(toggleCaret(EditorSelection.single(2), 2, 2).ranges.map((r) => r.head)).toEqual([2]);
-    expect(toggleCaret(EditorSelection.single(0), 2, 4).ranges.map((r) => [r.from, r.to])).toEqual([[0, 0], [2, 4]]);
+    expect(toggleCaret(EditorSelection.single(0), 2, 4).ranges.map((r) => [r.from, r.to])).toEqual([
+      [0, 0],
+      [2, 4],
+    ]);
   });
 });
 

@@ -29,7 +29,10 @@ export function mergeLocations(...lists: ReadonlyArray<readonly RecentLocation[]
   let out: RecentLocation[] = [];
   for (const l of all) {
     const prev = out.find((x) => x.path === l.path && Math.abs(x.line - l.line) <= MERGE_DISTANCE);
-    out = recordLocation(out, prev && !l.snippet.length ? { ...l, snippet: prev.snippet, snippetStart: prev.snippetStart } : l);
+    out = recordLocation(
+      out,
+      prev && !l.snippet.length ? { ...l, snippet: prev.snippet, snippetStart: prev.snippetStart } : l,
+    );
   }
   return out;
 }

@@ -38,7 +38,11 @@ export function findParams(text: string, driver: DbDriver, numbered = 0): SqlPar
 }
 
 /** `text` with each parameter replaced by its value (empty: `NULL`). */
-export function bindParams(text: string, params: readonly SqlParam[], values: Readonly<Record<string, string>>): string {
+export function bindParams(
+  text: string,
+  params: readonly SqlParam[],
+  values: Readonly<Record<string, string>>,
+): string {
   let out = "";
   let at = 0;
   for (const p of params) {

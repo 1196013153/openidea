@@ -31,7 +31,9 @@ describe("Invalidate Caches", () => {
     render(<InvalidateCachesOverlay />);
     await executeAction("file.invalidateCaches");
     const dialog = await screen.findByRole("dialog", { name: "Invalidate Caches" });
-    const buttons = within(dialog).getAllByRole("button").map((b) => b.textContent);
+    const buttons = within(dialog)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
     expect(buttons).toEqual(expect.arrayContaining(["Invalidate and Restart", "Just Restart", "Cancel"]));
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "Clear file system cache and Local History" }));
     expect(dialog).toHaveTextContent("Local History of all projects will be deleted.");

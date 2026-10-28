@@ -16,7 +16,11 @@ function mount(s: EditorSettings | undefined) {
     parent,
     state: EditorState.create({
       doc: "fn main() {}\n",
-      extensions: [lineNumbersExtension(s), distractionFreeExtension(s), prefsFor({ settings: s, path: "/p/a.rs", info: undefined, readOnly: false })],
+      extensions: [
+        lineNumbersExtension(s),
+        distractionFreeExtension(s),
+        prefsFor({ settings: s, path: "/p/a.rs", info: undefined, readOnly: false }),
+      ],
     }),
   });
   return { view, dispose: () => (view.destroy(), parent.remove()) };

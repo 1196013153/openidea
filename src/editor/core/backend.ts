@@ -93,23 +93,131 @@ interface MemDoc {
 }
 
 const EXT_LANG: Record<string, string> = {
-  ts: "typescript", tsx: "typescriptreact", js: "javascript", jsx: "javascriptreact", rs: "rust", kt: "kotlin",
-  kts: "kotlin", java: "java", py: "python", go: "go", json: "json", md: "markdown", css: "css", html: "html",
-  yml: "yaml", yaml: "yaml", toml: "toml", c: "c", cpp: "cpp", h: "c", sh: "shellscript", sql: "sql", xml: "xml",
+  ts: "typescript",
+  tsx: "typescriptreact",
+  js: "javascript",
+  jsx: "javascriptreact",
+  rs: "rust",
+  kt: "kotlin",
+  kts: "kotlin",
+  java: "java",
+  py: "python",
+  go: "go",
+  json: "json",
+  md: "markdown",
+  css: "css",
+  html: "html",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  c: "c",
+  cpp: "cpp",
+  h: "c",
+  sh: "shellscript",
+  sql: "sql",
+  xml: "xml",
 };
 
 const MEM_LANGUAGES: LanguageInfo[] = [
-  { id: "typescript", name: "TypeScript", extensions: ["ts"], uiMode: "TypeScript", lineComment: "//", blockComment: ["/*", "*/"], indent: { tabSize: 2, insertSpaces: true } },
-  { id: "typescriptreact", name: "TypeScript JSX", extensions: ["tsx"], uiMode: "TSX", lineComment: "//", blockComment: ["/*", "*/"], indent: { tabSize: 2, insertSpaces: true } },
-  { id: "javascript", name: "JavaScript", extensions: ["js"], uiMode: "JavaScript", lineComment: "//", blockComment: ["/*", "*/"], indent: { tabSize: 2, insertSpaces: true } },
-  { id: "rust", name: "Rust", extensions: ["rs"], uiMode: "Rust", lineComment: "//", blockComment: ["/*", "*/"], indent: null },
-  { id: "kotlin", name: "Kotlin", extensions: ["kt", "kts"], uiMode: "Kotlin", lineComment: "//", blockComment: ["/*", "*/"], indent: null },
-  { id: "java", name: "Java", extensions: ["java"], uiMode: "Java", lineComment: "//", blockComment: ["/*", "*/"], indent: null },
-  { id: "python", name: "Python", extensions: ["py"], uiMode: "Python", lineComment: "#", blockComment: null, indent: null },
-  { id: "json", name: "JSON", extensions: ["json"], uiMode: "JSON", lineComment: null, blockComment: null, indent: { tabSize: 2, insertSpaces: true } },
-  { id: "markdown", name: "Markdown", extensions: ["md"], uiMode: "Markdown", lineComment: null, blockComment: ["<!--", "-->"], indent: null },
-  { id: "yaml", name: "YAML", extensions: ["yml", "yaml"], uiMode: "YAML", lineComment: "#", blockComment: null, indent: { tabSize: 2, insertSpaces: true } },
-  { id: "plaintext", name: "Plain Text", extensions: ["txt"], uiMode: null, lineComment: null, blockComment: null, indent: null },
+  {
+    id: "typescript",
+    name: "TypeScript",
+    extensions: ["ts"],
+    uiMode: "TypeScript",
+    lineComment: "//",
+    blockComment: ["/*", "*/"],
+    indent: { tabSize: 2, insertSpaces: true },
+  },
+  {
+    id: "typescriptreact",
+    name: "TypeScript JSX",
+    extensions: ["tsx"],
+    uiMode: "TSX",
+    lineComment: "//",
+    blockComment: ["/*", "*/"],
+    indent: { tabSize: 2, insertSpaces: true },
+  },
+  {
+    id: "javascript",
+    name: "JavaScript",
+    extensions: ["js"],
+    uiMode: "JavaScript",
+    lineComment: "//",
+    blockComment: ["/*", "*/"],
+    indent: { tabSize: 2, insertSpaces: true },
+  },
+  {
+    id: "rust",
+    name: "Rust",
+    extensions: ["rs"],
+    uiMode: "Rust",
+    lineComment: "//",
+    blockComment: ["/*", "*/"],
+    indent: null,
+  },
+  {
+    id: "kotlin",
+    name: "Kotlin",
+    extensions: ["kt", "kts"],
+    uiMode: "Kotlin",
+    lineComment: "//",
+    blockComment: ["/*", "*/"],
+    indent: null,
+  },
+  {
+    id: "java",
+    name: "Java",
+    extensions: ["java"],
+    uiMode: "Java",
+    lineComment: "//",
+    blockComment: ["/*", "*/"],
+    indent: null,
+  },
+  {
+    id: "python",
+    name: "Python",
+    extensions: ["py"],
+    uiMode: "Python",
+    lineComment: "#",
+    blockComment: null,
+    indent: null,
+  },
+  {
+    id: "json",
+    name: "JSON",
+    extensions: ["json"],
+    uiMode: "JSON",
+    lineComment: null,
+    blockComment: null,
+    indent: { tabSize: 2, insertSpaces: true },
+  },
+  {
+    id: "markdown",
+    name: "Markdown",
+    extensions: ["md"],
+    uiMode: "Markdown",
+    lineComment: null,
+    blockComment: ["<!--", "-->"],
+    indent: null,
+  },
+  {
+    id: "yaml",
+    name: "YAML",
+    extensions: ["yml", "yaml"],
+    uiMode: "YAML",
+    lineComment: "#",
+    blockComment: null,
+    indent: { tabSize: 2, insertSpaces: true },
+  },
+  {
+    id: "plaintext",
+    name: "Plain Text",
+    extensions: ["txt"],
+    uiMode: null,
+    lineComment: null,
+    blockComment: null,
+    indent: null,
+  },
 ];
 
 const SAMPLE_KOTLIN = `package com.acme.orders
@@ -314,7 +422,10 @@ export function createMemoryBackend(files: Record<string, string> = {}): MemoryB
     async outline(doc) {
       // Brace-based outline good enough for the dev shell.
       const d = get(doc);
-      const posAt = ((index) => (_text: string, offset: number) => index(offset))(lineIndex(d.text));
+      const posAt = (
+        (index) => (_text: string, offset: number) =>
+          index(offset)
+      )(lineIndex(d.text));
       const items: OutlineItem[] = [];
       const re = /\b(class|fun|function|fn|interface|object)\s+([A-Za-z_]\w*)/g;
       for (let m = re.exec(d.text); m; m = re.exec(d.text)) {
@@ -342,7 +453,8 @@ export function createMemoryBackend(files: Record<string, string> = {}): MemoryB
         };
         const parent = items.findLast(
           (p) =>
-            (p.range.start.line < start.line || (p.range.start.line === start.line && p.range.start.col <= start.col)) &&
+            (p.range.start.line < start.line ||
+              (p.range.start.line === start.line && p.range.start.col <= start.col)) &&
             (p.range.end.line > start.line || (p.range.end.line === start.line && p.range.end.col >= start.col)),
         );
         if (parent) parent.children.push(item);

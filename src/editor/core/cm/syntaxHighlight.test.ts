@@ -15,12 +15,18 @@ function marks(state: EditorState) {
 
 describe("syntaxHighlightField", () => {
   const create = () =>
-    EditorState.create({ doc: "def hi, do: :ok", extensions: [syntaxHighlighting(openideaHighlightStyle), syntaxHighlightField] });
+    EditorState.create({
+      doc: "def hi, do: :ok",
+      extensions: [syntaxHighlighting(openideaHighlightStyle), syntaxHighlightField],
+    });
 
   it("styles backend ranges with the active highlight style and maps them through edits", () => {
     let state = create();
     state = state.update({
-      effects: setSyntaxHighlights.of({ kinds: ["keyword", "atom", "functionCall"], data: [0, 3, 0, 4, 6, 2, 12, 15, 1, 99, 120, 0] }),
+      effects: setSyntaxHighlights.of({
+        kinds: ["keyword", "atom", "functionCall"],
+        data: [0, 3, 0, 4, 6, 2, 12, 15, 1, 99, 120, 0],
+      }),
     }).state;
     const keyword = highlightingFor(state, [t.keyword]);
     const atom = highlightingFor(state, [t.atom]);

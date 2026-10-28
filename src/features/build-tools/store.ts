@@ -105,9 +105,12 @@ export function updateSettings(patch: (s: BuildSettings) => BuildSettings) {
   if (root) writeSettings(root, settings);
 }
 
-export const toggleMavenOffline = () => updateSettings((s) => ({ ...s, maven: { ...s.maven, offline: !s.maven.offline } }));
-export const toggleSkipTests = () => updateSettings((s) => ({ ...s, maven: { ...s.maven, skipTests: !s.maven.skipTests } }));
-export const toggleGradleOffline = () => updateSettings((s) => ({ ...s, gradle: { ...s.gradle, offline: !s.gradle.offline } }));
+export const toggleMavenOffline = () =>
+  updateSettings((s) => ({ ...s, maven: { ...s.maven, offline: !s.maven.offline } }));
+export const toggleSkipTests = () =>
+  updateSettings((s) => ({ ...s, maven: { ...s.maven, skipTests: !s.maven.skipTests } }));
+export const toggleGradleOffline = () =>
+  updateSettings((s) => ({ ...s, gradle: { ...s.gradle, offline: !s.gradle.offline } }));
 
 export function setProfile(id: string, checked: boolean) {
   updateSettings((s) => ({ ...s, maven: { ...s.maven, profiles: { ...s.maven.profiles, [id]: checked } } }));
@@ -169,7 +172,8 @@ export async function loadModel(): Promise<void> {
 
 /** Tree keys expanded on first show: the top-level projects. */
 export function initialExpanded(tool: BuildTool, model: BuildModel): Set<string> {
-  if (tool === "maven") return new Set(model.maven?.projects.filter((p) => !p.aggregated).map((p) => `mvn:${p.pom}`) ?? []);
+  if (tool === "maven")
+    return new Set(model.maven?.projects.filter((p) => !p.aggregated).map((p) => `mvn:${p.pom}`) ?? []);
   return new Set(model.gradle ? ["gradle::"] : []);
 }
 

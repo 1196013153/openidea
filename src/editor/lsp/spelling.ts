@@ -58,7 +58,11 @@ const spellingEnabled = () => inspectionProfile()[SPELLING_INSPECTION]?.enabled 
 export function spellScope(): SpellScope {
   const profile = inspectionProfile();
   const on = (key: string) => inspectionOption(profile, SPELLING_INSPECTION, key);
-  return { code: on(SPELLING_OPTIONS.code), literals: on(SPELLING_OPTIONS.literals), comments: on(SPELLING_OPTIONS.comments) };
+  return {
+    code: on(SPELLING_OPTIONS.code),
+    literals: on(SPELLING_OPTIONS.literals),
+    comments: on(SPELLING_OPTIONS.comments),
+  };
 }
 
 const spellingOf = (s: Settings | null) => s?.spelling;

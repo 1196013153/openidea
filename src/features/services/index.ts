@@ -22,7 +22,19 @@ import { dockerGutter } from "./dockerGutter";
 import { registerDockerRunTypes } from "./runTypes";
 import { ServicesDialogHost } from "./dialogs";
 import { dockerProvider, selectedTarget } from "./docker";
-import { canRemove, canStart, canStop, execShell, pullPrompt, prunePrompt, remove, restart, showDetail, start, stop } from "./ops";
+import {
+  canRemove,
+  canStart,
+  canStop,
+  execShell,
+  pullPrompt,
+  prunePrompt,
+  remove,
+  restart,
+  showDetail,
+  start,
+  stop,
+} from "./ops";
 import { SERVICES_VIEW_FOCUS, ServicesTreeView, showAddServiceMenu } from "./ServicesTree";
 import { ServicesHeaderActions, ServicesHost, ServicesTabs } from "./ServicesHost";
 import { connections, refresh } from "./store";
@@ -48,7 +60,13 @@ export function activate(): () => void {
       headerContent: ServicesTabs,
       headerActions: ServicesHeaderActions,
     }),
-    registerServiceView({ id: SERVICES_TREE_VIEW, title: "Services", icon: "toolwindow-services", order: 0, component: ServicesTreeView }),
+    registerServiceView({
+      id: SERVICES_TREE_VIEW,
+      title: "Services",
+      icon: "toolwindow-services",
+      order: 0,
+      component: ServicesTreeView,
+    }),
     registerServiceProvider(dockerProvider),
     registerOverlay({ id: "services.dialogs", component: ServicesDialogHost }),
     registerEditorContribution({ id: "services.dockerGutter", order: 56, extensions: dockerGutter }),
@@ -77,7 +95,14 @@ export function activate(): () => void {
           requestAnimationFrame(() => showAddServiceMenu());
         },
       },
-      { id: "docker.refresh", title: "Refresh Docker", category: "Docker", icon: "refresh", when: PROJECT, run: () => refresh() },
+      {
+        id: "docker.refresh",
+        title: "Refresh Docker",
+        category: "Docker",
+        icon: "refresh",
+        when: PROJECT,
+        run: () => refresh(),
+      },
       {
         id: "docker.start",
         title: "Start Container",
@@ -94,7 +119,14 @@ export function activate(): () => void {
         when: PROJECT,
         run: () => (canStop(selectedTarget()) ? stop(selectedTarget()) : undefined),
       },
-      { id: "docker.restart", title: "Restart Container", category: "Docker", icon: "rerun", when: PROJECT, run: () => restart(selectedTarget()) },
+      {
+        id: "docker.restart",
+        title: "Restart Container",
+        category: "Docker",
+        icon: "rerun",
+        when: PROJECT,
+        run: () => restart(selectedTarget()),
+      },
       {
         id: "docker.remove",
         title: "Delete Docker Object…",

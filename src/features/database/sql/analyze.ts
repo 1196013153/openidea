@@ -536,7 +536,8 @@ export function valuesSlot(text: string, pos: number, driver: DbDriver): ValuesS
       continue;
     }
     if (depth === 0 && isW(t, "VALUES")) afterValues = true;
-    else if (depth === 1 && !afterValues && columns && (t.kind === "word" || t.kind === "quoted")) columns.push(identName(t));
+    else if (depth === 1 && !afterValues && columns && (t.kind === "word" || t.kind === "quoted"))
+      columns.push(identName(t));
     else if (depth === 1 && inTuple && isP(t, ",")) index++;
   }
   return inTuple ? { target, columns: columns?.length ? columns : null, index } : null;

@@ -17,7 +17,8 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-const packageOf = (className: string) => (className.includes(".") ? className.slice(0, className.lastIndexOf(".")) : "");
+const packageOf = (className: string) =>
+  className.includes(".") ? className.slice(0, className.lastIndexOf(".")) : "";
 
 /** Whether a JVM source file declares `pkg` (Kotlin files needn't sit in their package's directory). */
 async function declaresPackage(path: string, pkg: string): Promise<boolean> {
@@ -62,9 +63,7 @@ async function findLibraryClass(className: string): Promise<string | null> {
   const pkg = packageOf(outer);
   try {
     const symbols = await call(commands.lspWorkspaceSymbols(nextRequestId(), simple));
-    const hit = symbols.find(
-      (s) => s.name === simple && TYPE_KINDS.has(s.kind) && (s.container ?? "") === pkg,
-    );
+    const hit = symbols.find((s) => s.name === simple && TYPE_KINDS.has(s.kind) && (s.container ?? "") === pkg);
     return hit ? (hit.location.uri ?? hit.location.path) : null;
   } catch {
     return null;
@@ -106,7 +105,13 @@ export async function openTarget(target: FileTarget, cwd: string, focus = true):
     return;
   }
   if (!path) {
-    notifications().notify({ group: "run", level: "warning", title: "File not found", body: target.path, key: "run-link" });
+    notifications().notify({
+      group: "run",
+      level: "warning",
+      title: "File not found",
+      body: target.path,
+      key: "run-link",
+    });
     return;
   }
   const selection = target.line ? { line: target.line - 1, col: Math.max(0, (target.col ?? 1) - 1) } : undefined;

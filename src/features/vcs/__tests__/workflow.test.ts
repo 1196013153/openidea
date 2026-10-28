@@ -55,7 +55,9 @@ describe("git settings helpers", () => {
   });
 
   it("propagates folder colours only when enabled", () => {
-    const status = [{ path: "/p/src/a.ts", relPath: "src/a.ts", staged: null, unstaged: "modified" as const, renamedFrom: null }];
+    const status = [
+      { path: "/p/src/a.ts", relPath: "src/a.ts", staged: null, unstaged: "modified" as const, renamedFrom: null },
+    ];
     expect(statusDecorations(status).get("/p/src/a.ts")?.propagate).toBe(true);
     expect(statusDecorations(status, false).get("/p/src/a.ts")?.propagate).toBeUndefined();
   });

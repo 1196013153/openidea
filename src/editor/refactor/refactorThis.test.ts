@@ -9,7 +9,9 @@ const unavailable: Result = { status: "error", error: { kind: "unavailable", mes
 
 let query: (request: number) => Promise<Result> = async () => ok({ actions: [], advertisedKinds: null });
 let prepare: Result = ok(null);
-const lspCodeActionQuery = vi.fn(async (request: number, _doc: number, _range: unknown, _only: string[]) => query(request));
+const lspCodeActionQuery = vi.fn(async (request: number, _doc: number, _range: unknown, _only: string[]) =>
+  query(request),
+);
 const lspPrepareRename = vi.fn(async () => prepare);
 let onApply: (() => void) | null = null;
 const lspApplyCodeAction = vi.fn(async () => {
@@ -25,7 +27,15 @@ vi.mock("@/platform/ipc", async (orig) => {
   return {
     ...actual,
     isTauri: () => true,
-    commands: { ...actual.commands, lspCodeActionQuery, lspPrepareRename, lspApplyCodeAction, lspCodeActions, cancelRequest, languages },
+    commands: {
+      ...actual.commands,
+      lspCodeActionQuery,
+      lspPrepareRename,
+      lspApplyCodeAction,
+      lspCodeActions,
+      cancelRequest,
+      languages,
+    },
   };
 });
 let expression = false;
@@ -33,7 +43,11 @@ let candidates: unknown[] = [];
 vi.mock("@/editor/structure", () => ({
   structure: {
     support: vi.fn(async () => ({ tree: true, locals: false })),
-    expressionAt: vi.fn(async () => ({ expression: expression ? { kind: "call_expression" } : null, exact: expression, candidates })),
+    expressionAt: vi.fn(async () => ({
+      expression: expression ? { kind: "call_expression" } : null,
+      exact: expression,
+      candidates,
+    })),
     identifiers: vi.fn(async () => []),
   },
 }));
@@ -65,8 +79,10 @@ const action = (title: string, kind: string, disabledReason: string | null = nul
   data: null,
   server: 1,
 });
-const answer = (actions: CodeAction[], advertisedKinds: string[] | null = null) => async () =>
-  ok({ actions, advertisedKinds } satisfies CodeActionQuery);
+const answer =
+  (actions: CodeAction[], advertisedKinds: string[] | null = null) =>
+  async () =>
+    ok({ actions, advertisedKinds } satisfies CodeActionQuery);
 
 let view: EditorView | null = null;
 function editor(text = "fn main() { let total = price * 2; }") {
@@ -137,7 +153,9 @@ describe("catalog", () => {
   });
 
   it("formats IDEA's hint", () => {
-    expect(cannotPerform("Caret should be on a symbol.")).toBe("Cannot perform refactoring. Caret should be on a symbol");
+    expect(cannotPerform("Caret should be on a symbol.")).toBe(
+      "Cannot perform refactoring. Caret should be on a symbol",
+    );
   });
 });
 
@@ -235,7 +253,10 @@ describe("Refactor menu actions", () => {
     query = answer([], ["quickfix", "refactor.extract", "refactor.inline"]);
     const v = editor();
     await runRefactoring(v, "move");
-    expect(showHint).toHaveBeenCalledWith(v, "Cannot perform refactoring. The language server for Rust doesn't support Move");
+    expect(showHint).toHaveBeenCalledWith(
+      v,
+      "Cannot perform refactoring. The language server for Rust doesn't support Move",
+    );
   });
 
   it("give IDEA's caret reason, the server's disabled reason, or the missing server", async () => {
@@ -270,7 +291,12 @@ describe("Refactor menu actions", () => {
     const text = "fn main() { let total = price * 2; }";
     const node = (t: string) => {
       const from = text.indexOf(t);
-      return { kind: "e", range: { start: { line: 0, col: from }, end: { line: 0, col: from + t.length } }, error: false, missing: false };
+      return {
+        kind: "e",
+        range: { start: { line: 0, col: from }, end: { line: 0, col: from + t.length } },
+        error: false,
+        missing: false,
+      };
     };
     candidates = [node("price"), node("price * 2")];
     const v = editor(text);

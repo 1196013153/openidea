@@ -87,12 +87,12 @@ terminal is a real xterm renderer, without a native PTY or shell. These images
 cover the shell, sidebar, editor, gutter, find matches, terminal, Settings,
 focused controls, disabled settings and the selected theme popup.
 
-| Theme | Workbench, editor and terminal | Settings and theme popup |
-|---|---|---|
+| Theme           | Workbench, editor and terminal                           | Settings and theme popup                             |
+| --------------- | -------------------------------------------------------- | ---------------------------------------------------- |
 | Solarized Light | [Screenshot](media/themes/solarized-light-workbench.png) | [Screenshot](media/themes/solarized-light-popup.png) |
-| Solarized Dark | [Screenshot](media/themes/solarized-dark-workbench.png) | [Screenshot](media/themes/solarized-dark-popup.png) |
-| One Light | [Screenshot](media/themes/one-light-workbench.png) | [Screenshot](media/themes/one-light-popup.png) |
-| One Dark | [Screenshot](media/themes/one-dark-workbench.png) | [Screenshot](media/themes/one-dark-popup.png) |
+| Solarized Dark  | [Screenshot](media/themes/solarized-dark-workbench.png)  | [Screenshot](media/themes/solarized-dark-popup.png)  |
+| One Light       | [Screenshot](media/themes/one-light-workbench.png)       | [Screenshot](media/themes/one-light-popup.png)       |
+| One Dark        | [Screenshot](media/themes/one-dark-workbench.png)        | [Screenshot](media/themes/one-dark-popup.png)        |
 
 The browser regression also checks refresh / startup cache restoration,
 selection visibility, same-kind switches, the quick menu, existing themes,

@@ -502,7 +502,9 @@ function FindBar({
         className={styles.findField}
         trailing={
           query.trim() ? (
-            <span className={styles.findCount}>{ranges.length ? `${index + 1}/${ranges.length}` : tx("0 results")}</span>
+            <span className={styles.findCount}>
+              {ranges.length ? `${index + 1}/${ranges.length}` : tx("0 results")}
+            </span>
           ) : null
         }
         onKeyDown={(e) => {
@@ -516,8 +518,20 @@ function FindBar({
           }
         }}
       />
-      <IconButton icon="arrow-up" title={tx("Previous Occurrence")} size="small" disabled={!ranges.length} onClick={() => step(-1)} />
-      <IconButton icon="arrow-down" title={tx("Next Occurrence")} size="small" disabled={!ranges.length} onClick={() => step(1)} />
+      <IconButton
+        icon="arrow-up"
+        title={tx("Previous Occurrence")}
+        size="small"
+        disabled={!ranges.length}
+        onClick={() => step(-1)}
+      />
+      <IconButton
+        icon="arrow-down"
+        title={tx("Next Occurrence")}
+        size="small"
+        disabled={!ranges.length}
+        onClick={() => step(1)}
+      />
       <IconButton icon="close" title={tx("Close")} size="small" onClick={close} />
     </div>
   );
@@ -567,7 +581,10 @@ function Entry({
           </div>
           {entry.items.map((item, i) => (
             <div key={i} className={clsx(styles.planItem, item.status === "completed" && styles.planDone)}>
-              <Icon name={item.status === "completed" ? "check" : item.status === "in_progress" ? "run" : "minus"} size={12} />
+              <Icon
+                name={item.status === "completed" ? "check" : item.status === "in_progress" ? "run" : "minus"}
+                size={12}
+              />
               {item.content}
             </div>
           ))}
@@ -605,7 +622,8 @@ function Entry({
 
 function UserMessage({ task, entry }: { task: AgentTask; entry: UserEntry }) {
   const tx = useTx();
-  const fail = (e: unknown) => notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) });
+  const fail = (e: unknown) =>
+    notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) });
   const archived = task.status === "archived";
   return (
     <div className={styles.message}>
@@ -714,7 +732,12 @@ function SubagentCard({ task, entry, onOpen }: { task: AgentTask; entry: Subagen
   return (
     <div className={styles.subagent}>
       <div className={styles.subagentHead}>
-        <button type="button" className={styles.subagentOpen} onClick={onOpen} title={tx("Open the subagent's conversation")}>
+        <button
+          type="button"
+          className={styles.subagentOpen}
+          onClick={onOpen}
+          title={tx("Open the subagent's conversation")}
+        >
           <SubagentStatusIcon status={entry.status} />
           <Icon name="toolwindow-agents" size={14} className={styles.muted} />
           <span className={styles.subagentTitle}>{title}</span>
@@ -732,7 +755,12 @@ function SubagentCard({ task, entry, onOpen }: { task: AgentTask; entry: Subagen
           <Icon name="chevron-right" size={12} className={styles.muted} />
         </button>
         {working && entry.cancellable && (
-          <IconButton icon="stop" title="Stop Subagent" size="small" onClick={() => void cancelTask(task.id, entry.id)} />
+          <IconButton
+            icon="stop"
+            title="Stop Subagent"
+            size="small"
+            onClick={() => void cancelTask(task.id, entry.id)}
+          />
         )}
       </div>
       {working && entry.activity && (
@@ -776,7 +804,13 @@ function WorkingSubagents({ entries, onOpen }: { entries: AgentEntry[] | null; o
   return (
     <div className={styles.subagentStrip} aria-label={tx("Subagents at work")}>
       {working.map((e) => (
-        <button key={e.id} type="button" className={styles.subagentChip} onClick={() => onOpen(e.id)} title={e.activity ?? undefined}>
+        <button
+          key={e.id}
+          type="button"
+          className={styles.subagentChip}
+          onClick={() => onOpen(e.id)}
+          title={e.activity ?? undefined}
+        >
           <SubagentStatusIcon status={e.status} />
           <span className={styles.subagentChipTitle}>{subagentTitle(e)}</span>
         </button>
@@ -801,7 +835,9 @@ function PermissionLine({ task, entry }: { task: AgentTask; entry: Extract<Agent
 /** The open permission request, as an editor notification banner above the conversation. */
 function PermissionBanner({ task, entries }: { task: AgentTask; entries: AgentEntry[] | null }) {
   const [busy, setBusy] = useState(false);
-  const entry = entries?.find((e): e is Extract<AgentEntry, { type: "permission" }> => e.type === "permission" && !e.chosen);
+  const entry = entries?.find(
+    (e): e is Extract<AgentEntry, { type: "permission" }> => e.type === "permission" && !e.chosen,
+  );
   if (!entry) return null;
   const answer = (option: string | null) => {
     setBusy(true);
@@ -846,7 +882,9 @@ function SessionComposer({
     if (!canSend(composer) || sending || task.status === "archived") return;
     setSending(true);
     sendMessage(task.id, now)
-      .catch((e: unknown) => notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) }))
+      .catch((e: unknown) =>
+        notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) }),
+      )
       .finally(() => setSending(false));
   };
   const setOption = (id: string, value: string) =>
@@ -893,7 +931,8 @@ function SessionComposer({
 
 /** Messages waiting for the turn to end: send now, edit, or drop. */
 function Queue({ task }: { task: AgentTask }) {
-  const fail = (e: unknown) => notifications().notify({ level: "error", title: "Couldn't update the queue", body: String(e) });
+  const fail = (e: unknown) =>
+    notifications().notify({ level: "error", title: "Couldn't update the queue", body: String(e) });
   return (
     <div className={styles.queue} aria-label={tx("Queued messages")}>
       {task.queue.map((q) => (
@@ -902,11 +941,25 @@ function Queue({ task }: { task: AgentTask }) {
           <span className={styles.queuedText} title={q.prompt.text}>
             {q.prompt.text || <T>Image</T>}
           </span>
-          <button type="button" className={styles.bannerLink} onClick={() => void sendQueuedNow(task.id, q.id).catch(fail)}>
+          <button
+            type="button"
+            className={styles.bannerLink}
+            onClick={() => void sendQueuedNow(task.id, q.id).catch(fail)}
+          >
             <T>Send now</T>
           </button>
-          <IconButton icon="edit" title="Edit" size="small" onClick={() => void editQueued(task.id, q.id).catch(fail)} />
-          <IconButton icon="close" title="Remove" size="small" onClick={() => void removeQueued(task.id, q.id).catch(fail)} />
+          <IconButton
+            icon="edit"
+            title="Edit"
+            size="small"
+            onClick={() => void editQueued(task.id, q.id).catch(fail)}
+          />
+          <IconButton
+            icon="close"
+            title="Remove"
+            size="small"
+            onClick={() => void removeQueued(task.id, q.id).catch(fail)}
+          />
         </div>
       ))}
     </div>

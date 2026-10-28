@@ -12,7 +12,12 @@ import type { EditorView } from "@codemirror/view";
 import { commands } from "@/platform/ipc";
 import { shortcutLabel } from "@/platform/keymap";
 import { executeAction } from "@/platform/actions";
-import { formatExcluded, formatGuardOptions, guardFormatChanges, type FormatGuardOptions } from "@/platform/formatGuard";
+import {
+  formatExcluded,
+  formatGuardOptions,
+  guardFormatChanges,
+  type FormatGuardOptions,
+} from "@/platform/formatGuard";
 import { useProject } from "@/platform/project";
 import { CONTRIBUTED_FORMAT, contributedAt, whenSynced, type ContributedFormatter } from "@/editor/api";
 import { docOf, lspRequest, reportLspError } from "./lsp";
@@ -66,7 +71,9 @@ function formattedHint(view: EditorView, lines: number) {
 /** LSP `FormattingOptions`: with spaces the indent width is the indent unit, not the tab size. */
 export function formatOptionsOf(state: EditorState): { tabSize: number; insertSpaces: boolean } {
   const unit = state.facet(indentUnit);
-  return unit.includes("\t") ? { tabSize: state.tabSize, insertSpaces: false } : { tabSize: unit.length || state.tabSize, insertSpaces: true };
+  return unit.includes("\t")
+    ? { tabSize: state.tabSize, insertSpaces: false }
+    : { tabSize: unit.length || state.tabSize, insertSpaces: true };
 }
 
 export async function formatDocument(
@@ -83,7 +90,8 @@ async function format(view: EditorView, opts: { explicit: boolean; selectionOnly
   const guard = formatGuardOptions(settings);
   const path = docOf(view)?.path;
   if (path && formatExcluded(path, project?.root ?? null, guard.doNotFormat)) {
-    if (opts.explicit) showHint(view, "Formatting is turned off for this file (Code Style › Formatter › Do not format)");
+    if (opts.explicit)
+      showHint(view, "Formatting is turned off for this file (Code Style › Formatter › Do not format)");
     return NOTHING;
   }
   const own = contributedAt<ContributedFormatter>(view.state, CONTRIBUTED_FORMAT, 0);
@@ -125,7 +133,12 @@ async function format(view: EditorView, opts: { explicit: boolean; selectionOnly
 /** Whether `after` has a non-blank line at column 0 where all of `before` was indented. */
 export function dedentsToColumnZero(before: string, after: string): boolean {
   const minIndent = (t: string) =>
-    Math.min(...t.split("\n").filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
+    Math.min(
+      ...t
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((l) => l.length - l.trimStart().length),
+    );
   return minIndent(before) > 0 && minIndent(after) === 0;
 }
 
@@ -150,7 +163,9 @@ export async function formatLines(view: EditorView, from: number, to: number): P
   }
   if (view.state.doc !== state.doc) return false;
   // Only inside the range: some servers answer a range request with whole-file edits.
-  const changes = textEditsToChanges(state.doc, edits).filter((c) => c.from >= from && c.to <= to && state.sliceDoc(c.from, c.to) !== c.insert);
+  const changes = textEditsToChanges(state.doc, edits).filter(
+    (c) => c.from >= from && c.to <= to && state.sliceDoc(c.from, c.to) !== c.insert,
+  );
   if (!changes.length) return true;
   // A server formatting the range out of context (kotlin-language-server) moves
   // indented code to column 0: its answer is ignored then.
@@ -212,7 +227,11 @@ export async function reformatDialog(
     initial: lastOptions,
     onRun: (options) =>
       void (async () => {
-        lastOptions = { ...lastOptions, ...options, selectionOnly: sel.empty ? lastOptions.selectionOnly : options.selectionOnly };
+        lastOptions = {
+          ...lastOptions,
+          ...options,
+          selectionOnly: sel.empty ? lastOptions.selectionOnly : options.selectionOnly,
+        };
         view.focus();
         if (options.optimizeImports) await optimizeImports(view);
         await formatDocument(view, { explicit: true, selectionOnly: options.selectionOnly });

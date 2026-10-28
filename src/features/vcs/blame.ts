@@ -173,7 +173,11 @@ function blameExtension(lines: BlameLine[], path: string): Extension {
             showContextMenu(event as MouseEvent, [
               ...(l && !isUncommitted(l)
                 ? [
-                    { label: "Show Commit in Git Log", icon: "commit", run: () => void executeAction("vcs.showCommit", l.commit) },
+                    {
+                      label: "Show Commit in Git Log",
+                      icon: "commit",
+                      run: () => void executeAction("vcs.showCommit", l.commit),
+                    },
                     {
                       label: "Copy Revision Number",
                       icon: "copy",

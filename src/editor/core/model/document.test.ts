@@ -22,10 +22,8 @@ function setup(files: Record<string, string>, settings = {}) {
   _resetLanguages();
   const backend: MemoryBackend = createMemoryBackend(files);
   const scheduled: Array<() => void> = [];
-  const manager = new DocumentManager(
-    backend,
-    { settings: () => settings, notify: vi.fn() },
-    (fn) => scheduled.push(fn),
+  const manager = new DocumentManager(backend, { settings: () => settings, notify: vi.fn() }, (fn) =>
+    scheduled.push(fn),
   );
   manager.start();
   const frame = async () => {
@@ -108,7 +106,10 @@ describe("save cleanup", () => {
   it("keeps the caret line and untouched lines", () => {
     const state = EditorState.create({ doc: "a  \nb  \nc  " });
     const m = new ModifiedRanges();
-    m.ranges = [[0, 3], [8, 11]];
+    m.ranges = [
+      [0, 3],
+      [8, 11],
+    ];
     const changes = saveCleanupChanges(state, m, { trim: true, finalNewline: true, protectLines: new Set([3]) });
     expect(changes).toEqual([
       { from: 1, to: 3 },

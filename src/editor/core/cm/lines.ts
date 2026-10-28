@@ -1,5 +1,11 @@
 /** Edit › Sort Lines / Reverse Lines: the selected lines, or the whole file without a selection. */
-import { EditorSelection, type ChangeSpec, type EditorState, type Transaction, type TransactionSpec } from "@codemirror/state";
+import {
+  EditorSelection,
+  type ChangeSpec,
+  type EditorState,
+  type Transaction,
+  type TransactionSpec,
+} from "@codemirror/state";
 
 const collator = new Intl.Collator(undefined, { numeric: false, sensitivity: "variant" });
 
@@ -24,7 +30,11 @@ function blocks(state: EditorState): Array<{ from: number; to: number }> {
   return out;
 }
 
-function rewrite(state: EditorState, transform: (lines: string[]) => string[], userEvent: string): TransactionSpec | null {
+function rewrite(
+  state: EditorState,
+  transform: (lines: string[]) => string[],
+  userEvent: string,
+): TransactionSpec | null {
   const changes: ChangeSpec[] = [];
   for (const b of blocks(state)) {
     const text = state.sliceDoc(b.from, b.to);
@@ -39,7 +49,10 @@ function rewrite(state: EditorState, transform: (lines: string[]) => string[], u
   return {
     changes: set,
     selection: hadSelection
-      ? EditorSelection.create(state.selection.ranges.map((r) => EditorSelection.range(set.mapPos(r.anchor, -1), set.mapPos(r.head, 1))), state.selection.mainIndex)
+      ? EditorSelection.create(
+          state.selection.ranges.map((r) => EditorSelection.range(set.mapPos(r.anchor, -1), set.mapPos(r.head, 1))),
+          state.selection.mainIndex,
+        )
       : undefined,
     scrollIntoView: true,
     userEvent,

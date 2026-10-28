@@ -417,7 +417,11 @@ export function registerProjectActions(): () => void {
       when: FOCUS,
       run: ({ arg }) => {
         const files = nodesFrom(arg).filter((n) => !n.dir);
-        if (files.length === 2) delegate("diff.compareFiles", files.map((f) => f.path));
+        if (files.length === 2)
+          delegate(
+            "diff.compareFiles",
+            files.map((f) => f.path),
+          );
         else if (files[0]) delegate("diff.compareWith", files[0].path);
       },
     },

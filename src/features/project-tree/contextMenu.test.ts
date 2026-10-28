@@ -52,7 +52,10 @@ let disposers: Array<() => void> = [];
 
 beforeEach(() => {
   useProjectTree.setState({ root: ROOT });
-  useProject.setState({ project: { name: "p", root: ROOT, isGit: true, settings: {} } as never, settings: {} as never });
+  useProject.setState({
+    project: { name: "p", root: ROOT, isGit: true, settings: {} } as never,
+    settings: {} as never,
+  });
   disposers = [
     registerActions(OTHER_ACTIONS.map((id) => ({ id, title: id, run: () => undefined }))),
     registerMenuGroup({
@@ -121,7 +124,8 @@ describe("project view context menu", () => {
     expect(l).not.toContain("Refactor");
     expect(l).not.toContain("Mark Directory as");
     const resolved = resolveMenuItems(items);
-    for (const label of ["Cut", "Copy", "Delete…"]) expect(resolved.find((r) => r.label === label)?.disabled).toBe(true);
+    for (const label of ["Cut", "Copy", "Delete…"])
+      expect(resolved.find((r) => r.label === label)?.disabled).toBe(true);
   });
 
   it("drops project-only groups for scratch files", () => {
@@ -141,7 +145,10 @@ describe("project view context menu", () => {
   it("never shows an empty submenu", () => {
     disposers.forEach((d) => d());
     disposers = [];
-    useProject.setState({ project: { name: "p", root: ROOT, isGit: true, settings: {} } as never, settings: {} as never });
+    useProject.setState({
+      project: { name: "p", root: ROOT, isGit: true, settings: {} } as never,
+      settings: {} as never,
+    });
     const l = labels(contextMenuItems([node(`${ROOT}/a.py`)]));
     expect(l).not.toContain("Git");
     expect(l).not.toContain("Local History");

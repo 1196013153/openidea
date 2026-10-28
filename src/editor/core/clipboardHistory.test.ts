@@ -28,9 +28,21 @@ describe("clipboard history (Paste from History)", () => {
   it("copies the selections, or whole caret lines without a selection", () => {
     const doc = "one\ntwo\nthree";
     const ext = EditorState.allowMultipleSelections.of(true);
-    const sel = EditorState.create({ doc, extensions: ext, selection: EditorSelection.create([EditorSelection.range(0, 3), EditorSelection.range(8, 13)]) });
+    const sel = EditorState.create({
+      doc,
+      extensions: ext,
+      selection: EditorSelection.create([EditorSelection.range(0, 3), EditorSelection.range(8, 13)]),
+    });
     expect(copiedText(sel)).toBe("one\nthree");
-    const carets = EditorState.create({ doc, extensions: ext, selection: EditorSelection.create([EditorSelection.cursor(1), EditorSelection.cursor(2), EditorSelection.cursor(5)]) });
+    const carets = EditorState.create({
+      doc,
+      extensions: ext,
+      selection: EditorSelection.create([
+        EditorSelection.cursor(1),
+        EditorSelection.cursor(2),
+        EditorSelection.cursor(5),
+      ]),
+    });
     expect(copiedText(carets)).toBe("one\ntwo\n");
   });
 

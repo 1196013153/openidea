@@ -155,7 +155,10 @@ export function stashLabel(message: string): { branch: string | null; text: stri
  * `https://user@host/o/r.git`), or null for local paths.
  */
 export function remoteWebUrl(url: string): string | null {
-  const u = url.trim().replace(/\/+$/, "").replace(/\.git$/, "");
+  const u = url
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "");
   let host: string;
   let path: string;
   const scp = /^(?:[^@/]+@)?([^:/]+):(?!\/)(.+)$/.exec(u);

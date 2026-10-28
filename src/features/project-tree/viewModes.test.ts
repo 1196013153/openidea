@@ -83,7 +83,11 @@ describe("withExtraRoots groups", () => {
       ["site-packages", undefined, true, false, pyKey("/p/.venv/lib/site-packages"), "/p/.venv/lib/site-packages"],
     ]);
     const os = m.byKey.get(pyKey("/py/lib/python3.12/os.py"))!;
-    expect([os.readOnly, os.path, pathOfKey(os.key)]).toEqual([true, "/py/lib/python3.12/os.py", "/py/lib/python3.12/os.py"]);
+    expect([os.readOnly, os.path, pathOfKey(os.key)]).toEqual([
+      true,
+      "/py/lib/python3.12/os.py",
+      "/py/lib/python3.12/os.py",
+    ]);
     expect(m.children.get(pyKey("/py/lib/python3.12"))![0]).toBe(os);
     expect(m.keyOfPath.get("/py/lib/python3.12/os.py")).toBe(os.key);
   });
@@ -117,7 +121,12 @@ describe("buildPathsModel", () => {
 describe("localChangedPaths", () => {
   it("lists change-list files, all lists or one, optionally without deleted ones", () => {
     const lists = [
-      { id: "default", name: "Changes", active: true, files: [{ path: "/p/b.ts" }, { path: "/p/gone.ts", deleted: true }] },
+      {
+        id: "default",
+        name: "Changes",
+        active: true,
+        files: [{ path: "/p/b.ts" }, { path: "/p/gone.ts", deleted: true }],
+      },
       { id: "ui", name: "UI", active: false, files: [{ path: "/p/a.ts" }] },
     ];
     expect(localChangedPaths(lists, null, true)).toEqual(["/p/a.ts", "/p/b.ts"]);
@@ -260,7 +269,9 @@ describe("project view modes", () => {
     const ids = contextMenuItems([projectFile]).map((i) => ("id" in i ? i.id : i.kind));
     expect(ids).not.toContain("delete");
     expect(ids).not.toContain("rename");
-    expect(contextMenuItems([m.byKey.get("/p/.venv/pyvenv.cfg")!]).map((i) => ("id" in i ? i.id : i.kind))).toContain("delete");
+    expect(contextMenuItems([m.byKey.get("/p/.venv/pyvenv.cfg")!]).map((i) => ("id" in i ? i.id : i.kind))).toContain(
+      "delete",
+    );
   });
 
   it("expands library folders in their own namespace", async () => {

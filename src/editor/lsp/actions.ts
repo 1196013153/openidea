@@ -101,10 +101,17 @@ async function cleanup(view: EditorView, o: CleanupOptions) {
 }
 
 /** Code action titles of Implement Methods (⌃I) and Override Methods (⌃O). */
-export const IMPLEMENT_TITLE = /\bimplement\b|\b(add|generate) (missing|unimplemented|all missing)\b|missing (members|methods|trait items)/i;
+export const IMPLEMENT_TITLE =
+  /\bimplement\b|\b(add|generate) (missing|unimplemented|all missing)\b|missing (members|methods|trait items)/i;
 export const OVERRIDE_TITLE = /\boverride\b/i;
 
-function editorAction(id: string, title: string, category: string, run: (view: EditorView) => unknown, extra: Partial<Action> = {}): Action {
+function editorAction(
+  id: string,
+  title: string,
+  category: string,
+  run: (view: EditorView) => unknown,
+  extra: Partial<Action> = {},
+): Action {
   return { id, title, category, when: EDITOR_WHEN, run: withEditor(run), ...extra };
 }
 
@@ -149,9 +156,15 @@ export function registerLspActions(): () => void {
       keywords: ["javadoc", "docs", "hover"],
     }),
     editorAction("code.quickDefinition", "Quick Definition", "Code", quickDefinition),
-    editorAction("code.quickTypeDefinition", "Quick Type Definition", "View", (v) => quickDefinition(v, "typeDefinition"), {
-      keywords: ["type declaration", "preview"],
-    }),
+    editorAction(
+      "code.quickTypeDefinition",
+      "Quick Type Definition",
+      "View",
+      (v) => quickDefinition(v, "typeDefinition"),
+      {
+        keywords: ["type declaration", "preview"],
+      },
+    ),
     editorAction("code.showIntentions", "Show Context Actions", "Code", showIntentions, {
       keywords: ["intention", "quick fix", "lightbulb"],
     }),
@@ -164,13 +177,23 @@ export function registerLspActions(): () => void {
     editorAction("code.reformatDialog", "Reformat File…", "Code", (v) =>
       reformatDialog(v, (view) => applyKindSilently(view, "source.organizeImports")),
     ),
-    editorAction("code.optimizeImports", "Optimize Imports", "Code", optimizeImports, { keywords: ["organize imports"] }),
+    editorAction("code.optimizeImports", "Optimize Imports", "Code", optimizeImports, {
+      keywords: ["organize imports"],
+    }),
     // Project view / editor tab variants: `{ path }` of a file, opened first.
-    { id: "code.reformatFile", title: "Reformat File", category: "Code", hidden: true, when: "projectOpen", run: inFile(reformat) },
+    {
+      id: "code.reformatFile",
+      title: "Reformat File",
+      category: "Code",
+      hidden: true,
+      when: "projectOpen",
+      run: inFile(reformat),
+    },
     {
       id: "code.cleanupFile",
       title: "Code Cleanup in File",
-      description: "Code Cleanup on `{ path, fixAll?, optimizeImports?, reformat? }` (all steps by default), opened first.",
+      description:
+        "Code Cleanup on `{ path, fixAll?, optimizeImports?, reformat? }` (all steps by default), opened first.",
       category: "Code",
       hidden: true,
       when: "projectOpen",
@@ -187,11 +210,21 @@ export function registerLspActions(): () => void {
       when: "projectOpen",
       run: inFile(optimizeImports),
     },
-    editorAction("navigate.declaration", "Go to Declaration or Usages", "Navigate", (v) => gotoTargets(v, "definition"), {
-      keywords: ["definition"],
-    }),
-    editorAction("navigate.implementation", "Go to Implementation(s)", "Navigate", (v) => gotoTargets(v, "implementation")),
-    editorAction("navigate.typeDeclaration", "Go to Type Declaration", "Navigate", (v) => gotoTargets(v, "typeDefinition")),
+    editorAction(
+      "navigate.declaration",
+      "Go to Declaration or Usages",
+      "Navigate",
+      (v) => gotoTargets(v, "definition"),
+      {
+        keywords: ["definition"],
+      },
+    ),
+    editorAction("navigate.implementation", "Go to Implementation(s)", "Navigate", (v) =>
+      gotoTargets(v, "implementation"),
+    ),
+    editorAction("navigate.typeDeclaration", "Go to Type Declaration", "Navigate", (v) =>
+      gotoTargets(v, "typeDefinition"),
+    ),
     editorAction("navigate.nextError", "Next Highlighted Error", "Navigate", (v) => gotoDiagnostic(v, 1)),
     editorAction("navigate.prevError", "Previous Highlighted Error", "Navigate", (v) => gotoDiagnostic(v, -1)),
     editorAction("find.highlightUsages", "Highlight Usages in File", "Find", highlightUsages),
@@ -208,13 +241,21 @@ export function registerLspActions(): () => void {
       },
     },
     editorAction("refactor.rename", "Rename…", "Refactor", startRename),
-    editorAction("refactor.extractVariable", "Introduce Variable…", "Refactor", (v) => runRefactoring(v, "extractVariable")),
+    editorAction("refactor.extractVariable", "Introduce Variable…", "Refactor", (v) =>
+      runRefactoring(v, "extractVariable"),
+    ),
     editorAction("refactor.extractMethod", "Extract Method…", "Refactor", (v) => runRefactoring(v, "extractMethod")),
-    editorAction("refactor.extractConstant", "Introduce Constant…", "Refactor", (v) => runRefactoring(v, "extractConstant")),
+    editorAction("refactor.extractConstant", "Introduce Constant…", "Refactor", (v) =>
+      runRefactoring(v, "extractConstant"),
+    ),
     editorAction("refactor.extractField", "Introduce Field…", "Refactor", (v) => runRefactoring(v, "extractField")),
-    editorAction("refactor.extractParameter", "Introduce Parameter…", "Refactor", (v) => runRefactoring(v, "extractParameter")),
+    editorAction("refactor.extractParameter", "Introduce Parameter…", "Refactor", (v) =>
+      runRefactoring(v, "extractParameter"),
+    ),
     editorAction("refactor.move", "Move…", "Refactor", (v) => runRefactoring(v, "move")),
-    editorAction("refactor.changeSignature", "Change Signature…", "Refactor", (v) => runRefactoring(v, "changeSignature")),
+    editorAction("refactor.changeSignature", "Change Signature…", "Refactor", (v) =>
+      runRefactoring(v, "changeSignature"),
+    ),
     editorAction("refactor.safeDelete", "Safe Delete…", "Refactor", safeDelete),
     editorAction(
       "code.generate",
@@ -222,7 +263,8 @@ export function registerLspActions(): () => void {
       "Code",
       (v) =>
         runKindAction(v, "", {
-          title: /^(generate|implement|override|add (missing|derive|impl|getter|setter|constructor)|create (constructor|getter|setter))/i,
+          title:
+            /^(generate|implement|override|add (missing|derive|impl|getter|setter|constructor)|create (constructor|getter|setter))/i,
           none: "Nothing to generate here",
           label: "Generate",
         }),

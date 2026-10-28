@@ -33,7 +33,13 @@ describe("server status", () => {
     const info: ServerInfo = { id, name: "jdtls", languages: [], root: "/p", status: "starting", pid: null };
     // The first event requests a snapshot; the server reports missing before it answers.
     emitLocalIdeEvent({ type: "languageServer", server: id, name: "jdtls", status: "starting", message: null });
-    emitLocalIdeEvent({ type: "languageServer", server: id, name: "jdtls", status: "missing", message: "install jdtls" });
+    emitLocalIdeEvent({
+      type: "languageServer",
+      server: id,
+      name: "jdtls",
+      status: "missing",
+      message: "install jdtls",
+    });
     pending.splice(0).forEach((resolve) => resolve([info]));
     await vi.waitFor(() => expect(useServers.getState().servers.get(id)?.languages).toEqual([]));
     await new Promise((r) => setTimeout(r, 0));
@@ -81,7 +87,9 @@ describe("serversSummary", () => {
     root: "/p",
   });
   it("doesn't flag a missing server whose languages another one serves", () => {
-    expect(serversSummary([entry(1, "vtsls", "missing"), entry(2, "typescript-language-server", "ready")])?.tone).toBe("ok");
+    expect(serversSummary([entry(1, "vtsls", "missing"), entry(2, "typescript-language-server", "ready")])?.tone).toBe(
+      "ok",
+    );
     expect(serversSummary([entry(1, "vtsls", "missing")])?.tone).toBe("error");
   });
   it("doesn't count stopped servers next to running ones", () => {

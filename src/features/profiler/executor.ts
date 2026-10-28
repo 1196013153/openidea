@@ -1,7 +1,12 @@
 /** The "Profile" executor: runs a configuration under a sampling profiler, then opens the snapshot. */
 import { executeAction } from "@/platform/actions";
 import { call, commands, isTauri, type ProfilerInstall, type RunConfig } from "@/platform/ipc";
-import { notifications, toolWindowService, type ExecutorLaunch, type RunExecutorContribution } from "@/workbench/contributions";
+import {
+  notifications,
+  toolWindowService,
+  type ExecutorLaunch,
+  type RunExecutorContribution,
+} from "@/workbench/contributions";
 import { profilerSupports } from "./model";
 import { addSnapshot } from "./store";
 import { tx } from "@/platform/i18n";
@@ -49,7 +54,13 @@ async function prepare(config: RunConfig): Promise<ExecutorLaunch | null> {
   }
   const plan = await call(commands.profilerPrepare(config));
   if (plan.status === "unsupported") {
-    notifications().notify({ group: "run", level: "info", key: "profiler-unsupported", title: `Cannot profile '${config.name}'`, body: plan.reason });
+    notifications().notify({
+      group: "run",
+      level: "info",
+      key: "profiler-unsupported",
+      title: `Cannot profile '${config.name}'`,
+      body: plan.reason,
+    });
     return null;
   }
   if (plan.status === "missingTool") {
@@ -71,7 +82,13 @@ async function prepare(config: RunConfig): Promise<ExecutorLaunch | null> {
             /* no workbench (tests) */
           }
         } catch (e) {
-          notifications().notify({ group: "run", level: "error", key: "profiler-done", title: `No profile for '${config.name}'`, body: errorText(e) });
+          notifications().notify({
+            group: "run",
+            level: "error",
+            key: "profiler-done",
+            title: `No profile for '${config.name}'`,
+            body: errorText(e),
+          });
         }
       })();
     },

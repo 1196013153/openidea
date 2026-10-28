@@ -31,7 +31,11 @@ describe("unwrapOptions (Unwrap/Remove)", () => {
 
   it("keeps the else branch the caret is in", () => {
     const src = "if (a) {\n  x();\n} else {\n  y();\n}";
-    const chain = [node(src, "expression_statement", "y();"), node(src, "block", "{\n  y();\n}", "alternative"), node(src, "if_statement", src)];
+    const chain = [
+      node(src, "expression_statement", "y();"),
+      node(src, "block", "{\n  y();\n}", "alternative"),
+      node(src, "if_statement", src),
+    ];
     const [o] = unwrapOptions(Text.of(src.split("\n")), chain);
     expect(o!.label).toBe("Unwrap 'else'");
     expect(apply(src, o!)).toBe("y();");
@@ -81,7 +85,11 @@ describe("unwrapOptions (Unwrap/Remove)", () => {
     expect(apply(src, opts[0]!)).toBe("if (a) {\n    p();\n} else {\n    q();\n}");
     expect(apply(src, opts[1]!)).toBe("if (b) {\n    q();\n}");
 
-    const cond = [node(src, "identifier", "b"), node(src, "parenthesized_expression", "(b)", "condition"), node(src, "if_statement", inner, "alternative")];
+    const cond = [
+      node(src, "identifier", "b"),
+      node(src, "parenthesized_expression", "(b)", "condition"),
+      node(src, "if_statement", inner, "alternative"),
+    ];
     expect(unwrapOptions(Text.of(src.split("\n")), cond)).toEqual([]);
   });
 });

@@ -3,7 +3,14 @@ import { EditorSelection, EditorState, type Extension } from "@codemirror/state"
 import { EditorView } from "@codemirror/view";
 import { indentService, indentUnit } from "@codemirror/language";
 import { closeBrackets, insertBracket } from "@codemirror/autocomplete";
-import { autoIndentBackspace, insertTab, smartBackspace, smartBackspaceApplies, tabOutOfScope, tabOutScopes } from "./smartKeys";
+import {
+  autoIndentBackspace,
+  insertTab,
+  smartBackspace,
+  smartBackspaceApplies,
+  tabOutOfScope,
+  tabOutScopes,
+} from "./smartKeys";
 
 /** One unit (2) deeper after a (non-blank) line ending in `{`, one less on a line starting with `}`. */
 const braces = indentService.of((cx, pos) => {
@@ -35,7 +42,12 @@ function make(text: string, extensions: Extension = [], unit = "  ") {
     state: EditorState.create({
       doc,
       selection: EditorSelection.create(ranges.length ? ranges : [EditorSelection.cursor(0)]),
-      extensions: [EditorState.allowMultipleSelections.of(true), EditorState.tabSize.of(4), indentUnit.of(unit), extensions],
+      extensions: [
+        EditorState.allowMultipleSelections.of(true),
+        EditorState.tabSize.of(4),
+        indentUnit.of(unit),
+        extensions,
+      ],
     }),
     parent: document.body,
   });
@@ -47,7 +59,9 @@ function show(view: EditorView): string {
   const { doc, selection } = view.state;
   let out = doc.toString();
   for (const r of [...selection.ranges].sort((a, b) => b.from - a.from))
-    out = r.empty ? out.slice(0, r.head) + "|" + out.slice(r.head) : out.slice(0, r.from) + "[" + out.slice(r.from, r.to) + "]" + out.slice(r.to);
+    out = r.empty
+      ? out.slice(0, r.head) + "|" + out.slice(r.head)
+      : out.slice(0, r.from) + "[" + out.slice(r.from, r.to) + "]" + out.slice(r.to);
   return out;
 }
 

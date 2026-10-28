@@ -47,7 +47,11 @@ const deps = {
 describe("Show Inherited", () => {
   it("collects supertype members level by level, without overridden ones or constructors", async () => {
     const members = await inheritedMembers("/p/Dog.java", dog, deps);
-    expect(members.map((m) => `${m.owner}.${m.item.name}`)).toEqual(["Animal.sleep()", "Animal.sleep(int)", "Living.age"]);
+    expect(members.map((m) => `${m.owner}.${m.item.name}`)).toEqual([
+      "Animal.sleep()",
+      "Animal.sleep(int)",
+      "Living.age",
+    ]);
     expect(members[0]!.path).toBe("/p/Animal.java");
   });
 

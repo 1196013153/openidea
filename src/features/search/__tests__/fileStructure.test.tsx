@@ -25,7 +25,10 @@ function open() {
     doc: 1,
     loading: false,
     error: null,
-    items: [item("OrderController", "class", 0, [item("list", "method", 2), item("create", "method", 8)]), item("helper", "function", 22)],
+    items: [
+      item("OrderController", "class", 0, [item("list", "method", 2), item("create", "method", 8)]),
+      item("helper", "function", 22),
+    ],
   });
   useStructureOptions.setState({ narrowDown: true });
   render(<FileStructureOverlay />);

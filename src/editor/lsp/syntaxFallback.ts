@@ -42,7 +42,8 @@ const NON_DECLARATIONS: ReadonlySet<SymbolKind> = new Set(["file", "package", "m
 export type UsageRole = "type" | "call" | "new" | "other";
 
 const TYPE_NODE = /(^|_)type_identifier$|^user_type$|^scoped_type_identifier$/;
-const TYPE_PARENT = /^(generic_type|user_type|nullable_type|type_annotation|type_arguments|scoped_type_identifier|qualified_type|array_type)$/;
+const TYPE_PARENT =
+  /^(generic_type|user_type|nullable_type|type_annotation|type_arguments|scoped_type_identifier|qualified_type|array_type)$/;
 const CALL_PARENT = /(^|_)(call|invocation)(_expression)?$|^call$/;
 const NEW_PARENT = /^(new_expression|object_creation_expression|instance_creation_expression|constructor_invocation)$/;
 
@@ -53,7 +54,11 @@ export function usageRole(at: NodeAt | null): UsageRole {
   const parent = at.ancestors[0];
   if (parent && NEW_PARENT.test(parent.kind)) return "new";
   if (TYPE_NODE.test(node.kind) || node.field === "type" || (parent && TYPE_PARENT.test(parent.kind))) return "type";
-  if (parent && CALL_PARENT.test(parent.kind) && (node.field === "function" || node.field === "name" || node.field == null))
+  if (
+    parent &&
+    CALL_PARENT.test(parent.kind) &&
+    (node.field === "function" || node.field === "name" || node.field == null)
+  )
     return "call";
   return "other";
 }
@@ -245,7 +250,10 @@ export async function planLocalRename(
   const shorthand = SHORTHAND_LANGUAGES.has(doc.language)
     ? await Promise.all(ranges.map((r) => structure.nodeAt(doc.doc, r, { signal }).then(isShorthand)))
     : ranges.map(() => false);
-  return { kind: "plan", plan: { symbol, occurrences: ranges.map((range, i) => ({ range, shorthand: shorthand[i]! })) } };
+  return {
+    kind: "plan",
+    plan: { symbol, occurrences: ranges.map((range, i) => ({ range, shorthand: shorthand[i]! })) },
+  };
 }
 
 /** CodeMirror changes renaming every occurrence; shorthands keep their key. Null when the text no longer matches. */
@@ -260,7 +268,12 @@ export function renameChanges(doc: Text, plan: LocalRenamePlan, newName: string)
 }
 
 /** Why a syntax-based rename needs confirmation (empty: safe to apply). */
-export async function renameRisks(doc: number, plan: LocalRenamePlan, newName: string, signal?: AbortSignal): Promise<string[]> {
+export async function renameRisks(
+  doc: number,
+  plan: LocalRenamePlan,
+  newName: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
   const risks: string[] = [];
   const { symbol } = plan;
   if (!symbol.certain)
@@ -271,7 +284,9 @@ export async function renameRisks(doc: number, plan: LocalRenamePlan, newName: s
     (o) => !o.qualified && rangeContains(symbol.scope, o.range.start),
   );
   if (clashes.length)
-    risks.push(`'${newName}' is already used in this scope (${clashes.length} ${clashes.length === 1 ? "occurrence" : "occurrences"}).`);
+    risks.push(
+      `'${newName}' is already used in this scope (${clashes.length} ${clashes.length === 1 ? "occurrence" : "occurrences"}).`,
+    );
   return risks;
 }
 

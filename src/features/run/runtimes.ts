@@ -42,7 +42,10 @@ async function viaSdkDetect(names: string[]): Promise<Map<string, LocatedTool | 
 }
 
 /** Looks up `names` near `file` (cached). */
-export async function locateTools(names: string[], file: string | null): Promise<Map<string, LocatedTool | null | undefined>> {
+export async function locateTools(
+  names: string[],
+  file: string | null,
+): Promise<Map<string, LocatedTool | null | undefined>> {
   const near = file ? dirOf(file) : "";
   const now = Date.now();
   const out = new Map<string, LocatedTool | null | undefined>();
@@ -98,7 +101,12 @@ async function rootMarkers(root: string | null): Promise<{ deno: boolean; bun: b
 }
 
 /** The tool environment for running `file` with any of `names`. */
-export async function toolEnv(names: string[], file: string | null, root: string | null, python: boolean): Promise<ToolEnv> {
+export async function toolEnv(
+  names: string[],
+  file: string | null,
+  root: string | null,
+  python: boolean,
+): Promise<ToolEnv> {
   const [tools, py, markers] = await Promise.all([
     locateTools(names, file),
     python ? projectPython() : Promise.resolve(null),

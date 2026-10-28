@@ -18,7 +18,9 @@ export const documentBanner: EditorBannerContribution = {
   order: -10,
   useBanner: (path) => {
     const banner = useDocMeta((s) => s[path]?.banner ?? null);
-    return banner ? { text: TEXT[banner], icon: banner === "readOnly" || banner === "library" ? "lock" : "info" } : null;
+    return banner
+      ? { text: TEXT[banner], icon: banner === "readOnly" || banner === "library" ? "lock" : "info" }
+      : null;
   },
 };
 

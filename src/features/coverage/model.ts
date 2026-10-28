@@ -85,7 +85,16 @@ const join = (a: string, b: string) => (a ? `${a.replace(/\/$/, "")}/${b}` : b);
  * (`src/main/java/com/x`) and every directory sums its files.
  */
 export function coverageTree(suite: CoverageSuite, root: string, compactDirs = true): CoverageNode[] {
-  const top: CoverageNode = { path: root, name: "", dir: true, children: [], linesTotal: 0, linesCovered: 0, branchesTotal: 0, branchesCovered: 0 };
+  const top: CoverageNode = {
+    path: root,
+    name: "",
+    dir: true,
+    children: [],
+    linesTotal: 0,
+    linesCovered: 0,
+    branchesTotal: 0,
+    branchesCovered: 0,
+  };
   const prefix = root.replace(/\/$/, "") + "/";
   for (const f of suite.files) {
     const inside = f.path.startsWith(prefix);
@@ -97,7 +106,16 @@ export function coverageTree(suite: CoverageSuite, root: string, compactDirs = t
       base = inside || base ? join(base, part) : `/${part}`;
       let child = node.children.find((c) => c.dir && c.name === part);
       if (!child) {
-        child = { path: base, name: part, dir: true, children: [], linesTotal: 0, linesCovered: 0, branchesTotal: 0, branchesCovered: 0 };
+        child = {
+          path: base,
+          name: part,
+          dir: true,
+          children: [],
+          linesTotal: 0,
+          linesCovered: 0,
+          branchesTotal: 0,
+          branchesCovered: 0,
+        };
         node.children.push(child);
       }
       node = child;

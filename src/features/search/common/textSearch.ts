@@ -1,5 +1,13 @@
 import { Channel } from "@tauri-apps/api/core";
-import { call, commands, type FileMatches, type RequestId, type SearchEvent, type SearchQuery, type SearchSummary } from "@/platform/ipc";
+import {
+  call,
+  commands,
+  type FileMatches,
+  type RequestId,
+  type SearchEvent,
+  type SearchQuery,
+  type SearchSummary,
+} from "@/platform/ipc";
 
 /**
  * Starts a streaming Find in Files request. `onFile` receives each file's

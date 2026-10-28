@@ -13,15 +13,15 @@ python perf/compare/bench.py ~/src/spring-petclinic --runs 5 --wipe-caches   # c
 Each run launches the app on the project, waits until it is ready, idles,
 closes it, and records:
 
-| Metric | How |
-|---|---|
-| `window_s` | first visible window whose title matches `window_title` (the project name) |
-| `ready_s` | the process tree's CPU stays under `--quiet-cores` for `--quiet-secs`, after the window and any `ready_after` markers |
-| markers | first/last time a log line matches, e.g. OpenIDEA `indexed`, IDEA `exit dumb mode` |
-| `peak_rss_mb`, `rss_mb`, `uss_mb`, `pss_mb` | summed over every process the app started (WebView2/WebKit, jdtls, language servers, the JVM) |
-| `total_cpu_s`, `idle_cpu_pct` | CPU time until ready; CPU while idle for `--idle-secs` |
-| `exit_s` | until every process has exited |
-| `cache_mb`, install size | `cache_dirs`, `install_dir` |
+| Metric                                      | How                                                                                                                   |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `window_s`                                  | first visible window whose title matches `window_title` (the project name)                                            |
+| `ready_s`                                   | the process tree's CPU stays under `--quiet-cores` for `--quiet-secs`, after the window and any `ready_after` markers |
+| markers                                     | first/last time a log line matches, e.g. OpenIDEA `indexed`, IDEA `exit dumb mode`                                    |
+| `peak_rss_mb`, `rss_mb`, `uss_mb`, `pss_mb` | summed over every process the app started (WebView2/WebKit, jdtls, language servers, the JVM)                         |
+| `total_cpu_s`, `idle_cpu_pct`               | CPU time until ready; CPU while idle for `--idle-secs`                                                                |
+| `exit_s`                                    | until every process has exited                                                                                        |
+| `cache_mb`, install size                    | `cache_dirs`, `install_dir`                                                                                           |
 
 Apps run interleaved, rotating the order, after `--warmup` discarded runs.
 Output goes to `results/<time>-<project>/`: `report.md` (median, min–max),
@@ -31,8 +31,8 @@ Output goes to `results/<time>-<project>/`: `report.md` (median, min–max),
 
 - Release builds only; a running instance of the same executable (a
   `pnpm tauri dev` build too) would take over the launch, so the script refuses.
-- IDEA: open the project once by hand and trust it; turn off *Reopen projects
-  on startup* and *Confirm before exiting*; note the version, `-Xmx` and whether
+- IDEA: open the project once by hand and trust it; turn off _Reopen projects
+  on startup_ and _Confirm before exiting_; note the version, `-Xmx` and whether
   Shared Indexes were on.
 - Same machine, power plan and plugged in; exclude the project and caches from
   antivirus scanning, or neither.

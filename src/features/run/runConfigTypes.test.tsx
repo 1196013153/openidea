@@ -90,7 +90,11 @@ describe("configuration types", () => {
       args: ["--path", ".", "res://one.tscn", "--debug-collisions"],
       cwd: null,
     });
-    const detected = cfg("godot:project", { kind: "godot", command: "/Apps/Godot.app/Contents/MacOS/Godot", args: ["--path", "."] });
+    const detected = cfg("godot:project", {
+      kind: "godot",
+      command: "/Apps/Godot.app/Contents/MacOS/Godot",
+      args: ["--path", "."],
+    });
     expect(godot.paramsFrom!(detected)).toEqual({ projectDir: "", scene: "", arguments: "" });
     const scene = { ...detected, cwd: "demo", args: ["--path", ".", "res://a.tscn", "--verbose"] };
     expect(godot.paramsFrom!(scene)).toEqual({ projectDir: "demo", scene: "res://a.tscn", arguments: "--verbose" });

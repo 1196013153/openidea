@@ -24,12 +24,23 @@ describe("response bodies", () => {
 
   it("re-indents XML, keeping text-only elements on one line", () => {
     expect(prettyMarkup('<?xml version="1.0"?><a><b>1</b><c/><d><e>x</e></d><f></f></a>')).toBe(
-      ['<?xml version="1.0"?>', "<a>", "  <b>1</b>", "  <c/>", "  <d>", "    <e>x</e>", "  </d>", "  <f></f>", "</a>"].join("\n"),
+      [
+        '<?xml version="1.0"?>',
+        "<a>",
+        "  <b>1</b>",
+        "  <c/>",
+        "  <d>",
+        "    <e>x</e>",
+        "  </d>",
+        "  <f></f>",
+        "</a>",
+      ].join("\n"),
     );
   });
 
   it("re-indents HTML with void elements and raw script contents", () => {
-    const html = "<html><head><meta charset=utf-8><script>if (a < b) { x(); }</script></head><body><p>Hi</p><br></body></html>";
+    const html =
+      "<html><head><meta charset=utf-8><script>if (a < b) { x(); }</script></head><body><p>Hi</p><br></body></html>";
     expect(prettyMarkup(html, true)).toBe(
       [
         "<html>",
@@ -69,14 +80,14 @@ describe("http highlighting", () => {
   }
 
   it("tags separators, methods, URLs, headers, variables and comments", () => {
-    const t = tokens("### Users\n# @name list\nGET https://{{host}}/users\nAccept: json\n\n{\"a\": 1}\n");
+    const t = tokens('### Users\n# @name list\nGET https://{{host}}/users\nAccept: json\n\n{"a": 1}\n');
     const has = (name: string, text: string) => t.some(([n, s]) => n.includes(name) && s === text);
     expect(has("heading", "### Users")).toBe(true);
     expect(has("keyword", "GET")).toBe(true);
     expect(has("link", "https://")).toBe(true);
     expect(has("variableName", "{{host}}")).toBe(true);
     expect(has("propertyName", "Accept")).toBe(true);
-    expect(has("string", ' json')).toBe(true);
+    expect(has("string", " json")).toBe(true);
     expect(has("string", '"a"')).toBe(true);
     expect(has("number", "1")).toBe(true);
     expect(has("meta", "# @name")).toBe(true);

@@ -109,9 +109,9 @@ type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
 const text = (v: unknown, d: string) => (typeof v === "string" ? v : d);
 const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
-const strings = (v: unknown, d: string[]) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : d);
-const oneOf = <T extends string>(v: unknown, values: readonly T[], d: T): T =>
-  values.includes(v as T) ? (v as T) : d;
+const strings = (v: unknown, d: string[]) =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : d;
+const oneOf = <T extends string>(v: unknown, values: readonly T[], d: T): T => (values.includes(v as T) ? (v as T) : d);
 const port = (v: unknown): number | null =>
   typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 65535 ? v : null;
 

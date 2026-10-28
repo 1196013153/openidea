@@ -28,7 +28,11 @@ export function clearClipboardHistory() {
 /** What CodeMirror copies: the selections, or the caret lines when nothing is selected. */
 export function copiedText(state: EditorState): string {
   const ranges = state.selection.ranges;
-  if (ranges.some((r) => !r.empty)) return ranges.filter((r) => !r.empty).map((r) => state.sliceDoc(r.from, r.to)).join(state.lineBreak);
+  if (ranges.some((r) => !r.empty))
+    return ranges
+      .filter((r) => !r.empty)
+      .map((r) => state.sliceDoc(r.from, r.to))
+      .join(state.lineBreak);
   const lines: string[] = [];
   let last = -1;
   for (const r of ranges) {

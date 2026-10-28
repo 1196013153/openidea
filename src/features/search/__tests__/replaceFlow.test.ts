@@ -35,7 +35,15 @@ const files: FileMatches[] = [
     path: "/p/a.ts",
     relPath: "a.ts",
     matches: [
-      { line: 0, text: "foo foo", ranges: [[0, 3], [4, 7]], textOffset: 0 },
+      {
+        line: 0,
+        text: "foo foo",
+        ranges: [
+          [0, 3],
+          [4, 7],
+        ],
+        textOffset: 0,
+      },
       { line: 3, text: "  x foo", ranges: [[4, 7]], textOffset: 0 },
     ],
   },
@@ -93,7 +101,9 @@ describe("replace flow model", () => {
   });
 
   it("confirmation and summary texts carry the counts", () => {
-    expect(confirmText({ usages: 3, files: 1 }, "foo", "bar")).toBe("Replace 3 occurrences of 'foo' with 'bar' in 1 file?");
+    expect(confirmText({ usages: 3, files: 1 }, "foo", "bar")).toBe(
+      "Replace 3 occurrences of 'foo' with 'bar' in 1 file?",
+    );
     expect(summaryText({ files: 2, replacements: 1, failed: 0, cancelled: false, elapsedMs: 3 })).toBe(
       "Replaced 1 occurrence in 2 files",
     );
@@ -126,7 +136,11 @@ describe("startReplace", () => {
     const run = startReplace({ query: q, replacement: "bar", preserveCase: true, targets }, progress, d);
     await expect(run.result).resolves.toEqual(summary);
     expect(d.synced).toHaveBeenCalledWith(["/p/a.ts"]);
-    expect(d.start).toHaveBeenCalledWith(7, expect.objectContaining({ preserveCase: true, targets }), expect.any(Function));
+    expect(d.start).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ preserveCase: true, targets }),
+      expect.any(Function),
+    );
     expect(progress).toHaveBeenLastCalledWith({
       done: 2,
       total: 2,
@@ -149,9 +163,9 @@ describe("replace previews", () => {
     expect(preserveCase("FOO", "bar")).toBe("BAR");
     expect(preserveCase("Foo", "bar")).toBe("Bar");
     expect(preserveCase("foo", "Bar")).toBe("bar");
-    expect(previewReplacement("Foo1", { pattern: "foo(\\d)", isRegex: true, caseSensitive: false }, "bar$1", true)).toBe(
-      "Bar1",
-    );
+    expect(
+      previewReplacement("Foo1", { pattern: "foo(\\d)", isRegex: true, caseSensitive: false }, "bar$1", true),
+    ).toBe("Bar1");
   });
 
   it("unified line preview of the edits", () => {

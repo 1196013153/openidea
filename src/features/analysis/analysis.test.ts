@@ -71,7 +71,10 @@ describe("Inspect Code grouping", () => {
   });
 
   it("groups by inspection by default, worst severity first, merging severities", () => {
-    const withWarning = [...files, { path: "/p/d.ts", relPath: "d.ts", diagnostics: [diag(5, "warning", "ts", "2304")] }];
+    const withWarning = [
+      ...files,
+      { path: "/p/d.ts", relPath: "d.ts", diagnostics: [diag(5, "warning", "ts", "2304")] },
+    ];
     const nodes = buildInspectionNodes(groupInspection(withWarning), false);
     expect(nodes.map((n) => (n.kind === "inspection" ? [n.name, n.severity, n.count] : n.kind))).toEqual([
       ["ts(2304)", "error", 4],

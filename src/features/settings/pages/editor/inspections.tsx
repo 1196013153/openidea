@@ -212,7 +212,12 @@ function InspectionsPage() {
         disabled: !isCopy,
         run: () => setNameDialog({ mode: "rename", level: location.level, initial: label }),
       },
-      { label: "Restore Defaults", icon: "undo", disabled: !Object.keys(overrides).length, run: () => setOverrides({}) },
+      {
+        label: "Restore Defaults",
+        icon: "undo",
+        disabled: !Object.keys(overrides).length,
+        run: () => setOverrides({}),
+      },
       // Default and Project Default cannot be deleted.
       ...(isCopy
         ? ([
@@ -239,7 +244,9 @@ function InspectionsPage() {
           disabled={profileOptions.length < 2}
         />
         <IconButton icon="settings" title="Profile Actions" onClick={gearMenu} />
-        <span className={styles.profileLevel}><T>{location.level === "project" ? "Stored in Project" : "Stored in IDE"}</T></span>
+        <span className={styles.profileLevel}>
+          <T>{location.level === "project" ? "Stored in Project" : "Stored in IDE"}</T>
+        </span>
       </div>
 
       <div className={styles.toolbar}>

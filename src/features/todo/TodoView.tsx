@@ -185,7 +185,9 @@ function useScopeQuery() {
   const scope = useTodoView((s) => s.scope);
   const custom = useCustomScopeList();
   // Open tabs change with the active editor (or its count): re-read them then.
-  const openKey = useEditorRegistry((s) => (scope === "openFiles" ? `${s.editors.size}:${s.active?.ctx.path ?? ""}` : ""));
+  const openKey = useEditorRegistry((s) =>
+    scope === "openFiles" ? `${s.editors.size}:${s.active?.ctx.path ?? ""}` : "",
+  );
   return useMemo(() => {
     const search = todoSearchScope(scope, custom, scope === "openFiles" ? openEditorPaths() : []);
     return { search, key: JSON.stringify(search) };
@@ -225,7 +227,11 @@ function ChangelistBar() {
         aria-label="Changelist"
         className={styles.scopeSelect}
         value={value}
-        options={lists.map((l) => ({ value: l.id, label: l.name, detail: l.files.length === 1 ? tx`${l.files.length} file` : tx`${l.files.length} files` }))}
+        options={lists.map((l) => ({
+          value: l.id,
+          label: l.name,
+          detail: l.files.length === 1 ? tx`${l.files.length} file` : tx`${l.files.length} files`,
+        }))}
         onChange={(id) => useTodoView.setState({ changelist: id })}
       />
     </div>
@@ -245,12 +251,20 @@ function ScopeBar() {
       <span className={styles.muted}>
         <T>Scope:</T>
       </span>
-      <Select<TodoScope> aria-label="Scope" className={styles.scopeSelect} value={scope} options={options} onChange={setScope} />
+      <Select<TodoScope>
+        aria-label="Scope"
+        className={styles.scopeSelect}
+        value={scope}
+        options={options}
+        onChange={setScope}
+      />
       <IconButton
         icon="more-horizontal"
         size="small"
         title="Edit Scopes…"
-        onClick={() => void executeAction(EDIT_SCOPES_ACTION, scope.startsWith("custom:") ? { select: scope.slice(7) } : undefined)}
+        onClick={() =>
+          void executeAction(EDIT_SCOPES_ACTION, scope.startsWith("custom:") ? { select: scope.slice(7) } : undefined)
+        }
       />
     </div>
   );

@@ -36,7 +36,9 @@ export function authorLabel(s: AuthorSummary): string {
 }
 
 export function authorTooltip(s: AuthorSummary): string {
-  return s.others ? `Last changed by ${s.author}; also ${s.authors.slice(1).join(", ")}` : `Last changed by ${s.author}`;
+  return s.others
+    ? `Last changed by ${s.author}; also ${s.authors.slice(1).join(", ")}`
+    : `Last changed by ${s.author}`;
 }
 
 interface Entry {

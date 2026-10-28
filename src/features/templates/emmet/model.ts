@@ -214,7 +214,9 @@ export function updateTagEdits(tag: TagRange, abbreviation: string): TextEdit[] 
   }
   const quote = (v: string) => (v.includes('"') ? `'${v}'` : `"${v}"`);
   const attrText = attrs.map((a) => (a.value === null ? ` ${a.name}` : ` ${a.name}=${quote(a.value)}`)).join("");
-  const edits: TextEdit[] = [{ from: tag.from, to: tag.to, insert: `<${name}${attrText}${tag.selfClosing ? " /" : ""}>` }];
+  const edits: TextEdit[] = [
+    { from: tag.from, to: tag.to, insert: `<${name}${attrText}${tag.selfClosing ? " /" : ""}>` },
+  ];
   if (tag.close && name !== tag.name) edits.push({ from: tag.close.from, to: tag.close.to, insert: name });
   return edits;
 }

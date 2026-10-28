@@ -83,9 +83,15 @@ describe("color schemes", () => {
     const root = document.documentElement;
     useProject.setState({ settings: { editor: { fontWeight: 300, boldFontWeight: 800 } } as unknown as Settings });
     const dispose = installColorScheme();
-    expect([root.style.getPropertyValue("--fw-code"), root.style.getPropertyValue("--fw-code-bold")]).toEqual(["300", "800"]);
+    expect([root.style.getPropertyValue("--fw-code"), root.style.getPropertyValue("--fw-code-bold")]).toEqual([
+      "300",
+      "800",
+    ]);
     useProject.setState({ settings: { editor: {} } as unknown as Settings });
-    expect([root.style.getPropertyValue("--fw-code"), root.style.getPropertyValue("--fw-code-bold")]).toEqual(["400", "700"]);
+    expect([root.style.getPropertyValue("--fw-code"), root.style.getPropertyValue("--fw-code-bold")]).toEqual([
+      "400",
+      "700",
+    ]);
     dispose();
     expect(root.style.getPropertyValue("--fw-code")).toBe("");
   });
@@ -101,7 +107,10 @@ describe("color schemes", () => {
   });
 
   it("coerces editor settings to their defaults' shape", () => {
-    const v = validateEditorExtras({ tabs: { tabLimit: "x", placement: "none" }, codeStyle: { languages: { go: { useTab: true } } } });
+    const v = validateEditorExtras({
+      tabs: { tabLimit: "x", placement: "none" },
+      codeStyle: { languages: { go: { useTab: true } } },
+    });
     expect(v.tabs.tabLimit).toBe(30);
     expect(v.tabs.placement).toBe("none");
     expect(v.codeStyle.languages.go).toEqual({ useTab: true });

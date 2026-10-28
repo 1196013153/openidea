@@ -202,7 +202,14 @@ export const lspTheme = EditorView.theme({
   ".cm-lsp-diag-warning .cm-lsp-diag-icon": { color: "var(--warning)" },
   ".cm-lsp-diag-info .cm-lsp-diag-icon, .cm-lsp-diag-hint .cm-lsp-diag-icon": { color: "var(--info)" },
   ".cm-lsp-diag-message": { color: "var(--fg-strong)", whiteSpace: "pre-wrap", lineHeight: "18px" },
-  ".cm-lsp-diag-meta": { display: "flex", flexWrap: "wrap", columnGap: "12px", rowGap: "2px", marginTop: "6px", alignItems: "baseline" },
+  ".cm-lsp-diag-meta": {
+    display: "flex",
+    flexWrap: "wrap",
+    columnGap: "12px",
+    rowGap: "2px",
+    marginTop: "6px",
+    alignItems: "baseline",
+  },
   ".cm-lsp-diag-meta > *": { whiteSpace: "nowrap" },
   ".cm-lsp-diag-source": { color: "var(--fg-subtle)", fontSize: "var(--fs-small)" },
   ".cm-lsp-link-button": {
@@ -358,7 +365,11 @@ export const lspTheme = EditorView.theme({
   ".cm-sem-builtin:not(.cm-sem-function)": { color: "var(--syn-builtin, inherit)" },
   ".cm-sem-static": { fontStyle: "var(--syn-static-italic, italic)" },
   ".cm-sem-python-static": { fontStyle: "var(--syn-python-static-italic, normal)" },
-  ".cm-sem-mutable": { textDecoration: "underline", textDecorationColor: "var(--fg-faint)", textUnderlineOffset: "3px" },
+  ".cm-sem-mutable": {
+    textDecoration: "underline",
+    textDecorationColor: "var(--fg-faint)",
+    textUnderlineOffset: "3px",
+  },
   ".cm-sem-deprecated": { textDecoration: "line-through" },
   // Semantic highlighting: after the base classes so a parameter's colour gives way, and over the
   // syntax highlighter's span inside.

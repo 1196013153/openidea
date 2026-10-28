@@ -256,13 +256,17 @@ function FileTemplateEditor({ template: t }: { template: FileTemplate }) {
         aria-label={tx("Template body")}
         onChange={(e) => updateKind({ body: e.target.value })}
       />
-      <Checkbox checked={reformatsOnCreate(t)} onChange={(v) => update({ reformat: v })} label="Reformat according to style" />
+      <Checkbox
+        checked={reformatsOnCreate(t)}
+        onChange={(v) => update({ reformat: v })}
+        label="Reformat according to style"
+      />
       <div className={styles.hint}>
-        <T>Variables:</T> <code>$NAME$</code> <code>$PACKAGE$</code> <code>$FILE_NAME$</code> <code>$PROJECT_NAME$</code>{" "}
-        <code>$USER$</code> <code>$DATE$</code> <code>$TIME$</code> <code>$YEAR$</code> <T>(or</T> <code>{"${NAME}"}</code>…);{" "}
-        <code>$END$</code> <T>places the caret. A line with</T> <code>$PACKAGE$</code>{" "}
-        <T>is omitted (with one following blank line) when there is no package.</T> <code>#parse("File Header")</code>{" "}
-        <T>inserts a template from the Includes or Code tab.</T>
+        <T>Variables:</T> <code>$NAME$</code> <code>$PACKAGE$</code> <code>$FILE_NAME$</code>{" "}
+        <code>$PROJECT_NAME$</code> <code>$USER$</code> <code>$DATE$</code> <code>$TIME$</code> <code>$YEAR$</code>{" "}
+        <T>(or</T> <code>{"${NAME}"}</code>…); <code>$END$</code> <T>places the caret. A line with</T>{" "}
+        <code>$PACKAGE$</code> <T>is omitted (with one following blank line) when there is no package.</T>{" "}
+        <code>#parse("File Header")</code> <T>inserts a template from the Includes or Code tab.</T>
       </div>
       {isBuiltinFileTemplate(t.id) && isModifiedFileTemplate(t.id) && (
         <div className={styles.buttons}>

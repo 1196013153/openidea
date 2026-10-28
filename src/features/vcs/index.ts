@@ -44,7 +44,13 @@ function trackTitleItem(): () => void {
   let dispose: (() => void) | null = null;
   const sync = (available: boolean) => {
     if (available && !dispose) {
-      dispose = registerTitleItem({ id: "vcs.branch", title: "VCS Widget", align: "left", priority: 10, component: BranchWidget });
+      dispose = registerTitleItem({
+        id: "vcs.branch",
+        title: "VCS Widget",
+        align: "left",
+        priority: 10,
+        component: BranchWidget,
+      });
     } else if (!available && dispose) {
       dispose();
       dispose = null;
@@ -63,7 +69,9 @@ function trackTitleItem(): () => void {
 
 function conflictsBody(names: string[]): string {
   const list = names.slice(0, 3).join(", ") + (names.length > 3 ? "…" : "");
-  return names.length === 1 ? tx`${names.length} file has conflicts: ${list}` : tx`${names.length} files have conflicts: ${list}`;
+  return names.length === 1
+    ? tx`${names.length} file has conflicts: ${list}`
+    : tx`${names.length} files have conflicts: ${list}`;
 }
 
 export function activate(): () => void {

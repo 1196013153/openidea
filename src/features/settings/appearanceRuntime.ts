@@ -118,7 +118,9 @@ export function zoomActions(): Action[] {
       run: async () => {
         if (!isTauri()) return;
         const next = !validateSettings(useProject.getState().settings).appearance.compactMode;
-        useProject.setState({ settings: await call(commands.settingsSet("global", "appearance.compactMode", JSON.stringify(next))) });
+        useProject.setState({
+          settings: await call(commands.settingsSet("global", "appearance.compactMode", JSON.stringify(next))),
+        });
       },
     },
   ];

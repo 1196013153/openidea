@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { PrCheck, PrReviewComment, PullRequestDetails } from "@/platform/ipc";
 import { checksSummary, checksText, diffNotes, fileDiffData, relativeTime, reviewThreads, stateLabel } from "./model";
 
-const comment = (id: number, path: string, line: number | null, inReplyTo: number | null = null, side = "RIGHT"): PrReviewComment => ({
+const comment = (
+  id: number,
+  path: string,
+  line: number | null,
+  inReplyTo: number | null = null,
+  side = "RIGHT",
+): PrReviewComment => ({
   id,
   inReplyTo,
   path,
@@ -57,7 +63,12 @@ describe("pull request model", () => {
   });
 
   it("threads replies under their root, ordered by file and line", () => {
-    const threads = reviewThreads([comment(1, "b.ts", 9), comment(2, "a.ts", 5), comment(3, "b.ts", 9, 1), comment(4, "b.ts", 9, 3)]);
+    const threads = reviewThreads([
+      comment(1, "b.ts", 9),
+      comment(2, "a.ts", 5),
+      comment(3, "b.ts", 9, 1),
+      comment(4, "b.ts", 9, 3),
+    ]);
     expect(threads.map((t) => [t.root.id, t.replies.map((r) => r.id)])).toEqual([
       [2, []],
       [1, [3, 4]],
@@ -65,7 +76,12 @@ describe("pull request model", () => {
   });
 
   it("turns current comments into diff notes", () => {
-    const notes = diffNotes("a.ts", [comment(1, "a.ts", 5), comment(2, "a.ts", null), comment(3, "a.ts", 2, null, "LEFT"), comment(4, "b.ts", 1)]);
+    const notes = diffNotes("a.ts", [
+      comment(1, "a.ts", 5),
+      comment(2, "a.ts", null),
+      comment(3, "a.ts", 2, null, "LEFT"),
+      comment(4, "b.ts", 1),
+    ]);
     expect(notes.map((n) => [n.side, n.line])).toEqual([
       ["right", 4],
       ["left", 1],
@@ -80,7 +96,12 @@ describe("pull request model", () => {
       root: "/repo",
       files: [{ path: "src/new.ts", kind: "renamed" as const, oldPath: "src/old.ts" }],
     };
-    const renamed = fileDiffData(pr, { path: "src/new.ts", additions: 1, deletions: 0, changeType: "RENAMED" }, revs, []);
+    const renamed = fileDiffData(
+      pr,
+      { path: "src/new.ts", additions: 1, deletions: 0, changeType: "RENAMED" },
+      revs,
+      [],
+    );
     expect(renamed.path).toBe("/repo/src/new.ts");
     expect(renamed.left).toMatchObject({ type: "rev", rev: revs.base, path: "/repo/src/old.ts" });
     expect(renamed.right).toMatchObject({ type: "rev", rev: revs.head });

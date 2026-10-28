@@ -93,7 +93,10 @@ export async function editDocSource(host: DocHost): Promise<boolean> {
   const loc = (await entry?.source?.().catch(() => null)) ?? null;
   if (!loc) return false;
   if (host === "popup") closePopup();
-  await editorService().openFile(loc.path, { selection: { line: loc.range.start.line, col: loc.range.start.col }, focus: true });
+  await editorService().openFile(loc.path, {
+    selection: { line: loc.range.start.line, col: loc.range.start.col },
+    focus: true,
+  });
   return true;
 }
 

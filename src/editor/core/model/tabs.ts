@@ -55,7 +55,12 @@ const nextId = (p: string) => `${p}${++seq}`;
 
 export function initialTabsState(): TabsState {
   const id = nextId("pane");
-  return { layout: { kind: "pane", paneId: id }, panes: { [id]: { id, tabs: [], active: null, mru: [] } }, activePane: id, closed: [] };
+  return {
+    layout: { kind: "pane", paneId: id },
+    panes: { [id]: { id, tabs: [], active: null, mru: [] } },
+    activePane: id,
+    closed: [],
+  };
 }
 
 export function paneOf(s: TabsState, paneId: string): Pane {
@@ -206,10 +211,17 @@ function removeTabs(s: TabsState, paneId: string, ids: Set<string>): TabsState {
   let active = pane.active;
   if (active && ids.has(active)) {
     const at = pane.tabs.findIndex((t) => t.id === active);
-    const left = pane.tabs.slice(0, at).reverse().find((t) => !ids.has(t.id));
+    const left = pane.tabs
+      .slice(0, at)
+      .reverse()
+      .find((t) => !ids.has(t.id));
     const right = pane.tabs.slice(at + 1).find((t) => !ids.has(t.id));
     const pick =
-      tabOptions.activateOnClose === "left" ? (left ?? right) : tabOptions.activateOnClose === "right" ? (right ?? left) : undefined;
+      tabOptions.activateOnClose === "left"
+        ? (left ?? right)
+        : tabOptions.activateOnClose === "right"
+          ? (right ?? left)
+          : undefined;
     active = pick?.id ?? mru[0] ?? tabs[0]?.id ?? null;
   }
   pane = { ...pane, tabs, mru, active };
@@ -241,14 +253,32 @@ export function closeToRight(s: TabsState, paneId: string, tabId: string): TabsS
   const pane = paneOf(s, paneId);
   const idx = pane.tabs.findIndex((t) => t.id === tabId);
   if (idx < 0) return s;
-  return removeTabs(s, paneId, new Set(pane.tabs.slice(idx + 1).filter((t) => !t.pinned).map((t) => t.id)));
+  return removeTabs(
+    s,
+    paneId,
+    new Set(
+      pane.tabs
+        .slice(idx + 1)
+        .filter((t) => !t.pinned)
+        .map((t) => t.id),
+    ),
+  );
 }
 
 export function closeToLeft(s: TabsState, paneId: string, tabId: string): TabsState {
   const pane = paneOf(s, paneId);
   const idx = pane.tabs.findIndex((t) => t.id === tabId);
   if (idx < 0) return s;
-  return removeTabs(s, paneId, new Set(pane.tabs.slice(0, idx).filter((t) => !t.pinned).map((t) => t.id)));
+  return removeTabs(
+    s,
+    paneId,
+    new Set(
+      pane.tabs
+        .slice(0, idx)
+        .filter((t) => !t.pinned)
+        .map((t) => t.id),
+    ),
+  );
 }
 
 /** IDEA "Close Unmodified Tabs": closes the unpinned tabs `modified` says no to. */
@@ -283,7 +313,10 @@ export function reopenClosed(s: TabsState): { state: TabsState; tabId: string; p
     const entry = closed.pop()!;
     if (openNow.has(entry.input.key) && findTab(s, entry.input.key, entry.paneId)?.paneId === entry.paneId) continue;
     const paneId = s.panes[entry.paneId] ? entry.paneId : s.activePane;
-    const { state, tabId } = openTab({ ...s, closed }, paneId, entry.input, { index: entry.index, pinned: entry.pinned });
+    const { state, tabId } = openTab({ ...s, closed }, paneId, entry.input, {
+      index: entry.index,
+      pinned: entry.pinned,
+    });
     return { state, tabId, paneId };
   }
   return null;
@@ -325,7 +358,10 @@ export function sortTabs(s: TabsState, paneId: string, title: (t: Tab) => string
   const pane = paneOf(s, paneId);
   const byTitle = (a: Tab, b: Tab) =>
     title(a).localeCompare(title(b), undefined, { sensitivity: "base" }) || title(a).localeCompare(title(b));
-  const tabs = [...pane.tabs.filter((t) => t.pinned).sort(byTitle), ...pane.tabs.filter((t) => !t.pinned).sort(byTitle)];
+  const tabs = [
+    ...pane.tabs.filter((t) => t.pinned).sort(byTitle),
+    ...pane.tabs.filter((t) => !t.pinned).sort(byTitle),
+  ];
   return tabs.every((t, i) => t === pane.tabs[i]) ? s : withPane(s, { ...pane, tabs });
 }
 

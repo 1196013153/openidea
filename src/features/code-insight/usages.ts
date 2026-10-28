@@ -31,7 +31,10 @@ export interface UsageGroup {
 }
 
 /** Groups reference locations by file (sorted by path, then position), attaching line previews. */
-export function groupUsages(locs: readonly Location[], files: ReadonlyMap<string, readonly string[] | null>): UsageGroup[] {
+export function groupUsages(
+  locs: readonly Location[],
+  files: ReadonlyMap<string, readonly string[] | null>,
+): UsageGroup[] {
   const byPath = new Map<string, Usage[]>();
   const seen = new Set<string>();
   for (const l of locs) {
@@ -170,7 +173,9 @@ export async function fetchUsages(c: CaretContext, request: RequestId = nextRequ
   let locs: Location[];
   let note: string | null = null;
   try {
-    const refs = await lspRequest(() => commands.lspReferences(request, c.doc, { line: c.line, col: c.col }, false, true));
+    const refs = await lspRequest(() =>
+      commands.lspReferences(request, c.doc, { line: c.line, col: c.col }, false, true),
+    );
     locs = refs.locations;
     if (refs.incomplete) note = incompleteNote(refs.incomplete, c.word);
   } catch (e) {

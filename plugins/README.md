@@ -48,11 +48,11 @@ All paths are relative to the package directory and may not leave it.
 
 ### Permissions
 
-| Permission     | Unlocks                                         |
-|----------------|-------------------------------------------------|
+| Permission     | Unlocks                                           |
+| -------------- | ------------------------------------------------- |
 | `project-read` | `workspace-root`, `read-file` (project root only) |
-| `editor-read`  | `active-file`                                   |
-| `editor-write` | `insert-text`, `replace-selection`              |
+| `editor-read`  | `active-file`                                     |
+| `editor-write` | `insert-text`, `replace-selection`                |
 
 `log`, `register-command`, `show-notification`, `register-language` and
 `register-theme` are always available. Calling a gated function without its
@@ -133,22 +133,22 @@ Any language with component-model tooling works (e.g. `componentize-py`,
 
 ### Host functions
 
-| Function | Notes |
-|---|---|
-| `log(level, msg)` | Goes to the IDE log, tagged with the plugin id. `eprintln!` output is logged too and shown when the plugin crashes. |
-| `register-command(id, title, category?)` | Becomes action `plugin.<plugin-id>.<id>`; call again to rename. Max 256 commands. |
-| `show-notification(level, title, body)` | Balloon in the invoking window. |
-| `workspace-root()` | Root of the project the command runs in. |
-| `active-file()` | Absolute path of the focused editor's file. |
-| `read-file(path)` | Absolute or project-relative; `..`/symlinks escaping the root are rejected; UTF-8 only, ≤ 16 MiB. Unsaved editor contents win over disk. |
-| `insert-text(text)` | Inserts at every cursor of the active editor (cursor ends after the text). |
-| `replace-selection(text)` | Replaces every selection and selects the new text. |
-| `register-language(toml)` | Same format as `languages/<id>.toml`. |
-| `register-theme(json)` | See *Themes* below. |
+| Function                                 | Notes                                                                                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `log(level, msg)`                        | Goes to the IDE log, tagged with the plugin id. `eprintln!` output is logged too and shown when the plugin crashes.                      |
+| `register-command(id, title, category?)` | Becomes action `plugin.<plugin-id>.<id>`; call again to rename. Max 256 commands.                                                        |
+| `show-notification(level, title, body)`  | Balloon in the invoking window.                                                                                                          |
+| `workspace-root()`                       | Root of the project the command runs in.                                                                                                 |
+| `active-file()`                          | Absolute path of the focused editor's file.                                                                                              |
+| `read-file(path)`                        | Absolute or project-relative; `..`/symlinks escaping the root are rejected; UTF-8 only, ≤ 16 MiB. Unsaved editor contents win over disk. |
+| `insert-text(text)`                      | Inserts at every cursor of the active editor (cursor ends after the text).                                                               |
+| `replace-selection(text)`                | Replaces every selection and selects the new text.                                                                                       |
+| `register-language(toml)`                | Same format as `languages/<id>.toml`.                                                                                                    |
+| `register-theme(json)`                   | See _Themes_ below.                                                                                                                      |
 
 `run-command` receives an optional string argument: `executeAction("plugin.hello.insert-date", "arg")`
 from another feature, or nothing when run from Search Everywhere / a shortcut.
-Returning `Err(msg)` shows *"<title> failed: msg"*; the plugin keeps running.
+Returning `Err(msg)` shows _"<title> failed: msg"_; the plugin keeps running.
 
 ### Sandbox and limits
 
@@ -156,13 +156,13 @@ Each plugin gets its own wasmtime `Store`: no preopened directories, no
 environment, no network, no inherited stdio — only clocks and randomness from
 WASI, plus the host functions above. Every call into the plugin is bounded:
 
-* **CPU:** a fuel budget (≈ 5·10⁹ wasm instructions) per call;
-* **time:** 5 s wall clock per call (epoch interruption);
-* **memory:** 256 MiB of linear memory.
+- **CPU:** a fuel budget (≈ 5·10⁹ wasm instructions) per call;
+- **time:** 5 s wall clock per call (epoch interruption);
+- **memory:** 256 MiB of linear memory.
 
 A panic, trap, permission violation or exceeded limit stops the plugin and
-marks it *Failed* for the session (with the reason in Settings › Plugins);
-toggling it off and on, or *Reload*, starts a fresh instance. The IDE itself is
+marks it _Failed_ for the session (with the reason in Settings › Plugins);
+toggling it off and on, or _Reload_, starts a fresh instance. The IDE itself is
 never affected.
 
 ## 3. Themes
@@ -181,7 +181,7 @@ Tokens are the CSS variables of `src/styles/tokens.css` (`--bg-*`, `--fg-*`,
 keep the values of the built-in base named by `kind`. Values must be plain CSS
 values (no `url()`, `;`, braces); `//` and `/* */` comments are allowed. A
 manifest theme entry may add `editor-scheme = "themes/x.scheme.json"` (editor
-colours, merged over the theme). Pick a theme in Settings › Plugins › *Apply*.
+colours, merged over the theme). Pick a theme in Settings › Plugins › _Apply_.
 
 Start from [`templates/theme-plugin`](../templates/theme-plugin); the full guide,
 token reference and IntelliJ / VS Code porting tables are in
@@ -196,14 +196,14 @@ token reference and IntelliJ / VS Code porting tables are in
 
 ## 5. Installing and developing
 
-* **Install:** Settings › Plugins › *Install Plugin from Disk…* (or the action
-  *Install Plugin from Disk…*) and pick the package folder. The manifest and the
+- **Install:** Settings › Plugins › _Install Plugin from Disk…_ (or the action
+  _Install Plugin from Disk…_) and pick the package folder. The manifest and the
   files it references are copied to `<app-data>/plugins/<id>/`.
-* **Dev plugins:** put (or symlink) the package in `<project>/.openidea/plugins/<name>/`.
-  It loads when the project is opened, is listed with a *dev* tag, and *Reload*
-  (or the *Reload Plugins* action) picks up a rebuilt `plugin.wasm` without
+- **Dev plugins:** put (or symlink) the package in `<project>/.openidea/plugins/<name>/`.
+  It loads when the project is opened, is listed with a _dev_ tag, and _Reload_
+  (or the _Reload Plugins_ action) picks up a rebuilt `plugin.wasm` without
   restarting the IDE.
-* Commands appear in Search Everywhere › Actions under their category, and can
+- Commands appear in Search Everywhere › Actions under their category, and can
   be bound in Settings › Keymap like any other action.
 
 ## 6. Testing

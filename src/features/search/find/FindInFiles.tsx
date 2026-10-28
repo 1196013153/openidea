@@ -361,7 +361,8 @@ function FindInFilesDialog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewMode, s.replace, selected?.key, s.replacement, s.preserveCase, queryKey, marks, previewVersion]);
 
-  const moveTo = (next: number, extend: boolean) => setSel((cur) => selectRow(rows, cur, next, extend ? "range" : "single"));
+  const moveTo = (next: number, extend: boolean) =>
+    setSel((cur) => selectRow(rows, cur, next, extend ? "range" : "single"));
   const onRowClick = (index: number, e: MouseEvent) => {
     const mode = e.shiftKey ? "range" : e.metaKey || e.ctrlKey ? "toggle" : "single";
     setSel((cur) => selectRow(rows, cur, index, mode));
@@ -510,12 +511,7 @@ function FindInFilesDialog() {
             pressed={s.context !== "any"}
             onClick={() => setContextMenu(true)}
           />
-          <IconButton
-            icon="pin"
-            title="Pin Window"
-            pressed={s.pinned}
-            onClick={() => setFindPopupPinned(!s.pinned)}
-          />
+          <IconButton icon="pin" title="Pin Window" pressed={s.pinned} onClick={() => setFindPopupPinned(!s.pinned)} />
         </header>
         <div className={styles.fields}>
           <div data-find-field ref={patternBoxRef}>

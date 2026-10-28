@@ -166,7 +166,12 @@ const semanticPlugin = ViewPlugin.fromClass(
       this.last = { doc, tokens };
       const ranges = tokens ? semanticRanges(doc, tokens, this.rainbow, docOf(this.view)?.language) : [];
       this.view.dispatch({
-        effects: setSemantic.of(Decoration.set(ranges.map((r) => markFor(r.className).range(r.from, r.to)), true)),
+        effects: setSemantic.of(
+          Decoration.set(
+            ranges.map((r) => markFor(r.className).range(r.from, r.to)),
+            true,
+          ),
+        ),
       });
     }
     async run() {

@@ -17,8 +17,8 @@ export const NAVIGATE_EVENT = "select.navigate";
 
 /** Caret moves that count as navigation: mouse clicks, find, reveals, stripe / sticky-line clicks, navigate commands. */
 export function isNavigation(tr: Transaction): boolean {
-  return ["select.pointer", "select.reveal", "select.search", "select.overview", "select.sticky", NAVIGATE_EVENT].some((e) =>
-    tr.isUserEvent(e),
+  return ["select.pointer", "select.reveal", "select.search", "select.overview", "select.sticky", NAVIGATE_EVENT].some(
+    (e) => tr.isUserEvent(e),
   );
 }
 const MAX_ENTRIES = 100;

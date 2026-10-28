@@ -50,7 +50,15 @@ describe("summarizeWorkspaceEdit", () => {
 });
 
 describe("editPreviewLines", () => {
-  const doc = Text.of(["function f() {", "  return price * 2;", "}", "", "const a = 1;", "const b = 2;", "const c = 3;"]);
+  const doc = Text.of([
+    "function f() {",
+    "  return price * 2;",
+    "}",
+    "",
+    "const a = 1;",
+    "const b = 2;",
+    "const c = 3;",
+  ]);
   const at = (line: number, col: number) => ({ line, col });
 
   it("shows changed lines with one line of context, hunks separated", () => {

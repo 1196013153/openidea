@@ -60,11 +60,28 @@ const CLAUSES: Record<string, string> = {
 };
 
 /** The child on the caret's path must be a body, not the condition / header. */
-const HEADER_FIELDS = new Set(["condition", "left", "right", "value", "pattern", "initializer", "update", "resources", "parameters", "type", "name"]);
+const HEADER_FIELDS = new Set([
+  "condition",
+  "left",
+  "right",
+  "value",
+  "pattern",
+  "initializer",
+  "update",
+  "resources",
+  "parameters",
+  "type",
+  "name",
+]);
 
 function isBody(n: ChainNode): boolean {
   if (n.field && HEADER_FIELDS.has(n.field)) return false;
-  return /block|body|statement|compound|suite/.test(n.kind) || n.field === "consequence" || n.field === "alternative" || n.field === "body";
+  return (
+    /block|body|statement|compound|suite/.test(n.kind) ||
+    n.field === "consequence" ||
+    n.field === "alternative" ||
+    n.field === "body"
+  );
 }
 
 const leading = (s: string) => /^[ \t]*/.exec(s)![0];
@@ -80,7 +97,10 @@ function bodyLines(doc: Text, body: ChainNode, base: string): string[] {
   }
   const first = doc.lineAt(from);
   if (!doc.sliceString(first.from, from).trim()) from = first.from;
-  const lines = doc.sliceString(from, to).split("\n").map((l) => l.trimEnd());
+  const lines = doc
+    .sliceString(from, to)
+    .split("\n")
+    .map((l) => l.trimEnd());
   while (lines.length && !lines[0]!.trim()) lines.shift();
   while (lines.length && !lines[lines.length - 1]!.trim()) lines.pop();
   const indents = lines.filter((l) => l.trim()).map((l) => leading(l).length);
@@ -89,13 +109,17 @@ function bodyLines(doc: Text, body: ChainNode, base: string): string[] {
 }
 
 function keyword(doc: Text, n: ChainNode): string {
-  return /^[A-Za-z_]+/.exec(doc.sliceString(n.from, Math.min(n.to, n.from + 20)))?.[0] ?? n.kind.replace(/_(statement|expression|block)$/, "");
+  return (
+    /^[A-Za-z_]+/.exec(doc.sliceString(n.from, Math.min(n.to, n.from + 20)))?.[0] ??
+    n.kind.replace(/_(statement|expression|block)$/, "")
+  );
 }
 
 function replacement(doc: Text, target: ChainNode, body: ChainNode): { from: number; to: number; insert: string } {
   const startLine = doc.lineAt(target.from);
   const endLine = doc.lineAt(target.to);
-  const wholeLines = !doc.sliceString(startLine.from, target.from).trim() && !doc.sliceString(target.to, endLine.to).trim();
+  const wholeLines =
+    !doc.sliceString(startLine.from, target.from).trim() && !doc.sliceString(target.to, endLine.to).trim();
   if (wholeLines) {
     const lines = bodyLines(doc, body, leading(startLine.text));
     // An empty body removes the statement's lines altogether.
@@ -134,7 +158,11 @@ export function unwrapOptions(doc: Text, chain: readonly ChainNode[]): UnwrapOpt
     const key = `${target.from}:${target.to}:${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label: tx`Unwrap '${label}'`, target: { from: target.from, to: target.to }, ...replacement(doc, target, child) });
+    out.push({
+      label: tx`Unwrap '${label}'`,
+      target: { from: target.from, to: target.to },
+      ...replacement(doc, target, child),
+    });
   }
   return out;
 }

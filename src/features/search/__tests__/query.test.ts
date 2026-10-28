@@ -23,7 +23,11 @@ describe("parseLocationQuery", () => {
   });
 
   it("strips the project root from pasted absolute paths", () => {
-    expect(parseLocationQuery("/dev/acme/src/Order.kt:3", "/dev/acme")).toEqual({ text: "src/Order.kt", line: 2, col: null });
+    expect(parseLocationQuery("/dev/acme/src/Order.kt:3", "/dev/acme")).toEqual({
+      text: "src/Order.kt",
+      line: 2,
+      col: null,
+    });
     expect(parseLocationQuery("/elsewhere/x.kt", "/dev/acme").text).toBe("/elsewhere/x.kt");
   });
 

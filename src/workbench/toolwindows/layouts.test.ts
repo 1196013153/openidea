@@ -83,7 +83,10 @@ describe("tool window layouts", () => {
     saveLayout("Kept");
     _reloadLayouts();
     expect(layoutNames()).toEqual(["Kept"]);
-    localStorage.setItem("openidea.toolWindowLayouts.v1", JSON.stringify({ layouts: [{ name: "" }, { nope: 1 }, { name: "X", layout: 5 }] }));
+    localStorage.setItem(
+      "openidea.toolWindowLayouts.v1",
+      JSON.stringify({ layouts: [{ name: "" }, { nope: 1 }, { name: "X", layout: 5 }] }),
+    );
     _reloadLayouts();
     expect(layoutNames()).toEqual(["X"]);
   });

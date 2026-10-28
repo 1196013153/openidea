@@ -31,7 +31,14 @@ export function showRecentPopup(kind: RecentPopupKind) {
     else useRecentPopup.setState({ changedOnly: !s.changedOnly });
     return;
   }
-  useRecentPopup.setState({ open: kind, editedOnly: false, changedOnly: false, session: s.session + 1, switcher: false, step: 0 });
+  useRecentPopup.setState({
+    open: kind,
+    editedOnly: false,
+    changedOnly: false,
+    session: s.session + 1,
+    switcher: false,
+    step: 0,
+  });
 }
 
 /** ⌃⇥ / ⌃⇧⇥: opens the switcher, or moves its selection while Ctrl is held. */

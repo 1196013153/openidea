@@ -98,19 +98,17 @@ function registerSavedMacroActions(): () => void {
     names = key;
     dispose();
     dispose = registerActions(
-      saved.map(
-        (m): Action => ({
-          id: playActionId(m.name),
-          title: m.name,
-          category: "Macros",
-          keywords: ["macro", "play"],
-          when: "!macroRecording",
-          run: () => {
-            const macro = useMacros.getState().saved.find((x) => x.name === m.name);
-            if (macro) return playMacro(macro.steps, macro.name);
-          },
-        }),
-      ),
+      saved.map((m): Action => ({
+        id: playActionId(m.name),
+        title: m.name,
+        category: "Macros",
+        keywords: ["macro", "play"],
+        when: "!macroRecording",
+        run: () => {
+          const macro = useMacros.getState().saved.find((x) => x.name === m.name);
+          if (macro) return playMacro(macro.steps, macro.name);
+        },
+      })),
     );
   };
   sync();
@@ -179,7 +177,10 @@ export function activate(): () => void {
         keywords: ["macro", "replay"],
         when: "!macroRecording && macrosSaved",
         run: async () => {
-          const name = await chooseItem({ title: "Play Saved Macro", items: useMacros.getState().saved.map((m) => m.name) });
+          const name = await chooseItem({
+            title: "Play Saved Macro",
+            items: useMacros.getState().saved.map((m) => m.name),
+          });
           const macro = useMacros.getState().saved.find((m) => m.name === name);
           if (macro) await playMacro(macro.steps, macro.name);
         },

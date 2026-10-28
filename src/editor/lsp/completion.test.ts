@@ -330,9 +330,9 @@ describe("typeColumnText", () => {
   const edit = (new_text: string) => [{ range: { start: { line: 0, col: 0 }, end: { line: 0, col: 0 } }, new_text }];
 
   it("names the module an auto-import comes from", () => {
-    expect(typeColumnText({ detail: "Auto-import", additionalEdits: edit("\nfrom collections import OrderedDict") })).toBe(
-      "collections",
-    );
+    expect(
+      typeColumnText({ detail: "Auto-import", additionalEdits: edit("\nfrom collections import OrderedDict") }),
+    ).toBe("collections");
     expect(typeColumnText({ detail: "Map<K, V>", additionalEdits: edit("import java.util.HashMap;\n") })).toBe(
       "Map<K, V> (java.util)",
     );
@@ -343,9 +343,9 @@ describe("typeColumnText", () => {
   });
 
   it("keeps a detail that already says where", () => {
-    expect(typeColumnText({ detail: "java.util.ArrayList", additionalEdits: edit("import java.util.ArrayList;\n") })).toBe(
-      "java.util.ArrayList",
-    );
+    expect(
+      typeColumnText({ detail: "java.util.ArrayList", additionalEdits: edit("import java.util.ArrayList;\n") }),
+    ).toBe("java.util.ArrayList");
     expect(typeColumnText({ detail: "fn()  ", additionalEdits: [] })).toBe("fn() ");
   });
 });

@@ -201,10 +201,15 @@ export function DiffEditor({ input }: { input: EditorInput }) {
   }, []);
 
   // A HEAD ↔ working file diff of a tracked change: blocks can be left out of the commit.
-  const includable = useVcs((s) => {
-    const fs = s.status.find((f) => stripSlash(f.path) === path);
-    return !!fs && groupOf(fs) === "changes" && effectiveKind(fs) === "modified";
-  }) && left.type === "rev" && left.rev === "HEAD" && !left.path && isWorktree(right);
+  const includable =
+    useVcs((s) => {
+      const fs = s.status.find((f) => stripSlash(f.path) === path);
+      return !!fs && groupOf(fs) === "changes" && effectiveKind(fs) === "modified";
+    }) &&
+    left.type === "rev" &&
+    left.rev === "HEAD" &&
+    !left.path &&
+    isWorktree(right);
   const editableA = !!attached?.a && !attached.a.readOnly;
   const editableB = !!attached?.b && !attached.b.readOnly;
   const ready = !!attached && !!statics && lang !== null;
@@ -241,7 +246,12 @@ export function DiffEditor({ input }: { input: EditorInput }) {
       lang,
       att?.extension ?? [],
       editable ? [editableExtensions(), embeddedEditorExtensions(path)] : [],
-      notes ? diffAnnotations((data.annotations ?? []).filter((n) => n.side === notes), styles) : [],
+      notes
+        ? diffAnnotations(
+            (data.annotations ?? []).filter((n) => n.side === notes),
+            styles,
+          )
+        : [],
     ];
     let views: Views;
     if (opts.mode === "split") {
@@ -314,7 +324,21 @@ export function DiffEditor({ input }: { input: EditorInput }) {
     }
     viewsRef.current = views;
     requestAnimationFrame(updateChunkInfo);
-  }, [attached, statics, lang, opts.mode, opts.collapse, opts.ignore, opts.highlight, editableA, editableB, updateChunkInfo, data.annotations, includable, path]);
+  }, [
+    attached,
+    statics,
+    lang,
+    opts.mode,
+    opts.collapse,
+    opts.ignore,
+    opts.highlight,
+    editableA,
+    editableB,
+    updateChunkInfo,
+    data.annotations,
+    includable,
+    path,
+  ]);
 
   useEffect(
     () => () => {
@@ -498,7 +522,8 @@ export function DiffEditor({ input }: { input: EditorInput }) {
     [],
   );
 
-  const identical = ready && chunkInfo.count === 0 && (attached?.a?.text() ?? statics?.a) === (attached?.b?.text() ?? statics?.b);
+  const identical =
+    ready && chunkInfo.count === 0 && (attached?.a?.text() ?? statics?.a) === (attached?.b?.text() ?? statics?.b);
   // Staging applies to local changes against HEAD / the index only.
   const canStage = editableB && isWorktree(right) && left.type === "rev" && !!useVcs.getState().root;
   const hasSource = !!source;
@@ -518,10 +543,28 @@ export function DiffEditor({ input }: { input: EditorInput }) {
       }}
     >
       <div className={styles.toolbar} role="toolbar" aria-label={tx("Diff")}>
-        <IconButton icon="arrow-up" title="Previous Difference" shortcut={shortcutLabel("diff.prevDifference")} size="small" onClick={() => step(-1)} />
-        <IconButton icon="arrow-down" title="Next Difference" shortcut={shortcutLabel("diff.nextDifference")} size="small" onClick={() => step(1)} />
+        <IconButton
+          icon="arrow-up"
+          title="Previous Difference"
+          shortcut={shortcutLabel("diff.prevDifference")}
+          size="small"
+          onClick={() => step(-1)}
+        />
+        <IconButton
+          icon="arrow-down"
+          title="Next Difference"
+          shortcut={shortcutLabel("diff.nextDifference")}
+          size="small"
+          onClick={() => step(1)}
+        />
         {hasSource && (
-          <IconButton icon="edit" title="Jump to Source" shortcut={shortcutLabel("diff.jumpToSource")} size="small" onClick={jumpToSource} />
+          <IconButton
+            icon="edit"
+            title="Jump to Source"
+            shortcut={shortcutLabel("diff.jumpToSource")}
+            size="small"
+            onClick={jumpToSource}
+          />
         )}
         <span className={styles.sep} />
         <IconButton
@@ -572,7 +615,13 @@ export function DiffEditor({ input }: { input: EditorInput }) {
         {editableB && (
           <>
             <span className={styles.sep} />
-            <IconButton icon="revert" title="Revert Change" size="small" disabled={!chunkInfo.count} onClick={revertChunk} />
+            <IconButton
+              icon="revert"
+              title="Revert Change"
+              size="small"
+              disabled={!chunkInfo.count}
+              onClick={revertChunk}
+            />
             {canStage && (
               <IconButton
                 icon="plus"
@@ -604,9 +653,11 @@ export function DiffEditor({ input }: { input: EditorInput }) {
         <div className={styles.labels}>
           <span className={styles.label} title={sideLabel(left)}>
             {sideLabel(left)}
-            {editableA && <span className={styles.badge}>
+            {editableA && (
+              <span className={styles.badge}>
                 <T>editable</T>
-              </span>}
+              </span>
+            )}
           </span>
           <span className={styles.label} title={sideLabel(right)}>
             {sideLabel(right)}

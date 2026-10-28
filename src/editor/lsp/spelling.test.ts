@@ -4,7 +4,11 @@ import { EditorView } from "@codemirror/view";
 import type { Settings, Typo } from "@/bindings";
 
 let typos: Typo[] = [];
-const commentTypo: Typo = { range: { start: { line: 0, col: 3 }, end: { line: 0, col: 9 } }, word: "mesage", context: "comment" };
+const commentTypo: Typo = {
+  range: { start: { line: 0, col: 3 }, end: { line: 0, col: 9 } },
+  word: "mesage",
+  context: "comment",
+};
 const spellCheck = vi.fn(async () => ({ status: "ok" as const, data: typos }));
 const settingsSet = vi.fn(async (_scope: string, _key: string, value: string) => ({
   status: "ok" as const,
@@ -123,10 +127,17 @@ describe("Typo inspection", () => {
     vi.useFakeTimers();
     const options = (o: Record<string, boolean>) =>
       ({ inspections: { default: { "builtin:spelling": { options: o } } } }) as never;
-    useProject.setState({ project: { root: "/p" } as never, settings: options({ processCode: false, processLiterals: false }) });
+    useProject.setState({
+      project: { root: "/p" } as never,
+      settings: options({ processCode: false, processLiterals: false }),
+    });
     editor("// mesage");
     await settle();
-    expect(spellCheck).toHaveBeenLastCalledWith(7, { code: false, literals: false, comments: true }, expect.any(Number));
+    expect(spellCheck).toHaveBeenLastCalledWith(
+      7,
+      { code: false, literals: false, comments: true },
+      expect.any(Number),
+    );
     useProject.setState({ settings: options({ processComments: false }) });
     await settle();
     expect(spellCheck).toHaveBeenCalledTimes(2);
@@ -136,7 +147,13 @@ describe("Typo inspection", () => {
   it("keeps lint conversion of plain info diagnostics unchanged", () => {
     const doc = Text.of(["abc"]);
     const out = toLintDiagnostics(doc, [
-      { range: { start: { line: 0, col: 0 }, end: { line: 0, col: 1 } }, severity: "info", message: "m", source: null, code: null },
+      {
+        range: { start: { line: 0, col: 0 }, end: { line: 0, col: 1 } },
+        severity: "info",
+        message: "m",
+        source: null,
+        code: null,
+      },
     ]);
     expect(out[0]!.markClass).toBeUndefined();
   });

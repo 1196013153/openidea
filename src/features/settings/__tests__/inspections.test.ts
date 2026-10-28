@@ -44,7 +44,15 @@ describe("inspections tree", () => {
   const tree = buildInspectionTree(languages, seen, [{ "lsp:ruff:E501": { severity: "typo" } }]);
 
   it("groups servers by language with seen and configured codes, built-ins by category", () => {
-    expect(tree.map((g) => g.name)).toEqual(["General", "JavaScript", "Other", "Proofreading", "Python", "SQL", "TypeScript"]);
+    expect(tree.map((g) => g.name)).toEqual([
+      "General",
+      "JavaScript",
+      "Other",
+      "Proofreading",
+      "Python",
+      "SQL",
+      "TypeScript",
+    ]);
     const python = find(tree, "group:Python")!;
     expect(python.children.map((n) => n.id)).toEqual(["lsp:basedpyright", "lsp:ruff"]);
     expect(python.children[1]!.children.map((n) => n.id)).toEqual(["lsp:ruff:E501", "lsp:ruff:F401"]);

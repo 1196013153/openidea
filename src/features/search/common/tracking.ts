@@ -5,7 +5,13 @@
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { create } from "zustand";
-import { activeEditor, isExternalChange, onEditorEvent, registerEditorContribution, useEditorRegistry } from "@/editor/api";
+import {
+  activeEditor,
+  isExternalChange,
+  onEditorEvent,
+  registerEditorContribution,
+  useEditorRegistry,
+} from "@/editor/api";
 import { call, commands, onIdeEvent } from "@/platform/ipc";
 import {
   MERGE_DISTANCE,
@@ -155,7 +161,8 @@ export function installTracking(): () => void {
   });
 
   const unsubPatched = onIdeEvent("docPatched", (e) => {
-    const path = docPaths.get(e.doc) ?? [...useEditorRegistry.getState().editors].find((h) => h.ctx.doc === e.doc)?.ctx.path;
+    const path =
+      docPaths.get(e.doc) ?? [...useEditorRegistry.getState().editors].find((h) => h.ctx.doc === e.doc)?.ctx.path;
     if (path) bumpVersion(path, false);
   });
   const unsubFs = onIdeEvent("fsChanged", (e) => {

@@ -69,7 +69,11 @@ describe("build tools feature", () => {
 
   it("offers its actions in Search Everywhere only for Maven projects and toggles run options", async () => {
     const visible = () => allActions().filter((a) => !a.hidden && a.id.startsWith("maven."));
-    expect(visible().map((a) => a.id).sort()).toEqual([
+    expect(
+      visible()
+        .map((a) => a.id)
+        .sort(),
+    ).toEqual([
       "maven.analyzeDependencies",
       "maven.executeGoal",
       "maven.reload",
@@ -85,7 +89,11 @@ describe("build tools feature", () => {
     await executeAction("maven.toggleOffline");
     expect(useBuild.getState().settings.maven).toMatchObject({ offline: true, skipTests: true });
     expect(JSON.parse(localStorage.getItem("openidea.buildTools:/p")!).maven.skipTests).toBe(true);
-    expect(allActions().find((a) => a.id === "maven.toggleOffline")!.toggled?.()).toBe(true);
+    expect(
+      allActions()
+        .find((a) => a.id === "maven.toggleOffline")!
+        .toggled?.(),
+    ).toBe(true);
 
     await executeAction("maven.executeGoal");
     expect(useBuild.getState().executeOpen).toBe("maven");
@@ -93,8 +101,19 @@ describe("build tools feature", () => {
 
   it("runs a lifecycle phase through the run feature with the toolbar options", async () => {
     const started: unknown[] = [];
-    const off = registerAction({ id: "run.runConfig", title: "Run", hidden: true, run: ({ arg }) => void started.push(arg) });
-    act(() => useBuild.setState({ root: "/p", model: mavenModel, expanded: { maven: new Set(["mvn:pom.xml", "mvn:pom.xml:lifecycle"]), gradle: new Set() } }));
+    const off = registerAction({
+      id: "run.runConfig",
+      title: "Run",
+      hidden: true,
+      run: ({ arg }) => void started.push(arg),
+    });
+    act(() =>
+      useBuild.setState({
+        root: "/p",
+        model: mavenModel,
+        expanded: { maven: new Set(["mvn:pom.xml", "mvn:pom.xml:lifecycle"]), gradle: new Set() },
+      }),
+    );
     await executeAction("maven.toggleSkipTests");
     render(<MavenView />);
     expect(screen.getByText("Build files changed since the last reload")).toBeTruthy();
@@ -106,6 +125,11 @@ describe("build tools feature", () => {
     expect(started).toHaveLength(1);
     const { config, temporary } = started[0] as { config: RunConfig; temporary: boolean };
     expect(temporary).toBe(true);
-    expect(config).toMatchObject({ name: "spring-demo [package]", command: "/p/mvnw", args: ["package", "-DskipTests"], kind: "maven" });
+    expect(config).toMatchObject({
+      name: "spring-demo [package]",
+      command: "/p/mvnw",
+      args: ["package", "-DskipTests"],
+      kind: "maven",
+    });
   });
 });

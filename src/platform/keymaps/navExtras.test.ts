@@ -4,7 +4,9 @@ import { vscodeMacos } from "./vscode-macos";
 
 describe("IDEA macOS bindings for navigation and editor extras", () => {
   it("⇧⌘T is Go to Test only; Reopen Closed Tab has no default (VS Code keeps it)", () => {
-    const owners = Object.entries(intellijMacos).filter(([, keys]) => keys.includes("Meta+Shift+T")).map(([id]) => id);
+    const owners = Object.entries(intellijMacos)
+      .filter(([, keys]) => keys.includes("Meta+Shift+T"))
+      .map(([id]) => id);
     expect(owners).toEqual(["navigate.gotoTest"]);
     expect(intellijMacos["editor.reopenClosedTab"]).toEqual([]);
     expect(vscodeMacos["editor.reopenClosedTab"]).toEqual(["Meta+Shift+T"]);

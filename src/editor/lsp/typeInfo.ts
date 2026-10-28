@@ -68,7 +68,10 @@ export async function expressionTypeInfo(view: EditorView) {
       kind: "doc",
       anchor: caretAnchor(view, hover.range ? rangeToOffsets(view.state.doc, hover.range).from : pos),
       entries: [
-        { markup: { kind: "markdown", value: `\`\`\`${language}\n${info.text}\n\`\`\`` }, language: docOf(view)?.uiMode ?? null },
+        {
+          markup: { kind: "markdown", value: `\`\`\`${language}\n${info.text}\n\`\`\`` },
+          language: docOf(view)?.uiMode ?? null,
+        },
       ],
       index: 0,
       themeClasses: view.themeClasses,

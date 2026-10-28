@@ -81,7 +81,9 @@ export const EDITOR_KEY_COMMANDS: Record<string, Command> = {
 };
 
 /** The recorded name of a key event, or null when it is not an editor key a macro records. */
-export function editorKeyName(e: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">): string | null {
+export function editorKeyName(
+  e: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">,
+): string | null {
   const name = [e.metaKey && "Meta", e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.key]
     .filter(Boolean)
     .join("+");

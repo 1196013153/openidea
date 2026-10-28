@@ -33,9 +33,7 @@ import { isImeKey } from "@/platform/ime";
 const MAX_PROMPT_HEIGHT = 280;
 const MAX_ITEMS = 12;
 
-type Item =
-  | { kind: "file"; path: string; rel: string }
-  | { kind: "command"; command: AgentCommand };
+type Item = { kind: "file"; path: string; rel: string } | { kind: "command"; command: AgentCommand };
 
 export interface ComposerProps {
   /** Store key of the draft. */

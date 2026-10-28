@@ -97,7 +97,11 @@ class OverviewLane {
             rows.set(key, { top: prev?.top ?? top, height: Math.max(height, prev?.height ?? 0), mark: m });
         }
         const caret = pos(view.lineBlockAt(view.state.selection.main.head).top);
-        return { rows: [...rows.values()].sort((x, y) => (x.mark.priority ?? 0) - (y.mark.priority ?? 0)), caret, unit };
+        return {
+          rows: [...rows.values()].sort((x, y) => (x.mark.priority ?? 0) - (y.mark.priority ?? 0)),
+          caret,
+          unit,
+        };
       },
       write: ({ rows, caret, unit }) => {
         const key =
@@ -107,7 +111,10 @@ class OverviewLane {
         const frag = document.createDocumentFragment();
         for (const r of rows) {
           const el = document.createElement("div");
-          el.className = r.mark.kind === "thin" ? "cm-openidea-overviewMark cm-openidea-overviewMark-thin" : "cm-openidea-overviewMark";
+          el.className =
+            r.mark.kind === "thin"
+              ? "cm-openidea-overviewMark cm-openidea-overviewMark-thin"
+              : "cm-openidea-overviewMark";
           el.style.top = `${r.top}${unit}`;
           el.style.height = `${r.height}${unit}`;
           el.style.background = r.mark.color;

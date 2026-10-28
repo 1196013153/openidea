@@ -33,7 +33,13 @@ const AT_NAME = "Caret should be positioned at the name of the element to be ref
 
 /** IDEA's Refactor This order. */
 export const REFACTORINGS: readonly Refactoring[] = [
-  { id: "rename", action: "refactor.rename", label: "Rename…", kind: null, reason: () => "Caret should be on a symbol" },
+  {
+    id: "rename",
+    action: "refactor.rename",
+    label: "Rename…",
+    kind: null,
+    reason: () => "Caret should be on a symbol",
+  },
   {
     id: "changeSignature",
     action: "refactor.changeSignature",
@@ -42,7 +48,13 @@ export const REFACTORINGS: readonly Refactoring[] = [
     reason: () => "Caret should be positioned at the name of the function or method to be refactored",
   },
   { id: "move", action: "refactor.move", label: "Move…", kind: "refactor.move", reason: () => AT_NAME },
-  { id: "safeDelete", action: "refactor.safeDelete", label: "Safe Delete…", kind: null, reason: () => "Caret should be on a symbol" },
+  {
+    id: "safeDelete",
+    action: "refactor.safeDelete",
+    label: "Safe Delete…",
+    kind: null,
+    reason: () => "Caret should be on a symbol",
+  },
   {
     id: "extractMethod",
     action: "refactor.extractMethod",
@@ -108,7 +120,12 @@ export function classifyAction(action: Pick<CodeAction, "kind" | "title">): Refa
   if (kindIs(kind, "refactor.extract") || (generic && /^(extract|introduce)\b/i.test(title))) {
     const sub = kind.slice("refactor.extract".length);
     const is = (re: RegExp) => re.test(sub) || re.test(title);
-    if (/^(extract|introduce)( (in)?to)?( an?)? (type\b|typedef|interface|struct|enum|trait|superclass|module)/i.test(title)) return null;
+    if (
+      /^(extract|introduce)( (in)?to)?( an?)? (type\b|typedef|interface|struct|enum|trait|superclass|module)/i.test(
+        title,
+      )
+    )
+      return null;
     if (is(/function|method/i)) return "extractMethod";
     if (is(/field|member|property/i)) return "extractField";
     if (is(/parameter|argument/i)) return "extractParameter";
@@ -120,7 +137,8 @@ export function classifyAction(action: Pick<CodeAction, "kind" | "title">): Refa
   }
   if (kindIs(kind, "refactor.inline") || (generic && /^inline\b/i.test(title))) return "inline";
   if (kindIs(kind, "refactor.move") || (generic && /^move\b/i.test(title))) return "move";
-  if (/signature/i.test(kind) || /\bchange signature\b|\breorder (parameters|arguments)\b/i.test(title)) return "changeSignature";
+  if (/signature/i.test(kind) || /\bchange signature\b|\breorder (parameters|arguments)\b/i.test(title))
+    return "changeSignature";
   return null;
 }
 

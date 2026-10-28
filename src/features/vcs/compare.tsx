@@ -47,7 +47,9 @@ export function clipboardDiffData(path: string, clipboard: string, selection: st
     path,
     title: selection ? tx`Clipboard ↔ ${baseName(path)} (selection)` : tx`Clipboard ↔ ${baseName(path)}`,
     left: { type: "text", text: clipboard, label: "Clipboard" },
-    right: selection ? { type: "text", text: selection, label: "Selection" } : { type: "worktree", label: displayPath(path) },
+    right: selection
+      ? { type: "text", text: selection, label: "Selection" }
+      : { type: "worktree", label: displayPath(path) },
   };
 }
 

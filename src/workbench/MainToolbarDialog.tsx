@@ -111,7 +111,11 @@ function CustomizeDialog({ onClose }: { onClose: () => void }) {
                 }
                 renderItem={(id) => (
                   <div className={styles.row}>
-                    <Icon name={isActionEntry(id) ? (allActionIcon(id) ?? "run") : "main-menu"} size={14} className={styles.rowIcon} />
+                    <Icon
+                      name={isActionEntry(id) ? (allActionIcon(id) ?? "run") : "main-menu"}
+                      size={14}
+                      className={styles.rowIcon}
+                    />
                     <span className={styles.rowLabel}>{widgetTitle(id, items)}</span>
                   </div>
                 )}

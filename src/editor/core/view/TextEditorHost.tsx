@@ -37,7 +37,5 @@ export function TextEditorHost({ tabId }: { tabId: string }) {
         </EmptyState>
       </div>
     );
-  return (
-    <div ref={ref} className={styles.host} data-editor-host="" aria-busy={!slot || undefined} />
-  );
+  return <div ref={ref} className={styles.host} data-editor-host="" aria-busy={!slot || undefined} />;
 }

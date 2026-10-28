@@ -3,14 +3,7 @@
  * IDEA) and inline values of the frame's locals after line ends.
  */
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
-import {
-  Decoration,
-  EditorView,
-  ViewPlugin,
-  WidgetType,
-  type DecorationSet,
-  type ViewUpdate,
-} from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import type { EditorDocContext } from "@/editor/api";
 import { useExecutionPoint } from "../state";
 import { onWorkflowSettingsChange, workflowSettings } from "@/platform/workflowSettings";

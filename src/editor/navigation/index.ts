@@ -38,7 +38,10 @@ async function withDoc<T>(path: string, fn: (doc: number) => Promise<T>): Promis
 
 const outlineOf = (doc: number) => lspRequest(() => commands.docOutline(doc));
 
-async function caretOutline(view: EditorView, ctx: EditorDocContext): Promise<{ outline: OutlineItem[]; caret: Pos } | null> {
+async function caretOutline(
+  view: EditorView,
+  ctx: EditorDocContext,
+): Promise<{ outline: OutlineItem[]; caret: Pos } | null> {
   await whenSynced(view);
   const caret = offsetToPos(view.state.doc, view.state.selection.main.head);
   try {
@@ -75,7 +78,8 @@ async function superMethod(view: EditorView) {
   if (!at) return;
   const { method, type } = memberAt(at.outline, at.caret);
   const deps = {
-    supertypes: (path: string, pos: Pos) => withDoc(path, (doc) => lspRequest(() => commands.lspTypeHierarchy(doc, pos, "incoming"))),
+    supertypes: (path: string, pos: Pos) =>
+      withDoc(path, (doc) => lspRequest(() => commands.lspTypeHierarchy(doc, pos, "incoming"))),
     outline: (path: string) => withDoc(path, outlineOf),
   };
   let locs: Location[] = [];
@@ -98,18 +102,22 @@ async function superMethod(view: EditorView) {
   openPopup({
     kind: "list",
     anchor: caretAnchor(view, head),
-    title: method ? tx`Choose Super Method of ${baseName(method.name)} (${locs.length} found)` : tx`Choose Super Class or Interface (${locs.length} found)`,
+    title: method
+      ? tx`Choose Super Method of ${baseName(method.name)} (${locs.length} found)`
+      : tx`Choose Super Class or Interface (${locs.length} found)`,
     items: await locationItems(locs),
   });
 }
 
-const RUST_TEST_MODULE = "\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn it_works() {\n        \n    }\n}\n";
+const RUST_TEST_MODULE =
+  "\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn it_works() {\n        \n    }\n}\n";
 
 function testDeps(view: EditorView, ctx: EditorDocContext): TestNavDeps {
   return {
     projectRoot: () => useProject.getState().project?.root ?? null,
     roots: () => currentRoots(),
-    findByName: async (name) => (await call(commands.findFiles(name, 50))).filter((m) => basename(m.path) === name).map((m) => m.path),
+    findByName: async (name) =>
+      (await call(commands.findFiles(name, 50))).filter((m) => basename(m.path) === name).map((m) => m.path),
     open: async (path, offset) => {
       const selection = offset !== undefined && path === ctx.path ? offsetToPos(view.state.doc, offset) : undefined;
       await editorService().openFile(path, { selection, focus: true });
@@ -129,13 +137,19 @@ function testDeps(view: EditorView, ctx: EditorDocContext): TestNavDeps {
         })),
       }),
     hint: (text) => showHint(view, text),
-    createTest: ({ directory, name, extension }) => void executeAction("templates.newFromTemplate", { directory, name, extension, kindId: "test" }),
+    createTest: ({ directory, name, extension }) =>
+      void executeAction("templates.newFromTemplate", { directory, name, extension, kindId: "test" }),
     createRustTestModule: () => {
       if (view.state.readOnly) return;
       const end = view.state.doc.length;
       const insert = (view.state.doc.sliceString(end - 1) === "\n" ? "" : "\n") + RUST_TEST_MODULE;
       const caret = end + insert.indexOf("fn it_works() {\n") + "fn it_works() {\n        ".length;
-      view.dispatch({ changes: { from: end, insert }, selection: EditorSelection.cursor(caret), scrollIntoView: true, userEvent: "input" });
+      view.dispatch({
+        changes: { from: end, insert },
+        selection: EditorSelection.cursor(caret),
+        scrollIntoView: true,
+        userEvent: "input",
+      });
       view.focus();
     },
   };
@@ -151,7 +165,12 @@ async function gotoTest(view: EditorView) {
   }
 }
 
-function editorAction(id: string, title: string, run: (view: EditorView) => unknown, extra: Partial<Action> = {}): Action {
+function editorAction(
+  id: string,
+  title: string,
+  run: (view: EditorView) => unknown,
+  extra: Partial<Action> = {},
+): Action {
   return {
     id,
     title,
@@ -168,7 +187,9 @@ function editorAction(id: string, title: string, run: (view: EditorView) => unkn
 export function registerNavigationActions(): () => void {
   return registerActions([
     editorAction("navigate.gotoTest", "Test", gotoTest, { keywords: ["go to test", "test subject", "create test"] }),
-    editorAction("navigate.superMethod", "Super Method", superMethod, { keywords: ["go to super", "overridden", "parent"] }),
+    editorAction("navigate.superMethod", "Super Method", superMethod, {
+      keywords: ["go to super", "overridden", "parent"],
+    }),
     editorAction("navigate.nextMethod", "Next Method", (v) => gotoMethod(v, 1)),
     editorAction("navigate.previousMethod", "Previous Method", (v) => gotoMethod(v, -1)),
   ]);

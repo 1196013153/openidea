@@ -109,8 +109,15 @@ function withoutMnemonic(b: Bookmark): Bookmark {
 }
 
 /** ⌃⇧digit: the line already has `mnemonic` → remove the bookmark; otherwise assign it. */
-export function toggleMnemonic(list: readonly Bookmark[], path: string, line: number, text: string, mnemonic: string): Bookmark[] {
-  if (bookmarkAt(list, path, line)?.mnemonic === mnemonic) return list.filter((b) => !(b.path === path && b.line === line));
+export function toggleMnemonic(
+  list: readonly Bookmark[],
+  path: string,
+  line: number,
+  text: string,
+  mnemonic: string,
+): Bookmark[] {
+  if (bookmarkAt(list, path, line)?.mnemonic === mnemonic)
+    return list.filter((b) => !(b.path === path && b.line === line));
   return assignMnemonic(list, path, line, text, mnemonic);
 }
 
@@ -119,7 +126,12 @@ export function bookmarkByMnemonic(list: readonly Bookmark[], mnemonic: string):
 }
 
 /** Rename (F2 in the Bookmarks view): an empty description shows the line again. */
-export function describeBookmark(list: readonly Bookmark[], path: string, line: number, description: string): Bookmark[] {
+export function describeBookmark(
+  list: readonly Bookmark[],
+  path: string,
+  line: number,
+  description: string,
+): Bookmark[] {
   return list.map((b) => {
     if (b.path !== path || b.line !== line) return b;
     const { description: _, ...rest } = b;
@@ -172,7 +184,10 @@ export function renameBookmarks(list: readonly Bookmark[], from: string, to: str
 }
 
 export function linesOf(list: readonly Bookmark[], path: string): number[] {
-  return list.filter((b) => b.path === path).map((b) => b.line).sort((a, b) => a - b);
+  return list
+    .filter((b) => b.path === path)
+    .map((b) => b.line)
+    .sort((a, b) => a - b);
 }
 
 /** Lines of `path`'s bookmarks with their mnemonics (gutter), sorted by line. */
@@ -186,16 +201,26 @@ export function marksOf(list: readonly Bookmark[], path: string): Array<{ line: 
 function sanitize(raw: unknown): Bookmark[] {
   if (!Array.isArray(raw)) return [];
   return sortBookmarks(
-    raw.filter(
-      (b): b is Bookmark =>
-        !!b && typeof b === "object" && typeof (b as Bookmark).path === "string" && Number.isInteger((b as Bookmark).line),
-    ).map((b) => {
-      const out: Bookmark = { path: b.path, line: Math.max(0, b.line), text: String(b.text ?? ""), created: Number(b.created) || 0 };
-      if (isMnemonic(b.mnemonic)) out.mnemonic = b.mnemonic;
-      if (typeof b.description === "string" && b.description.trim()) out.description = b.description;
-      if (typeof b.list === "string" && b.list) out.list = b.list;
-      return out;
-    }),
+    raw
+      .filter(
+        (b): b is Bookmark =>
+          !!b &&
+          typeof b === "object" &&
+          typeof (b as Bookmark).path === "string" &&
+          Number.isInteger((b as Bookmark).line),
+      )
+      .map((b) => {
+        const out: Bookmark = {
+          path: b.path,
+          line: Math.max(0, b.line),
+          text: String(b.text ?? ""),
+          created: Number(b.created) || 0,
+        };
+        if (isMnemonic(b.mnemonic)) out.mnemonic = b.mnemonic;
+        if (typeof b.description === "string" && b.description.trim()) out.description = b.description;
+        if (typeof b.list === "string" && b.list) out.list = b.list;
+        return out;
+      }),
   );
 }
 

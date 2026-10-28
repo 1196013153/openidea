@@ -111,7 +111,12 @@ function act(action: string, arg?: unknown, label?: string): MenuItem | null {
 }
 
 /** Runs another feature's action directly (the project view decides availability), with its shortcut. */
-function delegated(id: string, arg: unknown, label: string, extra: { icon?: string; shortcut?: string } = {}): MenuItem | null {
+function delegated(
+  id: string,
+  arg: unknown,
+  label: string,
+  extra: { icon?: string; shortcut?: string } = {},
+): MenuItem | null {
   if (!getAction(id)) return null;
   return { id, label, ...extra, shortcut: extra.shortcut ?? shortcutLabel(id), run: () => void delegate(id, arg) };
 }
@@ -328,9 +333,21 @@ export function contextMenuItems(nodes: ProjectNode[]): MenuItem[] {
 
   // IDEA: Compare With… (one file) / Compare Files (two files).
   if (files.length === 2 && nodes.length === 2)
-    push(delegated("diff.compareFiles", files.map((f) => f.path), "Compare Files", { icon: "diff" }));
+    push(
+      delegated(
+        "diff.compareFiles",
+        files.map((f) => f.path),
+        "Compare Files",
+        { icon: "diff" },
+      ),
+    );
   else if (singleFile)
-    push(delegated("diff.compareWith", singleFile.path, "Compare With…", { icon: "diff", shortcut: keyLabel("project.compareWith") }));
+    push(
+      delegated("diff.compareWith", singleFile.path, "Compare With…", {
+        icon: "diff",
+        shortcut: keyLabel("project.compareWith"),
+      }),
+    );
 
   if (inProject && single?.dir && !single.root && !single.placeholder) {
     const current = directoryRole(single.path);
@@ -375,15 +392,27 @@ function libraryMenuItems(nodes: ProjectNode[]): MenuItem[] {
       id: "copyPath",
       label: "Copy Path/Reference…",
       submenu: [
-        { id: "abs", label: "Absolute Path", shortcut: keyLabel("project.copyAbsolutePath"), run: () => void copyPaths("absolute", nodes) },
+        {
+          id: "abs",
+          label: "Absolute Path",
+          shortcut: keyLabel("project.copyAbsolutePath"),
+          run: () => void copyPaths("absolute", nodes),
+        },
         { id: "name", label: "File Name", run: () => void copyPaths("name", nodes) },
       ],
     },
     { kind: "separator" },
     !!folder && delegated("find.inPath", { directory: folder }, "Find in Files…", { icon: "search" }),
     !!folder && { kind: "separator" },
-    submenu("openIn", "Open In", [{ id: "finder", label: revealLabel(), icon: "external-link", run: () => void revealInFinder(nodes) }]),
-    single && !single.dir && delegated("diff.compareWith", single.path, "Compare With…", { icon: "diff", shortcut: keyLabel("project.compareWith") }),
+    submenu("openIn", "Open In", [
+      { id: "finder", label: revealLabel(), icon: "external-link", run: () => void revealInFinder(nodes) },
+    ]),
+    single &&
+      !single.dir &&
+      delegated("diff.compareWith", single.path, "Compare With…", {
+        icon: "diff",
+        shortcut: keyLabel("project.compareWith"),
+      }),
   ];
   return items.filter((i): i is MenuItem => !!i);
 }

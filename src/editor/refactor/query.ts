@@ -26,7 +26,11 @@ export async function cancellable<T>(run: (request: number) => Promise<Result<T>
 }
 
 /** `refactor*` code actions for the selection, with the kinds the servers advertise. */
-export async function queryRefactorActions(view: EditorView, signal?: AbortSignal, only: string[] = ["refactor"]): Promise<CodeActionQuery> {
+export async function queryRefactorActions(
+  view: EditorView,
+  signal?: AbortSignal,
+  only: string[] = ["refactor"],
+): Promise<CodeActionQuery> {
   const ctx = docOf(view);
   if (!ctx) throw new IpcError({ kind: "unavailable", message: "No document" });
   await whenSynced(view);

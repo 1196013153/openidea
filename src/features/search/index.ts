@@ -75,7 +75,10 @@ function selectionDescription(): string | null {
   const view = activeEditor()?.view;
   if (!view) return null;
   const { from, to } = view.state.selection.main;
-  const text = view.state.sliceDoc(from, Math.min(to, from + 1000)).replace(/\s+/g, " ").trim();
+  const text = view.state
+    .sliceDoc(from, Math.min(to, from + 1000))
+    .replace(/\s+/g, " ")
+    .trim();
   return text || null;
 }
 

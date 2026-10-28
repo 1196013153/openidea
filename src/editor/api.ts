@@ -17,7 +17,15 @@
  *  - Right-hand overview marks: `scrollbarMarks`; save hooks:
  *    `registerSaveParticipant`; Back/Forward history: `getNavigationHistory`.
  */
-import { Annotation, Compartment, Facet, type EditorState, type Extension, type RangeSet, type Transaction } from "@codemirror/state";
+import {
+  Annotation,
+  Compartment,
+  Facet,
+  type EditorState,
+  type Extension,
+  type RangeSet,
+  type Transaction,
+} from "@codemirror/state";
 import { GutterMarker, ViewPlugin, type EditorView } from "@codemirror/view";
 import type { LanguageDescription } from "@codemirror/language";
 import { create } from "zustand";
@@ -252,7 +260,12 @@ export class LaneMarker extends GutterMarker {
     super();
   }
   override eq(other: GutterMarker): boolean {
-    return other instanceof LaneMarker && other.color === this.color && other.kind === this.kind && other.title === this.title;
+    return (
+      other instanceof LaneMarker &&
+      other.color === this.color &&
+      other.kind === this.kind &&
+      other.title === this.title
+    );
   }
   override toDOM(): Node {
     const el = document.createElement("div");
@@ -283,7 +296,10 @@ export type ContributedFormatter = (
 /** Go to Declaration / ⌘-click: `true` when it handled `pos`. */
 export type ContributedDefinition = (view: EditorView, pos: number) => boolean;
 /** Hover and Quick Documentation: Markdown about the symbol at `pos`. */
-export type ContributedHover = (state: EditorState, pos: number) => { from: number; to: number; markdown: string } | null;
+export type ContributedHover = (
+  state: EditorState,
+  pos: number,
+) => { from: number; to: number; markdown: string } | null;
 
 export function contributedAt<T>(state: EditorState, key: string, pos: number): T | undefined {
   return state.languageDataAt<T>(key, pos)[0];

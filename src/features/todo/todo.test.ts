@@ -145,7 +145,12 @@ describe("scope based and changes tabs", () => {
 
   it("keeps only files of the chosen change list (the active one by default)", () => {
     const lists = [
-      { id: "default", name: "Changes", active: true, files: [{ path: "/p/a.ts" }, { path: "/p/new.ts" }, { path: "/p/gone.ts", deleted: true }] },
+      {
+        id: "default",
+        name: "Changes",
+        active: true,
+        files: [{ path: "/p/a.ts" }, { path: "/p/new.ts" }, { path: "/p/gone.ts", deleted: true }],
+      },
       { id: "ui", name: "UI", active: false, files: [{ path: "/p/b.ts" }] },
     ];
     const changed = changedPaths(lists);

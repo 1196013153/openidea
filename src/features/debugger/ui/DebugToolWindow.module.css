@@ -237,7 +237,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   -webkit-user-select: text;
-cursor: text;
+  cursor: text;
   -webkit-user-select: text;
   user-select: text;
   outline: none;

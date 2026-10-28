@@ -10,7 +10,8 @@ import type { RunConfig } from "@/platform/ipc";
 import { JDWP_AGENT, jdwpListeningPort } from "@/platform/javaLaunch";
 import { startRun, useRun } from "./store";
 
-const isMavenTestGoal = (a: string) => /^(test|verify|integration-test|surefire:test|failsafe:integration-test)$/.test(a);
+const isMavenTestGoal = (a: string) =>
+  /^(test|verify|integration-test|surefire:test|failsafe:integration-test)$/.test(a);
 const isGradleJvmTask = (a: string) => /(^|:)(test|bootRun|run|integrationTest|check)$/.test(a);
 
 function withProperty(args: readonly string[], key: string, value: string): string[] {

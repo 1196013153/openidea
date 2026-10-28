@@ -17,7 +17,11 @@ afterEach(() => {
 describe("Select In (⌥F1)", () => {
   it("lists the project view, contributed targets, Finder and the terminal", () => {
     disposers.push(
-      registerMenuGroup({ id: "test.selectIn", menus: ["selectIn"], items: () => [{ label: "Structure", run: () => {} }] }),
+      registerMenuGroup({
+        id: "test.selectIn",
+        menus: ["selectIn"],
+        items: () => [{ label: "Structure", run: () => {} }],
+      }),
       registerActions([{ id: "terminal.openAt", title: "Open Terminal At", run: () => {} }]),
     );
     expect(labels(selectInTargets("/p/src/a.ts"))).toEqual([

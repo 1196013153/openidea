@@ -42,7 +42,12 @@ export function keymapItems(keymapId: string, customKeymaps: string[]): MenuItem
 export function colorSchemeItems(current: string | undefined): MenuItem[] {
   const value = current && SCHEMES.some((s) => s.id === current) ? current : "theme-default";
   return [
-    { id: "scheme.theme-default", label: "Theme default", checked: value === "theme-default", run: () => void setGlobal("editor.colorScheme", "theme-default", "color scheme") },
+    {
+      id: "scheme.theme-default",
+      label: "Theme default",
+      checked: value === "theme-default",
+      run: () => void setGlobal("editor.colorScheme", "theme-default", "color scheme"),
+    },
     ...SCHEMES.map<MenuItem>((s) => ({
       id: `scheme.${s.id}`,
       label: s.name,
@@ -72,7 +77,11 @@ export function keymapState(): { keymapId: string; customs: string[] } {
 export function quickSwitchItems(): MenuItem[] {
   const { keymapId, customs } = keymapState();
   return [
-    { id: "qs.scheme", label: "Editor Color Scheme", submenu: colorSchemeItems(useProject.getState().settings?.editor?.colorScheme) },
+    {
+      id: "qs.scheme",
+      label: "Editor Color Scheme",
+      submenu: colorSchemeItems(useProject.getState().settings?.editor?.colorScheme),
+    },
     { id: "qs.keymap", label: "Keymap", submenu: keymapItems(keymapId, customs) },
     { id: "qs.viewMode", label: "View Mode", submenu: VIEW_MODE_ITEMS },
     { id: "qs.theme", label: "Theme", submenu: themeItems() },

@@ -171,7 +171,9 @@ function insertedTokens(before: Token[], after: Token[]): Token[] {
   for (let i = n - 1; i >= 0; i--)
     for (let j = m - 1; j >= 0; j--)
       lcs[at(i, j)] =
-        before[i]!.text === after[j]!.text ? lcs[at(i + 1, j + 1)]! + 1 : Math.max(lcs[at(i + 1, j)]!, lcs[at(i, j + 1)]!);
+        before[i]!.text === after[j]!.text
+          ? lcs[at(i + 1, j + 1)]! + 1
+          : Math.max(lcs[at(i + 1, j)]!, lcs[at(i, j + 1)]!);
   const out: Token[] = [];
   let i = 0;
   let j = 0;
@@ -208,7 +210,10 @@ export function introducedName(before: string, after: string): { name: string; s
     afterTo++;
     beforeTo++;
   }
-  const inserted = insertedTokens(tokens(before.slice(start, beforeTo), start), tokens(after.slice(start, afterTo), start));
+  const inserted = insertedTokens(
+    tokens(before.slice(start, beforeTo), start),
+    tokens(after.slice(start, afterTo), start),
+  );
   const byName = new Map<string, Span[]>();
   for (const t of inserted) {
     if (!WORD.test(t.text[0]!) || !isIdentifier(t.text) || isKeyword(t.text)) continue;
@@ -261,7 +266,8 @@ async function expressionInfo(view: EditorView): Promise<{ kind: string; text: s
 }
 
 async function docChange(view: EditorView, before: EditorView["state"]["doc"], ms = 1500): Promise<boolean> {
-  for (let waited = 0; waited < ms && view.state.doc === before; waited += 20) await new Promise((r) => setTimeout(r, 20));
+  for (let waited = 0; waited < ms && view.state.doc === before; waited += 20)
+    await new Promise((r) => setTimeout(r, 20));
   return view.state.doc !== before;
 }
 

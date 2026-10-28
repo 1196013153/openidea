@@ -2,12 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "e2e-bridge",
   "description": "Debug-only automation bridge",
-  "windows": [
-    "main",
-    "project-*",
-    "settings-*"
-  ],
-  "permissions": [
-    "mcp-bridge:default"
-  ]
+  "windows": ["main", "project-*", "settings-*"],
+  "permissions": ["mcp-bridge:default"]
 }

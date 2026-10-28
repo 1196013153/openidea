@@ -215,7 +215,10 @@ describe("interactive rebase plan", () => {
 describe("log ordering and staleness", () => {
   it("orders commits by their position in the log, not by date", () => {
     const log = [commit("new"), commit("mid"), commit("old")];
-    const picked = [{ ...log[2]!, timeMs: 3 }, { ...log[0]!, timeMs: 1 }];
+    const picked = [
+      { ...log[2]!, timeMs: 3 },
+      { ...log[0]!, timeMs: 1 },
+    ];
     expect(newestFirst(picked, log).map((c) => c.id)).toEqual(["new", "old"]);
     expect(newestFirst([commit("a"), { ...commit("b"), timeMs: 5 }], []).map((c) => c.id)).toEqual(["b", "a"]);
   });
@@ -223,9 +226,9 @@ describe("log ordering and staleness", () => {
   it("changes the refs signature when HEAD or any branch tip moves", () => {
     const base = refsSignature(info(), [branch("main", "c3"), branch("origin/main", "c3", true)]);
     expect(refsSignature(info(), [branch("origin/main", "c3", true), branch("main", "c3")])).toBe(base);
-    expect(refsSignature(info({ headCommit: "c2" }), [branch("main", "c2"), branch("origin/main", "c3", true)])).not.toBe(
-      base,
-    );
+    expect(
+      refsSignature(info({ headCommit: "c2" }), [branch("main", "c2"), branch("origin/main", "c3", true)]),
+    ).not.toBe(base);
     expect(refsSignature(info(), [branch("main", "c3"), branch("origin/main", "c4", true)])).not.toBe(base);
     expect(refsSignature(info(), [branch("main", "c3")])).not.toBe(base);
   });

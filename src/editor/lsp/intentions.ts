@@ -43,7 +43,9 @@ async function fetchActions(view: EditorView, only: string[], whole = false): Pr
   if (!doc) return [];
   await whenSynced(view);
   const sel = view.state.selection.main;
-  const range = whole ? offsetsToRange(view.state.doc, 0, view.state.doc.length) : offsetsToRange(view.state.doc, sel.from, sel.to);
+  const range = whole
+    ? offsetsToRange(view.state.doc, 0, view.state.doc.length)
+    : offsetsToRange(view.state.doc, sel.from, sel.to);
   return lspRequest(() => commands.lspCodeActions(doc.doc, range, only));
 }
 
@@ -58,7 +60,12 @@ interface PlacedProblem {
  * error elsewhere on the caret line are offered too. The errors to ask about,
  * in line order; none when an error is at the caret.
  */
-export function lineErrorsAwayFromCaret(problems: readonly PlacedProblem[], lineFrom: number, lineTo: number, caret: number): PlacedProblem[] {
+export function lineErrorsAwayFromCaret(
+  problems: readonly PlacedProblem[],
+  lineFrom: number,
+  lineTo: number,
+  caret: number,
+): PlacedProblem[] {
   const errors = problems.filter((p) => p.severity === "error");
   if (errors.some((p) => p.from <= caret && caret <= p.to)) return [];
   return errors.filter((p) => p.from >= lineFrom && p.from <= lineTo).sort((a, b) => a.from - b.from);
@@ -78,7 +85,9 @@ async function fetchIntentions(view: EditorView): Promise<CodeAction[]> {
   for (const p of lineErrorsAwayFromCaret(problems, line.from, line.to, sel.head)) {
     let more: CodeAction[];
     try {
-      more = await lspRequest(() => commands.lspCodeActions(doc.doc, offsetsToRange(state.doc, p.from, p.to), ["quickfix"]));
+      more = await lspRequest(() =>
+        commands.lspCodeActions(doc.doc, offsetsToRange(state.doc, p.from, p.to), ["quickfix"]),
+      );
     } catch {
       break;
     }
@@ -97,7 +106,9 @@ export async function quickFixesAt(view: EditorView, from: number, to: number): 
   const doc = docOf(view);
   if (!doc) return [];
   await whenSynced(view);
-  const actions = await lspRequest(() => commands.lspCodeActions(doc.doc, offsetsToRange(view.state.doc, from, to), ["quickfix"]));
+  const actions = await lspRequest(() =>
+    commands.lspCodeActions(doc.doc, offsetsToRange(view.state.doc, from, to), ["quickfix"]),
+  );
   return sortCodeActions(actions.filter((a) => isQuickFix(a) && !a.disabledReason));
 }
 
@@ -112,7 +123,8 @@ export async function applyQuickFix(view: EditorView) {
   const problems: Array<PlacedProblem & { rank: number }> = [];
   forEachDiagnostic(state, (d, from, to) => {
     if (d.severity === "hint" || to < line.from || from > line.to) return;
-    const rank = (d.severity === "error" ? 0 : d.severity === "warning" ? 1 : 2) + (from <= caret && caret <= to ? 0 : 3);
+    const rank =
+      (d.severity === "error" ? 0 : d.severity === "warning" ? 1 : 2) + (from <= caret && caret <= to ? 0 : 3);
     problems.push({ from, to, severity: d.severity, rank });
   });
   problems.sort((a, b) => a.rank - b.rank);
@@ -162,7 +174,8 @@ async function reformatGenerated(view: EditorView, before: Text) {
     // A server that generated code without its context formats ranges the same
     // way (back to column 0): its range formatting is skipped then.
     if (shift.length) view.dispatch({ changes: shift, userEvent: "format", scrollIntoView: false });
-    else if (!(await formatLines(view, doc.line(lines.from).from, doc.line(lines.to).to)) && view.state.doc !== doc) return;
+    else if (!(await formatLines(view, doc.line(lines.from).from, doc.line(lines.to).to)) && view.state.doc !== doc)
+      return;
   }
 }
 
@@ -172,14 +185,20 @@ async function reformatGenerated(view: EditorView, before: Text) {
  * one level in, keeping its own nesting. Never applies to indentation-based
  * languages, whose blocks don't open with `{`.
  */
-export function indentUnderBrace(doc: Text, fromLine: number, toLine: number, unit: string): Array<{ from: number; insert: string }> {
+export function indentUnderBrace(
+  doc: Text,
+  fromLine: number,
+  toLine: number,
+  unit: string,
+): Array<{ from: number; insert: string }> {
   if (fromLine < 2) return [];
   const prev = doc.line(fromLine - 1).text;
   if (!prev.trimEnd().endsWith("{")) return [];
   const lead = (t: string) => t.slice(0, t.length - t.trimStart().length);
   const target = lead(prev) + unit;
   let first: string | null = null;
-  for (let n = fromLine; n <= toLine && first === null; n++) if (doc.line(n).text.trim()) first = lead(doc.line(n).text);
+  for (let n = fromLine; n <= toLine && first === null; n++)
+    if (doc.line(n).text.trim()) first = lead(doc.line(n).text);
   if (first === null || first.length > lead(prev).length || !target.startsWith(first)) return [];
   const extra = target.slice(first.length);
   const out: Array<{ from: number; insert: string }> = [];
@@ -248,7 +267,11 @@ export function listedCodeActions(actions: readonly CodeAction[]): CodeAction[] 
   return sortCodeActions(actions).filter((a) => !seen.has(a.title) && !!seen.add(a.title));
 }
 
-function actionItems(view: EditorView, actions: CodeAction[], resolved?: Map<CodeAction, Promise<CodeAction>>): ListPopupItem[] {
+function actionItems(
+  view: EditorView,
+  actions: CodeAction[],
+  resolved?: Map<CodeAction, Promise<CodeAction>>,
+): ListPopupItem[] {
   return listedCodeActions(actions).map((a, i) => ({
     id: `${i}`,
     label: a.title,
@@ -261,10 +284,17 @@ function actionItems(view: EditorView, actions: CodeAction[], resolved?: Map<Cod
 }
 
 /** The action with its edit (resolved once per popup; servers may compute edits lazily). */
-function resolveOnce(doc: number, action: CodeAction, cache: Map<CodeAction, Promise<CodeAction>>): Promise<CodeAction> {
+function resolveOnce(
+  doc: number,
+  action: CodeAction,
+  cache: Map<CodeAction, Promise<CodeAction>>,
+): Promise<CodeAction> {
   let p = cache.get(action);
   if (!p) {
-    p = action.edit || action.command ? Promise.resolve(action) : lspRequest(() => commands.lspResolveCodeAction(doc, action));
+    p =
+      action.edit || action.command
+        ? Promise.resolve(action)
+        : lspRequest(() => commands.lspResolveCodeAction(doc, action));
     cache.set(action, p);
     p.catch(() => cache.delete(action));
   }
@@ -292,7 +322,10 @@ export async function intentionPreview(
     if (lines.length) return { kind: "diff", lines, note };
   }
   if (note) return { kind: "text", text: note };
-  return { kind: "text", text: full.command && !full.edit ? "Preview isn't available for this action" : "No changes in this file" };
+  return {
+    kind: "text",
+    text: full.command && !full.edit ? "Preview isn't available for this action" : "No changes in this file",
+  };
 }
 
 /**
@@ -467,7 +500,8 @@ const bulbPlugin = ViewPlugin.fromClass(
         this.lookup.cancel();
         // A blur dispatched from inside the update is not allowed.
         queueMicrotask(() => {
-          if (!this.view.hasFocus && this.view.state.field(bulbField, false)) this.view.dispatch({ effects: setBulb.of(null) });
+          if (!this.view.hasFocus && this.view.state.field(bulbField, false))
+            this.view.dispatch({ effects: setBulb.of(null) });
         });
       }
     }
@@ -489,7 +523,8 @@ const bulbPlugin = ViewPlugin.fromClass(
           if (!local) return;
         }
       }
-      if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus) return;
+      if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus)
+        return;
       const line = state.doc.lineAt(state.selection.main.head).number;
       const any = actions.some(lightsBulb) || local;
       this.view.dispatch({

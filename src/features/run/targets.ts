@@ -198,7 +198,8 @@ function goSubtests(lines: string[], start: number, test: string): RunTarget[] {
   const out: RunTarget[] = [];
   const add = (offset: number, name: string) => {
     const sub = goSubtestName(name.replace(/\\(.)/g, "$1"));
-    if (!out.some((t) => t.path[1] === sub)) out.push({ line: start + 1 + offset, kind: "test", name: `${test}/${sub}`, path: [test, sub] });
+    if (!out.some((t) => t.path[1] === sub))
+      out.push({ line: start + 1 + offset, kind: "test", name: `${test}/${sub}`, path: [test, sub] });
   };
   const fields = new Set<string>();
   const keys = new Set<string>();
@@ -208,7 +209,8 @@ function goSubtests(lines: string[], start: number, test: string): RunTarget[] {
     const field = /\b\w+\.Run\(\s*\w+\.(\w+)\s*,/.exec(l);
     if (field) fields.add(field[1]!);
     const key = /\b\w+\.Run\(\s*(\w+)\s*,/.exec(l);
-    if (key && body.slice(0, i).some((b) => new RegExp(`\\bfor\\s+${key[1]}\\s*,\\s*\\w+\\s*:=\\s*range\\b`).test(b))) keys.add(key[1]!);
+    if (key && body.slice(0, i).some((b) => new RegExp(`\\bfor\\s+${key[1]}\\s*,\\s*\\w+\\s*:=\\s*range\\b`).test(b)))
+      keys.add(key[1]!);
   });
   if (fields.size || keys.size) {
     body.forEach((l, i) => {
@@ -231,7 +233,14 @@ function javaKotlinTargets(text: string, relPath: string): RunTarget[] {
     const simple = simpleClassName(t.className);
     switch (t.kind) {
       case "main":
-        return { line: t.line, kind: "main", name: simple, path: [t.className], className: t.className, spring: t.spring };
+        return {
+          line: t.line,
+          kind: "main",
+          name: simple,
+          path: [t.className],
+          className: t.className,
+          spring: t.spring,
+        };
       case "suite":
         return { line: t.line, kind: "suite", name: simple, path: [t.className], className: t.className };
       default:
@@ -323,13 +332,18 @@ export function targetConfig(
   base?: RunConfig,
 ): RunConfig | null {
   if (target.kind === "main") {
-    if (target.className) return applicationConfig({ className: target.className, spring: target.spring }, relPath, configs);
+    if (target.className)
+      return applicationConfig({ className: target.className, spring: target.spring }, relPath, configs);
     return contextConfig(relPath, configs, content);
   }
   const file = testConfigFor(relPath, configs, base);
   if (!file) return null;
   if (target.className && (file.kind === "maven" || file.kind === "gradle"))
-    return jvmTestConfig(file, target.className, target.kind === "test" ? target.path[target.path.length - 1] : undefined);
+    return jvmTestConfig(
+      file,
+      target.className,
+      target.kind === "test" ? target.path[target.path.length - 1] : undefined,
+    );
   const shortName = target.kind === "suite" ? target.path[target.path.length - 1]! : target.name;
   const named = (args: string[]): RunConfig => ({
     ...file,

@@ -65,7 +65,10 @@ describe("bookmark store", () => {
   });
 
   it("ignores corrupt storage", () => {
-    localStorage.setItem("openidea.bookmarks.v1:/bad", JSON.stringify([{ path: 1 }, { path: "/bad/x", line: 2 }, "nope"]));
+    localStorage.setItem(
+      "openidea.bookmarks.v1:/bad",
+      JSON.stringify([{ path: 1 }, { path: "/bad/x", line: 2 }, "nope"]),
+    );
     loadBookmarks("/bad");
     expect(useBookmarks.getState().items.map((b) => b.line)).toEqual([2]);
   });
@@ -96,8 +99,15 @@ describe("mnemonic bookmarks", () => {
 
   it("keeps mnemonics and descriptions when lines move or storage reloads", () => {
     const list: Bookmark[] = [{ path: "/p/a", line: 1, text: "a", created: 1, mnemonic: "7", description: "note" }];
-    expect(setFileLines(list, "/p/a", [{ line: 4, text: "a" }])[0]).toMatchObject({ line: 4, mnemonic: "7", description: "note" });
-    localStorage.setItem("openidea.bookmarks.v1:/m", JSON.stringify([...list, { path: "/p/b", line: 0, mnemonic: "ab" }]));
+    expect(setFileLines(list, "/p/a", [{ line: 4, text: "a" }])[0]).toMatchObject({
+      line: 4,
+      mnemonic: "7",
+      description: "note",
+    });
+    localStorage.setItem(
+      "openidea.bookmarks.v1:/m",
+      JSON.stringify([...list, { path: "/p/b", line: 0, mnemonic: "ab" }]),
+    );
     loadBookmarks("/m");
     expect(useBookmarks.getState().items.map((b) => b.mnemonic)).toEqual(["7", undefined]);
   });

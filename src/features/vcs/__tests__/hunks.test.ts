@@ -4,7 +4,14 @@ import type { LineHunk } from "@/bindings";
 import { applyRollback, hunkAtLine, hunkKeys, hunksOverlapping, nextHunk, prevHunk, rollbackEdit } from "../hunks";
 import { editorHunks, hunkAtPos, hunkField, hunksInSelection, setHunksEffect } from "../gutter";
 
-const h = (kind: LineHunk["kind"], start: number, lines: number, oldStart: number, oldLines: number, oldText: string): LineHunk => ({
+const h = (
+  kind: LineHunk["kind"],
+  start: number,
+  lines: number,
+  oldStart: number,
+  oldLines: number,
+  oldText: string,
+): LineHunk => ({
   kind,
   start,
   lines,
@@ -117,7 +124,9 @@ describe("change lane clicks", () => {
     view.dispatch({ effects: setHunksEffect.of([h("modified", 0, 1, 0, 1, "b\n")]) });
     const lane = view.dom.querySelector(".cm-openidea-lane")!;
     expect(view.contentDOM.contains(lane)).toBe(false);
-    lane.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX: 0, clientY: 0 }));
+    lane.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX: 0, clientY: 0 }),
+    );
     expect(opened).toEqual(["modified:/p/f.txt"]);
     view.destroy();
     setHunkPopupHooks(null);

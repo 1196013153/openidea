@@ -87,7 +87,9 @@ export function setActiveList(state: ChangelistState, id: string): ChangelistSta
 /** Deletes a list (never the active one); its files move to the active list. */
 export function removeList(state: ChangelistState, id: string): ChangelistState {
   if (id === state.active || !state.lists.some((l) => l.id === id)) return state;
-  const files = Object.fromEntries(Object.entries(state.files ?? {}).map(([rel, l]) => [rel, l === id ? state.active : l]));
+  const files = Object.fromEntries(
+    Object.entries(state.files ?? {}).map(([rel, l]) => [rel, l === id ? state.active : l]),
+  );
   return { ...state, lists: state.lists.filter((l) => l.id !== id), files };
 }
 
@@ -162,8 +164,17 @@ export function changedRels(status: readonly FileStatus[], root: string): string
 }
 
 /** The lists with their files, for the `useLocalChanges` service (conflicted files stay in their list). */
-export function localChangelists(status: readonly FileStatus[], root: string, state: ChangelistState): LocalChangelist[] {
-  const lists = state.lists.map((l): LocalChangelist => ({ id: l.id, name: l.name, active: l.id === state.active, files: [] }));
+export function localChangelists(
+  status: readonly FileStatus[],
+  root: string,
+  state: ChangelistState,
+): LocalChangelist[] {
+  const lists = state.lists.map((l): LocalChangelist => ({
+    id: l.id,
+    name: l.name,
+    active: l.id === state.active,
+    files: [],
+  }));
   const byId = new Map(lists.map((l) => [l.id, l]));
   for (const f of status) {
     const group = groupOf(f);

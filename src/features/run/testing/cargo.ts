@@ -10,7 +10,8 @@ const PANIC_RE = /panicked at (?:'.*', |".*", )?([^\s:'"][^:'"]*):(\d+):(\d+)/;
 const SUMMARY_RE =
   /^test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;.*?(?:finished in ([\d.]+s))?$/;
 const NEXTEST_RE = /^\s*(PASS|FAIL|SKIP|SIGSEGV|SIGABRT|TIMEOUT|LEAK)\s+\[\s*([\d.]+s)\]\s+(\S+)\s+(.+)$/;
-const NEXTEST_SUMMARY_RE = /^\s*Summary \[\s*([\d.]+s)\]\s+(\d+) tests? run: (\d+) passed(?:.*?(\d+) failed)?(?:.*?(\d+) skipped)?/;
+const NEXTEST_SUMMARY_RE =
+  /^\s*Summary \[\s*([\d.]+s)\]\s+(\d+) tests? run: (\d+) passed(?:.*?(\d+) failed)?(?:.*?(\d+) skipped)?/;
 
 export function cargoParser(): TestOutputParser {
   let suite: string | null = null;

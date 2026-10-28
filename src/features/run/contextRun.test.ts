@@ -84,7 +84,9 @@ describe("run context menu group", () => {
 
   it("shows nothing when no producer matches or for several paths", () => {
     expect(contextMenuItems("editor", { paths: [`${ROOT}/README.md`], text: "# hi", line: 0 })).toEqual([]);
-    expect(contextMenuItems("projectView", { paths: [`${ROOT}/a.js`, `${ROOT}/b.js`], dirs: [false, false] })).toEqual([]);
+    expect(contextMenuItems("projectView", { paths: [`${ROOT}/a.js`, `${ROOT}/b.js`], dirs: [false, false] })).toEqual(
+      [],
+    );
     useProject.setState({ project: null });
     expect(contextMenuItems("editor", { paths: [`${SCRATCHES}/hi.ts`], text: "", line: 0 })).toEqual([]);
   });
@@ -143,7 +145,9 @@ describe("run gutter popup", () => {
   const text = "describe('math', () => {\n  it('adds', () => {\n  });\n});\n";
   const adds: RunTarget = { line: 1, kind: "test", name: "math > adds", path: ["math", "adds"] };
   const itemLabels = (items: MenuItem[]): string[] =>
-    items.map((i) => (i.kind === "separator" ? "---" : "label" in i ? `${i.label}${"submenu" in i && i.submenu ? " ▸" : ""}` : ""));
+    items.map((i) =>
+      i.kind === "separator" ? "---" : "label" in i ? `${i.label}${"submenu" in i && i.submenu ? " ▸" : ""}` : "",
+    );
 
   beforeEach(() => {
     useProject.setState({ project: { name: "app", root: ROOT, isGit: false, settings: {} } as never });
@@ -167,7 +171,15 @@ describe("run gutter popup", () => {
     const run = items[0] as Extract<MenuItem, { submenu?: MenuItem[] }>;
     expect(run.submenu!.map((i) => ("shortcut" in i ? i.shortcut : null))).toEqual(["test", "npm run test:unit"]);
     // ⌃⇧R's chooser lists the same, under a header.
-    expect(choiceItems(produceContextChoices({ path: `${ROOT}/src/m.test.ts`, root: ROOT, configs: [npmTest, unit], content: text, line: 1 }, OPTIMISTIC), false)[0]).toEqual({
+    expect(
+      choiceItems(
+        produceContextChoices(
+          { path: `${ROOT}/src/m.test.ts`, root: ROOT, configs: [npmTest, unit], content: text, line: 1 },
+          OPTIMISTIC,
+        ),
+        false,
+      )[0],
+    ).toEqual({
       kind: "header",
       label: "Choose configuration to run",
     });

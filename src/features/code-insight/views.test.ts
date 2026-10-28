@@ -94,7 +94,8 @@ describe("sortProblems", () => {
     code: null,
   });
   const items = [d("warning", 1, "b"), d("error", 5, "c"), d("warning", 0, "z"), d("error", 2, "a")];
-  const lines = (order: { bySeverity: boolean; byName: boolean }) => sortProblems(items, order).map((x) => x.range.start.line);
+  const lines = (order: { bySeverity: boolean; byName: boolean }) =>
+    sortProblems(items, order).map((x) => x.range.start.line);
 
   it("orders by severity, then position (IDEA's default)", () => {
     expect(lines({ bySeverity: true, byName: false })).toEqual([2, 5, 0, 1]);

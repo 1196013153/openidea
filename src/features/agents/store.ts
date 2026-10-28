@@ -15,7 +15,16 @@ import { call, commands, isTauri } from "@/platform/ipc";
 import { editorService, notifications } from "@/workbench/contributions";
 import { canSend, emptyDraft, toPrompt, type ComposerDraft, type FileRef } from "./composerModel";
 import { withQuote } from "./conversation";
-import { HOME_KEY, HOME_KIND, SESSION_KIND, attentionChange, entriesKey, isBusy, sessionKey, upsertEntry } from "./model";
+import {
+  HOME_KEY,
+  HOME_KIND,
+  SESSION_KIND,
+  attentionChange,
+  entriesKey,
+  isBusy,
+  sessionKey,
+  upsertEntry,
+} from "./model";
 
 /** New Task page settings (its text lives in the `HOME` composer). */
 export interface Draft {
@@ -138,7 +147,8 @@ export async function connect(): Promise<void> {
   const editors = editorService();
   for (const t of editors.openTabs?.() ?? []) {
     const task = (t.input.data as { task?: string } | undefined)?.task;
-    if (t.input.kind === SESSION_KIND && task && !useAgents.getState().tasks.has(task)) editors.closeInput?.(t.input.key);
+    if (t.input.kind === SESSION_KIND && task && !useAgents.getState().tasks.has(task))
+      editors.closeInput?.(t.input.key);
   }
 }
 
@@ -189,7 +199,11 @@ function notifyChange(prev: AgentTask | undefined, task: AgentTask) {
   if (!change) return;
   if (visible.has(task.id) && document.hasFocus()) return;
   const body =
-    change === "input" ? "Waiting for your answer" : change === "failed" ? (task.error ?? "The agent stopped") : "Finished";
+    change === "input"
+      ? "Waiting for your answer"
+      : change === "failed"
+        ? (task.error ?? "The agent stopped")
+        : "Finished";
   notifications().notify({
     level: change === "failed" ? "error" : "info",
     title: task.title,
@@ -369,7 +383,8 @@ export function addReferences(refs: Array<{ path: string; rel: string; mention: 
   const root = task?.isolation === "worktree" ? task.cwd : null;
   const files: FileRef[] = refs.map((r) => ({ path: root ? `${root}/${r.rel}` : r.path, rel: r.rel }));
   const mentions = refs.map((r) => r.mention).join(" ");
-  const text = current.text && !/\s$/.test(current.text) ? `${current.text} ${mentions} ` : `${current.text}${mentions} `;
+  const text =
+    current.text && !/\s$/.test(current.text) ? `${current.text} ${mentions} ` : `${current.text}${mentions} `;
   updateComposer(key, { text, files: [...current.files, ...files] });
   if (task) openTask(task.id);
   else openHome();

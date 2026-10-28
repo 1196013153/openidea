@@ -61,18 +61,23 @@ export function findLanguageDescription(uiMode: string | null, path: string): La
     const loose = LanguageDescription.matchLanguageName(languageData, uiMode, false);
     if (loose) return loose;
   }
-  return uiMode === null && infos ? null : LanguageDescription.matchFilename(languageData, path.slice(path.lastIndexOf("/") + 1));
+  return uiMode === null && infos
+    ? null
+    : LanguageDescription.matchFilename(languageData, path.slice(path.lastIndexOf("/") + 1));
 }
 
 /** Loads (once) the CodeMirror language for `desc`. */
 export function loadSupport(desc: LanguageDescription): Promise<LanguageSupport | null> {
   let p = supports.get(desc.name);
   if (!p) {
-    p = desc.load().then((support) => patchSupport(desc, support)).catch((e) => {
-      console.warn(`failed to load language ${desc.name}`, e);
-      supports.delete(desc.name);
-      return null;
-    });
+    p = desc
+      .load()
+      .then((support) => patchSupport(desc, support))
+      .catch((e) => {
+        console.warn(`failed to load language ${desc.name}`, e);
+        supports.delete(desc.name);
+        return null;
+      });
     supports.set(desc.name, p);
   }
   return p;

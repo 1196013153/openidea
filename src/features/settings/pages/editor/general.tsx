@@ -413,7 +413,12 @@ const TABS = editorPage({
         },
         { t: "check", key: `${P}.tabs.markModified`, label: "Mark modified (*)" },
         { t: "check", key: `${P}.tabs.showFullPathOnHover`, label: "Show full path on mouse hover" },
-        { t: "custom", label: "Close button position:", keywords: ["Right", "Left", "None"], component: CloseButtonPosition },
+        {
+          t: "custom",
+          label: "Close button position:",
+          keywords: ["Right", "Left", "None"],
+          component: CloseButtonPosition,
+        },
       ],
     },
     {
@@ -425,9 +430,7 @@ const TABS = editorPage({
     },
     {
       title: "Opening Policy",
-      items: [
-        { t: "check", key: `${P}.tabs.previewTab`, label: "Enable preview tab" },
-      ],
+      items: [{ t: "check", key: `${P}.tabs.previewTab`, label: "Enable preview tab" }],
     },
     {
       title: "Closing Policy",
@@ -473,15 +476,29 @@ function TabRows() {
     </label>
   );
   return (
-    <div className={clsx(styles.radioBlock, matched && styles.matched)} role="radiogroup" aria-label={tx("Show tabs in")}>
+    <div
+      className={clsx(styles.radioBlock, matched && styles.matched)}
+      role="radiogroup"
+      aria-label={tx("Show tabs in")}
+    >
       <div className={clsx(styles.radioLabel, disabled && styles.dim)}>
         <SearchLabel text="Show tabs in" />:
       </div>
       <div className={styles.radios}>
         {radio("One row, and if tabs don't fit:", !multiple, () => setMultiple(false))}
         <div className={styles.children} role="radiogroup" aria-label={tx("If tabs don't fit")}>
-          {radio("Scroll the tabs panel", !multiple && overflow !== "squeeze", () => setOverflow("scroll"), disabled || multiple)}
-          {radio("Squeeze tabs", !multiple && overflow === "squeeze", () => setOverflow("squeeze"), disabled || multiple)}
+          {radio(
+            "Scroll the tabs panel",
+            !multiple && overflow !== "squeeze",
+            () => setOverflow("scroll"),
+            disabled || multiple,
+          )}
+          {radio(
+            "Squeeze tabs",
+            !multiple && overflow === "squeeze",
+            () => setOverflow("squeeze"),
+            disabled || multiple,
+          )}
         </div>
         {radio("Multiple rows", multiple, () => setMultiple(true))}
       </div>

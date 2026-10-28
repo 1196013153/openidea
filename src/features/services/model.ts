@@ -42,7 +42,12 @@ export function childrenOf(snap: DockerSnapshot | null): (n: ServiceNode) => Ser
     if (!snap || snap.availability.kind !== "ready") return undefined;
     switch (n.kind) {
       case "docker":
-        return GROUPS.map(([group]) => ({ kind: "group", key: `group:${group}`, group, count: groupCount(snap, group) }));
+        return GROUPS.map(([group]) => ({
+          kind: "group",
+          key: `group:${group}`,
+          group,
+          count: groupCount(snap, group),
+        }));
       case "group":
         return groupChildren(snap, n.group);
       case "compose":
@@ -58,10 +63,20 @@ export function childrenOf(snap: DockerSnapshot | null): (n: ServiceNode) => Ser
 }
 
 function groupCount(snap: DockerSnapshot, g: GroupKind): number {
-  return g === "containers" ? snap.containers.length : g === "images" ? snap.images.length : g === "volumes" ? snap.volumes.length : snap.networks.length;
+  return g === "containers"
+    ? snap.containers.length
+    : g === "images"
+      ? snap.images.length
+      : g === "volumes"
+        ? snap.volumes.length
+        : snap.networks.length;
 }
 
-const containerNode = (c: DockerContainer): ServiceNode => ({ kind: "container", key: `container:${c.id}`, container: c });
+const containerNode = (c: DockerContainer): ServiceNode => ({
+  kind: "container",
+  key: `container:${c.id}`,
+  container: c,
+});
 
 /** Compose projects (by label) first, then standalone containers, as IDEA groups them. */
 export function groupChildren(snap: DockerSnapshot, g: GroupKind): ServiceNode[] {
@@ -79,7 +94,9 @@ export function groupChildren(snap: DockerSnapshot, g: GroupKind): ServiceNode[]
           kind: "compose",
           key: `compose:${project}`,
           project,
-          containers: [...containers].sort((a, b) => (a.composeService ?? a.name).localeCompare(b.composeService ?? b.name)),
+          containers: [...containers].sort((a, b) =>
+            (a.composeService ?? a.name).localeCompare(b.composeService ?? b.name),
+          ),
         }));
       return [...compose, ...loose.map(containerNode)];
     }

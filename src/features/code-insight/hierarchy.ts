@@ -196,7 +196,11 @@ export async function showHierarchy(mode: HierarchyMode) {
     await loadRoot();
   } else {
     useHierarchy.setState((st) => ({ failed: new Set(st.failed).add(ROOT_ID) }));
-    hint(mode === "call" ? "No method at the caret to show the call hierarchy of" : "No type at the caret to show the hierarchy of");
+    hint(
+      mode === "call"
+        ? "No method at the caret to show the call hierarchy of"
+        : "No type at the caret to show the hierarchy of",
+    );
   }
 }
 
@@ -206,7 +210,10 @@ export function hierarchyTarget(
   direction: HierarchyDirection,
   item: HierarchyItem,
 ): { path: string; line: number; col: number } {
-  const at = mode === "call" && direction === "incoming" && item.fromRanges[0] ? item.fromRanges[0].start : item.selectionRange.start;
+  const at =
+    mode === "call" && direction === "incoming" && item.fromRanges[0]
+      ? item.fromRanges[0].start
+      : item.selectionRange.start;
   return { path: item.path, line: at.line, col: at.col };
 }
 

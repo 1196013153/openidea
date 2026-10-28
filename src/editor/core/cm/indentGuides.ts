@@ -13,7 +13,10 @@ function guideDeco(levels: number, step: number) {
   let d = cache.get(key);
   if (!d) {
     d = Decoration.line({
-      attributes: { class: "cm-openidea-guides", style: `--openidea-guide-levels: ${levels}; --openidea-guide-step: ${step}` },
+      attributes: {
+        class: "cm-openidea-guides",
+        style: `--openidea-guide-levels: ${levels}; --openidea-guide-step: ${step}`,
+      },
     });
     cache.set(key, d);
   }

@@ -24,7 +24,8 @@ export function NewProjectOverlay() {
 export function projectNameError(name: string): string | null {
   const n = name.trim();
   if (!n) return "Enter a project name";
-  if (/[/\\:*?"<>|]/.test(n) || n === "." || n === "..") return "The name contains characters a folder name cannot have";
+  if (/[/\\:*?"<>|]/.test(n) || n === "." || n === "..")
+    return "The name contains characters a folder name cannot have";
   return null;
 }
 
@@ -82,7 +83,12 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const browse = async () => {
     if (!isTauri()) return;
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const picked = await open({ directory: true, multiple: false, title: "Project Location", defaultPath: location || undefined });
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      title: "Project Location",
+      defaultPath: location || undefined,
+    });
     const dir = Array.isArray(picked) ? picked[0] : picked;
     if (dir) setLocation(dir);
   };
@@ -124,7 +130,13 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
           <span className={styles.newProjectLabel}>
             <T>Name:</T>
           </span>
-          <Input data-autofocus value={name} invalid={!!nameError} onChange={(e) => setName(e.target.value)} aria-label="Name" />
+          <Input
+            data-autofocus
+            value={name}
+            invalid={!!nameError}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Name"
+          />
         </label>
         <div className={styles.newProjectRow}>
           <span className={styles.newProjectLabel}>

@@ -60,40 +60,40 @@ const LINE_SEPARATORS: SelectOption[] = [
 ];
 
 const GENERAL_SECTIONS: EditorSection[] = [
-    {
-      items: [
-        {
-          t: "select",
-          key: "editor.codeStyle.lineSeparator",
-          label: "Line separator",
-          options: LINE_SEPARATORS,
-          hint: "Used for new files.",
-        },
-        { t: "number", key: "editor.codeStyle.hardWrapAt", label: "Hard wrap at", min: 1, max: 999, unit: "columns" },
-        { t: "custom", label: "Visual guides", component: VisualGuidesRow },
-      ],
-    },
-    {
-      title: "Indents Detection",
-      items: [
-        {
-          t: "check",
-          key: "editor.codeStyle.detectIndents",
-          label: "Detect and use existing file indents for editing",
-        },
-      ],
-    },
-    {
-      title: "EditorConfig",
-      items: [
-        {
-          t: "check",
-          key: "editor.codeStyle.editorconfig",
-          label: "Enable EditorConfig support",
-          hint: ".editorconfig files override indentation, line separators, encodings and save options.",
-        },
-      ],
-    },
+  {
+    items: [
+      {
+        t: "select",
+        key: "editor.codeStyle.lineSeparator",
+        label: "Line separator",
+        options: LINE_SEPARATORS,
+        hint: "Used for new files.",
+      },
+      { t: "number", key: "editor.codeStyle.hardWrapAt", label: "Hard wrap at", min: 1, max: 999, unit: "columns" },
+      { t: "custom", label: "Visual guides", component: VisualGuidesRow },
+    ],
+  },
+  {
+    title: "Indents Detection",
+    items: [
+      {
+        t: "check",
+        key: "editor.codeStyle.detectIndents",
+        label: "Detect and use existing file indents for editing",
+      },
+    ],
+  },
+  {
+    title: "EditorConfig",
+    items: [
+      {
+        t: "check",
+        key: "editor.codeStyle.editorconfig",
+        label: "Enable EditorConfig support",
+        hint: ".editorconfig files override indentation, line separators, encodings and save options.",
+      },
+    ],
+  },
 ];
 
 /** Shared by Code Style and its sub-pages: the scheme is one scope. */
@@ -120,7 +120,7 @@ const OTHER = {
       { items: [{ t: "custom", label: "Scheme", component: SchemeRow }] },
       {
         title: "Tabs and Indents",
-      items: [
+        items: [
           { t: "check", key: "editor.insertSpaces", label: "Use tab character", invert: true },
           { t: "number", key: "editor.tabSize", label: "Tab size", min: 1, max: 16 },
         ],
@@ -251,7 +251,16 @@ export async function codeStyleLanguagePages(): Promise<PageSpec[]> {
       group: "Editor",
       order: 100,
       ...SCHEME_SCOPE,
-      keywords: ["Scheme", "Tabs and Indents", "Tab size", "Indent", "Use tab character", "Hard wrap at", "Comment Code", "Line comment at first column"],
+      keywords: [
+        "Scheme",
+        "Tabs and Indents",
+        "Tab size",
+        "Indent",
+        "Use tab character",
+        "Hard wrap at",
+        "Comment Code",
+        "Line comment at first column",
+      ],
       component: () => <LanguageStyle lang={lang} />,
     }));
 }

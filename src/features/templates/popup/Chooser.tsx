@@ -59,7 +59,12 @@ function MnemonicLabel({ item }: { item: ChooserItem }) {
 function ChooserPopup({ request }: { request: ChooserRequest }) {
   const [filter, setFilter] = useState(request.filter ?? "");
   const rows = useMemo(() => filterChooserItems(request.items, filter), [request.items, filter]);
-  const [active, setActive] = useState(() => Math.max(0, rows.findIndex((r) => !isSection(r))));
+  const [active, setActive] = useState(() =>
+    Math.max(
+      0,
+      rows.findIndex((r) => !isSection(r)),
+    ),
+  );
   const current = Math.min(active, rows.length - 1);
 
   const close = () => {

@@ -314,7 +314,9 @@ export async function runCommitChecks(files: readonly CommitCandidate[], amend: 
   }
 
   if (git.warnCrlf) {
-    const autocrlf = (await call(commands.vcsConfigGet(currentRepo(), "core.autocrlf")).catch(() => null))?.toLowerCase();
+    const autocrlf = (
+      await call(commands.vcsConfigGet(currentRepo(), "core.autocrlf")).catch(() => null)
+    )?.toLowerCase();
     if (autocrlf !== "true" && autocrlf !== "input") {
       const crlf: string[] = [];
       for (const p of existing) {

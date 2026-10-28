@@ -28,11 +28,13 @@ describe("External Libraries", () => {
 
   it("gives each ecosystem's groups their icon", () => {
     const root = librariesRoot(
-      ["jdk", "nodeCore", "nodeModules", "rust", "cargo", "go", "goModules", "maven", "gradle", "other"].map((kind) => ({
-        name: kind,
-        kind,
-        roots: [{ name: "r", path: `/libs/${kind}` }],
-      })),
+      ["jdk", "nodeCore", "nodeModules", "rust", "cargo", "go", "goModules", "maven", "gradle", "other"].map(
+        (kind) => ({
+          name: kind,
+          kind,
+          roots: [{ name: "r", path: `/libs/${kind}` }],
+        }),
+      ),
     )!;
     expect(root.children?.map((g) => g.icon)).toEqual([
       "file-java",

@@ -16,7 +16,20 @@ describe("surround with entries", () => {
     const java = surroundersFor("java", { lines: true, inline: false });
     expect(java.length).toBeGreaterThan(10);
     const entries = surroundEntries(java, []);
-    expect(entries.slice(0, 12).map((e) => e.mnemonic)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "B"]);
+    expect(entries.slice(0, 12).map((e) => e.mnemonic)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "0",
+      "A",
+      "B",
+    ]);
   });
 
   it("gives templates the first abbreviation character not taken yet", () => {

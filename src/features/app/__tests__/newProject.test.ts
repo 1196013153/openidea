@@ -26,7 +26,11 @@ describe("Manage IDE Settings › Export Settings…", () => {
       "openidea.runAnything.history.v1:/p": "[]",
     };
     const keys = Object.keys(data);
-    const storage = { length: keys.length, key: (i: number) => keys[i] ?? null, getItem: (k: string) => data[k] ?? null };
+    const storage = {
+      length: keys.length,
+      key: (i: number) => keys[i] ?? null,
+      getItem: (k: string) => data[k] ?? null,
+    };
     expect(Object.keys(exportedStorage(storage)).sort()).toEqual([
       "openidea.liveTemplates.v1",
       "openidea.macros.v1",

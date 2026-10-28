@@ -38,7 +38,8 @@ export function highlightRanges(view: EditorView, ranges: readonly HighlightRang
     .map((r) => ({ from: Math.max(0, Math.min(r.from, len)), to: Math.max(0, Math.min(r.to, len)) }))
     .sort((a, b) => a.from - b.from);
   const effects: StateEffect<unknown>[] = [setTemporary.of(clamped)];
-  if (!view.state.field(temporaryField, false)) effects.push(StateEffect.appendConfig.of(temporaryHighlightExtension()));
+  if (!view.state.field(temporaryField, false))
+    effects.push(StateEffect.appendConfig.of(temporaryHighlightExtension()));
   const first = clamped[0];
   if (first) effects.push(EditorView.scrollIntoView(first.from, { y: "nearest" }));
   view.dispatch({ effects });

@@ -162,16 +162,14 @@ describe("mermaid in the markdown preview", () => {
       "--fg": "color(srgb 0.6 0.62 0.66)",
     };
     let probe = "";
-    const computed = vi
-      .spyOn(globalThis, "getComputedStyle")
-      .mockImplementation(
-        (el) =>
-          (el === document.documentElement
-            ? { getPropertyValue: (n: string) => values[n] ?? "" }
-            : {
-                color: resolved[(probe = (el as HTMLElement).style.color.slice(4, -1))] ?? "",
-              }) as unknown as CSSStyleDeclaration,
-      );
+    const computed = vi.spyOn(globalThis, "getComputedStyle").mockImplementation(
+      (el) =>
+        (el === document.documentElement
+          ? { getPropertyValue: (n: string) => values[n] ?? "" }
+          : {
+              color: resolved[(probe = (el as HTMLElement).style.color.slice(4, -1))] ?? "",
+            }) as unknown as CSSStyleDeclaration,
+    );
     try {
       await renderMermaidIn(preview(SEQ)).done;
       expect(probe).not.toBe("");

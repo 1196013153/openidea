@@ -56,7 +56,10 @@ describe("macros", () => {
   it("drops malformed stored steps", () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ last: [{ kind: "text", text: "a" }, { kind: "action" }, { kind: "action", id: "x", arg: {} }], saved: [{ name: "" }] }),
+      JSON.stringify({
+        last: [{ kind: "text", text: "a" }, { kind: "action" }, { kind: "action", id: "x", arg: {} }],
+        saved: [{ name: "" }],
+      }),
     );
     _reloadMacros();
     expect(useMacros.getState().last).toEqual([{ kind: "text", text: "a" }]);

@@ -30,7 +30,11 @@ vi.mock("../find/windowStore", async (orig) => ({
   ipcFindDeps: () => ({
     validate: async () => {},
     start: async (_id: number, _q: unknown, onFile: (f: unknown) => void) => {
-      onFile({ path: "/p/a.kt", relPath: "a.kt", matches: [{ line: 2, text: "val order = 1", ranges: [[4, 9]], textOffset: 0 }] });
+      onFile({
+        path: "/p/a.kt",
+        relPath: "a.kt",
+        matches: [{ line: 2, text: "val order = 1", ranges: [[4, 9]], textOffset: 0 }],
+      });
       return null;
     },
     cancel: () => {},

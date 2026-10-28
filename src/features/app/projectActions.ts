@@ -21,7 +21,9 @@ export const EXPORTED_STORAGE = [
   "openidea.toolWindowLayouts.",
 ];
 
-export function exportedStorage(storage: Pick<Storage, "length" | "key" | "getItem"> = localStorage): Record<string, string> {
+export function exportedStorage(
+  storage: Pick<Storage, "length" | "key" | "getItem"> = localStorage,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < storage.length; i++) {
     const key = storage.key(i);
@@ -48,7 +50,12 @@ async function exportSettings() {
     await call(commands.settingsExport(path, exportedStorage()));
     notifications().notify({ level: "info", title: "Settings exported", body: path, key: "app.settingsExport" });
   } catch (e) {
-    notifications().notify({ level: "error", title: "Cannot export settings", body: errorText(e), key: "app.settingsExport" });
+    notifications().notify({
+      level: "error",
+      title: "Cannot export settings",
+      body: errorText(e),
+      key: "app.settingsExport",
+    });
   }
 }
 
@@ -80,7 +87,12 @@ async function importSettings() {
       actions: [{ label: "Restart", run: () => void executeAction("app.restart") }],
     });
   } catch (e) {
-    notifications().notify({ level: "error", title: "Cannot import settings", body: errorText(e), key: "app.settingsImport" });
+    notifications().notify({
+      level: "error",
+      title: "Cannot import settings",
+      body: errorText(e),
+      key: "app.settingsImport",
+    });
   }
 }
 

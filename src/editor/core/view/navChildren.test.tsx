@@ -21,7 +21,9 @@ describe("status bar navigation bar popup", () => {
     const anchor = document.createElement("button");
     document.body.appendChild(anchor);
     const onClose = vi.fn();
-    render(<NavChildrenPopup segment={{ kind: "file", path: "/p/a.ts", label: "a.ts" }} anchor={anchor} onClose={onClose} />);
+    render(
+      <NavChildrenPopup segment={{ kind: "file", path: "/p/a.ts", label: "a.ts" }} anchor={anchor} onClose={onClose} />,
+    );
     await act(async () => {});
     const list = screen.getByRole("listbox", { name: "a.ts" });
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["first", "second"]);

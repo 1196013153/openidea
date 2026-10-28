@@ -136,7 +136,9 @@ function Filters() {
         <Select
           value={query.state}
           options={STATES.map((value) => ({ value, label: t(`github.prState.${value}`) }))}
-          onChange={(state) => setQuery({ state })} aria-label="State" />
+          onChange={(state) => setQuery({ state })}
+          aria-label="State"
+        />
         <Checkbox checked={query.authorMe} onChange={(authorMe) => setQuery({ authorMe })} label="Mine" />
         <Checkbox
           checked={query.reviewRequested}

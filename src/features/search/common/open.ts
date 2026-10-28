@@ -16,16 +16,25 @@ export async function openLocation(
 ): Promise<void> {
   const service = maybeEditorService();
   if (!service) {
-    notifications().notify({ group: "search", level: "warning", title: "No editor available", body: path, key: "search.noEditor" });
+    notifications().notify({
+      group: "search",
+      level: "warning",
+      title: "No editor available",
+      body: path,
+      key: "search.noEditor",
+    });
     return;
   }
-  const selection = pos
-    ? { line: pos.line, col: pos.col ?? 0, endLine: pos.endLine, endCol: pos.endCol }
-    : undefined;
+  const selection = pos ? { line: pos.line, col: pos.col ?? 0, endLine: pos.endLine, endCol: pos.endCol } : undefined;
   try {
     await service.openFile(path, { focus: true, ...options, selection });
   } catch (e) {
-    notifications().notify({ group: "search", level: "error", title: `Cannot open ${basename(path)}`, body: String(e) });
+    notifications().notify({
+      group: "search",
+      level: "error",
+      title: `Cannot open ${basename(path)}`,
+      body: String(e),
+    });
   }
 }
 

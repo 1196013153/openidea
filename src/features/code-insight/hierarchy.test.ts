@@ -11,7 +11,13 @@ const range = (l1: number, c1: number, l2: number, c2: number) => ({
   start: { line: l1, col: c1 },
   end: { line: l2, col: c2 },
 });
-const outlineItem = (name: string, kind: SymbolKind, r: ReturnType<typeof range>, nameAt: [number, number], children: OutlineItem[] = []): OutlineItem => ({
+const outlineItem = (
+  name: string,
+  kind: SymbolKind,
+  r: ReturnType<typeof range>,
+  nameAt: [number, number],
+  children: OutlineItem[] = [],
+): OutlineItem => ({
   name,
   detail: null,
   kind,
@@ -21,10 +27,16 @@ const outlineItem = (name: string, kind: SymbolKind, r: ReturnType<typeof range>
 });
 // class Orders { void list() { int x = 1; } }  — class on lines 0-10, `list` on lines 2-6.
 const OUTLINE = [
-  outlineItem("Orders", "class", range(0, 0, 10, 1), [0, 6], [
-    outlineItem("list", "method", range(2, 2, 6, 3), [2, 7]),
-    outlineItem("count", "field", range(8, 2, 8, 12), [8, 6]),
-  ]),
+  outlineItem(
+    "Orders",
+    "class",
+    range(0, 0, 10, 1),
+    [0, 6],
+    [
+      outlineItem("list", "method", range(2, 2, 6, 3), [2, 7]),
+      outlineItem("count", "field", range(8, 2, 8, 12), [8, 6]),
+    ],
+  ),
 ];
 
 const item = (name: string, fromRanges: HierarchyItem["fromRanges"] = []): HierarchyItem => ({
@@ -41,7 +53,7 @@ vi.mock("@/platform/ipc", async (orig) => {
   const real = await orig<typeof import("@/platform/ipc")>();
   return {
     ...real,
-    call: async <T,>(p: Promise<T>) => p,
+    call: async <T>(p: Promise<T>) => p,
     commands: {
       ...real.commands,
       docOutline: async () => OUTLINE,
@@ -56,8 +68,8 @@ vi.mock("@/platform/ipc", async (orig) => {
 vi.mock("./ipc", async (orig) => ({
   ...(await orig<typeof import("./ipc")>()),
   caretContext: () => ({ doc: 1, path: "/p/Orders.java", line: 4, col: 10, word: "x", view: null }),
-  withDocument: async <T,>(_path: string, fn: (doc: number) => Promise<T>) => fn(1),
-  lspRequest: async <T,>(run: () => Promise<T>) => run(),
+  withDocument: async <T>(_path: string, fn: (doc: number) => Promise<T>) => fn(1),
+  lspRequest: async <T>(run: () => Promise<T>) => run(),
   hint: (...a: unknown[]) => hint(...a),
 }));
 

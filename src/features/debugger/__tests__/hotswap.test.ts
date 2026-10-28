@@ -5,7 +5,9 @@ const ipc = vi.hoisted(() => {
   return {
     ok,
     javaBuildWorkspace: vi.fn(() => ok("succeed" as string)),
-    debugRedefineClasses: vi.fn(() => ok({ changedClasses: ["com.x.A", "com.x.B"], errorMessage: null as string | null })),
+    debugRedefineClasses: vi.fn(() =>
+      ok({ changedClasses: ["com.x.A", "com.x.B"], errorMessage: null as string | null }),
+    ),
   };
 });
 
@@ -36,7 +38,16 @@ function session(id: number, hotCodeReplace: boolean): DebugSession {
     name: "App",
     adapter: hotCodeReplace ? "java-debug" : "debugpy",
     parent: null,
-    launch: { name: "App", adapter: "java-debug", request: "launch", program: null, args: [], cwd: "/p/app", env: {}, extraJson: null },
+    launch: {
+      name: "App",
+      adapter: "java-debug",
+      request: "launch",
+      program: null,
+      args: [],
+      cwd: "/p/app",
+      env: {},
+      extraJson: null,
+    },
     process: null,
     status: "running",
     stoppedThread: null,

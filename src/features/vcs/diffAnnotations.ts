@@ -57,7 +57,11 @@ function build(state: EditorState, notes: readonly DiffAnnotation[], cls: Classe
   }
   const ranges = [...byLine.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([line, list]) => Decoration.widget({ widget: new NotesWidget(list, cls), block: true, side: 1 }).range(state.doc.line(line + 1).to));
+    .map(([line, list]) =>
+      Decoration.widget({ widget: new NotesWidget(list, cls), block: true, side: 1 }).range(
+        state.doc.line(line + 1).to,
+      ),
+    );
   return Decoration.set(ranges);
 }
 

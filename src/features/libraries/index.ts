@@ -56,7 +56,8 @@ const MANIFESTS = new Set([
 export function touchesManifest(paths: readonly string[]): boolean {
   return paths.some(
     (p) =>
-      !/[\\/]node_modules[\\/]/.test(p) && MANIFESTS.has(p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1)),
+      !/[\\/]node_modules[\\/]/.test(p) &&
+      MANIFESTS.has(p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1)),
   );
 }
 

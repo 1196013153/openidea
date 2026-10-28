@@ -325,7 +325,7 @@ export function caretAfterReformat(before: string, caret: number, after: string)
     return p;
   }
   let q = p;
-  for (let n = 0; n < newlines; ) {
+  for (let n = 0; n < newlines;) {
     const nl = after.indexOf("\n", q);
     if (nl < 0 || !/^[ \t\r]*$/.test(after.slice(q, nl))) break;
     q = nl + 1;

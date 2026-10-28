@@ -380,7 +380,10 @@ function runIfEnabled(id: string): boolean {
  * over CodeMirror defaults). Returns an uninstall function. `now` is the clock
  * for the double-modifier gestures.
  */
-export function installKeyboardDispatcher(target: Window = window, now: () => number = () => performance.now()): () => void {
+export function installKeyboardDispatcher(
+  target: Window = window,
+  now: () => number = () => performance.now(),
+): () => void {
   let pending: string[] = [];
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
   /**
@@ -416,7 +419,9 @@ export function installKeyboardDispatcher(target: Window = window, now: () => nu
     const key = strokeOf(e)?.split("+").pop();
     if (!key) return false;
     const binding = normalizeBinding(`${tap.modifier} ${tap.modifier}+${key}`);
-    const ids = effectiveBindings().filter(([b]) => b === binding).map(([, id]) => id);
+    const ids = effectiveBindings()
+      .filter(([b]) => b === binding)
+      .map(([, id]) => id);
     for (const id of ids.reverse()) {
       const action = getAction(id);
       if (!action || !isActionKeyEnabled(action)) continue;
@@ -494,7 +499,9 @@ export function installKeyboardDispatcher(target: Window = window, now: () => nu
     const fire = tap.step === 3 && !tap.keyUsed && !tap.typed;
     resetTap();
     if (!fire) return;
-    const ids = effectiveBindings().filter(([b]) => b === `${modifier} ${modifier}`).map(([, id]) => id);
+    const ids = effectiveBindings()
+      .filter(([b]) => b === `${modifier} ${modifier}`)
+      .map(([, id]) => id);
     for (const id of ids.reverse()) if (runIfEnabled(id)) return;
   };
 
@@ -508,7 +515,9 @@ export function installKeyboardDispatcher(target: Window = window, now: () => nu
     e.preventDefault();
     e.stopPropagation();
     reset();
-    const ids = effectiveBindings().filter(([b]) => b === stroke).map(([, id]) => id);
+    const ids = effectiveBindings()
+      .filter(([b]) => b === stroke)
+      .map(([, id]) => id);
     for (const id of ids.reverse()) if (runIfEnabled(id)) return;
   };
 

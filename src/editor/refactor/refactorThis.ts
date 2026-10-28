@@ -40,7 +40,10 @@ import {
 import { safeDelete } from "./safeDelete";
 
 /** Outcome of the server query: its answer, or why there is none. */
-export type ServerAnswer = { status: "ok"; query: CodeActionQuery } | { status: "notReady" } | { status: "error"; message: string };
+export type ServerAnswer =
+  | { status: "ok"; query: CodeActionQuery }
+  | { status: "notReady" }
+  | { status: "error"; message: string };
 
 async function askServer(view: EditorView, signal?: AbortSignal, only?: string[]): Promise<ServerAnswer> {
   try {
@@ -79,7 +82,8 @@ export function groupActions(actions: readonly CodeAction[]): {
  */
 function runActions(view: EditorView, title: string, actions: readonly CodeAction[], id: RefactoringId | null = null) {
   if (id && EXPRESSION_REFACTORINGS.has(id) && chooseOccurrences(view, actions, id)) return;
-  const apply = (a: CodeAction) => (id && introducesName(id) ? applyIntroduceAction(view, a, id) : applyCodeAction(view, a));
+  const apply = (a: CodeAction) =>
+    id && introducesName(id) ? applyIntroduceAction(view, a, id) : applyCodeAction(view, a);
   if (actions.length === 1) return apply(actions[0]!);
   openPopup({
     kind: "list",
@@ -113,7 +117,12 @@ function errorAround(view: EditorView): string | null {
 }
 
 /** IDEA's reason for `r` being unavailable, given the server's answer. */
-export async function unavailableReason(view: EditorView, r: Refactoring, answer: ServerAnswer, actions: readonly CodeAction[]): Promise<string> {
+export async function unavailableReason(
+  view: EditorView,
+  r: Refactoring,
+  answer: ServerAnswer,
+  actions: readonly CodeAction[],
+): Promise<string> {
   const ctx = docOf(view);
   const lang = await languageName(ctx?.language ?? "");
   if (answer.status === "notReady") return `No language server for ${lang} is running`;
@@ -229,7 +238,13 @@ export function refactorThisItems(
     items.push({ id: r.id, label: r.label, shortcut: shortcutLabel(r.action), run: () => void exec() });
   }
   other.forEach((a, i) =>
-    items.push({ id: `server${i}`, label: a.title, icon: "bulb", emphasis: a.isPreferred, run: () => applyCodeAction(view, a) }),
+    items.push({
+      id: `server${i}`,
+      label: a.title,
+      icon: "bulb",
+      emphasis: a.isPreferred,
+      run: () => applyCodeAction(view, a),
+    }),
   );
   return items;
 }
@@ -264,11 +279,19 @@ export async function refactorThis(view: EditorView, rename: (view: EditorView) 
     showNothingHere(caretAnchor(view, state.selection.main.head));
     return;
   }
-  openPopup({ kind: "list", anchor: caretAnchor(view, state.selection.main.head), title: "Refactor This", items, numbered: true });
+  openPopup({
+    kind: "list",
+    anchor: caretAnchor(view, state.selection.main.head),
+    title: "Refactor This",
+    items,
+    numbered: true,
+  });
 }
 
 /** IDEA's "Nothing here" popup: Refactor This where no refactoring applies (or outside an editor). */
-export function showNothingHere(anchor: { x: number; y: number } = { x: window.innerWidth / 2, y: window.innerHeight / 3 }) {
+export function showNothingHere(
+  anchor: { x: number; y: number } = { x: window.innerWidth / 2, y: window.innerHeight / 3 },
+) {
   openPopup({
     kind: "list",
     anchor,

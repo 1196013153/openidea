@@ -43,10 +43,16 @@ function expandAll(tool: BuildTool) {
   const { model, configs } = useBuild.getState();
   if (tool === "maven" && model?.maven) {
     const m = model.maven;
-    setExpanded(tool, expandableKeys(mavenRoots(m), (n) => mavenChildren(n, m, configs)));
+    setExpanded(
+      tool,
+      expandableKeys(mavenRoots(m), (n) => mavenChildren(n, m, configs)),
+    );
   } else if (tool === "gradle" && model?.gradle) {
     const g = model.gradle;
-    setExpanded(tool, expandableKeys(gradleRoots(g), (n) => gradleChildren(n, g, configs)));
+    setExpanded(
+      tool,
+      expandableKeys(gradleRoots(g), (n) => gradleChildren(n, g, configs)),
+    );
   }
 }
 
@@ -78,8 +84,22 @@ function apply(model: BuildModel | null, registered: Partial<Record<BuildTool, (
     if (has[tool] && !registered[tool]) {
       registered[tool] =
         tool === "maven"
-          ? registerToolWindow({ id: "maven", title: "Maven", icon: "toolwindow-maven", anchor: "right", order: 10, component: MavenView })
-          : registerToolWindow({ id: "gradle", title: "Gradle", icon: "toolwindow-gradle", anchor: "right", order: 11, component: GradleView });
+          ? registerToolWindow({
+              id: "maven",
+              title: "Maven",
+              icon: "toolwindow-maven",
+              anchor: "right",
+              order: 10,
+              component: MavenView,
+            })
+          : registerToolWindow({
+              id: "gradle",
+              title: "Gradle",
+              icon: "toolwindow-gradle",
+              anchor: "right",
+              order: 11,
+              component: GradleView,
+            });
     } else if (!has[tool] && registered[tool]) {
       registered[tool]!();
       delete registered[tool];

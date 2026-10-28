@@ -90,10 +90,17 @@ export function loadSettings(): Promise<void> {
     return Promise.resolve();
   }
   settingsLoad ??= call(commands.dockerSettings())
-    .then((s: DockerSettings) => useServices.setState({ settings: { connections: s.connections ?? [], registries: s.registries ?? [] } }))
+    .then((s: DockerSettings) =>
+      useServices.setState({ settings: { connections: s.connections ?? [], registries: s.registries ?? [] } }),
+    )
     .catch((e) => {
       settingsLoad = null;
-      notifications().notify({ group: "run", level: "error", title: "Cannot read Docker settings", body: errorMessage(e) });
+      notifications().notify({
+        group: "run",
+        level: "error",
+        title: "Cannot read Docker settings",
+        body: errorMessage(e),
+      });
     });
   return settingsLoad;
 }
@@ -104,7 +111,12 @@ async function saveSettings(settings: Settings): Promise<boolean> {
     useServices.setState({ settings });
     return true;
   } catch (e) {
-    notifications().notify({ group: "run", level: "error", title: "Cannot save Docker settings", body: errorMessage(e) });
+    notifications().notify({
+      group: "run",
+      level: "error",
+      title: "Cannot save Docker settings",
+      body: errorMessage(e),
+    });
     return false;
   }
 }
@@ -116,7 +128,10 @@ export async function saveConnection(c: DockerConnection): Promise<boolean> {
   await loadSettings();
   const s = useServices.getState().settings ?? { connections: [], registries: [] };
   const exists = s.connections.some((x) => x.id === c.id);
-  const ok = await saveSettings({ ...s, connections: exists ? s.connections.map((x) => (x.id === c.id ? c : x)) : [...s.connections, c] });
+  const ok = await saveSettings({
+    ...s,
+    connections: exists ? s.connections.map((x) => (x.id === c.id ? c : x)) : [...s.connections, c],
+  });
   if (ok) {
     stopEvents(c.id);
     if (watchers > 0) void refresh(c.id);
@@ -142,12 +157,20 @@ export async function saveRegistry(r: DockerRegistry, password: string | null | 
   await loadSettings();
   const s = useServices.getState().settings ?? { connections: [], registries: [] };
   const exists = s.registries.some((x) => x.id === r.id);
-  const ok = await saveSettings({ ...s, registries: exists ? s.registries.map((x) => (x.id === r.id ? r : x)) : [...s.registries, r] });
+  const ok = await saveSettings({
+    ...s,
+    registries: exists ? s.registries.map((x) => (x.id === r.id ? r : x)) : [...s.registries, r],
+  });
   if (ok && password !== undefined && isTauri()) {
     try {
       await call(commands.dockerSetRegistryPassword(r.id, password));
     } catch (e) {
-      notifications().notify({ group: "run", level: "error", title: "Cannot save the registry password", body: errorMessage(e) });
+      notifications().notify({
+        group: "run",
+        level: "error",
+        title: "Cannot save the registry password",
+        body: errorMessage(e),
+      });
     }
   }
   return ok;
@@ -200,7 +223,10 @@ export function refresh(id?: string): Promise<void> {
 const debounces = new Map<string, ReturnType<typeof setTimeout>>();
 function refreshSoon(id: string) {
   clearTimeout(debounces.get(id));
-  debounces.set(id, setTimeout(() => void refresh(id), 250));
+  debounces.set(
+    id,
+    setTimeout(() => void refresh(id), 250),
+  );
 }
 
 const events = new Map<string, RequestId>();
@@ -272,12 +298,18 @@ async function guarded(connId: string, title: string, run: () => Promise<unknown
 }
 
 export function containerOp(connId: string, ids: string[], op: ContainerOp): Promise<boolean> {
-  const verb = { start: "start", stop: "stop", restart: "restart", pause: "pause", unpause: "unpause", kill: "kill" }[op];
-  return guarded(connId, `Could not ${verb} container`, () => call(commands.dockerContainerOp(endpointOf(connId), ids, op)));
+  const verb = { start: "start", stop: "stop", restart: "restart", pause: "pause", unpause: "unpause", kill: "kill" }[
+    op
+  ];
+  return guarded(connId, `Could not ${verb} container`, () =>
+    call(commands.dockerContainerOp(endpointOf(connId), ids, op)),
+  );
 }
 
 export function removeObjects(connId: string, object: DockerObject, ids: string[], force: boolean): Promise<boolean> {
-  return guarded(connId, `Could not remove ${object}`, () => call(commands.dockerRemove(endpointOf(connId), object, ids, force)));
+  return guarded(connId, `Could not remove ${object}`, () =>
+    call(commands.dockerRemove(endpointOf(connId), object, ids, force)),
+  );
 }
 
 /** Runs a streaming operation, showing its latest output line in the view's banner. */
@@ -287,7 +319,12 @@ async function task(
   run: (request: RequestId, out: Channel<string>) => Promise<unknown>,
 ): Promise<boolean> {
   if (useServices.getState().task) {
-    notifications().notify({ group: "run", level: "info", title: "Another Docker operation is still running", key: "docker-op" });
+    notifications().notify({
+      group: "run",
+      level: "info",
+      title: "Another Docker operation is still running",
+      key: "docker-op",
+    });
     return false;
   }
   const request = nextRequestId();
@@ -302,7 +339,14 @@ async function task(
     return await guarded(connId, title.replace(/…$/, "") + " failed", () => run(request, out));
   } finally {
     useServices.setState({ task: null });
-    if (last) notifications().notify({ group: "run", level: "info", title: title.replace(/…$/, ""), body: last, key: "docker-task" });
+    if (last)
+      notifications().notify({
+        group: "run",
+        level: "info",
+        title: title.replace(/…$/, ""),
+        body: last,
+        key: "docker-task",
+      });
   }
 }
 

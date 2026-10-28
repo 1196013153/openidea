@@ -86,7 +86,14 @@ const maven: MavenModel = {
         },
       ],
     }),
-    project({ pom: "app/pom.xml", dir: "app", artifactId: "app", displayName: "Demo App", packaging: "jar", aggregated: true }),
+    project({
+      pom: "app/pom.xml",
+      dir: "app",
+      artifactId: "app",
+      displayName: "Demo App",
+      packaging: "jar",
+      aggregated: true,
+    }),
   ],
   profiles: [
     { id: "dev", activeByDefault: true },
@@ -121,7 +128,17 @@ describe("Maven tree", () => {
     expect(labels(children(roots[0]!))).toEqual(["dev", "ci"]);
     const top = children(roots[1]!);
     expect(labels(top)).toEqual(["Lifecycle", "Plugins", "core", "Demo App"]);
-    expect(labels(children(top[0]!))).toEqual(["clean", "validate", "compile", "test", "package", "verify", "install", "site", "deploy"]);
+    expect(labels(children(top[0]!))).toEqual([
+      "clean",
+      "validate",
+      "compile",
+      "test",
+      "package",
+      "verify",
+      "install",
+      "site",
+      "deploy",
+    ]);
     expect(nodeIcon(top[2]!)).toBe("maven-module");
     expect(nodeIcon(roots[1]!)).toBe("maven-project");
   });
@@ -168,7 +185,11 @@ describe("Maven runs", () => {
   it("passes goals, offline, skip tests and changed profiles", () => {
     expect(profilesArg(maven.profiles, {})).toBeNull();
     expect(profilesArg(maven.profiles, { ci: true, dev: false })).toBe("!dev,ci");
-    const config = mavenGoalConfig(core, ["clean", "test"], maven, { offline: true, skipTests: false, profiles: { ci: true } });
+    const config = mavenGoalConfig(core, ["clean", "test"], maven, {
+      offline: true,
+      skipTests: false,
+      profiles: { ci: true },
+    });
     expect(config).toMatchObject({
       name: "core [clean,test]",
       kind: "maven",
@@ -182,20 +203,24 @@ describe("Maven runs", () => {
     const skipped = mavenGoalConfig(core, ["test"], maven, { offline: false, skipTests: true, profiles: {} });
     expect(skipped.args).toEqual(["test", "-DskipTests"]);
     expect(skipped.isTest).toBe(false);
-    const root = mavenGoalConfig(maven.projects[0]!, ["clean"], maven, { offline: false, skipTests: false, profiles: {} });
+    const root = mavenGoalConfig(maven.projects[0]!, ["clean"], maven, {
+      offline: false,
+      skipTests: false,
+      profiles: {},
+    });
     expect(root.cwd).toBeNull();
     expect(root.isTest).toBe(false);
     // Settings › Maven options go before the goals.
     const configured = { ...core, options: ["-s", "/m2/settings.xml"] };
-    expect(mavenGoalConfig(configured, ["test"], maven, { offline: false, skipTests: true, profiles: {} }).args).toEqual(
-      ["-s", "/m2/settings.xml", "test", "-DskipTests"],
-    );
+    expect(
+      mavenGoalConfig(configured, ["test"], maven, { offline: false, skipTests: true, profiles: {} }).args,
+    ).toEqual(["-s", "/m2/settings.xml", "test", "-DskipTests"]);
   });
 
   it("parses typed command lines", () => {
     expect(parseGoalLine("mvn clean install -Dmsg='a b'")).toEqual(["clean", "install", "-Dmsg=a b"]);
     expect(parseGoalLine("./mvnw -q verify")).toEqual(["-q", "verify"]);
-    expect(parseTaskLine("./gradlew :app:run --args \"x y\"")).toEqual([":app:run", "--args", "x y"]);
+    expect(parseTaskLine('./gradlew :app:run --args "x y"')).toEqual([":app:run", "--args", "x y"]);
     expect(splitArgs(`a "" 'b c'`)).toEqual(["a", "", "b c"]);
   });
 
@@ -244,7 +269,8 @@ describe("Gradle tree and runs", () => {
     stale: false,
     syncError: null,
   };
-  const kids = (n: BuildNode) => gradleChildren(n, gradle, [runConfig({ id: "g", name: "app [run]", kind: "gradle" })]) ?? [];
+  const kids = (n: BuildNode) =>
+    gradleChildren(n, gradle, [runConfig({ id: "g", name: "app [run]", kind: "gradle" })]) ?? [];
 
   it("nests subprojects and groups tasks, other last", () => {
     const roots = gradleRoots(gradle);
@@ -260,9 +286,19 @@ describe("Gradle tree and runs", () => {
   it("runs tasks by path from the build directory", () => {
     const app = gradle.projects[1]!;
     const config = gradleTaskConfig(gradle, app, ["test"], { offline: true });
-    expect(config).toMatchObject({ name: "app [test]", kind: "gradle", command: "/p/gradlew", args: [":app:test", "--offline"], cwd: null, isTest: true });
+    expect(config).toMatchObject({
+      name: "app [test]",
+      kind: "gradle",
+      command: "/p/gradlew",
+      args: [":app:test", "--offline"],
+      cwd: null,
+      isTest: true,
+    });
     expect(gradleTaskConfig(gradle, gradle.projects[0]!, ["wrapper"], { offline: false }).args).toEqual(["wrapper"]);
-    expect(gradleTaskConfig(gradle, app, [":lib:jar", "--info"], { offline: false }).args).toEqual([":lib:jar", "--info"]);
+    expect(gradleTaskConfig(gradle, app, [":lib:jar", "--info"], { offline: false }).args).toEqual([
+      ":lib:jar",
+      "--info",
+    ]);
   });
 
   it("completes task names and paths", () => {

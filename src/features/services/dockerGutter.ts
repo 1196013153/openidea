@@ -45,11 +45,18 @@ function menu(target: DockerTarget, path: string): MenuItem[] {
 }
 
 class Marker extends GutterMarker {
-  constructor(readonly target: DockerTarget, readonly path: string) {
+  constructor(
+    readonly target: DockerTarget,
+    readonly path: string,
+  ) {
     super();
   }
   override eq(other: GutterMarker): boolean {
-    return other instanceof Marker && other.path === this.path && targetTitle(other.target, other.path) === targetTitle(this.target, this.path);
+    return (
+      other instanceof Marker &&
+      other.path === this.path &&
+      targetTitle(other.target, other.path) === targetTitle(this.target, this.path)
+    );
   }
   override toDOM(): Node {
     const el = document.createElement("div");
@@ -76,7 +83,10 @@ export function dockerGutter(ctx: EditorDocContext): Extension {
       }
       schedule(delay: number) {
         clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.view.dispatch({ effects: setTargets.of(place(this.view.state, path)) }), delay);
+        this.timer = setTimeout(
+          () => this.view.dispatch({ effects: setTargets.of(place(this.view.state, path)) }),
+          delay,
+        );
       }
       destroy() {
         clearTimeout(this.timer);
@@ -89,7 +99,11 @@ export function dockerGutter(ctx: EditorDocContext): Extension {
     gutter({
       // Shares the run gutter's class so "Show run icons" hides these too.
       class: `${styles.gutter} cm-openidea-gutter-run`,
-      markers: (view) => RangeSet.of(view.state.field(targetsField).map((p) => new Marker(p.target, path).range(p.pos)), true),
+      markers: (view) =>
+        RangeSet.of(
+          view.state.field(targetsField).map((p) => new Marker(p.target, path).range(p.pos)),
+          true,
+        ),
       initialSpacer: () => new Marker({ kind: "composeAll", line: 0 }, path),
       domEventHandlers: {
         mousedown: (view, block, event) => {

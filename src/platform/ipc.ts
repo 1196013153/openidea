@@ -64,7 +64,10 @@ export async function ideEventsReady(): Promise<void> {
 }
 
 /** Subscribes to one backend event type (or `"*"`); returns an unsubscribe function. */
-export function onIdeEvent<K extends IdeEvent["type"]>(type: K | "*", handler: (event: EventOf<K>) => void): () => void {
+export function onIdeEvent<K extends IdeEvent["type"]>(
+  type: K | "*",
+  handler: (event: EventOf<K>) => void,
+): () => void {
   ensureListening();
   let set = handlers.get(type);
   if (!set) handlers.set(type, (set = new Set()));

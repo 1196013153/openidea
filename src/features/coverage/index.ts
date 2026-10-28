@@ -49,12 +49,14 @@ export function activate(): () => void {
         icon: "run-coverage",
         when: "projectOpen",
         keywords: ["coverage"],
-        run: ({ arg }) => executeAction("run.withExecutor", { executor: "coverage", context: arg ?? true }).then(() => undefined),
+        run: ({ arg }) =>
+          executeAction("run.withExecutor", { executor: "coverage", context: arg ?? true }).then(() => undefined),
       },
       {
         id: "coverage.importReport",
         title: "Import a Coverage Report…",
-        description: "Show a report collected elsewhere (CI): lcov, JaCoCo XML or a Go cover profile; argument: the file path",
+        description:
+          "Show a report collected elsewhere (CI): lcov, JaCoCo XML or a Go cover profile; argument: the file path",
         category: "Run",
         icon: "folder-open",
         when: "projectOpen",

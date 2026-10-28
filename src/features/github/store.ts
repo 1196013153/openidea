@@ -113,7 +113,12 @@ let detailSeq = 0;
 export async function loadDetails(number: number): Promise<void> {
   const seq = ++detailSeq;
   const same = useGithub.getState().details?.summary.number === number;
-  useGithub.setState({ selected: number, detailsLoading: true, detailsError: null, ...(same ? {} : { details: null, reviewComments: [] }) });
+  useGithub.setState({
+    selected: number,
+    detailsLoading: true,
+    detailsError: null,
+    ...(same ? {} : { details: null, reviewComments: [] }),
+  });
   try {
     const [details, comments] = await Promise.all([
       call(commands.ghPrView(number)),
@@ -136,9 +141,17 @@ export function select(number: number | null) {
 }
 
 /** Runs a cancellable, streaming gh operation shown in the view's banner. */
-export async function withBusy<T>(title: string, run: (request: RequestId, out: Channel<string>) => Promise<T>): Promise<T | null> {
+export async function withBusy<T>(
+  title: string,
+  run: (request: RequestId, out: Channel<string>) => Promise<T>,
+): Promise<T | null> {
   if (useGithub.getState().busy) {
-    notifications().notify({ group: "vcs", level: "info", title: "Another GitHub operation is still running", key: "github-busy" });
+    notifications().notify({
+      group: "vcs",
+      level: "info",
+      title: "Another GitHub operation is still running",
+      key: "github-busy",
+    });
     return null;
   }
   const request = nextRequestId();
@@ -149,7 +162,13 @@ export async function withBusy<T>(title: string, run: (request: RequestId, out: 
     return await run(request, out);
   } catch (e) {
     if (!isCancelled(e))
-      notifications().notify({ group: "vcs", level: "error", title: `${title.replace(/…$/, "")} failed`, body: errorMessage(e), key: "github-op" });
+      notifications().notify({
+        group: "vcs",
+        level: "error",
+        title: `${title.replace(/…$/, "")} failed`,
+        body: errorMessage(e),
+        key: "github-op",
+      });
     return null;
   } finally {
     useGithub.setState({ busy: null });
@@ -166,7 +185,14 @@ const diffCache = new Map<string, PrDiffRevisions>();
 /** Another project: start over. */
 export function resetGithub() {
   diffCache.clear();
-  useGithub.setState({ availability: null, list: [], selected: null, details: null, reviewComments: [], query: DEFAULT_QUERY });
+  useGithub.setState({
+    availability: null,
+    list: [],
+    selected: null,
+    details: null,
+    reviewComments: [],
+    query: DEFAULT_QUERY,
+  });
 }
 
 /** Fetches what the local repository lacks to diff `pr`, once per head commit. */
@@ -176,7 +202,17 @@ export async function diffRevisions(pr: PullRequestDetails): Promise<PrDiffRevis
   if (hit) return hit;
   const repo = readyRepo();
   const revs = await withBusy(`Fetching #${pr.summary.number}…`, (r, out) =>
-    call(commands.ghPrPrepareDiff(r, pr.summary.number, pr.headOid, pr.baseOid, pr.summary.baseRef, repo?.nameWithOwner ?? "", out)),
+    call(
+      commands.ghPrPrepareDiff(
+        r,
+        pr.summary.number,
+        pr.headOid,
+        pr.baseOid,
+        pr.summary.baseRef,
+        repo?.nameWithOwner ?? "",
+        out,
+      ),
+    ),
   );
   if (revs) diffCache.set(key, revs);
   return revs;

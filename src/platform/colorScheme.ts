@@ -13,7 +13,10 @@ import { BUILTIN_THEMES, isBuiltinTheme, themeKind, type BuiltinThemeId } from "
 
 export type SchemeId = BuiltinThemeId;
 
-export const SCHEMES: ReadonlyArray<{ id: SchemeId; name: string }> = BUILTIN_THEMES.map((t) => ({ id: t.id, name: t.label }));
+export const SCHEMES: ReadonlyArray<{ id: SchemeId; name: string }> = BUILTIN_THEMES.map((t) => ({
+  id: t.id,
+  name: t.label,
+}));
 
 export interface AttributeDef {
   id: string;
@@ -47,16 +50,36 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
   { id: "caret", name: "Caret", path: ["General", "Editor"], fg: "--caret" },
   { id: "caretRow", name: "Caret row", path: ["General", "Editor"], bg: "--bg-current-line" },
   { id: "selection", name: "Selection background", path: ["General", "Editor"], bg: "--bg-editor-selection" },
-  { id: "selectionInactive", name: "Selection background (inactive)", path: ["General", "Editor"], bg: "--bg-editor-selection-inactive" },
+  {
+    id: "selectionInactive",
+    name: "Selection background (inactive)",
+    path: ["General", "Editor"],
+    bg: "--bg-editor-selection-inactive",
+  },
   { id: "whitespaces", name: "Whitespaces", path: ["General", "Editor"], fg: "--fg-whitespace" },
   { id: "indentGuide", name: "Indent guide", path: ["General", "Editor"], fg: "--border-indent-guide" },
   { id: "rightMargin", name: "Hard wrap guide", path: ["General", "Editor"], fg: "--border-right-margin" },
-  { id: "methodSeparator", name: "Method separator color", path: ["General", "Editor"], fg: "--border-method-separator" },
+  {
+    id: "methodSeparator",
+    name: "Method separator color",
+    path: ["General", "Editor"],
+    fg: "--border-method-separator",
+  },
   { id: "lineNumber", name: "Line number", path: ["General", "Code"], fg: "--fg-line-number" },
-  { id: "lineNumberCaret", name: "Line number on caret row", path: ["General", "Code"], fg: "--fg-line-number-current" },
+  {
+    id: "lineNumberCaret",
+    name: "Line number on caret row",
+    path: ["General", "Code"],
+    fg: "--fg-line-number-current",
+  },
   { id: "gutter", name: "Gutter background", path: ["General", "Code"], bg: "--bg-editor-gutter" },
   { id: "matchedBrace", name: "Matched brace", path: ["General", "Code"], bg: "--bg-matched-brace" },
-  { id: "identifierUnderCaret", name: "Identifier under caret", path: ["General", "Code"], bg: "--bg-identifier-under-caret" },
+  {
+    id: "identifierUnderCaret",
+    name: "Identifier under caret",
+    path: ["General", "Code"],
+    bg: "--bg-identifier-under-caret",
+  },
   {
     id: "identifierUnderCaretWrite",
     name: "Identifier under caret (write)",
@@ -64,9 +87,20 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
     bg: "--bg-identifier-under-caret-write",
   },
   { id: "inlay", name: "Inlay hints", path: ["General", "Code"], fg: "--fg-inlay", bg: "--bg-inlay" },
-  { id: "folded", name: "Folded text", path: ["General", "Code"], fg: "--fg-fold-placeholder", bg: "--bg-fold-placeholder" },
+  {
+    id: "folded",
+    name: "Folded text",
+    path: ["General", "Code"],
+    fg: "--fg-fold-placeholder",
+    bg: "--bg-fold-placeholder",
+  },
   { id: "searchResult", name: "Search result", path: ["General", "Search Results"], bg: "--bg-search-match" },
-  { id: "searchResultCurrent", name: "Current search result", path: ["General", "Search Results"], bg: "--bg-search-match-current" },
+  {
+    id: "searchResultCurrent",
+    name: "Current search result",
+    path: ["General", "Search Results"],
+    bg: "--bg-search-match-current",
+  },
   { id: "error", name: "Error", path: ["General", "Errors and Warnings"], effect: "--wave-error" },
   { id: "warning", name: "Warning", path: ["General", "Errors and Warnings"], effect: "--wave-warning" },
   { id: "weakWarning", name: "Weak warning", path: ["General", "Errors and Warnings"], fg: "--fg-weak-warning" },
@@ -99,7 +133,14 @@ export const ATTRIBUTES: readonly AttributeDef[] = [
   ...[1, 2, 3].map((n) => syn(`bracket${n}`, `Rainbow brackets › Level ${n}`, [LD], `bracket-${n}`)),
 
   syn("pySelf", "Self parameter", ["Python"], "self"),
-  { id: "pyStaticSymbol", name: "Static symbol", path: ["Python"], token: "python-static", italicOnly: true, defaultItalic: false },
+  {
+    id: "pyStaticSymbol",
+    name: "Static symbol",
+    path: ["Python"],
+    token: "python-static",
+    italicOnly: true,
+    defaultItalic: false,
+  },
   syn("pyKeywordArg", "Keyword argument", ["Python"], "keyword-arg"),
   syn("pyDocstring", "Docstring", ["Python"], "docstring"),
   syn("pyBuiltin", "Built-in name", ["Python"], "predefined"),
@@ -191,10 +232,17 @@ export function schemeTokens(id: SchemeId, css: string = source): Vars {
   const resolve = (value: string, depth = 0): string =>
     depth > 8
       ? value
-      : value.replace(/var\((--[\w-]+)(?:\s*,\s*([^()]*(?:\([^()]*\))?[^()]*))?\)/g, (_m, name: string, fallback?: string) => {
-          const v = merged.get(name);
-          return v !== undefined ? resolve(v, depth + 1) : fallback !== undefined ? resolve(fallback.trim(), depth + 1) : `var(${name})`;
-        });
+      : value.replace(
+          /var\((--[\w-]+)(?:\s*,\s*([^()]*(?:\([^()]*\))?[^()]*))?\)/g,
+          (_m, name: string, fallback?: string) => {
+            const v = merged.get(name);
+            return v !== undefined
+              ? resolve(v, depth + 1)
+              : fallback !== undefined
+                ? resolve(fallback.trim(), depth + 1)
+                : `var(${name})`;
+          },
+        );
   const out: Vars = new Map();
   for (const [k, v] of merged) out.set(k, resolve(v));
   if (css === source) resolvedCache.set(id, out);
@@ -202,13 +250,18 @@ export function schemeTokens(id: SchemeId, css: string = source): Vars {
 }
 
 /** The scheme the editor shows for `setting` under the current theme. */
-export function effectiveScheme(setting: string | undefined, root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null): SchemeId {
+export function effectiveScheme(
+  setting: string | undefined,
+  root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null,
+): SchemeId {
   if (isBuiltinTheme(setting)) return setting;
   return themeScheme(root);
 }
 
 /** Scheme belonging to the active IDE theme (`data-theme` / `data-contrast`). */
-export function themeScheme(root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null): SchemeId {
+export function themeScheme(
+  root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null,
+): SchemeId {
   if (!root) return "light";
   if (isBuiltinTheme(root.dataset.colorTheme)) return root.dataset.colorTheme;
   if (root.dataset.theme === "light") return "light";
@@ -233,7 +286,9 @@ const EFFECT_CSS: Record<string, (c: string) => string> = {
 };
 
 /** Declarations for the overrides of one scheme. */
-export function overrideDeclarations(overrides: Record<string, TextAttributesOverride> | undefined): Array<[string, string]> {
+export function overrideDeclarations(
+  overrides: Record<string, TextAttributesOverride> | undefined,
+): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   if (!overrides) return out;
   for (const attr of ATTRIBUTES) {
@@ -263,7 +318,11 @@ export function overrideDeclarations(overrides: Record<string, TextAttributesOve
 const SAFE = /^[^;{}<>]*$/;
 
 /** Stylesheet text for the chosen scheme and its overrides ("" when the theme's own is used unchanged). */
-export function schemeCss(setting: string | undefined, overrides: Record<string, Record<string, TextAttributesOverride>> | undefined, root?: HTMLElement | null): string {
+export function schemeCss(
+  setting: string | undefined,
+  overrides: Record<string, Record<string, TextAttributesOverride>> | undefined,
+  root?: HTMLElement | null,
+): string {
   const id = effectiveScheme(setting, root);
   const decls: Array<[string, string]> = [];
   // A plugin theme brings its own editor colours: an explicit scheme replaces them even on the same base.
@@ -277,6 +336,8 @@ export function schemeCss(setting: string | undefined, overrides: Record<string,
     if (bg) decls.push(["--bg-editor", bg], ["--bg-editor-gutter", tokens.get("--bg-editor-gutter") ?? bg]);
   }
   decls.push(...overrideDeclarations(overrides?.[id]));
-  const body = decls.filter(([k, v]) => /^--[\w-]+$/.test(k) && SAFE.test(v)).map(([k, v]) => `  ${k}: ${v} !important;`);
+  const body = decls
+    .filter(([k, v]) => /^--[\w-]+$/.test(k) && SAFE.test(v))
+    .map(([k, v]) => `  ${k}: ${v} !important;`);
   return body.length ? `:root {\n${body.join("\n")}\n}\n` : "";
 }

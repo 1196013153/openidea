@@ -12,7 +12,11 @@ afterEach(() => {
 
 function make(doc: string, at: number) {
   view = new EditorView({
-    state: EditorState.create({ doc, selection: { anchor: at }, extensions: [columnModeExtension, EditorState.allowMultipleSelections.of(true)] }),
+    state: EditorState.create({
+      doc,
+      selection: { anchor: at },
+      extensions: [columnModeExtension, EditorState.allowMultipleSelections.of(true)],
+    }),
     parent: document.body,
   });
   return view;

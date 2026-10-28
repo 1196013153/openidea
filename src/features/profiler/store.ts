@@ -28,7 +28,10 @@ let seq = 0;
 
 export function addSnapshot(name: string, profile: Profile): Snapshot {
   const snapshot: Snapshot = { id: `profile${++seq}`, name, createdAt: Date.now(), profile };
-  useProfiler.setState((s) => ({ snapshots: [snapshot, ...s.snapshots].slice(0, MAX_SNAPSHOTS), activeId: snapshot.id }));
+  useProfiler.setState((s) => ({
+    snapshots: [snapshot, ...s.snapshots].slice(0, MAX_SNAPSHOTS),
+    activeId: snapshot.id,
+  }));
   return snapshot;
 }
 

@@ -335,7 +335,10 @@ export class EditorController implements SlotHost {
       files[path] = slot.viewState();
     }
     const kinds = useContributions.getState().editorKinds;
-    storeSession(root, serializeSession(useTabs.getState(), files, (input) => !!kinds.get(input.kind)?.restorable));
+    storeSession(
+      root,
+      serializeSession(useTabs.getState(), files, (input) => !!kinds.get(input.kind)?.restorable),
+    );
   }
 
   /** Reopens the tabs, splits and carets saved for `root` (after the project opened). */
@@ -912,7 +915,11 @@ export class EditorController implements SlotHost {
         const encoding = await this.manager.backend.setEncoding(meta.doc, meta.encoding, true);
         model.setMeta({ encoding });
       } catch (e) {
-        notifications().notify({ level: "error", title: "Cannot reload from disk", body: e instanceof Error ? e.message : String(e) });
+        notifications().notify({
+          level: "error",
+          title: "Cannot reload from disk",
+          body: e instanceof Error ? e.message : String(e),
+        });
       }
     }
   }
@@ -1074,7 +1081,8 @@ export class EditorController implements SlotHost {
   closePath(path: string) {
     this.apply((s) => {
       const keys = new Set<string>();
-      for (const pane of Object.values(s.panes)) for (const t of pane.tabs) if (t.input.path === path) keys.add(t.input.key);
+      for (const pane of Object.values(s.panes))
+        for (const t of pane.tabs) if (t.input.path === path) keys.add(t.input.key);
       let next = s;
       for (const key of keys) next = closeKey(next, key);
       return next;
@@ -1164,7 +1172,14 @@ export class EditorController implements SlotHost {
                 { kind: "action", action: "project.copyAbsolutePath", arg: path, label: "Absolute Path" },
                 { kind: "action", action: "project.copyFileName", arg: path, label: "File Name" },
                 ...(inProject
-                  ? ([{ kind: "action", action: "project.copyRelativePath", arg: path, label: "Path From Content Root" }] as MenuItem[])
+                  ? ([
+                      {
+                        kind: "action",
+                        action: "project.copyRelativePath",
+                        arg: path,
+                        label: "Path From Content Root",
+                      },
+                    ] as MenuItem[])
                   : []),
               ],
             },

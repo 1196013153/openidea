@@ -6,7 +6,12 @@
  * Paths resolve in the backend like IDEA's file references: relative to the
  * file, `/…` against the project root and its resource roots.
  */
-import { startCompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import {
+  startCompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 import { whenSynced } from "@/editor/api";
@@ -71,7 +76,10 @@ function option(entry: PathCompletion): Completion & { icon: string } {
     type: "folder",
     icon: folderIconName(),
     apply: (view, _c, from, to) => {
-      view.dispatch({ changes: { from, to, insert: `${entry.name}/` }, selection: { anchor: from + entry.name.length + 1 } });
+      view.dispatch({
+        changes: { from, to, insert: `${entry.name}/` },
+        selection: { anchor: from + entry.name.length + 1 },
+      });
       startCompletion(view);
     },
   };

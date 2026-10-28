@@ -245,7 +245,9 @@ describe("completion candidates", () => {
       insert: "id, email, name, created_at",
     });
     const two = complete("select | from users u join orders o on o.user_id = u.id");
-    expect(two.find((x) => x.kind === "columns" && x.tail === "(u)")?.insert).toBe("u.id, u.email, u.name, u.created_at");
+    expect(two.find((x) => x.kind === "columns" && x.tail === "(u)")?.insert).toBe(
+      "u.id, u.email, u.name, u.created_at",
+    );
   });
 
   it("names unaliased tables by schema in column rows", () => {
@@ -320,7 +322,10 @@ describe("VALUES parameter info", () => {
     return valuesSlot(sql.slice(0, pos) + sql.slice(pos + 1), pos, "sqlite");
   };
   it("finds the column of the value at the caret", () => {
-    expect(slot("insert into users (email, name) values ('a', |)")).toMatchObject({ columns: ["email", "name"], index: 1 });
+    expect(slot("insert into users (email, name) values ('a', |)")).toMatchObject({
+      columns: ["email", "name"],
+      index: 1,
+    });
     expect(slot("insert into users values (|)")).toMatchObject({ columns: null, index: 0 });
     expect(slot("insert into users (email) values ('a'), (|")).toMatchObject({ index: 0 });
     expect(slot("insert into users (email|)")).toBeNull();
@@ -359,7 +364,9 @@ describe("resolve", () => {
   });
 
   it("leaves names alone when it cannot judge them", () => {
-    expect(problems("select foo from unknown_table;")).toEqual(["unknown_table: Unable to resolve table 'unknown_table'"]);
+    expect(problems("select foo from unknown_table;")).toEqual([
+      "unknown_table: Unable to resolve table 'unknown_table'",
+    ]);
     expect(problems("select * from (select * from users) x where x.whatever = 1;")).toEqual([]);
     expect(problems("select rowid, * from users;")).toEqual([]);
   });
@@ -384,7 +391,12 @@ describe("params", () => {
   it("finds parameters per dialect and binds values", () => {
     const names = (sql: string, driver: "sqlite" | "postgres" | "mysql" = "sqlite", n = 0) =>
       findParams(sql, driver, n).map((p) => p.name);
-    expect(names("select * from t where a = :id and b = ? and c = ?3 and d = @x and e = '?' -- ?")).toEqual([":id", "?1", "?3", "@x"]);
+    expect(names("select * from t where a = :id and b = ? and c = ?3 and d = @x and e = '?' -- ?")).toEqual([
+      ":id",
+      "?1",
+      "?3",
+      "@x",
+    ]);
     expect(names("select * from t where a = ? and b = ?", "sqlite", 2)).toEqual(["?3", "?4"]);
     expect(names("select @x := 1, @@version, ? from t", "mysql")).toEqual(["?1"]);
     expect(names("select j ? 'k', $1, a::int from t where b = :name", "postgres")).toEqual(["$1", ":name"]);

@@ -52,10 +52,16 @@ const NOT_COLUMNS = new Set(
 const eq = (a: string | null | undefined, b: string | null | undefined) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-export function findTable(model: DbCompletion | null, schema: string | null, name: string): DbCompletionTable | undefined {
+export function findTable(
+  model: DbCompletion | null,
+  schema: string | null,
+  name: string,
+): DbCompletionTable | undefined {
   const tables = model?.tables ?? [];
   if (schema) return tables.find((t) => eq(t.schema, schema) && eq(t.name, name));
-  return tables.find((t) => eq(t.schema, model?.defaultSchema) && eq(t.name, name)) ?? tables.find((t) => eq(t.name, name));
+  return (
+    tables.find((t) => eq(t.schema, model?.defaultSchema) && eq(t.name, name)) ?? tables.find((t) => eq(t.name, name))
+  );
 }
 
 const isName = (t: Token | undefined): t is Token => !!t && (t.kind === "word" || t.kind === "quoted");
@@ -223,7 +229,9 @@ export class SqlResolver {
       clause !== "values" &&
       clause !== "limit" &&
       !this.outputAliases(i).has(name.toLowerCase());
-    return judged ? { ...span, symbol: null, problem: `Unable to resolve column '${name}'` } : { ...span, symbol: null };
+    return judged
+      ? { ...span, symbol: null, problem: `Unable to resolve column '${name}'` }
+      : { ...span, symbol: null };
   }
 
   /** Every unresolved name of the text. */
@@ -273,7 +281,12 @@ export class SqlResolver {
       const t = toks[k]!;
       if (!isName(t)) continue;
       const prev = toks[k - 1]!;
-      if ((prev.kind === "word" && prev.upper === "AS") || isP(prev, ")") || prev.kind === "number" || prev.kind === "string")
+      if (
+        (prev.kind === "word" && prev.upper === "AS") ||
+        isP(prev, ")") ||
+        prev.kind === "number" ||
+        prev.kind === "string"
+      )
         out.add(identName(t).toLowerCase());
     }
     return out;

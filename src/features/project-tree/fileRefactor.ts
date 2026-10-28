@@ -81,7 +81,10 @@ export function memoryRefactorBackend(): FileRefactorBackend {
           done.push(m);
         }
       } catch (e) {
-        for (const m of done.reverse()) await fs().rename(m.to, m.from).catch(() => {});
+        for (const m of done.reverse())
+          await fs()
+            .rename(m.to, m.from)
+            .catch(() => {});
         throw e;
       }
       records.set(++next, moves);
@@ -142,7 +145,9 @@ export function mergeEdits(lsp: WorkspaceEdit, text: WorkspaceEdit): WorkspaceEd
 
 /** Whether `edit` changes files other than the moved ones (IDEA previews those refactorings). */
 export function touchesOtherFiles(edit: WorkspaceEdit, moves: readonly FileMove[]): boolean {
-  return edit.files.some((f) => f.kind === "edit" && f.edits.length && !moves.some((m) => isSameOrInside(f.path, m.from)));
+  return edit.files.some(
+    (f) => f.kind === "edit" && f.edits.length && !moves.some((m) => isSameOrInside(f.path, m.from)),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +268,11 @@ export async function runFileRefactoring(
   notifications().notify({
     level: "info",
     title,
-    body: !edited ? undefined : edited === 1 ? tx`Updated references in ${edited} file` : tx`Updated references in ${edited} files`,
+    body: !edited
+      ? undefined
+      : edited === 1
+        ? tx`Updated references in ${edited} file`
+        : tx`Updated references in ${edited} files`,
     actions: [{ label: "Undo", run: () => void undoFileRefactoring(id) }],
     key: "project.refactor.done",
   });

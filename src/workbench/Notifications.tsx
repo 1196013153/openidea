@@ -33,7 +33,11 @@ function subscribeWindowFocus(onChange: () => void) {
 
 /** Whether the app window is active (focused). */
 function useWindowActive(): boolean {
-  return useSyncExternalStore(subscribeWindowFocus, () => document.hasFocus(), () => true);
+  return useSyncExternalStore(
+    subscribeWindowFocus,
+    () => document.hasFocus(),
+    () => true,
+  );
 }
 
 const DONT_SHOW_AGAIN = "Don't Show Again";

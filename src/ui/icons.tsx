@@ -862,7 +862,15 @@ export function fileIconName(fileName: string): IconName {
 }
 
 export type FolderKind =
-  "plain" | "source" | "test" | "resources" | "testResources" | "excluded" | "library" | "github" | "module";
+  | "plain"
+  | "source"
+  | "test"
+  | "resources"
+  | "testResources"
+  | "excluded"
+  | "library"
+  | "github"
+  | "module";
 
 /** Folder icon by role (expui has no separate "open" folder glyph). */
 export function folderIconName(kind: FolderKind = "plain"): IconName {

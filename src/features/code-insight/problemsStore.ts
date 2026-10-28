@@ -26,12 +26,21 @@ export interface SeverityCounts {
 }
 
 /** Replaces `source`'s diagnostics for `path`; returns the same map when nothing changed. */
-export function mergeDiagnostics(map: ProblemsMap, path: string, source: string, items: readonly Diagnostic[]): ProblemsMap {
+export function mergeDiagnostics(
+  map: ProblemsMap,
+  path: string,
+  source: string,
+  items: readonly Diagnostic[],
+): ProblemsMap {
   const prev = map.get(path);
   if (!items.length && !prev?.has(source)) return map;
   const next = new Map(map);
   const sources = new Map(prev ?? []);
-  if (items.length) sources.set(source, items.map((d) => (d.source ? d : { ...d, source })));
+  if (items.length)
+    sources.set(
+      source,
+      items.map((d) => (d.source ? d : { ...d, source })),
+    );
   else sources.delete(source);
   if (sources.size) next.set(path, sources);
   else next.delete(path);

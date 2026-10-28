@@ -56,7 +56,9 @@ describe("scanJvmTargets (Java)", () => {
   });
 
   it("ignores non-main methods named main and Java 25 instance mains count", () => {
-    expect(pick("class A {\n  int main(String[] a) { return 0; }\n  static void main(int x) {}\n}", "A.java")).toEqual([]);
+    expect(pick("class A {\n  int main(String[] a) { return 0; }\n  static void main(int x) {}\n}", "A.java")).toEqual(
+      [],
+    );
     expect(pick("class B {\n  void main() {}\n}", "B.java")).toEqual([[1, "main", "B", null, false]]);
   });
 
@@ -140,7 +142,8 @@ describe("application configurations", () => {
 
   it("creates an Application / Spring Boot config named after the class", () => {
     const rel = "src/main/java/com/example/demo/SpringDemoApplication.java";
-    const src = "package com.example.demo;\n@SpringBootApplication\nclass SpringDemoApplication {\n public static void main(String[] a) {}\n}";
+    const src =
+      "package com.example.demo;\n@SpringBootApplication\nclass SpringDemoApplication {\n public static void main(String[] a) {}\n}";
     const main = detectRunTargets(src, rel).find((t) => t.kind === "main")!;
     const c = targetConfig(main, rel, maven, src)!;
     expect(c).toMatchObject({
@@ -245,7 +248,9 @@ describe("java command lines", () => {
 describe("debugging build tool configurations", () => {
   it("adds a waiting JDWP agent to spring-boot:run, Surefire and Gradle", () => {
     const boot = jdwpLaunch(cfg({ id: "b", kind: "maven", args: ["spring-boot:run"] }))!;
-    expect(boot.args[1]).toMatch(/^-Dspring-boot\.run\.jvmArguments=-agentlib:jdwp=.*suspend=y.*address=127\.0\.0\.1:0$/);
+    expect(boot.args[1]).toMatch(
+      /^-Dspring-boot\.run\.jvmArguments=-agentlib:jdwp=.*suspend=y.*address=127\.0\.0\.1:0$/,
+    );
     const merged = jdwpLaunch(
       cfg({ id: "b", kind: "maven", args: ["spring-boot:run", "-Dspring-boot.run.jvmArguments=-Xmx1g"] }),
     )!;

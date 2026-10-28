@@ -118,7 +118,12 @@ function NameStep({
   initialKind?: string;
 }) {
   const [name, setName] = useState(initialName ?? "");
-  const [kind, setKind] = useState(() => Math.max(0, template.kinds.findIndex((k) => k.id === initialKind)));
+  const [kind, setKind] = useState(() =>
+    Math.max(
+      0,
+      template.kinds.findIndex((k) => k.id === initialKind),
+    ),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pkg, setPkg] = useState("");

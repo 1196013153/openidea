@@ -28,7 +28,8 @@ export function completionAt(text: string, caret: number): Completion | null {
   if (!word) return null;
   const from = caret - word[3]!.length - 1;
   // Commands only as the message's first word.
-  if (word[2] === "/") return before.slice(0, from).trim() === "" ? { kind: "command", query: word[3]!, from, to: caret } : null;
+  if (word[2] === "/")
+    return before.slice(0, from).trim() === "" ? { kind: "command", query: word[3]!, from, to: caret } : null;
   return { kind: "file", query: word[3]!, from, to: caret };
 }
 
@@ -75,7 +76,8 @@ export function mentionOf(rel: string, lines?: { from: number; to: number }): st
 export function toPrompt(draft: ComposerDraft): AgentPrompt {
   const seen = new Set<string>();
   const files = draft.files.filter((f) => {
-    if (seen.has(f.path) || !new RegExp(`@${escapeRe(f.rel)}(?![\\w./-])|@${escapeRe(f.rel)}:`).test(draft.text)) return false;
+    if (seen.has(f.path) || !new RegExp(`@${escapeRe(f.rel)}(?![\\w./-])|@${escapeRe(f.rel)}:`).test(draft.text))
+      return false;
     seen.add(f.path);
     return true;
   });

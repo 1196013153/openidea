@@ -17,7 +17,13 @@ import {
 } from "../everywhere/model";
 
 const range = (line: number, col = 0) => ({ start: { line, col }, end: { line, col: col + 1 } });
-const sym = (name: string, kind: SymbolMatch["kind"], path: string, line: number, container: string | null = null): SymbolMatch => ({
+const sym = (
+  name: string,
+  kind: SymbolMatch["kind"],
+  path: string,
+  line: number,
+  container: string | null = null,
+): SymbolMatch => ({
   name,
   kind,
   container,
@@ -59,8 +65,15 @@ describe("mergeSymbols", () => {
   });
 
   it("applies type filters and reports overflow", () => {
-    const index = [sym("Order", "class", "/p/A.kt", 0), sym("order", "variable", "/p/A.kt", 2), sym("OrderKind", "enum", "/p/A.kt", 5)];
-    expect(mergeSymbols(index, [], "ord", { ...opts, typesOnly: true }).items.map((i) => i.name)).toEqual(["Order", "OrderKind"]);
+    const index = [
+      sym("Order", "class", "/p/A.kt", 0),
+      sym("order", "variable", "/p/A.kt", 2),
+      sym("OrderKind", "enum", "/p/A.kt", 5),
+    ];
+    expect(mergeSymbols(index, [], "ord", { ...opts, typesOnly: true }).items.map((i) => i.name)).toEqual([
+      "Order",
+      "OrderKind",
+    ]);
     expect(mergeSymbols(index, [], "ord", { ...opts, excludeTypes: true }).items.map((i) => i.name)).toEqual(["order"]);
     const limited = mergeSymbols(index, [], "ord", { ...opts, limit: 2 });
     expect(limited.items).toHaveLength(2);
@@ -73,7 +86,12 @@ describe("mergeSymbols", () => {
 });
 
 describe("matchActions", () => {
-  const act = (id: string, title: string, extra: Partial<Action> = {}): Action => ({ id, title, run: () => {}, ...extra });
+  const act = (id: string, title: string, extra: Partial<Action> = {}): Action => ({
+    id,
+    title,
+    run: () => {},
+    ...extra,
+  });
   const actions = [
     act("code.optimizeImports", "Optimize Imports", { category: "Code" }),
     act("run.editConfigs", "Edit Configurations…", { keywords: ["run config"] }),
@@ -127,7 +145,11 @@ describe("matchActions", () => {
 
 describe("items and rows", () => {
   it("fileItem splits name and directory highlights", () => {
-    const f = fileItem({ path: "/p/src/orders/OrderController.kt", relPath: "src/orders/OrderController.kt", indices: [4, 11, 12, 16] }, 41, null);
+    const f = fileItem(
+      { path: "/p/src/orders/OrderController.kt", relPath: "src/orders/OrderController.kt", indices: [4, 11, 12, 16] },
+      41,
+      null,
+    );
     expect(f.name).toBe("OrderController.kt");
     expect(f.dir).toBe("src/orders");
     expect(f.nameIndices).toEqual([0, 1, 5]);
@@ -135,7 +157,9 @@ describe("items and rows", () => {
   });
 
   it("textItems collapses indentation and shifts ranges", () => {
-    const [t] = textItems("/p/a.kt", "a.kt", [{ line: 4, text: "\t\t  val order = 1", ranges: [[8, 13]], textOffset: 0 }]);
+    const [t] = textItems("/p/a.kt", "a.kt", [
+      { line: 4, text: "\t\t  val order = 1", ranges: [[8, 13]], textOffset: 0 },
+    ]);
     expect(t!.text).toBe("  val order = 1");
     expect(t!.indices).toEqual([6, 7, 8, 9, 10]);
     expect([t!.col, t!.endCol]).toEqual([8, 13]);
@@ -143,8 +167,21 @@ describe("items and rows", () => {
 
   it("buildRows orders sections, adds headers and more rows", () => {
     const sections = new Map<SectionId, SectionState>([
-      ["actions", { items: matchActions([{ id: "a", title: "Order", run: () => {} }], "ord", { isEnabled: () => true, recent: [] }), hasMore: false, loading: false }],
-      ["files", { items: [fileItem({ path: "/p/O.kt", relPath: "O.kt", indices: [] })], hasMore: true, loading: false }],
+      [
+        "actions",
+        {
+          items: matchActions([{ id: "a", title: "Order", run: () => {} }], "ord", {
+            isEnabled: () => true,
+            recent: [],
+          }),
+          hasMore: false,
+          loading: false,
+        },
+      ],
+      [
+        "files",
+        { items: [fileItem({ path: "/p/O.kt", relPath: "O.kt", indices: [] })], hasMore: true, loading: false },
+      ],
       ["classes", { items: [], hasMore: false, loading: true }],
     ]);
     const rows = buildRows(sections, { headers: true });
@@ -157,7 +194,14 @@ describe("items and rows", () => {
     const sections = new Map<SectionId, SectionState>([
       ["files", { items: [file("src/upload_gray.py"), file("src/upgrade.py")], hasMore: true, loading: false }],
       ["symbols", { items: [symbolItem(sym("upgrade", "function", "/p/m.py", 3))], hasMore: false, loading: false }],
-      ["text", { items: textItems("/p/a.md", "a.md", [{ line: 0, text: "upgrade", ranges: [[0, 3]], textOffset: 0 }]), hasMore: false, loading: false }],
+      [
+        "text",
+        {
+          items: textItems("/p/a.md", "a.md", [{ line: 0, text: "upgrade", ranges: [[0, 3]], textOffset: 0 }]),
+          hasMore: false,
+          loading: false,
+        },
+      ],
     ]);
     const rows = buildRows(sections, { headers: false, mix: "upg" });
     expect(rows.map((r) => (r.kind === "more" ? `more:${r.section}` : (r as { section: SectionId }).section))).toEqual([
@@ -176,11 +220,25 @@ describe("items and rows", () => {
 
   it("stableIndex keeps the selected key while rows stream in", () => {
     const sections = new Map<SectionId, SectionState>([
-      ["files", { items: [fileItem({ path: "/p/A.kt", relPath: "A.kt", indices: [] }), fileItem({ path: "/p/B.kt", relPath: "B.kt", indices: [] })], hasMore: false, loading: false }],
+      [
+        "files",
+        {
+          items: [
+            fileItem({ path: "/p/A.kt", relPath: "A.kt", indices: [] }),
+            fileItem({ path: "/p/B.kt", relPath: "B.kt", indices: [] }),
+          ],
+          hasMore: false,
+          loading: false,
+        },
+      ],
     ]);
     const before = buildRows(sections, { headers: true });
     const key = before[2]!.key;
-    sections.set("classes", { items: [fileItem({ path: "/p/C.kt", relPath: "C.kt", indices: [] })], hasMore: false, loading: false });
+    sections.set("classes", {
+      items: [fileItem({ path: "/p/C.kt", relPath: "C.kt", indices: [] })],
+      hasMore: false,
+      loading: false,
+    });
     const after = buildRows(sections, { headers: true });
     expect(after[stableIndex(after, key, 2, true)]!.key).toBe(key);
     // Without a user selection the first selectable row wins.
@@ -198,22 +256,69 @@ describe("items and rows", () => {
 });
 
 describe("topResultSettled", () => {
-  const sec = (loading: boolean, n = 0): SectionState => ({ items: Array.from({ length: n }, () => ({}) as never), hasMore: false, loading });
+  const sec = (loading: boolean, n = 0): SectionState => ({
+    items: Array.from({ length: n }, () => ({}) as never),
+    hasMore: false,
+    loading,
+  });
 
   it("waits while a section above the first result is loading", () => {
-    expect(topResultSettled(new Map([["classes", sec(true)], ["files", sec(false, 2)]]))).toBe(false);
+    expect(
+      topResultSettled(
+        new Map([
+          ["classes", sec(true)],
+          ["files", sec(false, 2)],
+        ]),
+      ),
+    ).toBe(false);
   });
 
   it("is settled once the first section with items is done, even if later ones load", () => {
-    expect(topResultSettled(new Map([["classes", sec(false)], ["files", sec(false, 1)], ["text", sec(true)]]))).toBe(true);
+    expect(
+      topResultSettled(
+        new Map([
+          ["classes", sec(false)],
+          ["files", sec(false, 1)],
+          ["text", sec(true)],
+        ]),
+      ),
+    ).toBe(true);
   });
 
   it("with mixing waits for every source but a text search the top row already beats", () => {
-    const strong = { items: [fileItem({ path: "/p/upgrade.py", relPath: "upgrade.py", indices: [] })], hasMore: false, loading: false };
-    expect(topResultSettled(new Map([["files", strong], ["symbols", sec(true)]]), "upg")).toBe(false);
-    expect(topResultSettled(new Map([["files", strong], ["text", sec(true)]]), "upg")).toBe(true);
+    const strong = {
+      items: [fileItem({ path: "/p/upgrade.py", relPath: "upgrade.py", indices: [] })],
+      hasMore: false,
+      loading: false,
+    };
+    expect(
+      topResultSettled(
+        new Map([
+          ["files", strong],
+          ["symbols", sec(true)],
+        ]),
+        "upg",
+      ),
+    ).toBe(false);
+    expect(
+      topResultSettled(
+        new Map([
+          ["files", strong],
+          ["text", sec(true)],
+        ]),
+        "upg",
+      ),
+    ).toBe(true);
     const weak = { ...strong, items: [fileItem({ path: "/p/xuxpxg.py", relPath: "xuxpxg.py", indices: [] })] };
-    expect(topResultSettled(new Map([["files", weak], ["text", sec(true)]]), "upg")).toBe(false);
+    expect(
+      topResultSettled(
+        new Map([
+          ["files", weak],
+          ["text", sec(true)],
+        ]),
+        "upg",
+      ),
+    ).toBe(false);
   });
 
   it("is settled when everything finished empty", () => {
@@ -249,9 +354,8 @@ describe("parseCommand", () => {
 
 describe("Search Everywhere initial text", () => {
   it("each tab starts with its own last query; closing remembers the text", async () => {
-    const { hideSearchEverywhere, selectSearchEverywhereTab, showSearchEverywhere, useSearchEverywhere } = await import(
-      "../everywhere/store"
-    );
+    const { hideSearchEverywhere, selectSearchEverywhereTab, showSearchEverywhere, useSearchEverywhere } =
+      await import("../everywhere/store");
     localStorage.clear();
     showSearchEverywhere("files");
     useSearchEverywhere.setState({ query: "Order" });

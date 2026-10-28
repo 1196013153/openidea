@@ -43,7 +43,10 @@ export function rangeContains(range: Range, pos: Pos): boolean {
  * sorted, non-overlapping CodeMirror changes. Overlapping edits are dropped
  * rather than producing a corrupt change set.
  */
-export function textEditsToChanges(doc: Text, edits: readonly TextEdit[]): Array<{ from: number; to: number; insert: string }> {
+export function textEditsToChanges(
+  doc: Text,
+  edits: readonly TextEdit[],
+): Array<{ from: number; to: number; insert: string }> {
   const changes = edits
     .map((e, i) => ({ ...rangeToOffsets(doc, e.range), insert: e.new_text, i }))
     .sort((a, b) => a.from - b.from || a.to - b.to || a.i - b.i);

@@ -9,8 +9,26 @@
  * back before the server renames, so the project-wide rename stays a single
  * undoable edit computed against the original document.
  */
-import { Annotation, EditorSelection, EditorState, Prec, StateEffect, StateField, Transaction, type ChangeSet, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, keymap, showTooltip, type Tooltip, type ViewUpdate } from "@codemirror/view";
+import {
+  Annotation,
+  EditorSelection,
+  EditorState,
+  Prec,
+  StateEffect,
+  StateField,
+  Transaction,
+  type ChangeSet,
+  type Extension,
+} from "@codemirror/state";
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  keymap,
+  showTooltip,
+  type Tooltip,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { completionStatus } from "@codemirror/autocomplete";
 import { isExternalChange } from "@/editor/api";
 
@@ -40,7 +58,10 @@ const endSession = StateEffect.define<null>();
 /** Marks the session's own edits (mirroring, restoring). */
 const inplaceEdit = Annotation.define<boolean>();
 
-const mapSpan = (s: Span, changes: ChangeSet): Span => ({ from: changes.mapPos(s.from, -1), to: changes.mapPos(s.to, 1) });
+const mapSpan = (s: Span, changes: ChangeSet): Span => ({
+  from: changes.mapPos(s.from, -1),
+  to: changes.mapPos(s.to, 1),
+});
 
 const sessionField = StateField.define<InplaceSession | null>({
   create: () => null,
@@ -50,7 +71,11 @@ const sessionField = StateField.define<InplaceSession | null>({
       if (e.is(endSession)) return null;
     }
     if (!value || !tr.docChanged) return value;
-    return { ...value, primary: mapSpan(value.primary, tr.changes), others: value.others.map((o) => mapSpan(o, tr.changes)) };
+    return {
+      ...value,
+      primary: mapSpan(value.primary, tr.changes),
+      others: value.others.map((o) => mapSpan(o, tr.changes)),
+    };
   },
   provide: (f) => [
     EditorView.decorations.from(f, (s) => {
@@ -200,7 +225,13 @@ const watcher = ViewPlugin.fromClass(
       const outside = head < s.primary.from || head > s.primary.to || u.state.selection.ranges.length > 1;
       const foreignEdit = u.transactions.some((tr) => {
         const before = inplaceSession(tr.startState);
-        return !!before && tr.docChanged && !tr.annotation(inplaceEdit) && !isExternalChange(tr) && !changesWithin(tr.changes, before.primary);
+        return (
+          !!before &&
+          tr.docChanged &&
+          !tr.annotation(inplaceEdit) &&
+          !isExternalChange(tr) &&
+          !changesWithin(tr.changes, before.primary)
+        );
       });
       if (outside || foreignEdit) queueMicrotask(() => endInplaceRename(this.view, "commit"));
     }

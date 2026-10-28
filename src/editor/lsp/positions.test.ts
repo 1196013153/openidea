@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Text } from "@codemirror/state";
-import { offsetToPos, offsetsToRange, posToOffset, rangeContains, rangeToOffsets, textEditsToChanges } from "./positions";
+import {
+  offsetToPos,
+  offsetsToRange,
+  posToOffset,
+  rangeContains,
+  rangeToOffsets,
+  textEditsToChanges,
+} from "./positions";
 
 const doc = Text.of(["let a = 1;", "// 😀 émoji", "", "end"]);
 

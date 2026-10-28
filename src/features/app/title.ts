@@ -7,7 +7,11 @@ import { t, useI18n } from "@/platform/i18n";
 import { isTauri } from "@/platform/ipc";
 import { basename, useProject } from "@/platform/project";
 
-export function windowTitle(project: string | null | undefined, file: string | null | undefined, fullPath = false): string {
+export function windowTitle(
+  project: string | null | undefined,
+  file: string | null | undefined,
+  fullPath = false,
+): string {
   const name = file ? (fullPath ? file : basename(file)) : null;
   if (!project) return name ?? t("app.title.default");
   return name ? `${project} – ${name}` : project;

@@ -36,7 +36,12 @@ describe("withExtraRoots", () => {
       ["/data/scratches", [entry("/data/scratches/scratch.java")]],
     ]);
     const base = buildModel({ path: "/p", name: "proj" }, listings, DEFAULT_TREE_OPTIONS);
-    const m = withExtraRoots(base, [{ path: "/data/scratches", label: "Scratches", icon: "scratches" }], listings, DEFAULT_TREE_OPTIONS);
+    const m = withExtraRoots(
+      base,
+      [{ path: "/data/scratches", label: "Scratches", icon: "scratches" }],
+      listings,
+      DEFAULT_TREE_OPTIONS,
+    );
     expect(m.roots.map((r) => [r.label, r.root, r.icon])).toEqual([
       ["proj", true, undefined],
       ["Scratches", true, "scratches"],
@@ -60,7 +65,12 @@ describe("project view with a scratches root", () => {
     const fs = new MemoryFs({ "/p/README.md": "x", "/data/scratches/scratch.py": "x" }, "/p");
     setProjectFsForTests(fs, "/p");
     initProjectTree("/p", "proj");
-    unregister = registerProjectViewRoot({ id: "scratches", label: "Scratches", icon: "scratches", path: "/data/scratches" });
+    unregister = registerProjectViewRoot({
+      id: "scratches",
+      label: "Scratches",
+      icon: "scratches",
+      path: "/data/scratches",
+    });
   });
   afterEach(() => {
     unregister();

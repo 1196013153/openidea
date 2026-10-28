@@ -20,7 +20,9 @@ export function scratchFileName(existing: Iterable<string>, ext: string): string
 }
 
 /** Languages a scratch file can be created for (those with an extension), by name. */
-export function scratchLanguages(langs: ReadonlyArray<{ id: string; name: string; extensions: readonly string[] }>): ScratchLanguage[] {
+export function scratchLanguages(
+  langs: ReadonlyArray<{ id: string; name: string; extensions: readonly string[] }>,
+): ScratchLanguage[] {
   const out: ScratchLanguage[] = [];
   for (const l of langs) {
     const ext = l.extensions.find((e) => e.trim())?.replace(/^\./, "");
@@ -39,7 +41,11 @@ export interface LanguageRow {
  * filtering; with a filter, prefix matches of the name, then fuzzy matches,
  * then extension matches.
  */
-export function chooserRows(langs: readonly ScratchLanguage[], recent: readonly string[], filter: string): LanguageRow[] {
+export function chooserRows(
+  langs: readonly ScratchLanguage[],
+  recent: readonly string[],
+  filter: string,
+): LanguageRow[] {
   const q = filter.trim().toLowerCase();
   if (!q) {
     const byId = new Map(langs.map((l) => [l.id, l]));
@@ -55,7 +61,8 @@ export function chooserRows(langs: readonly ScratchLanguage[], recent: readonly 
     else {
       const m = fuzzyMatch(lang.name, q);
       if (m) fuzzy.push({ lang, matches: m });
-      else if (lang.ext.toLowerCase().startsWith(q) || lang.id.toLowerCase().startsWith(q)) ext.push({ lang, matches: null });
+      else if (lang.ext.toLowerCase().startsWith(q) || lang.id.toLowerCase().startsWith(q))
+        ext.push({ lang, matches: null });
     }
   }
   return [...prefix, ...fuzzy, ...ext];

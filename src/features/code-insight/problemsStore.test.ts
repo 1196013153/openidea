@@ -90,7 +90,9 @@ describe("local inspections (issue #42)", () => {
     clearProblems();
     const off = installProblemsEvents();
     try {
-      setFileDiagnostics("/p/a.py", "spelling", [{ ...d(0, "info"), message: "Typo: In word 'mesage'", source: "Spelling" }]);
+      setFileDiagnostics("/p/a.py", "spelling", [
+        { ...d(0, "info"), message: "Typo: In word 'mesage'", source: "Spelling" },
+      ]);
       const [typo] = fileDiagnostics(useProblems.getState().map, "/p/a.py");
       expect(typo).toMatchObject({ message: "Typo: In word 'mesage'", typo: true });
       const producer = producerFor(useProblems.getState().map, "/p/a.py", typo!);

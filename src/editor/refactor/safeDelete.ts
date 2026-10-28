@@ -253,7 +253,9 @@ async function findUsages(ctx: EditorDocContext, target: SafeDeleteTarget): Prom
     comparePos(range.start, target.range.end) > 0;
   if (target.local)
     return target.local.references.filter((r) => outside(ctx.path, r)).map((range) => ({ path: ctx.path, range }));
-  const { locations: refs } = await lspRequest(() => commands.lspReferences(nextRequestId(), ctx.doc, target.at, false, true));
+  const { locations: refs } = await lspRequest(() =>
+    commands.lspReferences(nextRequestId(), ctx.doc, target.at, false, true),
+  );
   return refs.filter((l) => outside(l.path, l.range));
 }
 
@@ -396,7 +398,12 @@ function previewTextOccurrences(
 ) {
   const occurrences: PreviewOccurrence[] = hits.map((h) => {
     const line = doc.lineAt(h.from);
-    return { line: line.number - 1, text: line.text, from: h.from - line.from, to: Math.min(h.to, line.to) - line.from };
+    return {
+      line: line.number - 1,
+      text: line.text,
+      from: h.from - line.from,
+      to: Math.min(h.to, line.to) - line.from,
+    };
   });
   openPopup({
     kind: "preview",
@@ -527,7 +534,11 @@ export async function fileUsages(paths: readonly string[], signal?: AbortSignal)
           let refs: Location[];
           try {
             // Every symbol of every file: the server's own scope (a project search each would be too slow).
-            refs = (await lspRequest(() => commands.lspReferences(nextRequestId(), doc, item.selection_range.start, false, false))).locations;
+            refs = (
+              await lspRequest(() =>
+                commands.lspReferences(nextRequestId(), doc, item.selection_range.start, false, false),
+              )
+            ).locations;
           } catch (e) {
             if (isUnavailable(e)) {
               reason = errorText(e);

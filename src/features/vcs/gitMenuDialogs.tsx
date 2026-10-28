@@ -146,7 +146,13 @@ function PullDialog({ onClose }: { onClose: () => void }) {
     onClose();
     await saveAll();
     await runRemote(
-      { op: "pullFrom", remote, branches: branch ? [branch] : [], rebase, options: mergeOptionsOf(rebase ? new Set() : flags) },
+      {
+        op: "pullFrom",
+        remote,
+        branches: branch ? [branch] : [],
+        rebase,
+        options: mergeOptionsOf(rebase ? new Set() : flags),
+      },
       `${info?.head ?? "HEAD"} ← ${remote}${branch ? `/${branch}` : ""}`,
     );
   };
@@ -244,7 +250,13 @@ function MergeDialog({ onClose }: { onClose: () => void }) {
         <div className={styles.fieldLabel}>
           <T>Branch to merge:</T>
         </div>
-        <Select aria-label="Branch to merge" value={branch} placeholder="Select branch" options={options} onChange={setBranch} />
+        <Select
+          aria-label="Branch to merge"
+          value={branch}
+          placeholder="Select branch"
+          options={options}
+          onChange={setBranch}
+        />
         <div className={styles.fieldLabel}>
           <T>Options:</T>
         </div>
@@ -319,7 +331,13 @@ function RebaseDialog({ onClose }: { onClose: () => void }) {
         <div className={styles.fieldLabel}>
           {useOnto ? tx`Rebase commits of ${head ?? "HEAD"} not on:` : `Rebase ${head ?? "HEAD"} onto:`}
         </div>
-        <Select aria-label="Upstream" value={upstream} placeholder="Select branch" options={options} onChange={setUpstream} />
+        <Select
+          aria-label="Upstream"
+          value={upstream}
+          placeholder="Select branch"
+          options={options}
+          onChange={setUpstream}
+        />
         <Checkbox label="--onto" checked={useOnto} onChange={setUseOnto} />
         {useOnto && (
           <Select aria-label="New base" value={onto} placeholder="New base" options={options} onChange={setOnto} />
@@ -383,7 +401,9 @@ function RemotesDialog({ onClose }: { onClose: () => void }) {
           close();
           if (!r) return;
           void apply(
-            remote ? { op: "edit", name: remote.name, new_name: r.name, url: r.url } : { op: "add", name: r.name, url: r.url },
+            remote
+              ? { op: "edit", name: remote.name, new_name: r.name, url: r.url }
+              : { op: "add", name: r.name, url: r.url },
           );
         }}
       />
@@ -411,7 +431,13 @@ function RemotesDialog({ onClose }: { onClose: () => void }) {
       <div className={styles.form}>
         <div className={styles.manageBar} role="toolbar" aria-label={tx("Remotes")}>
           <IconButton icon="plus" title="Add Remote…" size="small" onClick={() => edit()} />
-          <IconButton icon="minus" title="Remove Remote" size="small" disabled={!current} onClick={() => void remove()} />
+          <IconButton
+            icon="minus"
+            title="Remove Remote"
+            size="small"
+            disabled={!current}
+            onClick={() => void remove()}
+          />
           <IconButton icon="edit" title="Edit Remote…" size="small" disabled={!current} onClick={() => edit(current)} />
         </div>
         <div className={styles.choiceList} role="listbox" aria-label={tx("Remotes")}>
@@ -550,7 +576,10 @@ function WorktreesDialog({ onClose }: { onClose: () => void }) {
         okLabel: "Force Remove",
         danger: true,
       });
-      if (force) await call(commands.vcsRemoveWorktree(currentRepo(), current.path, true)).catch((x) => setError(errorMessage(x)));
+      if (force)
+        await call(commands.vcsRemoveWorktree(currentRepo(), current.path, true)).catch((x) =>
+          setError(errorMessage(x)),
+        );
     }
     setSelected(null);
     await reload();
@@ -566,7 +595,12 @@ function WorktreesDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={styles.form}>
         <div className={styles.manageBar} role="toolbar" aria-label={tx("Worktrees")}>
-          <IconButton icon="plus" title="New Worktree…" size="small" onClick={() => showNewWorktree(() => void reload())} />
+          <IconButton
+            icon="plus"
+            title="New Worktree…"
+            size="small"
+            onClick={() => showNewWorktree(() => void reload())}
+          />
           <IconButton
             icon="minus"
             title="Remove Worktree"
@@ -615,7 +649,10 @@ function NewWorktreeDialog({ onClose }: { onClose: (created: boolean) => void })
   const [newBranch, setNewBranch] = useState("");
   const [path, setPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const options = useMemo(() => [...branchOptions(sortLocal(branches)), ...branchOptions(sortRemote(branches))], [branches]);
+  const options = useMemo(
+    () => [...branchOptions(sortLocal(branches)), ...branchOptions(sortRemote(branches))],
+    [branches],
+  );
   const sourceRemote = branches.find((b) => b.name === source)?.remote ?? false;
   // A remote branch `origin/x` suggests the local name `x`.
   const shortSource = source && sourceRemote ? source.slice(source.indexOf("/") + 1) : (source ?? "");
@@ -657,7 +694,13 @@ function NewWorktreeDialog({ onClose }: { onClose: (created: boolean) => void })
         <div className={styles.fieldLabel}>
           <T>Check out:</T>
         </div>
-        <Select aria-label="Check out" value={source} placeholder="Select branch" options={options} onChange={setSource} />
+        <Select
+          aria-label="Check out"
+          value={source}
+          placeholder="Select branch"
+          options={options}
+          onChange={setSource}
+        />
         <Checkbox label="Create a new branch" checked={createBranch} onChange={setCreateBranch} />
         {createBranch && (
           <Input

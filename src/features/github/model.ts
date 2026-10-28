@@ -1,5 +1,13 @@
 /** Pure helpers of the Pull Requests view (labels, check summaries, review threads, diff inputs). */
-import type { ChangedFile, PrCheck, PrDiffRevisions, PrFile, PrReviewComment, PullRequestDetails, PullRequestSummary } from "@/platform/ipc";
+import type {
+  ChangedFile,
+  PrCheck,
+  PrDiffRevisions,
+  PrFile,
+  PrReviewComment,
+  PullRequestDetails,
+  PullRequestSummary,
+} from "@/platform/ipc";
 import { t, tx } from "@/platform/i18n";
 
 /** Keyed, not source text: "Open" as a state reads differently from the "Open" action in some locales. */
@@ -107,7 +115,9 @@ export function reviewThreads(comments: readonly PrReviewComment[]): ReviewThrea
     }
   }
   return threads.sort(
-    (a, b) => a.root.path.localeCompare(b.root.path) || (a.root.line ?? a.root.originalLine ?? 0) - (b.root.line ?? b.root.originalLine ?? 0),
+    (a, b) =>
+      a.root.path.localeCompare(b.root.path) ||
+      (a.root.line ?? a.root.originalLine ?? 0) - (b.root.line ?? b.root.originalLine ?? 0),
   );
 }
 
@@ -124,15 +134,24 @@ export interface DiffNote {
 export function diffNotes(path: string, comments: readonly PrReviewComment[]): DiffNote[] {
   return comments
     .filter((c) => c.path === path && c.line != null)
-    .map((c) => ({ side: c.side === "LEFT" ? "left" : "right", line: c.line! - 1, author: c.author, body: c.body, date: c.createdAt }));
+    .map((c) => ({
+      side: c.side === "LEFT" ? "left" : "right",
+      line: c.line! - 1,
+      author: c.author,
+      body: c.body,
+      date: c.createdAt,
+    }));
 }
 
-type Side =
-  | { type: "rev"; rev: string; path?: string; label?: string }
-  | { type: "text"; text: string; label: string };
+type Side = { type: "rev"; rev: string; path?: string; label?: string } | { type: "text"; text: string; label: string };
 
 /** `DiffData` for one changed file of a pull request (merge base ↔ head), with its review comments. */
-export function fileDiffData(pr: PullRequestDetails, file: PrFile, revs: PrDiffRevisions, comments: readonly PrReviewComment[]) {
+export function fileDiffData(
+  pr: PullRequestDetails,
+  file: PrFile,
+  revs: PrDiffRevisions,
+  comments: readonly PrReviewComment[],
+) {
   const root = revs.root;
   const changed: ChangedFile | undefined = revs.files.find((f) => f.path === file.path);
   const added = file.changeType === "ADDED" || changed?.kind === "added";
@@ -146,7 +165,15 @@ export function fileDiffData(pr: PullRequestDetails, file: PrFile, revs: PrDiffR
         path: changed?.oldPath ? `${root}/${changed.oldPath}` : undefined,
         label: `${pr.summary.baseRef} (${revs.base.slice(0, 8)})`,
       };
-  const right: Side = deleted ? { type: "text", text: "", label: "(deleted)" } : { type: "rev", rev: revs.head, label: `#${n} ${pr.summary.headRef}` };
+  const right: Side = deleted
+    ? { type: "text", text: "", label: "(deleted)" }
+    : { type: "rev", rev: revs.head, label: `#${n} ${pr.summary.headRef}` };
   const name = file.path.slice(file.path.lastIndexOf("/") + 1);
-  return { path: `${root}/${file.path}`, left, right, title: `#${n}: ${name}`, annotations: diffNotes(file.path, comments) };
+  return {
+    path: `${root}/${file.path}`,
+    left,
+    right,
+    title: `#${n}: ${name}`,
+    annotations: diffNotes(file.path, comments),
+  };
 }

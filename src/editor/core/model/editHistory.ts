@@ -18,7 +18,8 @@ export class EditHistory {
 
   record(loc: Place) {
     const last = this.entries[this.entries.length - 1];
-    if (last && last.path === loc.path && Math.abs(last.line - loc.line) <= MERGE_LINES) this.entries[this.entries.length - 1] = { ...loc };
+    if (last && last.path === loc.path && Math.abs(last.line - loc.line) <= MERGE_LINES)
+      this.entries[this.entries.length - 1] = { ...loc };
     else {
       this.entries = this.entries.filter((e) => e.path !== loc.path || Math.abs(e.line - loc.line) > MERGE_LINES);
       this.entries.push({ ...loc });

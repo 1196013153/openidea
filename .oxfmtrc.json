@@ -5,5 +5,22 @@
   "singleQuote": false,
   "trailingComma": "all",
   "sortPackageJson": false,
-  "ignorePatterns": ["dist", "target", "src/bindings.ts", "pnpm-lock.yaml", "**/*.toml"]
+  "ignorePatterns": [
+    "dist",
+    "target",
+    "src/bindings.ts",
+    "docs/plugins/themes.md",
+    "pnpm-lock.yaml",
+    "**/*.toml",
+    "fixtures",
+    "crates/**/tests/fixtures"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.md"],
+      "options": {
+        "embeddedLanguageFormatting": "off"
+      }
+    }
+  ]
 }

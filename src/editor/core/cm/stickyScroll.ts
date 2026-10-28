@@ -225,7 +225,9 @@ class StickyScroll {
     if (!row?.dataset.line) return;
     e.preventDefault();
     // The line number of a sticky line is not a link (IDEA).
-    const inner = (e.target as HTMLElement).closest(".cm-openidea-stickyText")?.querySelector<HTMLElement>(".cm-openidea-stickyInner");
+    const inner = (e.target as HTMLElement)
+      .closest(".cm-openidea-stickyText")
+      ?.querySelector<HTMLElement>(".cm-openidea-stickyInner");
     if (!inner) return;
     const state = this.view.state;
     const line = state.doc.line(Math.min(Number(row.dataset.line), state.doc.lines));
@@ -234,7 +236,10 @@ class StickyScroll {
     // The line takes the place of its sticky row, so the text stays under the pointer.
     this.view.dispatch({
       selection: EditorSelection.cursor(line.from + Math.min(offset, line.length)),
-      effects: EditorView.scrollIntoView(line.from, { y: "start", yMargin: Math.max(0, rowIndex) * this.view.defaultLineHeight }),
+      effects: EditorView.scrollIntoView(line.from, {
+        y: "start",
+        yMargin: Math.max(0, rowIndex) * this.view.defaultLineHeight,
+      }),
       userEvent: "select.sticky",
     });
     this.view.focus();

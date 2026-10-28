@@ -20,7 +20,9 @@ const IMPORT_TITLE = /\bimport\b/i;
 
 /** The single import fix among `actions`, if exactly one exists. */
 export function unambiguousImport(actions: readonly CodeAction[]): CodeAction | null {
-  const imports = actions.filter((a) => !a.disabledReason && IMPORT_TITLE.test(a.title) && (!a.kind || a.kind.startsWith("quickfix")));
+  const imports = actions.filter(
+    (a) => !a.disabledReason && IMPORT_TITLE.test(a.title) && (!a.kind || a.kind.startsWith("quickfix")),
+  );
   return imports.length === 1 ? imports[0]! : null;
 }
 

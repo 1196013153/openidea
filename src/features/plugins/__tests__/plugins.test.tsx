@@ -184,7 +184,10 @@ describe("bridge events", () => {
     useThemeOverride.setState({ theme: "dark-hc" });
     applyThemeAttributes("dark-hc", root);
     expect([root.dataset.theme, root.dataset.contrast]).toEqual(["dark", "high"]);
-    applyPluginTheme({ pluginId: "p", theme: { id: "l", name: "L", kind: "light", tokens: { "--accent": "#123456" } } });
+    applyPluginTheme({
+      pluginId: "p",
+      theme: { id: "l", name: "L", kind: "light", tokens: { "--accent": "#123456" } },
+    });
     expect([root.dataset.theme, root.dataset.contrast]).toEqual(["light", undefined]);
     expect(root.dataset.pluginThemeKind).toBe("light");
     // The appearance runtime re-applying the built-in theme keeps the plugin's base.

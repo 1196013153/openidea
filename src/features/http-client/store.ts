@@ -108,7 +108,11 @@ export async function selectEntry(id: string) {
     const ex = await call(commands.httpHistoryGet(id));
     useHttpClient.setState((s) => ({ exchanges: { ...s.exchanges, [id]: ex } }));
   } catch (e) {
-    notifications().notify({ level: "error", title: "Cannot open the response", body: e instanceof Error ? e.message : String(e) });
+    notifications().notify({
+      level: "error",
+      title: "Cannot open the response",
+      body: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 

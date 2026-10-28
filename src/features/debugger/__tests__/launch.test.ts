@@ -94,25 +94,44 @@ describe("run config → launch config", () => {
     expect(extra(node).runtimeExecutable).toBeUndefined();
 
     // A located Node.js (e.g. 22.6+ for TypeScript) is used instead of PATH's.
-    const ts = launchConfigFor(rc({ command: "/opt/node22/bin/node", args: ["a.ts"], debugAdapter: "js-debug" }), "/p")!;
+    const ts = launchConfigFor(
+      rc({ command: "/opt/node22/bin/node", args: ["a.ts"], debugAdapter: "js-debug" }),
+      "/p",
+    )!;
     expect(ts.program).toBe("/p/a.ts");
     expect(extra(ts).runtimeExecutable).toBe("/opt/node22/bin/node");
   });
 
   it("js-debug: TypeScript through a runner or type-stripping flag runs as the runtime", () => {
     const flag = launchConfigFor(
-      rc({ kind: "node", command: "/bin/node", args: ["--experimental-strip-types", "a.ts"], debugAdapter: "js-debug" }),
+      rc({
+        kind: "node",
+        command: "/bin/node",
+        args: ["--experimental-strip-types", "a.ts"],
+        debugAdapter: "js-debug",
+      }),
       "/p",
     )!;
     expect(flag.program).toBeNull();
-    expect(extra(flag)).toMatchObject({ runtimeExecutable: "/bin/node", runtimeArgs: ["--experimental-strip-types", "a.ts"] });
-    const tsx = launchConfigFor(rc({ kind: "node", command: "npx", args: ["tsx", "a.ts"], debugAdapter: "js-debug" }), "/p")!;
+    expect(extra(flag)).toMatchObject({
+      runtimeExecutable: "/bin/node",
+      runtimeArgs: ["--experimental-strip-types", "a.ts"],
+    });
+    const tsx = launchConfigFor(
+      rc({ kind: "node", command: "npx", args: ["tsx", "a.ts"], debugAdapter: "js-debug" }),
+      "/p",
+    )!;
     expect(extra(tsx)).toMatchObject({ runtimeExecutable: "npx", runtimeArgs: ["tsx", "a.ts"] });
   });
 
   it("deno: waits on its inspector at a free port that js-debug attaches to", () => {
     const l = launchConfigFor(
-      rc({ kind: "deno", command: "/bin/deno", args: ["run", "-A", "--inspect", "main.ts", "x"], debugAdapter: "js-debug" }),
+      rc({
+        kind: "deno",
+        command: "/bin/deno",
+        args: ["run", "-A", "--inspect", "main.ts", "x"],
+        debugAdapter: "js-debug",
+      }),
       "/p",
     )!;
     expect(l.adapter).toBe("js-debug");
@@ -123,7 +142,10 @@ describe("run config → launch config", () => {
       runtimeArgs: ["run", "--inspect-wait=127.0.0.1:${freePort}", "-A", "main.ts", "x"],
       attachSimplePort: "${freePort}",
     });
-    const test = launchConfigFor(rc({ kind: "deno", command: "deno", args: ["test"], debugAdapter: "js-debug" }), "/p")!;
+    const test = launchConfigFor(
+      rc({ kind: "deno", command: "deno", args: ["test"], debugAdapter: "js-debug" }),
+      "/p",
+    )!;
     expect(extra(test).runtimeArgs).toEqual(["test", "--inspect-wait=127.0.0.1:${freePort}"]);
   });
 
@@ -157,12 +179,20 @@ describe("run config → launch config", () => {
     expect(test.program).toBe("/p");
     // A gutter test / subtest: the package, and `-run` for the test binary.
     const one = launchConfigFor(
-      rc({ kind: "go", command: "go", args: ["test", "./calc", "-run", "^TestSub$/^zero_case$"], debugAdapter: "delve" }),
+      rc({
+        kind: "go",
+        command: "go",
+        args: ["test", "./calc", "-run", "^TestSub$/^zero_case$"],
+        debugAdapter: "delve",
+      }),
       "/p",
     )!;
     expect(one.program).toBe("/p/calc");
     expect(one.args).toEqual(["-test.run", "^TestSub$/^zero_case$"]);
-    const eq = launchConfigFor(rc({ kind: "go", command: "go", args: ["test", "-run=^TestA$", "."], debugAdapter: "delve" }), "/p")!;
+    const eq = launchConfigFor(
+      rc({ kind: "go", command: "go", args: ["test", "-run=^TestA$", "."], debugAdapter: "delve" }),
+      "/p",
+    )!;
     expect(eq.program).toBe("/p");
     expect(eq.args).toEqual(["-test.run", "^TestA$"]);
   });
@@ -199,7 +229,13 @@ describe("run config → launch config", () => {
   });
 
   it("Godot: the editor's adapter plays the main scene or the chosen one of the project", () => {
-    const project = rc({ kind: "godot", command: "/Apps/Godot", args: ["--path", "."], cwd: "game", debugAdapter: "godot" });
+    const project = rc({
+      kind: "godot",
+      command: "/Apps/Godot",
+      args: ["--path", "."],
+      cwd: "game",
+      debugAdapter: "godot",
+    });
     const main = launchConfigFor(project, "/p")!;
     expect(main).toMatchObject({ adapter: "godot", request: "launch", cwd: "/p/game", program: null });
     expect(extra(main)).toEqual({ project: "/p/game", scene: "main" });

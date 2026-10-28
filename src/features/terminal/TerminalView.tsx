@@ -224,7 +224,11 @@ function availableShells(): Promise<string[]> {
 
 /** "zsh", or "bash (/opt/homebrew/bin/bash)" when several shells share a name. */
 export function shellItems(paths: string[]): MenuItem[] {
-  const name = (p: string) => p.split(/[\\/]/).pop()!.replace(/\.exe$/i, "");
+  const name = (p: string) =>
+    p
+      .split(/[\\/]/)
+      .pop()!
+      .replace(/\.exe$/i, "");
   return paths.map((p) => ({
     kind: "action",
     action: "terminal.newPredefinedSession",

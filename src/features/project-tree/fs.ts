@@ -37,8 +37,7 @@ export const tauriFs: ProjectFs = {
 
 type MemNode = { kind: "file"; size: number } | { kind: "dir" };
 
-const err = (kind: "notFound" | "alreadyExists" | "invalidInput", message: string) =>
-  new IpcError({ kind, message });
+const err = (kind: "notFound" | "alreadyExists" | "invalidInput", message: string) => new IpcError({ kind, message });
 
 /** Minimal in-memory file system with the backend's semantics (no overwrite, folders first). */
 export class MemoryFs implements ProjectFs {
@@ -112,7 +111,8 @@ export class MemoryFs implements ProjectFs {
 
   async rename(from: string, to: string) {
     if (!this.nodes.has(from)) throw err("notFound", `${from} not found`);
-    if (this.nodes.has(to) && from.toLowerCase() !== to.toLowerCase()) throw err("alreadyExists", `${to} already exists`);
+    if (this.nodes.has(to) && from.toLowerCase() !== to.toLowerCase())
+      throw err("alreadyExists", `${to} already exists`);
     if (isInside(to, from)) throw err("invalidInput", "cannot move a folder into itself");
     for (const p of [...this.nodes.keys()]) {
       if (p !== from && !isInside(p, from)) continue;

@@ -81,7 +81,11 @@ export const EDITOR_TAB_MIME = "application/x-openidea-editor-tab";
 type DropZone = SplitEdge | "center";
 
 /** Where a tab dropped at (x, y) over an editor goes: an edge (new split) or the pane itself. */
-export function dropZoneAt(x: number, y: number, rect: { left: number; top: number; width: number; height: number }): DropZone {
+export function dropZoneAt(
+  x: number,
+  y: number,
+  rect: { left: number; top: number; width: number; height: number },
+): DropZone {
   const fx = (x - rect.left) / Math.max(1, rect.width);
   const fy = (y - rect.top) / Math.max(1, rect.height);
   const edges: Array<[SplitEdge, number]> = [
@@ -108,7 +112,8 @@ function useTitleHints(): Map<string, string> {
   const paths = useTabs(
     useShallow((s) => {
       const out: string[] = [];
-      for (const p of Object.values(s.panes)) for (const t of p.tabs) if (t.input.kind === "file" && t.input.path) out.push(t.input.path);
+      for (const p of Object.values(s.panes))
+        for (const t of p.tabs) if (t.input.kind === "file" && t.input.path) out.push(t.input.path);
       return out.sort();
     }),
   );
@@ -133,7 +138,8 @@ function PaneView({ paneId }: { paneId: string }) {
   const [dropZone, setDropZone] = useState<DropZone | null>(null);
   const tabPrefs = useEditorPrefs().tabs;
   const distractionFree = useDistractionFree((s) => s.active);
-  const { showExtension, markModified, showCloseButton, showFileIcon, showDirectoryForNonUnique, showFullPathOnHover } = tabPrefs;
+  const { showExtension, markModified, showCloseButton, showFileIcon, showDirectoryForNonUnique, showFullPathOnHover } =
+    tabPrefs;
 
   const items: TabItem[] = useMemo(() => {
     const names = tabs.map((t) => tabTitle(t.input, kinds));
@@ -266,7 +272,9 @@ function PaneView({ paneId }: { paneId: string }) {
         const at = { x: e.clientX, y: e.clientY };
         const path = tab.input.kind === "file" ? tab.input.path : undefined;
         if (!path) return showContextMenu(at, ctrl.tabMenu(paneId, tab));
-        void prepareMenuGroups("editorTab", { paths: [path] }).then(() => showContextMenu(at, ctrl.tabMenu(paneId, tab)));
+        void prepareMenuGroups("editorTab", { paths: [path] }).then(() =>
+          showContextMenu(at, ctrl.tabMenu(paneId, tab)),
+        );
       }}
       trailing={trailing}
     />

@@ -12,7 +12,8 @@ export function isLibraryFrame(frame: StackFrame, root: string | null): boolean 
 }
 
 export type FrameItem =
-  { kind: "frame"; frame: StackFrame; library: boolean } | { kind: "hidden"; count: number; key: string };
+  | { kind: "frame"; frame: StackFrame; library: boolean }
+  | { kind: "hidden"; count: number; key: string };
 
 /**
  * Groups runs of library frames. The selected frame and the first frame are

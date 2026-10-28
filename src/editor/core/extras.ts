@@ -34,7 +34,12 @@ export function pasteFromHistory(view: EditorView) {
         id: `${i}`,
         label,
         detail,
-        preview: text.split(/\r\n?|\n/).slice(1, 4).join("  ⏎  ").trim() || undefined,
+        preview:
+          text
+            .split(/\r\n?|\n/)
+            .slice(1, 4)
+            .join("  ⏎  ")
+            .trim() || undefined,
         run: () => {
           recordClipboard(text);
           void navigator.clipboard?.writeText(text).catch(() => {});

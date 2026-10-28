@@ -29,7 +29,9 @@ describe("semanticRanges", () => {
 
   it("applies the Python-specific static style without changing other languages", () => {
     const input = { tokenTypes: ["property"], tokenModifiers: ["static"], data: [0, 0, 5, 0, 1] };
-    expect(semanticRanges(doc, input, false, "python")[0]?.className).toBe("cm-sem-property cm-sem-static cm-sem-python-static");
+    expect(semanticRanges(doc, input, false, "python")[0]?.className).toBe(
+      "cm-sem-property cm-sem-static cm-sem-python-static",
+    );
     expect(semanticRanges(doc, input, false, "java")[0]?.className).toBe("cm-sem-property cm-sem-static");
   });
 });
@@ -56,7 +58,9 @@ describe("semantic highlighting (rainbow identifiers)", () => {
 
   it("hashes names to a stable palette index", () => {
     expect(rainbowIndex("count")).toBe(rainbowIndex("count"));
-    const all = ["a", "b", "count", "total", "index", "value", "name", "item", "result", "i", "j", "k"].map(rainbowIndex);
+    const all = ["a", "b", "count", "total", "index", "value", "name", "item", "result", "i", "j", "k"].map(
+      rainbowIndex,
+    );
     for (const n of all) expect(n >= 1 && n <= RAINBOW_COLORS).toBe(true);
     expect(new Set(all).size).toBeGreaterThan(2);
   });
@@ -73,7 +77,9 @@ describe("semantic highlighting (rainbow identifiers)", () => {
     expect(byText.get("count")).toEqual(new Set([String(rainbowIndex("count"))]));
     expect(byText.get("obj")).toEqual(new Set([String(rainbowIndex("obj"))]));
     // Parameters keep their own class too; self, statics and fields get no rainbow colour.
-    expect(ranges.find((r) => r.from === 5)!.className).toBe(`cm-sem-parameter cm-sem-declaration cm-sem-rainbow-${rainbowIndex("total")}`);
+    expect(ranges.find((r) => r.from === 5)!.className).toBe(
+      `cm-sem-parameter cm-sem-declaration cm-sem-rainbow-${rainbowIndex("total")}`,
+    );
     expect(byText.get("self")).toEqual(new Set([null]));
     expect(byText.get("S")).toEqual(new Set([null]));
     expect(byText.get("field")).toEqual(new Set([null]));
@@ -90,12 +96,21 @@ describe("semantic highlighting (rainbow identifiers)", () => {
       },
       true,
     );
-    expect(r.filter((x) => x.className.includes("rainbow")).map((x) => ts.sliceString(x.from, x.to))).toEqual(["p", "x", "p"]);
+    expect(r.filter((x) => x.className.includes("rainbow")).map((x) => ts.sliceString(x.from, x.to))).toEqual([
+      "p",
+      "x",
+      "p",
+    ]);
   });
 });
 
 describe("sortCodeActions", () => {
-  const a = (title: string, kind: string | null, isPreferred = false, disabledReason: string | null = null): CodeAction => ({
+  const a = (
+    title: string,
+    kind: string | null,
+    isPreferred = false,
+    disabledReason: string | null = null,
+  ): CodeAction => ({
     title,
     kind,
     isPreferred,
@@ -114,14 +129,29 @@ describe("sortCodeActions", () => {
       a("preferred fix", "quickfix.import", true),
       a("preferred refactor", "refactor", true),
     ]);
-    expect(sorted.map((x) => x.title)).toEqual(["preferred fix", "fix", "preferred refactor", "extract", "disabled fix"]);
+    expect(sorted.map((x) => x.title)).toEqual([
+      "preferred fix",
+      "fix",
+      "preferred refactor",
+      "extract",
+      "disabled fix",
+    ]);
   });
 });
 
 describe("splitSignature", () => {
   it("splits around the active parameter", () => {
     const label = "fn create(req: Request, user: Long) -> Order";
-    expect(splitSignature(label, [[10, 22], [24, 34]], 1)).toEqual({
+    expect(
+      splitSignature(
+        label,
+        [
+          [10, 22],
+          [24, 34],
+        ],
+        1,
+      ),
+    ).toEqual({
       before: "fn create(req: Request, ",
       param: "user: Long",
       after: ") -> Order",
@@ -141,7 +171,10 @@ describe("lineErrorsAwayFromCaret", () => {
   const p = (from: number, to: number, severity = "error") => ({ from, to, severity });
 
   it("offers errors elsewhere on the caret line when none is at the caret", () => {
-    expect(lineErrorsAwayFromCaret([p(30, 34), p(12, 15), p(50, 52), p(5, 6, "warning")], 0, 40, 2)).toEqual([p(12, 15), p(30, 34)]);
+    expect(lineErrorsAwayFromCaret([p(30, 34), p(12, 15), p(50, 52), p(5, 6, "warning")], 0, 40, 2)).toEqual([
+      p(12, 15),
+      p(30, 34),
+    ]);
   });
 
   it("offers nothing extra when an error touches the caret", () => {

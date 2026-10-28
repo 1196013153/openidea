@@ -4,7 +4,16 @@ import { isAllowedIdeShortcut, terminalKeyAction } from "./keys";
 import { matchCounter } from "./FindBar";
 import { buildSearchDecorations } from "./theme";
 import { findTerminalLinks, resolvePath, trimUrl } from "./links";
-import { layoutPanes, nextTabName, removeFromLayout, splitLayout, tabFullTitle, tabTitle, trimMiddle, type TerminalTab } from "./store";
+import {
+  layoutPanes,
+  nextTabName,
+  removeFromLayout,
+  splitLayout,
+  tabFullTitle,
+  tabTitle,
+  trimMiddle,
+  type TerminalTab,
+} from "./store";
 import type { SessionSnapshot } from "./session";
 import { buildTheme, mix, parseColor, terminalFont, toHex } from "./theme";
 
@@ -115,7 +124,10 @@ describe("terminal keys", () => {
     expect(terminalKeyAction(key({ key: "T", code: "KeyT", ctrlKey: true, shiftKey: true }), false)).toEqual({
       kind: "pass",
     });
-    expect(terminalKeyAction(key({ key: "t", code: "KeyT", ctrlKey: true }), false)).toEqual({ kind: "send", data: "\x14" });
+    expect(terminalKeyAction(key({ key: "t", code: "KeyT", ctrlKey: true }), false)).toEqual({
+      kind: "send",
+      data: "\x14",
+    });
   });
 
   it("implements macOS conveniences", () => {
@@ -211,18 +223,55 @@ describe("split layout", () => {
 
 describe("terminalFont", () => {
   const BASE = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, monospace';
-  const t = { useEditorFont: true, fontFamily: "JetBrains Mono", fontSize: 10, lineHeight: 1, fallbackFontFamily: "", columnWidth: 1 };
+  const t = {
+    useEditorFont: true,
+    fontFamily: "JetBrains Mono",
+    fontSize: 10,
+    lineHeight: 1,
+    fallbackFontFamily: "",
+    columnWidth: 1,
+  };
   const editor = { fontFamily: "JetBrains Mono", fontSize: 10, lineHeight: 12 };
   const head = (family: string) => family.slice(0, family.indexOf('"Symbols Nerd Font Mono"'));
 
   it.each([
     // #26: "Use editor font" with the default family must reach the bundled face, not the system monospace.
-    ["editor font, default family", t, editor, `"JetBrains Mono Variable", "JetBrains Mono", ${BASE.replace(", monospace", "")}, `],
-    ["editor font, no editor settings", t, undefined, `"JetBrains Mono Variable", "JetBrains Mono", ${BASE.replace(", monospace", "")}, `],
-    ["editor font, custom family", t, { ...editor, fontFamily: "Fira Code" }, `"Fira Code", ${BASE.replace(", monospace", "")}, `],
-    ["editor font, editor fallback", t, { ...editor, fallbackFont: "PingFang SC" }, `"JetBrains Mono Variable", "JetBrains Mono", "PingFang SC", ${BASE.replace(", monospace", "")}, `],
-    ["own font, default family", { ...t, useEditorFont: false }, editor, `"JetBrains Mono Variable", "JetBrains Mono", ${BASE.replace(", monospace", "")}, `],
-    ["own font, custom + fallback", { ...t, useEditorFont: false, fontFamily: "Hack", fallbackFontFamily: "PingFang SC" }, editor, `"Hack", "PingFang SC", ${BASE.replace(", monospace", "")}, `],
+    [
+      "editor font, default family",
+      t,
+      editor,
+      `"JetBrains Mono Variable", "JetBrains Mono", ${BASE.replace(", monospace", "")}, `,
+    ],
+    [
+      "editor font, no editor settings",
+      t,
+      undefined,
+      `"JetBrains Mono Variable", "JetBrains Mono", ${BASE.replace(", monospace", "")}, `,
+    ],
+    [
+      "editor font, custom family",
+      t,
+      { ...editor, fontFamily: "Fira Code" },
+      `"Fira Code", ${BASE.replace(", monospace", "")}, `,
+    ],
+    [
+      "editor font, editor fallback",
+      t,
+      { ...editor, fallbackFont: "PingFang SC" },
+      `"JetBrains Mono Variable", "JetBrains Mono", "PingFang SC", ${BASE.replace(", monospace", "")}, `,
+    ],
+    [
+      "own font, default family",
+      { ...t, useEditorFont: false },
+      editor,
+      `"JetBrains Mono Variable", "JetBrains Mono", ${BASE.replace(", monospace", "")}, `,
+    ],
+    [
+      "own font, custom + fallback",
+      { ...t, useEditorFont: false, fontFamily: "Hack", fallbackFontFamily: "PingFang SC" },
+      editor,
+      `"Hack", "PingFang SC", ${BASE.replace(", monospace", "")}, `,
+    ],
   ])("%s resolves through the bundled stack", (_, settings, ed, expected) => {
     const font = terminalFont(settings, ed, BASE);
     expect(head(font.family)).toBe(expected);
@@ -231,7 +280,11 @@ describe("terminalFont", () => {
   });
 
   it("prefers the terminal's fallback over the editor's", () => {
-    const font = terminalFont({ ...t, fallbackFontFamily: "Sarasa Mono SC" }, { ...editor, fallbackFont: "PingFang SC" }, BASE);
+    const font = terminalFont(
+      { ...t, fallbackFontFamily: "Sarasa Mono SC" },
+      { ...editor, fallbackFont: "PingFang SC" },
+      BASE,
+    );
     expect(font.family).toContain('"Sarasa Mono SC"');
     expect(font.family).not.toContain("PingFang SC");
   });

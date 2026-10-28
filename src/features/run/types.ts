@@ -134,9 +134,16 @@ const godot: RunConfigTypeContribution = {
       mono: true,
       placeholder: "Main scene",
       hint: "e.g. res://levels/level_1.tscn; empty runs the project's main scene",
-      suggestions: (configs) => [...new Set(configs.filter((c) => c.kind === "godot").flatMap((c) => c.args.filter(isScene)))],
+      suggestions: (configs) => [
+        ...new Set(configs.filter((c) => c.kind === "godot").flatMap((c) => c.args.filter(isScene))),
+      ],
     },
-    { key: "arguments", label: "Arguments", mono: true, placeholder: "Godot command line options, e.g. --debug-collisions" },
+    {
+      key: "arguments",
+      label: "Arguments",
+      mono: true,
+      placeholder: "Godot command line options, e.g. --debug-collisions",
+    },
   ],
   commandLine: (p) => ({
     command: "godot",
@@ -245,21 +252,33 @@ function buildToolType(
   };
 }
 
-const gradle = buildToolType("gradle", "Gradle", "file-gradle", { label: "Tasks", description: "Run Gradle tasks" }, {
-  unix: "gradlew",
-  windows: "gradlew.bat",
-  plain: "gradle",
-  label: "Use the Gradle wrapper",
-  byDefault: true,
-});
+const gradle = buildToolType(
+  "gradle",
+  "Gradle",
+  "file-gradle",
+  { label: "Tasks", description: "Run Gradle tasks" },
+  {
+    unix: "gradlew",
+    windows: "gradlew.bat",
+    plain: "gradle",
+    label: "Use the Gradle wrapper",
+    byDefault: true,
+  },
+);
 
-const maven = buildToolType("maven", "Maven", "file-maven", { label: "Goals", description: "Run Maven goals" }, {
-  unix: "mvnw",
-  windows: "mvnw.cmd",
-  plain: "mvn",
-  label: "Use the Maven wrapper",
-  byDefault: false,
-});
+const maven = buildToolType(
+  "maven",
+  "Maven",
+  "file-maven",
+  { label: "Goals", description: "Run Maven goals" },
+  {
+    unix: "mvnw",
+    windows: "mvnw.cmd",
+    plain: "mvn",
+    label: "Use the Maven wrapper",
+    byDefault: false,
+  },
+);
 
 const compound: RunConfigTypeContribution = {
   id: COMPOUND,
@@ -270,7 +289,15 @@ const compound: RunConfigTypeContribution = {
   commandLine: () => null,
 };
 
-export const BUILTIN_TYPES: readonly RunConfigTypeContribution[] = [shell, program, npm, gradle, maven, godot, compound];
+export const BUILTIN_TYPES: readonly RunConfigTypeContribution[] = [
+  shell,
+  program,
+  npm,
+  gradle,
+  maven,
+  godot,
+  compound,
+];
 
 export function registerBuiltinTypes(): () => void {
   const disposers = BUILTIN_TYPES.map(registerRunConfigType);

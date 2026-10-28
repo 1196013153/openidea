@@ -28,11 +28,21 @@ describe("scratch naming", () => {
 
 describe("language chooser rows", () => {
   it("keeps languages with an extension, sorted by name, first extension wins", () => {
-    expect(LANGS.map((l) => `${l.name}:${l.ext}`)).toEqual(["Java:java", "JavaScript:js", "Plain Text:txt", "Python:py"]);
+    expect(LANGS.map((l) => `${l.name}:${l.ext}`)).toEqual([
+      "Java:java",
+      "JavaScript:js",
+      "Plain Text:txt",
+      "Python:py",
+    ]);
   });
 
   it("puts recently used languages first when not filtering", () => {
-    expect(chooserRows(LANGS, ["python", "gone"], "").map((r) => r.lang.id)).toEqual(["python", "java", "javascript", "plaintext"]);
+    expect(chooserRows(LANGS, ["python", "gone"], "").map((r) => r.lang.id)).toEqual([
+      "python",
+      "java",
+      "javascript",
+      "plaintext",
+    ]);
   });
 
   it("filters by name prefix, then fuzzy, then extension", () => {
@@ -83,7 +93,9 @@ describe("creating scratch files", () => {
   it("registers the action and the Scratches root; the chooser creates the picked language", async () => {
     const dispose = activate();
     try {
-      await vi.waitFor(() => expect(useProjectViewRoots.getState().roots.get("scratches")?.path).toBe("/data/scratches"));
+      await vi.waitFor(() =>
+        expect(useProjectViewRoots.getState().roots.get("scratches")?.path).toBe("/data/scratches"),
+      );
       expect(useProjectViewRoots.getState().roots.get("scratches")?.label).toBe("Scratches");
       const action = getAction("file.newScratchFile")!;
       expect(action.title).toBe("New Scratch File…");

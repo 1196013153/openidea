@@ -27,7 +27,10 @@ describe("file refactoring edits", () => {
       files: [edit("/p/main.ts", [0, 20, 26, "./b/util"]), { kind: "rename", from: "/p/a", to: "/p/b" }],
     };
     const text: WorkspaceEdit = {
-      files: [edit("/p/main.ts", [0, 22, 26, "b/util"], [3, 3, 10, "b/util.ts"]), edit("/p/README.md", [1, 0, 9, "b/util.ts"])],
+      files: [
+        edit("/p/main.ts", [0, 22, 26, "b/util"], [3, 3, 10, "b/util.ts"]),
+        edit("/p/README.md", [1, 0, 9, "b/util.ts"]),
+      ],
     };
     const merged = mergeEdits(lsp, text);
     expect(merged.files.map((f) => f.kind === "edit" && [f.path, f.edits.length])).toEqual([
@@ -54,7 +57,10 @@ describe("runFileRefactoring", () => {
     provideNotificationService({ notify });
     backend = {
       calls: [],
-      edits: vi.fn(async () => ({ edit: { files: [edit("/p/main.ts", [0, 20, 26, "./b/util"])] }, errors: ["tsserver: busy"] })),
+      edits: vi.fn(async () => ({
+        edit: { files: [edit("/p/main.ts", [0, 20, 26, "./b/util"])] },
+        errors: ["tsserver: busy"],
+      })),
       move: vi.fn(async (moves: FileMove[], e: WorkspaceEdit) => {
         backend.calls.push(`move ${moves.length} ${e.files.length}`);
         return 7;
@@ -117,8 +123,8 @@ describe("runFileRefactoring", () => {
     expect(backend.edits).not.toHaveBeenCalled();
     const ctrl = new AbortController();
     ctrl.abort();
-    expect(await runFileRefactoring(moves, { references: true, textOccurrences: false }, "Move", { signal: ctrl.signal })).toBe(
-      "cancelled",
-    );
+    expect(
+      await runFileRefactoring(moves, { references: true, textOccurrences: false }, "Move", { signal: ctrl.signal }),
+    ).toBe("cancelled");
   });
 });

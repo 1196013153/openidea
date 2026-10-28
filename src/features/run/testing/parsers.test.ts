@@ -415,7 +415,10 @@ describe("parser selection", () => {
   });
 
   it("the combined parser understands any supported format", () => {
-    const r = results(createTestParser(cfg("make", "make", ["test"])), "test a ... ok\n--- PASS: TestB (0.00s)\nok  \tpkg\t0.1s");
+    const r = results(
+      createTestParser(cfg("make", "make", ["test"])),
+      "test a ... ok\n--- PASS: TestB (0.00s)\nok  \tpkg\t0.1s",
+    );
     expect(leaf(r, "a")?.own).toBe("passed");
     expect(leaf(r, "pkg", "TestB")?.own).toBe("passed");
   });

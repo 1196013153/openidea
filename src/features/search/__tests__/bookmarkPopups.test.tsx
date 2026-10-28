@@ -47,7 +47,13 @@ describe("Bookmarks popup", () => {
       { path: "/p/a", line: 5, text: "five", created: 2, mnemonic: "3" },
       { path: "/p/b", line: 0, text: "zero", created: 3 },
     ]);
-    expect(bookmarkRows(useBookmarks.getState().items).map((r) => r.kind)).toEqual(["file", "mark", "mark", "file", "mark"]);
+    expect(bookmarkRows(useBookmarks.getState().items).map((r) => r.kind)).toEqual([
+      "file",
+      "mark",
+      "mark",
+      "file",
+      "mark",
+    ]);
     const { items, lists } = useBookmarks.getState();
     expect(bookmarkRows(items, [], lists).map((r) => r.kind)).toEqual(["list", "file", "mark", "mark", "file", "mark"]);
     render(<BookmarkPopupsOverlay />);

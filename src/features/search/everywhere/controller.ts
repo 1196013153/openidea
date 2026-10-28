@@ -214,7 +214,11 @@ export class SeController {
           const paths = await this.deps.recentFiles();
           const root = this.deps.root();
           const items = paths.slice(0, limit).map((p) =>
-            fileItem({ path: p, relPath: root && p.startsWith(root + "/") ? p.slice(root.length + 1) : p, indices: [] }),
+            fileItem({
+              path: p,
+              relPath: root && p.startsWith(root + "/") ? p.slice(root.length + 1) : p,
+              indices: [],
+            }),
           );
           this.set(id, gen, items, paths.length > limit, false);
           break;

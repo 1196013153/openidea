@@ -25,7 +25,14 @@ export function activate(): () => void {
       .then((path) => {
         if (disposed) return;
         dir = path;
-        unregisterRoot = registerProjectViewRoot({ id: "scratches", label: SCRATCHES_ROOT_LABEL, icon: "scratches", path, order: 10, scope: "scratches" });
+        unregisterRoot = registerProjectViewRoot({
+          id: "scratches",
+          label: SCRATCHES_ROOT_LABEL,
+          icon: "scratches",
+          path,
+          order: 10,
+          scope: "scratches",
+        });
       })
       .catch((e: unknown) => console.warn("scratch files: no scratches folder", e));
   const disposers = [

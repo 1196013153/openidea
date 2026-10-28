@@ -3,10 +3,31 @@ import { EditorState } from "@codemirror/state";
 import type { CoverageSuite, FileCoverage, RunConfig } from "@/platform/ipc";
 import { coverageMarkers } from "./gutter";
 import { coverageBadges, coverageSupports, coverageTree, formatPercent, lineState, sortTree } from "./model";
-import { MAX_SUITES, addSuite, closeSuite, reportEntries, resetCoverage, setCoverageVisible, shownFileCoverage, useCoverage } from "./store";
+import {
+  MAX_SUITES,
+  addSuite,
+  closeSuite,
+  reportEntries,
+  resetCoverage,
+  setCoverageVisible,
+  shownFileCoverage,
+  useCoverage,
+} from "./store";
 
 function cfg(command: string, args: string[], extra: Partial<RunConfig> = {}): RunConfig {
-  return { id: "c", name: "c", kind: "shell", command, args, cwd: null, env: {}, detected: true, isTest: false, debugAdapter: null, ...extra };
+  return {
+    id: "c",
+    name: "c",
+    kind: "shell",
+    command,
+    args,
+    cwd: null,
+    env: {},
+    detected: true,
+    isTest: false,
+    debugAdapter: null,
+    ...extra,
+  };
 }
 
 function file(path: string, covered: number, total: number, branches: [number, number] = [0, 0]): FileCoverage {
@@ -98,7 +119,11 @@ describe("gutter and suites", () => {
     expect(f.lines.map(lineState)).toEqual(["covered", "partial", "uncovered", "covered"]);
     const doc = EditorState.create({ doc: "a\nb\nc\n" }).doc;
     const colors: string[] = [];
-    coverageMarkers(f, doc).between(0, doc.length, (_from, _to, m) => void colors.push((m as unknown as { color: string }).color));
+    coverageMarkers(f, doc).between(
+      0,
+      doc.length,
+      (_from, _to, m) => void colors.push((m as unknown as { color: string }).color),
+    );
     expect(colors).toEqual(["var(--coverage-covered)", "var(--coverage-partial)", "var(--coverage-uncovered)"]);
   });
 

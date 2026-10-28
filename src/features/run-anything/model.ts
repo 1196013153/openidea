@@ -14,7 +14,9 @@ const GROUP_LIMIT = 8;
 export function readHistory(scope: string): string[] {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(HISTORY_PREFIX + scope) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, MAX_HISTORY) : [];
+    return Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, MAX_HISTORY)
+      : [];
   } catch {
     return [];
   }
@@ -41,7 +43,9 @@ export function clearHistory(scope: string) {
   }
 }
 
-export type Row = { kind: "section"; key: string; label: string } | { kind: "item"; key: string; item: RunAnythingItem; group: string };
+export type Row =
+  | { kind: "section"; key: string; label: string }
+  | { kind: "item"; key: string; item: RunAnythingItem; group: string };
 
 /** Case-insensitive: every word of `query` occurs in `text`. */
 export function matches(text: string, query: string): boolean {

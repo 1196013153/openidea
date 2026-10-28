@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
 import type { DockerContainer, DockerSnapshot } from "@/platform/ipc";
 import { composeTargets, dockerfileTargets, fileTargets, imageTag, isComposeFile, isDockerfile } from "./compose";
-import { DOCKERFILE, DOCKER_COMPOSE, containerName, dockerComposeType, dockerImageType, gutterActions, shellQuote } from "./runTypes";
-import { childrenOf, findNode, nodeDetail, nodeLabel, parseTreeKey, rootNodes, treeKey, type ServiceNode } from "./model";
+import {
+  DOCKERFILE,
+  DOCKER_COMPOSE,
+  containerName,
+  dockerComposeType,
+  dockerImageType,
+  gutterActions,
+  shellQuote,
+} from "./runTypes";
+import {
+  childrenOf,
+  findNode,
+  nodeDetail,
+  nodeLabel,
+  parseTreeKey,
+  rootNodes,
+  treeKey,
+  type ServiceNode,
+} from "./model";
 import { endpointFrom } from "./dialogs";
 import { dockerItems } from "./docker";
 import { addServiceMenu, expandableKeys, indexTree } from "./tree";
@@ -25,7 +42,11 @@ const container = (name: string, state: string, project?: string, service?: stri
 const snapshot: DockerSnapshot = {
   availability: { kind: "ready", clientVersion: "27", serverVersion: "27", context: null },
   executable: "/usr/bin/docker",
-  containers: [container("web", "exited"), container("shop-db-1", "running", "shop", "db"), container("shop-api-1", "exited", "shop", "api")],
+  containers: [
+    container("web", "exited"),
+    container("shop-db-1", "running", "shop", "db"),
+    container("shop-api-1", "exited", "shop", "api"),
+  ],
   images: [{ id: "sha256:abc", repository: "postgres", tag: "16", size: "1MB", createdSince: "now" }],
   volumes: [],
   networks: [],
@@ -59,7 +80,10 @@ describe("services tree", () => {
 });
 
 describe("services tree host", () => {
-  const conns = [{ id: "default", name: "Docker", endpoint: { kind: "default" as const } }, { id: "c2", name: "Build box", endpoint: { kind: "tcp" as const, host: "build:2376", tlsCertDir: null } }];
+  const conns = [
+    { id: "default", name: "Docker", endpoint: { kind: "default" as const } },
+    { id: "c2", name: "Build box", endpoint: { kind: "tcp" as const, host: "build:2376", tlsCertDir: null } },
+  ];
   const state = { default: { snapshot, loading: false, error: null } };
 
   it("puts every connection and registry at the root, with connection-scoped keys", () => {
@@ -73,7 +97,10 @@ describe("services tree host", () => {
     expect(items[1]!.children).toEqual([]);
     const containers = items[0]!.children![0]!;
     expect(containers.key).toBe("docker:default:group:containers");
-    expect(containers.children!.map((c) => c.key)).toEqual(["docker:default:compose:shop", "docker:default:container:web-id"]);
+    expect(containers.children!.map((c) => c.key)).toEqual([
+      "docker:default:compose:shop",
+      "docker:default:container:web-id",
+    ]);
     expect(containers.children![1]!.dim).toBe(true);
     const index = indexTree({ docker: items });
     expect(index.get("docker:default:container:shop-db-1-id")?.item.label).toBe("db");
@@ -107,8 +134,16 @@ describe("services tree host", () => {
     const f = { path: " /var/run/docker.sock ", host: "", tls: "", context: "" };
     expect(endpointFrom("socket", f)).toEqual({ kind: "socket", path: "/var/run/docker.sock" });
     expect(endpointFrom("tcp", f)).toBeNull();
-    expect(endpointFrom("tcp", { ...f, host: "tcp://h:2376", tls: "/certs" })).toEqual({ kind: "tcp", host: "tcp://h:2376", tlsCertDir: "/certs" });
-    expect(endpointFrom("tcp", { ...f, host: "h:2375", tls: " " })).toEqual({ kind: "tcp", host: "h:2375", tlsCertDir: null });
+    expect(endpointFrom("tcp", { ...f, host: "tcp://h:2376", tls: "/certs" })).toEqual({
+      kind: "tcp",
+      host: "tcp://h:2376",
+      tlsCertDir: "/certs",
+    });
+    expect(endpointFrom("tcp", { ...f, host: "h:2375", tls: " " })).toEqual({
+      kind: "tcp",
+      host: "h:2375",
+      tlsCertDir: null,
+    });
     expect(endpointFrom("context", { ...f, context: "--evil" })).toBeNull();
     expect(endpointFrom("context", { ...f, context: "orbstack" })).toEqual({ kind: "context", name: "orbstack" });
     expect(endpointFrom("default", f)).toEqual({ kind: "default" });
@@ -151,7 +186,8 @@ describe("docker run targets", () => {
   });
 
   it("builds each FROM stage", () => {
-    const text = "FROM node:22 AS build\nRUN npm ci\nFROM --platform=linux/amd64 nginx:1.27\nCOPY --from=build /app /usr/share/nginx/html\n";
+    const text =
+      "FROM node:22 AS build\nRUN npm ci\nFROM --platform=linux/amd64 nginx:1.27\nCOPY --from=build /app /usr/share/nginx/html\n";
     expect(dockerfileTargets(text)).toEqual([
       { kind: "build", line: 0, stage: "build", last: false },
       { kind: "build", line: 2, stage: null, last: true },
@@ -161,13 +197,25 @@ describe("docker run targets", () => {
 
   it("creates Dockerfile and Docker Compose run configurations", () => {
     expect(imageTag("/work/My App/Dockerfile")).toBe("my-app:latest");
-    const [stage] = gutterActions({ kind: "build", line: 0, stage: "build", last: false }, "/work/app/docker/Dockerfile", "/work/app");
+    const [stage] = gutterActions(
+      { kind: "build", line: 0, stage: "build", last: false },
+      "/work/app/docker/Dockerfile",
+      "/work/app",
+    );
     expect(stage!.title).toBe("Build Stage 'build'");
-    expect(stage!.config).toMatchObject({ kind: DOCKERFILE, cwd: null, params: { dockerfile: "docker/Dockerfile", target: "build" } });
+    expect(stage!.config).toMatchObject({
+      kind: DOCKERFILE,
+      cwd: null,
+      params: { dockerfile: "docker/Dockerfile", target: "build" },
+    });
     expect(stage!.config.command).toBe("docker build -f docker/Dockerfile -t docker:latest --target build docker");
     expect(stage!.config.stopCommand).toBeUndefined();
 
-    const [run, buildOnly] = gutterActions({ kind: "build", line: 4, stage: null, last: true }, "/work/app/Dockerfile", "/work/app");
+    const [run, buildOnly] = gutterActions(
+      { kind: "build", line: 4, stage: null, last: true },
+      "/work/app/Dockerfile",
+      "/work/app",
+    );
     expect(run!.title).toBe("Run 'Dockerfile'");
     expect(run!.config.command).toBe(
       "docker build -f Dockerfile -t app:latest . && (docker rm -f app >/dev/null 2>&1; docker run --name app app:latest)",
@@ -175,7 +223,11 @@ describe("docker run targets", () => {
     expect(run!.config.stopCommand).toBe("docker stop app");
     expect(buildOnly!.title).toBe("Build Image 'app:latest'");
 
-    const [up] = gutterActions({ kind: "composeService", line: 3, service: "db" }, "/work/app/compose.yaml", "/work/app");
+    const [up] = gutterActions(
+      { kind: "composeService", line: 3, service: "db" },
+      "/work/app/compose.yaml",
+      "/work/app",
+    );
     expect(up!.config).toMatchObject({
       id: "docker:compose:compose.yaml:db",
       kind: DOCKER_COMPOSE,
@@ -201,7 +253,12 @@ describe("docker run targets", () => {
     expect(image.stop).toBe("docker stop postgres");
     expect(containerName({ containerName: " web " }, "x")).toBe("web");
     expect(containerName({}, "ghcr.io/org/my-app@sha256:abc")).toBe("my-app");
-    const detached = dockerComposeType.commandLine({ files: "a.yml; b.yml", project: "demo", detach: "true", build: "true" })!;
+    const detached = dockerComposeType.commandLine({
+      files: "a.yml; b.yml",
+      project: "demo",
+      detach: "true",
+      build: "true",
+    })!;
     expect(detached).toMatchObject({ command: "docker compose -f a.yml -f b.yml -p demo up -d --build", stop: null });
     expect(shellQuote('a "b"', true)).toBe('"a ""b"""');
   });

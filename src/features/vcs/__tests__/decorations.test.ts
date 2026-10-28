@@ -3,7 +3,12 @@ import type { FileStatus } from "@/bindings";
 import { getFileDecoration, setFileDecorations } from "@/workbench/contributions";
 import { effectiveKind, stashLabel, statusDecorations } from "../model";
 
-const fs = (rel: string, staged: FileStatus["staged"], unstaged: FileStatus["unstaged"], renamedFrom: string | null = null): FileStatus => ({
+const fs = (
+  rel: string,
+  staged: FileStatus["staged"],
+  unstaged: FileStatus["unstaged"],
+  renamedFrom: string | null = null,
+): FileStatus => ({
   path: `/repo/${rel}`,
   relPath: rel,
   staged,
@@ -66,7 +71,10 @@ describe("statusDecorations", () => {
 describe("stashLabel", () => {
   it("splits git's stash subjects into branch and message", () => {
     expect(stashLabel("On main: wip make")).toEqual({ branch: "main", text: "wip make" });
-    expect(stashLabel("WIP on feature/x: 1a2b3c4 Add thing")).toEqual({ branch: "feature/x", text: "1a2b3c4 Add thing" });
+    expect(stashLabel("WIP on feature/x: 1a2b3c4 Add thing")).toEqual({
+      branch: "feature/x",
+      text: "1a2b3c4 Add thing",
+    });
     expect(stashLabel("custom subject")).toEqual({ branch: null, text: "custom subject" });
   });
 });

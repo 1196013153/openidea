@@ -57,7 +57,10 @@ function setup() {
     within(tree)
       .queryAllByRole("treeitem")
       .map((r) => r.textContent);
-  const row = (label: string) => within(tree).getAllByRole("treeitem").find((r) => r.textContent?.startsWith(label))!;
+  const row = (label: string) =>
+    within(tree)
+      .getAllByRole("treeitem")
+      .find((r) => r.textContent?.startsWith(label))!;
   return { tree, rows, row };
 }
 
@@ -225,7 +228,9 @@ describe("ProjectView", () => {
     act(() => useProjectTree.setState({ expanded: new Set([ROOT, "/w/acme/src"]) }));
     await waitFor(() => expect(rows()).toContain("App.kt"));
     await act(() => fs.createFile("/w/acme/src/New.kt"));
-    await waitFor(() => expect(rows()).toEqual(["acme/w/acme", "build", "src", "App.kt", "New.kt", "Util.kt", "README.md"]));
+    await waitFor(() =>
+      expect(rows()).toEqual(["acme/w/acme", "build", "src", "App.kt", "New.kt", "Util.kt", "README.md"]),
+    );
   });
 
   it("renders large folders virtualized", async () => {

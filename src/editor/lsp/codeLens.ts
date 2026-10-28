@@ -54,7 +54,8 @@ export function lensTargets(items: readonly OutlineItem[]): LensTarget[] {
   const out: LensTarget[] = [];
   const walk = (list: readonly OutlineItem[]) => {
     for (const it of list) {
-      if (LENS_KINDS.has(it.kind) && !anonymous(it.name)) out.push({
+      if (LENS_KINDS.has(it.kind) && !anonymous(it.name))
+        out.push({
           name: it.name,
           line: it.selection_range.start.line,
           col: it.selection_range.start.col,
@@ -159,7 +160,9 @@ class UsagesLensPlugin {
       const { from, to } = view.viewport;
       const firstLine = Math.max(0, text.lineAt(from).number - 1 - MARGIN_LINES);
       const lastLine = text.lineAt(to).number - 1 + MARGIN_LINES;
-      const visible = this.outline.targets.filter((t) => t.line >= firstLine && t.line <= lastLine).slice(0, MAX_PER_PASS);
+      const visible = this.outline.targets
+        .filter((t) => t.line >= firstLine && t.line <= lastLine)
+        .slice(0, MAX_PER_PASS);
       const key = (t: LensTarget) => `${t.line}:${t.col}:${t.name}`;
       const todo = usages ? visible.filter((t) => !this.cache.has(key(t))) : [];
       let unavailable = false;
@@ -185,7 +188,8 @@ class UsagesLensPlugin {
       for (const t of visible) {
         const offset = posToOffset(text, { line: t.line, col: t.col });
         const who = lines && authorSummary(lines, t.startLine, t.endLine);
-        if (who) lenses.push({ pos: offset, title: authorLabel(who), tooltip: authorTooltip(who), icon: "user", order: 20 });
+        if (who)
+          lenses.push({ pos: offset, title: authorLabel(who), tooltip: authorTooltip(who), icon: "user", order: 20 });
         const n = usages ? this.cache.get(key(t)) : undefined;
         if (n === undefined) continue;
         lenses.push({

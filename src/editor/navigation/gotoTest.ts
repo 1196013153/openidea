@@ -7,7 +7,15 @@
 import { basename, dirname } from "@/platform/project";
 import { isTestFile, rootOfPath } from "@/platform/projectRoots";
 import type { RootFolder } from "@/platform/languageSettings";
-import { isTestName, newTestName, rankCandidates, rustTestModuleOffset, splitName, subjectNamesFor, testNamesFor } from "./testNaming";
+import {
+  isTestName,
+  newTestName,
+  rankCandidates,
+  rustTestModuleOffset,
+  splitName,
+  subjectNamesFor,
+  testNamesFor,
+} from "./testNaming";
 
 export interface ChooserItem {
   label: string;
@@ -87,14 +95,22 @@ export async function gotoTestOrSubject(path: string, text: string, deps: TestNa
     const subjects = rank((await findAll(subjectNamesFor(name), path, deps)).filter((p) => !isTestSide(p, roots)));
     if (subjects.length === 1) return deps.open(subjects[0]!);
     if (!subjects.length) return deps.hint("No test subject found");
-    return deps.choose(`Choose Test Subject for ${splitName(name).stem} (${subjects.length} found)`, subjects.map((p) => ({ label: basename(p), detail: relLabel(root, dirname(p)), run: () => deps.open(p) })));
+    return deps.choose(
+      `Choose Test Subject for ${splitName(name).stem} (${subjects.length} found)`,
+      subjects.map((p) => ({ label: basename(p), detail: relLabel(root, dirname(p)), run: () => deps.open(p) })),
+    );
   }
 
   const tests = rank((await findAll(testNamesFor(name), path, deps)).filter((p) => isTestSide(p, roots)));
-  const items: ChooserItem[] = tests.map((p) => ({ label: basename(p), detail: relLabel(root, dirname(p)), run: () => deps.open(p) }));
+  const items: ChooserItem[] = tests.map((p) => ({
+    label: basename(p),
+    detail: relLabel(root, dirname(p)),
+    run: () => deps.open(p),
+  }));
   // Rust unit tests live in the file's own `#[cfg(test)]` module.
   const inFile = path.endsWith(".rs") ? rustTestModuleOffset(text) : null;
-  if (inFile !== null) items.unshift({ label: "mod tests", detail: `${name} (#[cfg(test)])`, run: () => deps.open(path, inFile) });
+  if (inFile !== null)
+    items.unshift({ label: "mod tests", detail: `${name} (#[cfg(test)])`, run: () => deps.open(path, inFile) });
   if (items.length === 1) return void (await items[0]!.run());
   const { ext } = splitName(name);
   const create: ChooserItem = {

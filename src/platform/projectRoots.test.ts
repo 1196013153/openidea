@@ -66,7 +66,10 @@ describe("effective roots", () => {
   });
 
   it("finds the innermost root and recognises test files", () => {
-    const roots = effectiveRoots([...DETECTED, { path: "", kind: "source", detectedFrom: "go.mod" }], validateProjectStructure({}));
+    const roots = effectiveRoots(
+      [...DETECTED, { path: "", kind: "source", detectedFrom: "go.mod" }],
+      validateProjectStructure({}),
+    );
     expect(rootFor(roots, "src/test/java/a/B.java")?.path).toBe("src/test/java");
     expect(rootFor(roots, "src/test/javax/B.java")?.path).toBe("");
     expect(isTestPath(roots, "src/test/java/a/B.java")).toBe(true);

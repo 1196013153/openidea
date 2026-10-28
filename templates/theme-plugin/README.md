@@ -35,16 +35,16 @@ The folder is the package. To share it, publish the folder as a Git repository
 or a zip that users extract.
 
 1. In OpenIDEA open **Settings › Plugins**, click the gear menu and choose
-   **Install Plugin from Disk…** (or run the *Install Plugin from Disk…*
+   **Install Plugin from Disk…** (or run the _Install Plugin from Disk…_
    action), then pick the folder that contains `plugin.toml`.
-2. Select the plugin in the *Installed* tab and press **Apply** next to the theme.
+2. Select the plugin in the _Installed_ tab and press **Apply** next to the theme.
 3. **Use Default Theme** in the same place goes back to the built-in theme.
 
 ## Iterate
 
 Put (or symlink) the folder in `<project>/.openidea/plugins/` of an open
-project. It loads as a *dev* plugin, and **Reload** in Settings › Plugins (or
-the *Reload Plugins* action) re-reads your edits without reinstalling. Invalid
+project. It loads as a _dev_ plugin, and **Reload** in Settings › Plugins (or
+the _Reload Plugins_ action) re-reads your edits without reinstalling. Invalid
 JSON or values are reported in Settings › Plugins with the file and line.
 
 ## Licence

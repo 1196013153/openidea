@@ -7,7 +7,10 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemir
 import { codeLenses, type CodeLens } from "@/editor/api";
 
 /** Groups lenses by line start, ordered by line then `order`. Exported for tests. */
-export function groupLenses(state: EditorState, lenses: readonly CodeLens[]): Array<{ lineFrom: number; lenses: CodeLens[] }> {
+export function groupLenses(
+  state: EditorState,
+  lenses: readonly CodeLens[],
+): Array<{ lineFrom: number; lenses: CodeLens[] }> {
   const byLine = new Map<number, CodeLens[]>();
   const len = state.doc.length;
   for (const l of lenses) {
@@ -68,7 +71,11 @@ class LensWidget extends WidgetType {
   }
 
   private get key(): string {
-    return this.indent + "\u0000" + this.lenses.map((l) => `${l.icon ?? ""}|${l.title}|${l.tooltip ?? ""}|${l.run ? 1 : 0}`).join("\u0001");
+    return (
+      this.indent +
+      "\u0000" +
+      this.lenses.map((l) => `${l.icon ?? ""}|${l.title}|${l.tooltip ?? ""}|${l.run ? 1 : 0}`).join("\u0001")
+    );
   }
 
   override eq(other: LensWidget): boolean {
@@ -184,7 +191,4 @@ const lensTheme = EditorView.theme({
 });
 
 /** Base extension (always installed): no cost until a provider contributes lenses. */
-export const codeLensExtension: Extension = [
-  EditorView.decorations.compute([codeLenses], buildDecorations),
-  lensTheme,
-];
+export const codeLensExtension: Extension = [EditorView.decorations.compute([codeLenses], buildDecorations), lensTheme];

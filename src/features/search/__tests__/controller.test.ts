@@ -52,19 +52,30 @@ describe("SeController", () => {
     expect(last().loading).toBe(true);
     files.resolve([fm("Order.kt")]);
     await flush();
-    expect(last().sections.get("files")!.items.map((i) => i.key)).toEqual(["f:/p/Order.kt"]);
+    expect(
+      last()
+        .sections.get("files")!
+        .items.map((i) => i.key),
+    ).toEqual(["f:/p/Order.kt"]);
   });
 
   it("drops late results of a superseded query and cancels its requests", async () => {
     const first = deferred<ReturnType<typeof fm>[]>();
-    const findFiles = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce([fm("New.kt")]);
+    const findFiles = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce([fm("New.kt")]);
     const lsp = deferred<never[]>();
     const { c, deps, last } = setup({ findFiles, workspaceSymbols: () => lsp.promise });
     c.run({ query: "old", tab: "files", includeNonProject: false, extra: {} });
     c.run({ query: "new", tab: "files", includeNonProject: false, extra: {} });
     first.resolve([fm("Old.kt")]);
     await flush();
-    expect(last().sections.get("files")!.items.map((i) => i.key)).toEqual(["f:/p/New.kt"]);
+    expect(
+      last()
+        .sections.get("files")!
+        .items.map((i) => i.key),
+    ).toEqual(["f:/p/New.kt"]);
 
     c.run({ query: "sym", tab: "symbols", includeNonProject: false, extra: {} });
     c.run({ query: "sym2", tab: "symbols", includeNonProject: false, extra: {} });
@@ -85,7 +96,11 @@ describe("SeController", () => {
     const { c, last } = setup({ recentFiles: async () => ["/p/a/B.kt", "/p/C.kt"] });
     c.run({ query: "", tab: "all", includeNonProject: false, extra: {} });
     await flush();
-    expect(last().sections.get("recent")!.items.map((i) => (i.kind === "file" ? i.rel : ""))).toEqual(["a/B.kt", "C.kt"]);
+    expect(
+      last()
+        .sections.get("recent")!
+        .items.map((i) => (i.kind === "file" ? i.rel : "")),
+    ).toEqual(["a/B.kt", "C.kt"]);
   });
 
   it("re-fetches only the section whose limit changed (Show more)", async () => {
@@ -105,7 +120,16 @@ describe("SeController", () => {
     const lsp = deferred<never[]>();
     const { c, last } = setup({
       findSymbols: async () => [
-        { name: "order", kind: "variable", container: null, path: "/p/A.kt", relPath: "A.kt", range: { start: { line: 1, col: 0 }, end: { line: 1, col: 5 } }, score: 1, indices: [0] },
+        {
+          name: "order",
+          kind: "variable",
+          container: null,
+          path: "/p/A.kt",
+          relPath: "A.kt",
+          range: { start: { line: 1, col: 0 }, end: { line: 1, col: 5 } },
+          score: 1,
+          indices: [0],
+        },
       ],
       workspaceSymbols: () => lsp.promise,
     });
@@ -123,7 +147,11 @@ describe("SeController", () => {
     const searchText = vi.fn(async (_id: number, q: SearchQuery, onFile: (f: FileMatches) => void) => {
       expect(q.maxMatches).toBe(7);
       for (let i = 0; i < 3; i++)
-        onFile({ path: `/p/${i}.kt`, relPath: `${i}.kt`, matches: [1, 2, 3].map((line) => ({ line, text: "order", ranges: [[0, 5]], textOffset: 0 })) });
+        onFile({
+          path: `/p/${i}.kt`,
+          relPath: `${i}.kt`,
+          matches: [1, 2, 3].map((line) => ({ line, text: "order", ranges: [[0, 5]], textOffset: 0 })),
+        });
     });
     const { c, last } = setup({ searchText });
     c.run({ query: "order", tab: "all", includeNonProject: false, extra: {} });
@@ -145,11 +173,19 @@ describe("SeController", () => {
     });
     c.run({ query: "a", tab: "files", includeNonProject: false, fileSet: "test", extra: {} });
     await flush();
-    expect(last().sections.get("files")!.items.map((i) => i.key)).toEqual(["f:/p/src/test/ATest.kt"]);
+    expect(
+      last()
+        .sections.get("files")!
+        .items.map((i) => i.key),
+    ).toEqual(["f:/p/src/test/ATest.kt"]);
     expect(findFiles).toHaveBeenLastCalledWith("a", 4 * 50 + 1);
     c.run({ query: "a", tab: "files", includeNonProject: false, fileSet: "production", extra: {} });
     await flush();
-    expect(last().sections.get("files")!.items.map((i) => i.key)).toEqual(["f:/p/src/main/A.kt"]);
+    expect(
+      last()
+        .sections.get("files")!
+        .items.map((i) => i.key),
+    ).toEqual(["f:/p/src/main/A.kt"]);
     // "All Places" ignores the narrowed scope.
     c.run({ query: "a", tab: "files", includeNonProject: true, fileSet: "production", extra: {} });
     await flush();

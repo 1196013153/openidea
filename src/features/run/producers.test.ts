@@ -89,9 +89,16 @@ describe("single-file producers (scratches)", () => {
   it("TypeScript: node type stripping by version, then tsx / ts-node, else what is missing", () => {
     expect(run(scratch("hi.ts"), env({ node: "23.6.0" }))).toMatchObject({ command: "/bin/node", args: ["hi.ts"] });
     expect(run(scratch("hi.ts"), env({ node: "22.18.0" }))).toMatchObject({ args: ["hi.ts"] });
-    expect(run(scratch("hi.ts"), env({ node: "22.6.0" }))).toMatchObject({ args: ["--experimental-strip-types", "hi.ts"] });
-    expect(run(scratch("hi.ts"), env({ node: "23.5.0" }))).toMatchObject({ args: ["--experimental-strip-types", "hi.ts"] });
-    expect(run(scratch("hi.ts"), env({ node: "20.11.0", tsx: null }))).toMatchObject({ command: "/bin/tsx", args: ["hi.ts"] });
+    expect(run(scratch("hi.ts"), env({ node: "22.6.0" }))).toMatchObject({
+      args: ["--experimental-strip-types", "hi.ts"],
+    });
+    expect(run(scratch("hi.ts"), env({ node: "23.5.0" }))).toMatchObject({
+      args: ["--experimental-strip-types", "hi.ts"],
+    });
+    expect(run(scratch("hi.ts"), env({ node: "20.11.0", tsx: null }))).toMatchObject({
+      command: "/bin/tsx",
+      args: ["hi.ts"],
+    });
     expect(run(scratch("hi.ts"), env({ node: "20.11.0", "ts-node": null }))).toMatchObject({ command: "/bin/ts-node" });
     const missing = produceContext(scratch("hi.ts"), env({ node: "20.11.0" }))!;
     expect(missing.name).toBe("hi.ts");
@@ -112,7 +119,11 @@ describe("single-file producers (scratches)", () => {
 
   it("Deno / Bun projects run JS and TS with their runtime", () => {
     const input: ContextInput = { path: `${ROOT}/scripts/x.ts`, root: ROOT, configs: [] };
-    expect(run(input, { ...ALL, deno: true })).toMatchObject({ command: "/bin/deno", args: ["run", "scripts/x.ts"], cwd: null });
+    expect(run(input, { ...ALL, deno: true })).toMatchObject({
+      command: "/bin/deno",
+      args: ["run", "scripts/x.ts"],
+      cwd: null,
+    });
     expect(produceContext(input, { ...ALL, deno: true })!.config!.debugAdapter).toBe("js-debug");
     expect(run(input, { ...ALL, bun: true })).toMatchObject({ command: "/bin/bun", args: ["run", "scripts/x.ts"] });
     // Bun's inspector is WebKit-only: js-debug can't attach.
@@ -134,18 +145,33 @@ describe("single-file producers (scratches)", () => {
       args: ["tools/gen.py"],
       cwd: null,
     });
-    expect(produceContext(scratch("hi.py"), ALL)!.config).toMatchObject({ command: "/bin/python3", debugAdapter: "debugpy" });
+    expect(produceContext(scratch("hi.py"), ALL)!.config).toMatchObject({
+      command: "/bin/python3",
+      debugAdapter: "debugpy",
+    });
     expect(produceContext(scratch("hi.py"), env({}))!.missing!.title).toBe("Cannot run 'hi.py'");
   });
 
   it("shell scripts: the shell of the #! line, else by extension; extensionless files by #!", () => {
-    expect(run(scratch("a.sh", "#!/usr/bin/env bash\necho hi"))).toMatchObject({ command: "/bin/bash", args: ["a.sh"] });
+    expect(run(scratch("a.sh", "#!/usr/bin/env bash\necho hi"))).toMatchObject({
+      command: "/bin/bash",
+      args: ["a.sh"],
+    });
     expect(run(scratch("a.sh", "#!/bin/zsh -f\necho"))).toMatchObject({ command: "/bin/zsh", args: ["-f", "a.sh"] });
     expect(run(scratch("a.sh", "echo"))).toMatchObject({ command: "/bin/sh" });
     expect(run(scratch("a.zsh", "echo"))).toMatchObject({ command: "/bin/zsh" });
-    expect(run(scratch("tool", "#!/usr/bin/env ruby\nputs 1"))).toMatchObject({ name: "tool", command: "/bin/ruby", args: ["tool"] });
-    expect(run(scratch("tool", "#!/usr/bin/env -S deno run -A\n"))).toMatchObject({ command: "/bin/deno", args: ["run", "-A", "tool"] });
-    expect(produceContext(scratch("tool", "#!/usr/bin/env -S deno run -A\n"), ALL)!.config!.debugAdapter).toBe("js-debug");
+    expect(run(scratch("tool", "#!/usr/bin/env ruby\nputs 1"))).toMatchObject({
+      name: "tool",
+      command: "/bin/ruby",
+      args: ["tool"],
+    });
+    expect(run(scratch("tool", "#!/usr/bin/env -S deno run -A\n"))).toMatchObject({
+      command: "/bin/deno",
+      args: ["run", "-A", "tool"],
+    });
+    expect(produceContext(scratch("tool", "#!/usr/bin/env -S deno run -A\n"), ALL)!.config!.debugAdapter).toBe(
+      "js-debug",
+    );
     expect(run(scratch("tool", "#!/usr/bin/env python3\n"))).toMatchObject({ command: "/bin/python3", args: ["tool"] });
     expect(produceContext(scratch("notes", "just text"), ALL)).toBeNull();
     expect(shebang("#!/usr/bin/env node")).toEqual(["node"]);
@@ -162,25 +188,35 @@ describe("single-file producers (scratches)", () => {
     expect(run(scratch("a.exs"))).toMatchObject({ command: "/bin/elixir", args: ["a.exs"] });
     expect(run(scratch("a.sc"))).toMatchObject({ command: "/bin/scala-cli", args: ["run", "a.sc"] });
     expect(run(scratch("a.kts"))).toMatchObject({ command: "/bin/kotlin", args: ["a.kts"] });
-    expect(run(scratch("a.kts"), env({ kotlinc: null }))).toMatchObject({ command: "/bin/kotlinc", args: ["-script", "a.kts"] });
+    expect(run(scratch("a.kts"), env({ kotlinc: null }))).toMatchObject({
+      command: "/bin/kotlinc",
+      args: ["-script", "a.kts"],
+    });
     expect(produceContext(scratch("a.rb"), env({}))!.missing!.body).toMatch(/brew install ruby/);
     expect(produceContext(scratch("build.gradle.kts"), ALL)).toBeNull();
   });
 
   it("Go: go run <file> for package main outside a module", () => {
-    expect(run(scratch("hi.go", "package main\nfunc main() {}"))).toMatchObject({ command: "/bin/go", args: ["run", "hi.go"], cwd: SCRATCH });
+    expect(run(scratch("hi.go", "package main\nfunc main() {}"))).toMatchObject({
+      command: "/bin/go",
+      args: ["run", "hi.go"],
+      cwd: SCRATCH,
+    });
     expect(produceContext(scratch("lib.go", "package lib"), ALL)).toBeNull();
     expect(produceContext(scratch("hi.go", "package main"), ALL)!.config!.debugAdapter).toBe("delve");
   });
 
   it("Go: the module's go run for packages in the project", () => {
     const go = [cfg({ id: "go:run", kind: "go", command: "go", args: ["run", "."] })];
-    const p = produceContext({ path: `${ROOT}/cmd/tool/main.go`, root: ROOT, configs: go, content: "package main\nfunc main() {}" }, ALL)!;
+    const p = produceContext(
+      { path: `${ROOT}/cmd/tool/main.go`, root: ROOT, configs: go, content: "package main\nfunc main() {}" },
+      ALL,
+    )!;
     expect(p.config).toMatchObject({ args: ["run", "./cmd/tool"] });
   });
 
   it("Rust: rustc into the compile directory, then the binary; codelldb debugs the binary", () => {
-    const p = produceContext(scratch("hihi.rs", "fn main() {\n  println!(\"hi\");\n}"), ALL)!;
+    const p = produceContext(scratch("hihi.rs", 'fn main() {\n  println!("hi");\n}'), ALL)!;
     expect(p.name).toBe("hihi.rs");
     expect(p.config!.cwd).toBe(SCRATCH);
     expect(p.config!.args).toEqual([]);
@@ -195,10 +231,21 @@ describe("single-file producers (scratches)", () => {
   });
 
   it("Rust: a test at the caret of a standalone file builds with --test and filters", () => {
-    const src = ["fn main() {}", "#[cfg(test)]", "mod tests {", "    #[test]", "    fn adds() {", "        assert!(true);", "    }", "}"].join("\n");
+    const src = [
+      "fn main() {}",
+      "#[cfg(test)]",
+      "mod tests {",
+      "    #[test]",
+      "    fn adds() {",
+      "        assert!(true);",
+      "    }",
+      "}",
+    ].join("\n");
     const p = produceContext(scratch("calc.rs", src, 5), ALL)!;
     expect(p).toMatchObject({ name: "tests::adds", scope: "element" });
-    expect(p.config!.command).toMatch(/rustc -g --edition 2021 --test -o \S+-test calc\.rs && \S+-test tests::adds --exact$/);
+    expect(p.config!.command).toMatch(
+      /rustc -g --edition 2021 --test -o \S+-test calc\.rs && \S+-test tests::adds --exact$/,
+    );
     expect(p.config!.isTest).toBe(true);
     // On the module line: the whole module.
     expect(produceContext(scratch("calc.rs", src, 2), ALL)!.config!.command).toMatch(/-test tests::$/);
@@ -211,11 +258,19 @@ describe("single-file producers (scratches)", () => {
       cfg({ id: "cargo:run:server", kind: "cargo", command: "cargo", args: ["run", "--bin", "server"] }),
       cfg({ id: "cargo:test", kind: "cargo", command: "cargo", args: ["test"], isTest: true }),
     ];
-    const bin = produceContext({ path: `${ROOT}/src/bin/server.rs`, root: ROOT, configs: cargo, content: "fn main() {}" }, ALL)!;
+    const bin = produceContext(
+      { path: `${ROOT}/src/bin/server.rs`, root: ROOT, configs: cargo, content: "fn main() {}" },
+      ALL,
+    )!;
     expect(bin.config!.id).toBe("cargo:run:server");
-    const ex = produceContext({ path: `${ROOT}/examples/demo.rs`, root: ROOT, configs: cargo, content: "fn main() {}" }, ALL)!;
+    const ex = produceContext(
+      { path: `${ROOT}/examples/demo.rs`, root: ROOT, configs: cargo, content: "fn main() {}" },
+      ALL,
+    )!;
     expect(ex.config).toMatchObject({ args: ["run", "--example", "demo"], name: "Run demo" });
-    expect(produceContext({ path: `${ROOT}/src/lib.rs`, root: ROOT, configs: cargo, content: "pub fn x() {}" }, ALL)).toBeNull();
+    expect(
+      produceContext({ path: `${ROOT}/src/lib.rs`, root: ROOT, configs: cargo, content: "pub fn x() {}" }, ALL),
+    ).toBeNull();
     const test = produceContext(
       { path: `${ROOT}/src/lib.rs`, root: ROOT, configs: cargo, content: "#[test]\nfn works() {\n}\n", line: 2 },
       ALL,
@@ -229,14 +284,25 @@ describe("single-file producers (scratches)", () => {
     expect(produceContext(scratch("Hi.java", src), ALL)!.config!.kind).toBe("java-file");
     expect(produceContext(scratch("Lib.java", "class Lib {}"), ALL)).toBeNull();
     const gradle = [cfg({ id: "gradle:test", kind: "gradle", command: "./gradlew", args: ["test"], isTest: true })];
-    const p = produceContext({ path: `${ROOT}/src/main/java/demo/Hi.java`, root: ROOT, configs: gradle, content: `package demo;\n${src}`, line: 3 }, ALL)!;
+    const p = produceContext(
+      {
+        path: `${ROOT}/src/main/java/demo/Hi.java`,
+        root: ROOT,
+        configs: gradle,
+        content: `package demo;\n${src}`,
+        line: 3,
+      },
+      ALL,
+    )!;
     expect(p.config).toMatchObject({ kind: "application", name: "Hi" });
     expect(p.config!.args.at(-1)).toBe("demo.Hi");
   });
 
   it("C / C++: compile with debug info into the compile directory", () => {
     const c = produceContext(scratch("a.c", "int main(void) { return 0; }"), ALL)!;
-    expect(c.config!.command).toMatch(/^mkdir -p \/tmp\/openidea-run && \/bin\/clang -g -o \/tmp\/openidea-run\/a-\w+ a\.c && \/tmp\/openidea-run\/a-\w+$/);
+    expect(c.config!.command).toMatch(
+      /^mkdir -p \/tmp\/openidea-run && \/bin\/clang -g -o \/tmp\/openidea-run\/a-\w+ a\.c && \/tmp\/openidea-run\/a-\w+$/,
+    );
     const cpp = produceContext(scratch("a.cpp", "int main() {}"), env({ "g++": null }))!;
     expect(cpp.config!.command).toMatch(/\/bin\/g\+\+ -g -std=c\+\+17 -o/);
     expect(cpp.debug!.config.debugAdapter).toBe("codelldb");
@@ -283,16 +349,27 @@ describe("project producers", () => {
   });
 
   it("keeps package.json test files on the project's runner", () => {
-    const p = produceContext({ path: `${ROOT}/src/a.test.ts`, root: ROOT, configs, content: "test('x', () => {})" }, ALL)!;
+    const p = produceContext(
+      { path: `${ROOT}/src/a.test.ts`, root: ROOT, configs, content: "test('x', () => {})" },
+      ALL,
+    )!;
     expect(p).toMatchObject({ name: "a.test.ts", scope: "file" });
     expect(p.config!.args).toEqual(["run", "test", "--", "src/a.test.ts"]);
   });
 
   it("⌃⇧R picks the innermost context: test > describe > file", () => {
-    const src = ["describe('math', () => {", "  it('adds', () => {", "    expect(1).toBe(1);", "  });", "", "});", "", "const x = 1;"].join(
-      "\n",
-    );
-    const at = (line: number) => produceContext({ path: `${ROOT}/src/m.test.ts`, root: ROOT, configs, content: src, line }, ALL)!;
+    const src = [
+      "describe('math', () => {",
+      "  it('adds', () => {",
+      "    expect(1).toBe(1);",
+      "  });",
+      "",
+      "});",
+      "",
+      "const x = 1;",
+    ].join("\n");
+    const at = (line: number) =>
+      produceContext({ path: `${ROOT}/src/m.test.ts`, root: ROOT, configs, content: src, line }, ALL)!;
     expect(at(2)).toMatchObject({ name: "math > adds", scope: "element" });
     expect(at(4)).toMatchObject({ name: "math", scope: "element" });
     expect(at(7)).toMatchObject({ name: "m.test.ts", scope: "file" });
@@ -301,7 +378,14 @@ describe("project producers", () => {
   it("several equally close test configurations: one choice each, the default first", () => {
     const withUnit = [
       ...configs,
-      cfg({ id: "npm:test:unit", name: "npm run test:unit", kind: "npm", command: "npm", args: ["run", "test:unit"], isTest: true }),
+      cfg({
+        id: "npm:test:unit",
+        name: "npm run test:unit",
+        kind: "npm",
+        command: "npm",
+        args: ["run", "test:unit"],
+        isTest: true,
+      }),
     ];
     const src = "describe('math', () => {\n  it('adds', () => {\n  });\n});\n";
     const input = { path: `${ROOT}/src/m.test.ts`, root: ROOT, configs: withUnit, content: src, line: 1 };
@@ -312,12 +396,24 @@ describe("project producers", () => {
     ]);
     expect(choices[1]!.config!.args.slice(0, 2)).toEqual(["run", "test:unit"]);
     // The file context offers the same choice; a single matching configuration needs none.
-    expect(produceContextChoices({ ...input, line: undefined }, ALL).map((c) => c.detail)).toEqual(["npm:test", "npm run test:unit"]);
+    expect(produceContextChoices({ ...input, line: undefined }, ALL).map((c) => c.detail)).toEqual([
+      "npm:test",
+      "npm run test:unit",
+    ]);
     expect(produceContextChoices({ ...input, configs }, ALL)).toHaveLength(1);
   });
 
   it("python: test function > test class > file; __main__ runs the file", () => {
-    const src = ["class TestMath:", "    def test_add(self):", "        assert 1", "", "    x = 1", "", "def helper():", "    pass"].join("\n");
+    const src = [
+      "class TestMath:",
+      "    def test_add(self):",
+      "        assert 1",
+      "",
+      "    x = 1",
+      "",
+      "def helper():",
+      "    pass",
+    ].join("\n");
     const at = (line: number) =>
       produceContext({ path: `${ROOT}/tests/test_m.py`, root: ROOT, configs, content: src, line }, ALL)!.name;
     expect(at(2)).toBe("TestMath.test_add");
@@ -339,12 +435,12 @@ describe("project producers", () => {
       "src/__tests__",
     ]);
     const gradle = [cfg({ id: "gradle:test", kind: "gradle", command: "./gradlew", args: ["test"], isTest: true })];
-    expect(produceDirectory({ path: `${ROOT}/src/test/java`, root: ROOT, configs: gradle })).toMatchObject({ name: "All Tests" });
-    expect(produceDirectory({ path: `${ROOT}/src/test/java/com/acme`, root: ROOT, configs: gradle })!.config!.args).toEqual([
-      "test",
-      "--tests",
-      "com.acme.*",
-    ]);
+    expect(produceDirectory({ path: `${ROOT}/src/test/java`, root: ROOT, configs: gradle })).toMatchObject({
+      name: "All Tests",
+    });
+    expect(
+      produceDirectory({ path: `${ROOT}/src/test/java/com/acme`, root: ROOT, configs: gradle })!.config!.args,
+    ).toEqual(["test", "--tests", "com.acme.*"]);
     expect(produceDirectory({ path: `${ROOT}/src/main`, root: ROOT, configs })).toBeNull();
     expect(produceDirectory({ path: ROOT, root: ROOT, configs })).toBeNull();
   });
@@ -352,7 +448,8 @@ describe("project producers", () => {
 
 describe("file-level gutter targets", () => {
   it("scratches: Python __main__, Go main, Rust fn main, C main; no JS", () => {
-    const at = (name: string, text: string) => fileTargets({ path: `${SCRATCH}/${name}`, root: ROOT, configs: [] }, text).map((t) => [t.line, t.kind]);
+    const at = (name: string, text: string) =>
+      fileTargets({ path: `${SCRATCH}/${name}`, root: ROOT, configs: [] }, text).map((t) => [t.line, t.kind]);
     expect(at("hi.py", 'x = 1\nif __name__ == "__main__":\n    print(x)')).toEqual([[1, "main"]]);
     expect(at("hi.go", "package main\n\nfunc main() {\n}")).toEqual([[2, "main"]]);
     expect(at("hihi.rs", "use std::io;\nfn main() {\n}")).toEqual([[1, "main"]]);
@@ -401,13 +498,20 @@ describe("Kotlin single file (.kt)", () => {
     const noKotlinc = produceContext(scratch("hello.kt", hello), env({ java: null }))!;
     expect(noKotlinc.config).toBeUndefined();
     expect(noKotlinc.missing!.title).toBe("Cannot run 'hello.kt'");
-    expect(noKotlinc.missing!.body).toMatch(/The Kotlin compiler was not found \(looked for `kotlinc`\)\..*brew install kotlin/);
-    expect(produceContext(scratch("hello.kt", hello), env({ kotlinc: null }))!.missing!.body).toMatch(/Java was not found.*JDK/);
+    expect(noKotlinc.missing!.body).toMatch(
+      /The Kotlin compiler was not found \(looked for `kotlinc`\)\..*brew install kotlin/,
+    );
+    expect(produceContext(scratch("hello.kt", hello), env({ kotlinc: null }))!.missing!.body).toMatch(
+      /Java was not found.*JDK/,
+    );
   });
 
   it("a Gradle / Maven project runs .kt mains through the build tool", () => {
     const gradle = [cfg({ id: "gradle:run", kind: "gradle", command: "./gradlew", args: ["run"] })];
-    const p = produceContext({ path: `${ROOT}/src/main/kotlin/App.kt`, root: ROOT, configs: gradle, content: hello }, KT)!;
+    const p = produceContext(
+      { path: `${ROOT}/src/main/kotlin/App.kt`, root: ROOT, configs: gradle, content: hello },
+      KT,
+    )!;
     expect(p.config!.kind).not.toBe("kotlinc");
   });
 });
@@ -422,7 +526,8 @@ describe("compile-and-run lines on Windows", () => {
     }) satisfies ToolEnv;
   const DIR = String.raw`C:\Users\me\AppData\Local\Temp\openidea-run`;
   /** The command with the per-file hash replaced by `H`. */
-  const line = (p: { config?: { command: string } } | null) => p!.config!.command.replace(/-[0-9a-z]+(-test)?\.(exe|jar)/g, "-H$1.$2");
+  const line = (p: { config?: { command: string } } | null) =>
+    p!.config!.command.replace(/-[0-9a-z]+(-test)?\.(exe|jar)/g, "-H$1.$2");
 
   it("cmd quoting: double quotes only where needed, never POSIX single quotes", () => {
     expect(shellWord(String.raw`C:\Program Files\x.exe`, true)).toBe(String.raw`"C:\Program Files\x.exe"`);
@@ -445,7 +550,9 @@ describe("compile-and-run lines on Windows", () => {
 
   it("clang / gcc and kotlinc", () => {
     const c = produceContext(scratch("a.c", "int main(void) {}"), WIN({ gcc: null }))!;
-    expect(c.config!.command).toMatch(/&& "C:\\Program Files\\Tools\\gcc\.exe" -g -o \S+\\a-\w+\.exe a\.c && \S+\\a-\w+\.exe$/);
+    expect(c.config!.command).toMatch(
+      /&& "C:\\Program Files\\Tools\\gcc\.exe" -g -o \S+\\a-\w+\.exe a\.c && \S+\\a-\w+\.exe$/,
+    );
     const kt = produceContext(scratch("hello.kt", "fun main() {}"), WIN({ kotlinc: null, java: null }))!;
     expect(kt.config!.command).toMatch(
       /&& "C:\\Program Files\\Tools\\kotlinc\.exe" -include-runtime -d \S+\\hello-\w+\.jar hello\.kt && "C:\\Program Files\\Tools\\java\.exe" -jar \S+\\hello-\w+\.jar$/,
@@ -455,7 +562,11 @@ describe("compile-and-run lines on Windows", () => {
   it("batch-file compilers (kotlinc.bat) are run with call", () => {
     const e: ToolEnv = {
       ...WIN({}),
-      tool: (n) => ({ kotlinc: { path: String.raw`C:\kotlin\bin\kotlinc.bat`, version: null }, java: { path: String.raw`C:\jdk\bin\java.exe`, version: null } })[n] ?? null,
+      tool: (n) =>
+        ({
+          kotlinc: { path: String.raw`C:\kotlin\bin\kotlinc.bat`, version: null },
+          java: { path: String.raw`C:\jdk\bin\java.exe`, version: null },
+        })[n] ?? null,
     };
     expect(line(produceContext(scratch("hello.kt", "fun main() {}"), e))).toBe(
       `(if not exist ${DIR} mkdir ${DIR}) && call C:\\kotlin\\bin\\kotlinc.bat -include-runtime -d ${DIR}\\hello-H.jar hello.kt && C:\\jdk\\bin\\java.exe -jar ${DIR}\\hello-H.jar`,
@@ -465,8 +576,12 @@ describe("compile-and-run lines on Windows", () => {
   it("a compile directory with spaces is quoted for cmd", () => {
     const e = { ...WIN({ clang: null }), compileDir: "C:/Users/John Smith/Temp/openidea-run/" };
     const p = produceContext(scratch("a.c", "int main() {}"), e)!;
-    expect(p.config!.command).toMatch(/^\(if not exist "C:\\Users\\John Smith\\Temp\\openidea-run" mkdir "C:\\Users\\John Smith\\Temp\\openidea-run"\) && /);
-    expect(p.config!.command).toMatch(/ -o "C:\\Users\\John Smith\\Temp\\openidea-run\\a-\w+\.exe" a\.c && "C:\\Users\\John Smith\\Temp\\openidea-run\\a-\w+\.exe"$/);
+    expect(p.config!.command).toMatch(
+      /^\(if not exist "C:\\Users\\John Smith\\Temp\\openidea-run" mkdir "C:\\Users\\John Smith\\Temp\\openidea-run"\) && /,
+    );
+    expect(p.config!.command).toMatch(
+      / -o "C:\\Users\\John Smith\\Temp\\openidea-run\\a-\w+\.exe" a\.c && "C:\\Users\\John Smith\\Temp\\openidea-run\\a-\w+\.exe"$/,
+    );
   });
 });
 
@@ -504,7 +619,11 @@ describe("Go test names (GoLand)", () => {
   it("a test function: 'TestFoo in <import path>' with -run '^TestFoo$'", () => {
     const p = at(5, modules);
     expect(p.name).toBe("TestAdd in example.com/fixture/calc");
-    expect(p.config).toMatchObject({ args: ["test", "./calc", "-run", "^TestAdd$"], debugAdapter: "delve", isTest: true });
+    expect(p.config).toMatchObject({
+      args: ["test", "./calc", "-run", "^TestAdd$"],
+      debugAdapter: "delve",
+      isTest: true,
+    });
   });
 
   it("subtests and table-driven entries", () => {
@@ -530,7 +649,9 @@ describe("Go test names (GoLand)", () => {
   });
 
   it("nested modules use their own go.mod", () => {
-    const nested = [cfg({ id: "go:test:api", kind: "go", command: "go", args: ["test", "./..."], cwd: "api", isTest: true })];
+    const nested = [
+      cfg({ id: "go:test:api", kind: "go", command: "go", args: ["test", "./..."], cwd: "api", isTest: true }),
+    ];
     const p = produceContext(
       {
         path: `${ROOT}/api/calc_test.go`,

@@ -78,8 +78,19 @@ describe("EditorController", () => {
   });
 
   it("builds IDEA's editor tab menu", async () => {
-    useProject.setState({ project: { name: "p", root: "/p", isGit: true, settings: {} } as never, settings: {} as never });
-    const ids = ["navigate.selectIn", "project.revealInFinder", "vcs.localHistory", "vcs.commit", "project.copyAbsolutePath", "project.rename", "file.settings"];
+    useProject.setState({
+      project: { name: "p", root: "/p", isGit: true, settings: {} } as never,
+      settings: {} as never,
+    });
+    const ids = [
+      "navigate.selectIn",
+      "project.revealInFinder",
+      "vcs.localHistory",
+      "vcs.commit",
+      "project.copyAbsolutePath",
+      "project.rename",
+      "file.settings",
+    ];
     const dispose = registerActions(ids.map((id) => ({ id, title: id, run: () => undefined })));
     ctrl = new EditorController(createMemoryBackend({ "/p/a.ts": "", "/p/b.ts": "" }));
     ctrl.start();

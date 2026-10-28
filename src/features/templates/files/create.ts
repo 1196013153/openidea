@@ -134,7 +134,10 @@ export async function createFromTemplate(
       const applied = await editorService().reformat?.(plan.path);
       const after = view.state.doc.toString();
       if (applied && after !== before)
-        view.dispatch({ selection: EditorSelection.cursor(caretAfterReformat(before, at, after)), scrollIntoView: true });
+        view.dispatch({
+          selection: EditorSelection.cursor(caretAfterReformat(before, at, after)),
+          scrollIntoView: true,
+        });
     }
     await executeAction("file.save");
   }

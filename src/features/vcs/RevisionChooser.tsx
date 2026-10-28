@@ -61,7 +61,11 @@ function Chooser({
   const items = useMemo(() => {
     const all: Item[] = [
       { rev: "HEAD", detail: "Last commit", matches: null },
-      ...sortLocal(branches).map((b) => ({ rev: b.name, detail: b.current ? "current branch" : "local", matches: null })),
+      ...sortLocal(branches).map((b) => ({
+        rev: b.name,
+        detail: b.current ? "current branch" : "local",
+        matches: null,
+      })),
       ...sortRemote(branches).map((b) => ({ rev: b.name, detail: "remote", matches: null })),
       ...tags.map((t) => ({ rev: t, detail: "tag", matches: null })),
     ];
@@ -120,7 +124,12 @@ function Chooser({
           renderItem={(i) => (
             <span className={styles.fileRow} style={{ flex: 1, padding: 0 }}>
               <Icon name={i.detail === "revision" ? "commit" : i.detail === "tag" ? "tag" : "branch"} size={14} />
-              <HighlightedText className={`${styles.fileName} ${styles.mono}`} text={i.rev} indices={i.matches} tone="accent" />
+              <HighlightedText
+                className={`${styles.fileName} ${styles.mono}`}
+                text={i.rev}
+                indices={i.matches}
+                tone="accent"
+              />
               <span className={styles.fileDir}>{i.detail}</span>
             </span>
           )}

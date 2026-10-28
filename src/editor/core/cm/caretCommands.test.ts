@@ -14,7 +14,12 @@ afterEach(() => views.splice(0).forEach((v) => v.destroy()));
 const braceIndent = indentService.of((cx, pos) => {
   const line = cx.lineAt(pos, -1);
   const base = /^ */.exec(line.text)![0].length;
-  return line.text.slice(0, pos - line.from).trimEnd().endsWith("{") ? base + 2 : base;
+  return line.text
+    .slice(0, pos - line.from)
+    .trimEnd()
+    .endsWith("{")
+    ? base + 2
+    : base;
 });
 
 /** `|` marks carets. */
@@ -96,7 +101,8 @@ describe("code block navigation", () => {
 describe("editor base keymap", () => {
   it("drops CodeMirror defaults that IDEA uses for other actions", () => {
     const runs = editorBaseKeymap.map((b) => b.run);
-    for (const cmd of [insertBlankLine, toggleTabFocusMode, selectLine, addCursorAbove]) expect(runs).not.toContain(cmd);
+    for (const cmd of [insertBlankLine, toggleTabFocusMode, selectLine, addCursorAbove])
+      expect(runs).not.toContain(cmd);
     expect(editorBaseKeymap.some((b) => b.key === "Mod-Enter" || b.key === "Ctrl-m")).toBe(false);
     expect(editorBaseKeymap.some((b) => b.win === "Ctrl-Shift-z")).toBe(true);
   });

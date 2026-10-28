@@ -123,7 +123,10 @@ describe("surround with", () => {
     ]);
     // Expression surrounders need a selection within the line.
     expect(req.items.some((i) => i.label === "(expr)")).toBe(false);
-    req.onPick(req.items.find((i) => i.mnemonic === "9")!, "");
+    req.onPick(
+      req.items.find((i) => i.mnemonic === "9")!,
+      "",
+    );
     await tick();
     expect(v.state.doc.toString()).toContain("synchronized (this) {");
   });

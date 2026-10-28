@@ -3,7 +3,13 @@ import { Text } from "@codemirror/state";
 import type { Diagnostic } from "@/bindings";
 import { diagnosticsFor, setFileDiagnostics, subscribeDiagnostics, toLintDiagnostics } from "./diagnostics";
 
-const d = (line: number, col: number, endCol: number, severity: Diagnostic["severity"] = "error", over: Partial<Diagnostic> = {}): Diagnostic => ({
+const d = (
+  line: number,
+  col: number,
+  endCol: number,
+  severity: Diagnostic["severity"] = "error",
+  over: Partial<Diagnostic> = {},
+): Diagnostic => ({
   range: { start: { line, col }, end: { line, col: endCol } },
   severity,
   message: `m${line}:${col}`,
@@ -40,7 +46,14 @@ describe("toLintDiagnostics", () => {
     ]);
     expect(out).toEqual([
       { from: 3, to: 7, severity: "error", message: "m0:3", source: undefined, markClass: "cm-lsp-deprecated" },
-      { from: 18, to: 19, severity: "warning", message: "m1:6", source: "rustc unused", markClass: "cm-lsp-unnecessary" },
+      {
+        from: 18,
+        to: 19,
+        severity: "warning",
+        message: "m1:6",
+        source: "rustc unused",
+        markClass: "cm-lsp-unnecessary",
+      },
     ]);
   });
 

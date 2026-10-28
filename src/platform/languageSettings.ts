@@ -8,7 +8,13 @@ import { useProject } from "./project";
 export interface LanguagesValid {
   python: { interpreter: string; activateVirtualenv: boolean };
   node: { interpreter: string; packageManager: "" | "npm" | "pnpm" | "yarn" | "bun" };
-  rust: { toolchain: string; stdlib: string; checkOnSave: boolean; checkCommand: "check" | "clippy"; rustfmtArgs: string };
+  rust: {
+    toolchain: string;
+    stdlib: string;
+    checkOnSave: boolean;
+    checkCommand: "check" | "clippy";
+    rustfmtArgs: string;
+  };
   go: { goroot: string; gopath: string };
   typescript: { version: string };
   java: {
@@ -34,7 +40,13 @@ export interface ProjectStructureValid {
 }
 
 /** The folder lists of `ProjectStructureValid` (marks). */
-export type FolderListKey = "sourceRoots" | "testRoots" | "resourceRoots" | "testResourceRoots" | "excluded" | "unmarked";
+export type FolderListKey =
+  | "sourceRoots"
+  | "testRoots"
+  | "resourceRoots"
+  | "testResourceRoots"
+  | "excluded"
+  | "unmarked";
 
 export const DEFAULT_LANGUAGES: LanguagesValid = {
   python: { interpreter: "", activateVirtualenv: true },
@@ -74,7 +86,14 @@ export function normalizeFolder(path: string): string {
 
 const folders = (v: unknown): string[] =>
   Array.isArray(v)
-    ? [...new Set(v.filter((x): x is string => typeof x === "string").map(normalizeFolder).filter((x) => x))]
+    ? [
+        ...new Set(
+          v
+            .filter((x): x is string => typeof x === "string")
+            .map(normalizeFolder)
+            .filter((x) => x),
+        ),
+      ]
     : [];
 
 /** Settings store the content root itself as `.`; roots use `""`. */
@@ -186,8 +205,7 @@ export function effectiveRoots(detected: readonly RootFolder[], ps: ProjectStruc
     for (const path of ps[ROLE_KEYS[role]].map(folderKey))
       if (!out.some((r) => r.path === path)) out.push({ path, kind: role, detectedFrom: null });
   const unmarked = ps.unmarked.map(folderKey);
-  for (const d of detected)
-    if (!unmarked.includes(d.path) && !out.some((r) => r.path === d.path)) out.push({ ...d });
+  for (const d of detected) if (!unmarked.includes(d.path) && !out.some((r) => r.path === d.path)) out.push({ ...d });
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 

@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RunAnythingProvider } from "@/workbench/contributions";
-import { buildRows, clearHistory, MAX_HISTORY, matches, pushHistory, readHistory, shellCommand, shellRunConfig } from "./model";
+import {
+  buildRows,
+  clearHistory,
+  MAX_HISTORY,
+  matches,
+  pushHistory,
+  readHistory,
+  shellCommand,
+  shellRunConfig,
+} from "./model";
 
 beforeEach(() => localStorage.clear());
 
@@ -30,7 +39,8 @@ describe("run anything", () => {
       {
         id: "npm",
         group: "npm scripts",
-        items: (q) => [{ key: "dev", label: "npm run dev", icon: "run", run: () => {} }].filter((i) => matches(i.label, q)),
+        items: (q) =>
+          [{ key: "dev", label: "npm run dev", icon: "run", run: () => {} }].filter((i) => matches(i.label, q)),
       },
       {
         id: "broken",

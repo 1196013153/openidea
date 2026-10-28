@@ -205,7 +205,9 @@ function ConnectionDialog({ existing, onDone }: { existing?: DockerConnection; o
                 placeholder="contains ca.pem, cert.pem and key.pem"
                 onChange={(e) => setTls(e.target.value)}
               />
-              <Button onClick={() => void pickDirectory("Certificates Folder").then((d) => d && setTls(d))}>Browse…</Button>
+              <Button onClick={() => void pickDirectory("Certificates Folder").then((d) => d && setTls(d))}>
+                Browse…
+              </Button>
             </div>
           </>
         )}
@@ -243,7 +245,12 @@ function RegistryDialog({ existing, onDone }: { existing?: DockerRegistry; onDon
   const [testing, setTesting] = useState(false);
   const [id] = useState(() => existing?.id ?? newId("r"));
   const ok = name.trim().length > 0 && address.trim().length > 0;
-  const registry = (): DockerRegistry => ({ id, name: name.trim(), address: address.trim(), username: username.trim() });
+  const registry = (): DockerRegistry => ({
+    id,
+    name: name.trim(),
+    address: address.trim(),
+    username: username.trim(),
+  });
   const submit = async () => {
     if (!ok) return;
     if (await saveRegistry(registry(), password ? password : existing ? undefined : null)) onDone();
@@ -267,7 +274,12 @@ function RegistryDialog({ existing, onDone }: { existing?: DockerRegistry; onDon
       width={480}
       footerStart={status && <span className={status.ok ? styles.okText : styles.stderr}>{status.text}</span>}
       buttons={[
-        { label: "Test Connection", role: "extra", disabled: !ok || !username.trim() || testing, onClick: () => void test() },
+        {
+          label: "Test Connection",
+          role: "extra",
+          disabled: !ok || !username.trim() || testing,
+          onClick: () => void test(),
+        },
         { label: "OK", role: "default", disabled: !ok, onClick: () => void submit() },
         { label: "Cancel", role: "cancel" },
       ]}

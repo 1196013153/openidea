@@ -107,7 +107,14 @@ export function targetMenuItems(target: RunTarget, path: string, content: string
   return [
     { label: tx`Run '${name}'`, icon: "run", shortcut: shortcutLabel("run.runContext"), ...pick(false) } as MenuItem,
     ...(debuggable
-      ? [{ label: tx`Debug '${name}'`, icon: "debug", shortcut: shortcutLabel("run.debugContext"), ...pick(true) } as MenuItem]
+      ? [
+          {
+            label: tx`Debug '${name}'`,
+            icon: "debug",
+            shortcut: shortcutLabel("run.debugContext"),
+            ...pick(true),
+          } as MenuItem,
+        ]
       : []),
     ...runExecutors()
       .filter((e) => !!p?.config && e.supports(p.config))
@@ -187,7 +194,8 @@ const DEBOUNCE = 350;
 export function runGutter(ctx: EditorDocContext): Extension {
   const path = ctx.path;
   if (!useProject.getState().project?.root || isVirtualUri(path) || !hasGutterTargets(path)) return [];
-  if (/\.go$/.test(path)) void loadGoModules(useProject.getState().project?.root ?? null, useRun.getState().configs).catch(() => {});
+  if (/\.go$/.test(path))
+    void loadGoModules(useProject.getState().project?.root ?? null, useRun.getState().configs).catch(() => {});
   const detect = (text: string) =>
     fileTargets({ path, root: useProject.getState().project?.root ?? null, configs: useRun.getState().configs }, text);
 

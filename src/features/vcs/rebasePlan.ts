@@ -81,13 +81,20 @@ export function autosquash(rows: readonly RebaseRow[]): RebaseRow[] {
 export function squashPlan(range: RebaseRange, ids: ReadonlySet<string>, message: string): RebaseEntry[] {
   const first = range.commits.findIndex((c) => ids.has(c.id));
   const selected = range.commits.filter((c) => ids.has(c.id));
-  const entry = (c: Commit, action: RebaseAction, msg: string | null = null): RebaseEntry => ({ commit: c.id, action, message: msg });
+  const entry = (c: Commit, action: RebaseAction, msg: string | null = null): RebaseEntry => ({
+    commit: c.id,
+    action,
+    message: msg,
+  });
   return [
     ...range.commits.slice(0, first).map((c) => entry(c, "pick")),
     ...selected.map((c, i) =>
       entry(c, i === 0 ? "pick" : "squash", i === selected.length - 1 && i > 0 ? message.trim() : null),
     ),
-    ...range.commits.slice(first + 1).filter((c) => !ids.has(c.id)).map((c) => entry(c, "pick")),
+    ...range.commits
+      .slice(first + 1)
+      .filter((c) => !ids.has(c.id))
+      .map((c) => entry(c, "pick")),
   ];
 }
 
@@ -130,7 +137,12 @@ export function toEntries(rows: readonly RebaseRow[]): RebaseEntry[] {
 }
 
 /** Plan for a single-commit action from the log (Edit Commit Message, Drop Commit). */
-export function singleCommitPlan(range: RebaseRange, target: string, action: RebaseAction, message?: string): RebaseEntry[] {
+export function singleCommitPlan(
+  range: RebaseRange,
+  target: string,
+  action: RebaseAction,
+  message?: string,
+): RebaseEntry[] {
   return range.commits.map((c) =>
     c.id === target
       ? { commit: c.id, action, message: action === "reword" ? (message ?? c.message).trim() : null }

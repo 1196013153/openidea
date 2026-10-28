@@ -136,14 +136,17 @@ export function inlayDecorations(view: EditorView, hints: readonly InlayHint[]):
   const doc = view.state.doc;
   return Decoration.set(
     hints.map((h) =>
-      Decoration.widget({ widget: new InlayWidget(h), side: h.kind === "parameter" ? 1 : -1 }).range(posToOffset(doc, h.position)),
+      Decoration.widget({ widget: new InlayWidget(h), side: h.kind === "parameter" ? 1 : -1 }).range(
+        posToOffset(doc, h.position),
+      ),
     ),
     true,
   );
 }
 
 const enabled = (language: string) =>
-  useProject.getState().settings?.editor?.inlayHints !== false && !editorPrefs().inlay.disabledLanguages.includes(language);
+  useProject.getState().settings?.editor?.inlayHints !== false &&
+  !editorPrefs().inlay.disabledLanguages.includes(language);
 
 /** Inlay Hints settings: per kind (types / parameters / other). */
 function shownKind(kind: InlayHint["kind"]): boolean {
@@ -160,9 +163,14 @@ const inlayPlugin = ViewPlugin.fromClass(
     constructor(private view: EditorView) {
       this.refresh();
       view.contentDOM.classList.toggle("cm-lsp-navigation-modifier", navigationModifierHeld());
-      this.offModifier = onNavigationModifier((held) => view.contentDOM.classList.toggle("cm-lsp-navigation-modifier", held));
+      this.offModifier = onNavigationModifier((held) =>
+        view.contentDOM.classList.toggle("cm-lsp-navigation-modifier", held),
+      );
       this.unsubscribe = useProject.subscribe((s, prev) => {
-        if (s.settings?.editor?.inlayHints !== prev.settings?.editor?.inlayHints || s.settings?.editor?.inlay !== prev.settings?.editor?.inlay)
+        if (
+          s.settings?.editor?.inlayHints !== prev.settings?.editor?.inlayHints ||
+          s.settings?.editor?.inlay !== prev.settings?.editor?.inlay
+        )
           this.refresh();
       });
       this.offReady = onLspRefresh("inlayHints", () => this.refresh());
@@ -186,7 +194,14 @@ const inlayPlugin = ViewPlugin.fromClass(
       try {
         const hints = await lspRequest(() => commands.lspInlayHints(doc.doc, offsetsToRange(state.doc, first, last)));
         if (view.state.doc !== state.doc) return this.refresh();
-        view.dispatch({ effects: setInlays.of(inlayDecorations(view, hints.filter((h) => shownKind(h.kind)))) });
+        view.dispatch({
+          effects: setInlays.of(
+            inlayDecorations(
+              view,
+              hints.filter((h) => shownKind(h.kind)),
+            ),
+          ),
+        });
       } catch (e) {
         if (isUnavailable(e)) serverBackoff.mark(doc.doc);
       }

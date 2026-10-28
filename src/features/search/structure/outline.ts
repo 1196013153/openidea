@@ -22,7 +22,10 @@ export function keyOutline(items: readonly OutlineItem[], parent = ""): OutlineN
 }
 
 /** Appends each type's inherited members (keyed by `typeKey`) after its own ones. */
-export function withInherited(nodes: readonly OutlineNode[], inherited: ReadonlyMap<string, readonly InheritedMember[]> | null): OutlineNode[] {
+export function withInherited(
+  nodes: readonly OutlineNode[],
+  inherited: ReadonlyMap<string, readonly InheritedMember[]> | null,
+): OutlineNode[] {
   if (!inherited?.size) return nodes as OutlineNode[];
   return nodes.map((n) => {
     const children = withInherited(n.children, inherited);
@@ -33,7 +36,12 @@ export function withInherited(nodes: readonly OutlineNode[], inherited: Readonly
       const id = `${m.owner}:${m.item.kind}:${m.item.name}`;
       const k = seen.get(id) ?? 0;
       seen.set(id, k + 1);
-      return { key: `${n.key}/inherited:${id}${k ? `#${k}` : ""}`, item: m.item, children: [], inherited: { path: m.path, owner: m.owner } };
+      return {
+        key: `${n.key}/inherited:${id}${k ? `#${k}` : ""}`,
+        item: m.item,
+        children: [],
+        inherited: { path: m.path, owner: m.owner },
+      };
     });
     return { ...n, children: [...children, ...added] };
   });
@@ -44,11 +52,7 @@ const VISIBILITY_RANK: Record<Visibility, number> = { public: 0, protected: 1, p
 /** Rank for "Sort by Visibility": unknown counts as public. */
 export const visibilityRank = (item: OutlineItem) => (item.visibility ? VISIBILITY_RANK[item.visibility] : 0);
 
-export function sortOutline(
-  nodes: readonly OutlineNode[],
-  alphabetical: boolean,
-  byVisibility = false,
-): OutlineNode[] {
+export function sortOutline(nodes: readonly OutlineNode[], alphabetical: boolean, byVisibility = false): OutlineNode[] {
   if (!alphabetical && !byVisibility) return nodes as OutlineNode[];
   return [...nodes]
     .sort(
@@ -151,8 +155,7 @@ export function filterOutline(nodes: readonly OutlineNode[], query: string, narr
         }
       }
       const children = walk(node.children);
-      if (!q || !narrow || hit || children.length)
-        out.push(narrow ? { ...node, children } : node);
+      if (!q || !narrow || hit || children.length) out.push(narrow ? { ...node, children } : node);
     }
     return out;
   };
@@ -161,7 +164,11 @@ export function filterOutline(nodes: readonly OutlineNode[], query: string, narr
 }
 
 /** Parent key of every node (`null` for top-level ones). */
-export function parentKeys(nodes: readonly OutlineNode[], parent: string | null = null, out = new Map<string, string | null>()) {
+export function parentKeys(
+  nodes: readonly OutlineNode[],
+  parent: string | null = null,
+  out = new Map<string, string | null>(),
+) {
   for (const n of nodes) {
     out.set(n.key, parent);
     parentKeys(n.children, n.key, out);

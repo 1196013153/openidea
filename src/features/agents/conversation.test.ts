@@ -21,7 +21,17 @@ describe("pathLink", () => {
     expect(pathLink("/abs/x.py#L7", cwd)).toEqual({ path: "/abs/x.py", line: 6 });
   });
   it("ignores code that isn't a path", () => {
-    for (const t of ["foo()", "cargo test", "https://x.dev/a.md", "inventory", "1.5", "v2.0", "a.b()", "failing-tests", "tests/"]) {
+    for (const t of [
+      "foo()",
+      "cargo test",
+      "https://x.dev/a.md",
+      "inventory",
+      "1.5",
+      "v2.0",
+      "a.b()",
+      "failing-tests",
+      "tests/",
+    ]) {
       expect(pathLink(t, cwd)).toBeNull();
     }
   });

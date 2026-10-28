@@ -3,7 +3,11 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { closeBrackets } from "@codemirror/autocomplete";
 
-const help = { signatures: [{ label: "f(a: number)", documentation: null, parameters: [[2, 11]] }], activeSignature: 0, activeParameter: 0 };
+const help = {
+  signatures: [{ label: "f(a: number)", documentation: null, parameters: [[2, 11]] }],
+  activeSignature: 0,
+  activeParameter: 0,
+};
 const lspSignatureHelp = vi.fn(async () => ({ status: "ok" as const, data: help }));
 
 vi.mock("@/platform/ipc", async (orig) => {
@@ -11,9 +15,8 @@ vi.mock("@/platform/ipc", async (orig) => {
   return { ...actual, isTauri: () => true, commands: { ...actual.commands, lspSignatureHelp } };
 });
 
-const { signatureExtension, acceptsParameter, argumentSpans, argumentStop, parameterTabKeys, triggerSignatureHelp } = await import(
-  "./signature"
-);
+const { signatureExtension, acceptsParameter, argumentSpans, argumentStop, parameterTabKeys, triggerSignatureHelp } =
+  await import("./signature");
 const { lspDoc } = await import("./lsp");
 
 const views: EditorView[] = [];
@@ -24,7 +27,8 @@ afterEach(() => {
 
 function typeChar(view: EditorView, ch: string) {
   const { from, to } = view.state.selection.main;
-  const insert = () => view.state.update({ changes: { from, to, insert: ch }, selection: { anchor: from + 1 }, userEvent: "input.type" });
+  const insert = () =>
+    view.state.update({ changes: { from, to, insert: ch }, selection: { anchor: from + 1 }, userEvent: "input.type" });
   if (!view.state.facet(EditorView.inputHandler).some((h) => h(view, from, to, ch, insert))) view.dispatch(insert());
 }
 
@@ -36,7 +40,11 @@ describe("parameter info auto-popup", () => {
         state: EditorState.create({
           doc: "f",
           selection: { anchor: 1 },
-          extensions: [closeBrackets(), lspDoc.of({ doc: 1, path: "/a.ts", language: "typescript", uiMode: null, readOnly: false }), signatureExtension()],
+          extensions: [
+            closeBrackets(),
+            lspDoc.of({ doc: 1, path: "/a.ts", language: "typescript", uiMode: null, readOnly: false }),
+            signatureExtension(),
+          ],
         }),
         parent: document.body,
       });
@@ -57,7 +65,18 @@ describe("acceptsParameter", () => {
     expect(acceptsParameter({ label: "println() : void", parameters: [] }, 0)).toBe(false);
     expect(acceptsParameter({ label: "println(Object x) : void", parameters: [[8, 16]] }, 0)).toBe(true);
     expect(acceptsParameter({ label: "println(Object x) : void", parameters: [[8, 16]] }, 1)).toBe(false);
-    expect(acceptsParameter({ label: "format(String f, Object... a)", parameters: [[7, 15], [17, 28]] }, 4)).toBe(true);
+    expect(
+      acceptsParameter(
+        {
+          label: "format(String f, Object... a)",
+          parameters: [
+            [7, 15],
+            [17, 28],
+          ],
+        },
+        4,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -101,7 +120,9 @@ describe("argument navigation", () => {
     });
     views.push(view);
     const tab = () =>
-      view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", keyCode: 9, bubbles: true, cancelable: true }));
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", keyCode: 9, bubbles: true, cancelable: true }),
+      );
     expect(tab()).toBe(true); // not handled: no parameter info
     expect(view.state.selection.main.head).toBe(3);
     triggerSignatureHelp(view, true);

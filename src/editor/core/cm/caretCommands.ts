@@ -125,6 +125,10 @@ export const cursorMatchBrace: Command = (view) => {
     return EditorSelection.cursor(target);
   });
   if (!moved) return false;
-  view.dispatch({ selection: EditorSelection.create(ranges, state.selection.mainIndex), scrollIntoView: true, userEvent: "select.navigate" });
+  view.dispatch({
+    selection: EditorSelection.create(ranges, state.selection.mainIndex),
+    scrollIntoView: true,
+    userEvent: "select.navigate",
+  });
   return true;
 };

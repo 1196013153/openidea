@@ -4,7 +4,16 @@
  * also be driven from an external input via `listNavigate`, so focus can stay
  * in a search field while ↑/↓ move the selection.
  */
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import clsx from "clsx";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import styles from "./List.module.css";

@@ -268,7 +268,8 @@ export function parseArgs(input: string): string[] {
     const ch = input[i]!;
     if (quote) {
       if (ch === quote) quote = null;
-      else if (ch === "\\" && quote === '"' && i + 1 < input.length && '"\\$`'.includes(input[i + 1]!)) cur += input[++i];
+      else if (ch === "\\" && quote === '"' && i + 1 < input.length && '"\\$`'.includes(input[i + 1]!))
+        cur += input[++i];
       else cur += ch;
     } else if (ch === "'" || ch === '"') {
       quote = ch;
@@ -290,9 +291,7 @@ export function parseArgs(input: string): string[] {
 
 /** Inverse of `parseArgs` (quotes only when needed). */
 export function formatArgs(args: readonly string[]): string {
-  return args
-    .map((a) => (a === "" ? "''" : /[\s'"\\$`]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a))
-    .join(" ");
+  return args.map((a) => (a === "" ? "''" : /[\s'"\\$`]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a)).join(" ");
 }
 
 /** Display command line, e.g. `pnpm run dev`. */

@@ -31,7 +31,12 @@ function tokenize(src: string): Token[] {
     const c = src[i]!;
     if (/\s/.test(c)) {
       i++;
-    } else if (src.startsWith("&&", i) || src.startsWith("||", i) || src.startsWith("==", i) || src.startsWith("!=", i)) {
+    } else if (
+      src.startsWith("&&", i) ||
+      src.startsWith("||", i) ||
+      src.startsWith("==", i) ||
+      src.startsWith("!=", i)
+    ) {
       out.push({ t: "op", v: src.slice(i, i + 2) });
       i += 2;
     } else if (c === "!" || c === "(" || c === ")") {
@@ -73,7 +78,8 @@ export function compileWhen(expr: string | undefined): (ctx: ContextKeys) => boo
   const parseOr = (): Node => {
     let left = parseAnd();
     while (eat("||")) {
-      const l = left, r = parseAnd();
+      const l = left,
+        r = parseAnd();
       left = (c) => l(c) || r(c);
     }
     return left;
@@ -81,7 +87,8 @@ export function compileWhen(expr: string | undefined): (ctx: ContextKeys) => boo
   const parseAnd = (): Node => {
     let left = parseUnary();
     while (eat("&&")) {
-      const l = left, r = parseUnary();
+      const l = left,
+        r = parseUnary();
       left = (c) => l(c) && r(c);
     }
     return left;
@@ -104,7 +111,8 @@ export function compileWhen(expr: string | undefined): (ctx: ContextKeys) => boo
       const valTok = toks[p++];
       if (!valTok || valTok.t === "op") throw new Error(`expected value in when clause: ${expr}`);
       const raw = valTok.v;
-      const lit: ContextValue = valTok.t === "str" ? raw : raw === "true" ? true : raw === "false" ? false : isFinite(+raw) ? +raw : raw;
+      const lit: ContextValue =
+        valTok.t === "str" ? raw : raw === "true" ? true : raw === "false" ? false : isFinite(+raw) ? +raw : raw;
       return (c) => (c[key] === lit) !== negate;
     }
     return (c) => !!c[key];

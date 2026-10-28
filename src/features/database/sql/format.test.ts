@@ -10,7 +10,9 @@ const fmt = (sql: string) => {
 describe("formatSql", () => {
   it("lays out a query like IDEA", () => {
     expect(
-      fmt("SELECT u.id,u.name , count( * ) AS n FROM users u LEFT JOIN orders o ON o.user_id=u.id WHERE u.id>1 AND o.total BETWEEN 1 AND 5 OR o.status='x' GROUP BY u.id ORDER BY n DESC LIMIT 10;"),
+      fmt(
+        "SELECT u.id,u.name , count( * ) AS n FROM users u LEFT JOIN orders o ON o.user_id=u.id WHERE u.id>1 AND o.total BETWEEN 1 AND 5 OR o.status='x' GROUP BY u.id ORDER BY n DESC LIMIT 10;",
+      ),
     ).toBe(
       [
         "SELECT u.id,",
@@ -29,7 +31,11 @@ describe("formatSql", () => {
   });
 
   it("aligns subqueries and CTEs after their parenthesis", () => {
-    expect(fmt("with big as (select user_id, total from orders where total > 10) select * from big where exists (select 1 from users u where u.id = big.user_id);")).toBe(
+    expect(
+      fmt(
+        "with big as (select user_id, total from orders where total > 10) select * from big where exists (select 1 from users u where u.id = big.user_id);",
+      ),
+    ).toBe(
       [
         "with big as (select user_id,",
         "                    total",

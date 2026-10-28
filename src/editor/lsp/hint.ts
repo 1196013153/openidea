@@ -70,8 +70,5 @@ export function hideHint(view: EditorView): boolean {
 }
 
 export function hintExtension(): Extension {
-  return [
-    hintField,
-    Prec.high(keymap.of([{ key: "Escape", run: (view) => hideHint(view) }])),
-  ];
+  return [hintField, Prec.high(keymap.of([{ key: "Escape", run: (view) => hideHint(view) }]))];
 }

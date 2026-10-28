@@ -201,7 +201,12 @@ function stopAction() {
     }
   }
   const items = [
-    ...running.map((s): MenuItem => ({ label: s.config.name, verbatim: true, icon: "run", run: () => void stopSession(s.id) })),
+    ...running.map((s): MenuItem => ({
+      label: s.config.name,
+      verbatim: true,
+      icon: "run",
+      run: () => void stopSession(s.id),
+    })),
     ...menuGroupItems("stopProcess", { paths: [] }),
   ].filter((i): i is MenuItem & { run: () => void } => "run" in i && !!i.run);
   if (items.length === 0) return;
@@ -332,7 +337,8 @@ export function activate(): () => void {
       {
         id: "run.chooseConfig",
         title: "Select Run/Debug Configuration…",
-        description: "Run a configuration (hold Shift to debug); the title bar widget passes \"select\" to only select one",
+        description:
+          'Run a configuration (hold Shift to debug); the title bar widget passes "select" to only select one',
         category: "Run",
         when: "projectOpen",
         run: async ({ arg }) => {
@@ -385,7 +391,12 @@ export function activate(): () => void {
             (s.activeSession && failedTests(s.activeSession).length ? s.activeSession : null) ??
             [...s.sessions].reverse().find((x) => failedTests(x.id).length > 0)?.id;
           if (!id || !rerunFailed(id))
-            notifications().notify({ group: "run", level: "info", title: "No failed tests to rerun", key: "run-rerun-failed" });
+            notifications().notify({
+              group: "run",
+              level: "info",
+              title: "No failed tests to rerun",
+              key: "run-rerun-failed",
+            });
         },
       },
       {

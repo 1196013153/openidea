@@ -346,7 +346,12 @@ export function validateRun(raw: unknown): RunSettingsValid {
     confirmRerun: bool(v.confirmRerun, d.confirmRerun),
     confirmTerminate: bool(v.confirmTerminate, d.confirmTerminate),
     showOnStart: bool(v.showOnStart, d.showOnStart),
-    terminationTimeoutMs: num(v.terminationTimeoutMs, d.terminationTimeoutMs, WORKFLOW_LIMITS.terminationTimeoutMs, true),
+    terminationTimeoutMs: num(
+      v.terminationTimeoutMs,
+      d.terminationTimeoutMs,
+      WORKFLOW_LIMITS.terminationTimeoutMs,
+      true,
+    ),
   };
 }
 
@@ -457,7 +462,10 @@ export function useWorkflowSettings<T>(select: (s: WorkflowSettings) => T): T {
 }
 
 /** Calls `listener` whenever a section changes (deep-compared by JSON), not initially. */
-export function onWorkflowSettingsChange<T>(select: (s: WorkflowSettings) => T, listener: (value: T, prev: T) => void): () => void {
+export function onWorkflowSettingsChange<T>(
+  select: (s: WorkflowSettings) => T,
+  listener: (value: T, prev: T) => void,
+): () => void {
   let prev = select(workflowSettings());
   let prevJson = JSON.stringify(prev);
   return useProject.subscribe((s, old) => {

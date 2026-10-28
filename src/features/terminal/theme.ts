@@ -202,7 +202,11 @@ function cssNumber(name: string): number {
  * The column width (a multiple of the cell width) becomes xterm's letter spacing,
  * from the ≈ 0.6 em advance of monospace fonts.
  */
-export function terminalFont(t: TerminalFontSettings, editor: EditorFont | undefined, base = monoStack()): TerminalFont {
+export function terminalFont(
+  t: TerminalFontSettings,
+  editor: EditorFont | undefined,
+  base = monoStack(),
+): TerminalFont {
   let family: string, fallback: string, size: number, lineHeight: number;
   let weight = 400,
     boldWeight = 700;
@@ -222,7 +226,14 @@ export function terminalFont(t: TerminalFontSettings, editor: EditorFont | undef
     boldWeight = fontWeightOf(editor?.boldFontWeight, boldWeight);
   }
   const letterSpacing = Math.round((t.columnWidth - 1) * size * 0.6 * 10) / 10;
-  return { family: withNerdFonts(monoFontFamily(family, fallback, base)), size, lineHeight, letterSpacing, weight, boldWeight };
+  return {
+    family: withNerdFonts(monoFontFamily(family, fallback, base)),
+    size,
+    lineHeight,
+    letterSpacing,
+    weight,
+    boldWeight,
+  };
 }
 
 /**

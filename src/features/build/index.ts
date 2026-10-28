@@ -5,7 +5,12 @@
  */
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
-import { maybeEditorService, registerMenuGroup, registerTitleItem, registerToolWindow } from "@/workbench/contributions";
+import {
+  maybeEditorService,
+  registerMenuGroup,
+  registerTitleItem,
+  registerToolWindow,
+} from "@/workbench/contributions";
 import { BuildTitleItem } from "./BuildTitleItem";
 import { BuildHeaderActions, BuildView } from "./BuildView";
 import { BUILD_RUNNING, resetBuildRun, startBuild, stopBuild, useBuildRun } from "./store";
@@ -19,7 +24,9 @@ function moduleTarget(arg: unknown): string | null {
 }
 
 function useErrorBadge(): number | null {
-  return useBuildRun((s) => (s.status === "failed" ? s.messages.filter((m) => m.severity === "error").length || null : null));
+  return useBuildRun((s) =>
+    s.status === "failed" ? s.messages.filter((m) => m.severity === "error").length || null : null,
+  );
 }
 
 export function activate(): () => void {
@@ -35,7 +42,13 @@ export function activate(): () => void {
       headerActions: BuildHeaderActions,
       useBadge: useErrorBadge,
     }),
-    registerTitleItem({ id: "build.project", title: "Build Project", align: "right", priority: -1, component: BuildTitleItem }),
+    registerTitleItem({
+      id: "build.project",
+      title: "Build Project",
+      align: "right",
+      priority: -1,
+      component: BuildTitleItem,
+    }),
     registerActions([
       {
         id: "build.buildProject",

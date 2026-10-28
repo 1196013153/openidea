@@ -115,7 +115,9 @@ export function pushCandidates(repos: readonly RepoPush[]): RepoPush[] {
 
 /** Checked by default: repositories with outgoing commits (a new branch only in the selected one). */
 export function defaultPushChecked(repos: readonly RepoPush[], selected: string | null): Set<string> {
-  return new Set(repos.filter((r) => (r.branch.upstream ? r.commits.length > 0 : r.root === selected)).map((r) => r.root));
+  return new Set(
+    repos.filter((r) => (r.branch.upstream ? r.commits.length > 0 : r.root === selected)).map((r) => r.root),
+  );
 }
 
 type PushRow = { type: "repo"; repo: RepoPush } | { type: "commit"; repo: RepoPush; commit: Commit };
@@ -162,7 +164,8 @@ function MultiPushDialog({ onClose }: { onClose: () => void }) {
       if (!next.delete(root)) next.add(root);
       return next;
     });
-  const targetOf = (r: RepoPush) => (r.branch.upstream ? r.branch.upstream.slice(r.branch.upstream.indexOf("/") + 1) : r.branch.head!);
+  const targetOf = (r: RepoPush) =>
+    r.branch.upstream ? r.branch.upstream.slice(r.branch.upstream.indexOf("/") + 1) : r.branch.head!;
   const picked = (repos ?? []).filter((r) => checked.has(r.root));
   const push = async () => {
     onClose();

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FileMatches, SearchQuery, SearchSummary } from "@/platform/ipc";
-import { FindSession, matchRows, previewReplacement, rangesToIndices, type FindDeps, type FindState } from "../find/session";
+import {
+  FindSession,
+  matchRows,
+  previewReplacement,
+  rangesToIndices,
+  type FindDeps,
+  type FindState,
+} from "../find/session";
 
 const q = (pattern: string, extra: Partial<SearchQuery> = {}): SearchQuery => ({
   pattern,
@@ -149,7 +156,13 @@ describe("FindSession", () => {
 
 describe("result helpers", () => {
   it("matchRows trims indentation and keeps real columns", () => {
-    const rows = matchRows([{ path: "/p/a", relPath: "a", matches: [{ line: 3, text: "    let foo = 1", ranges: [[8, 11]], textOffset: 10 }] }]);
+    const rows = matchRows([
+      {
+        path: "/p/a",
+        relPath: "a",
+        matches: [{ line: 3, text: "    let foo = 1", ranges: [[8, 11]], textOffset: 10 }],
+      },
+    ]);
     expect(rows[0]).toMatchObject({ text: "let foo = 1", ranges: [[4, 7]], col: 18, endCol: 21, matched: ["foo"] });
   });
 
@@ -161,6 +174,11 @@ describe("result helpers", () => {
   });
 
   it("rangesToIndices flattens and dedupes", () => {
-    expect(rangesToIndices([[0, 2], [1, 3]])).toEqual([0, 1, 2]);
+    expect(
+      rangesToIndices([
+        [0, 2],
+        [1, 3],
+      ]),
+    ).toEqual([0, 1, 2]);
   });
 });

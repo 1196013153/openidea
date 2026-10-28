@@ -2,7 +2,16 @@
  * Edit › Column Selection Mode (⇧⌘8): while on, a plain mouse drag and
  * ⇧+arrows make rectangular (block) selections, one range per line.
  */
-import { EditorSelection, Prec, StateEffect, StateField, countColumn, findColumn, type EditorState, type Extension } from "@codemirror/state";
+import {
+  EditorSelection,
+  Prec,
+  StateEffect,
+  StateField,
+  countColumn,
+  findColumn,
+  type EditorState,
+  type Extension,
+} from "@codemirror/state";
 import { EditorView, keymap, rectangularSelection } from "@codemirror/view";
 
 /** A block between two visual columns (tabs expanded) of two lines. */
@@ -79,7 +88,12 @@ export function extendBlock(view: EditorView, dLine: number, dCol: number): bool
     const a = state.doc.lineAt(main.anchor);
     const h = state.doc.lineAt(main.head);
     const col = (text: string, offset: number) => countColumn(text, state.tabSize, offset);
-    b = { anchorLine: a.number, anchorCol: col(a.text, main.anchor - a.from), headLine: h.number, headCol: col(h.text, main.head - h.from) };
+    b = {
+      anchorLine: a.number,
+      anchorCol: col(a.text, main.anchor - a.from),
+      headLine: h.number,
+      headCol: col(h.text, main.head - h.from),
+    };
   }
   const headLine = Math.max(1, Math.min(state.doc.lines, b.headLine + dLine));
   const next = { ...b, headLine, headCol: stepColumn(state.doc.line(b.headLine).text, b.headCol, dCol, state.tabSize) };
@@ -113,5 +127,7 @@ export const columnModeExtension: Extension = [
       { key: "Shift-ArrowRight", run: (v) => extendBlock(v, 0, 1) },
     ]),
   ),
-  EditorView.editorAttributes.compute([columnModeField], (s): Record<string, string> => (isColumnMode(s) ? { class: "cm-openidea-columnMode" } : {})),
+  EditorView.editorAttributes.compute([columnModeField], (s): Record<string, string> =>
+    isColumnMode(s) ? { class: "cm-openidea-columnMode" } : {},
+  ),
 ];

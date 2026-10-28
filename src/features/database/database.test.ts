@@ -21,12 +21,28 @@ import { VENDORS, sourceUrl, vendorById, vendorOf, vendorPreset } from "./vendor
 
 describe("clipboard formats", () => {
   it("copies TSV with NULL as empty and whitespace flattened", () => {
-    expect(toTsv(["a", "b"], [["1", null], ["x\ty", "line\nbreak"]])).toBe("a\tb\n1\t\nx y\tline break");
+    expect(
+      toTsv(
+        ["a", "b"],
+        [
+          ["1", null],
+          ["x\ty", "line\nbreak"],
+        ],
+      ),
+    ).toBe("a\tb\n1\t\nx y\tline break");
     expect(toTsv(null, [["1"]])).toBe("1");
   });
 
   it("copies RFC 4180 CSV", () => {
-    expect(toCsv(["id", "note"], [["1", 'say "hi", ok'], ["2", null]])).toBe('id,note\r\n1,"say ""hi"", ok"\r\n2,');
+    expect(
+      toCsv(
+        ["id", "note"],
+        [
+          ["1", 'say "hi", ok'],
+          ["2", null],
+        ],
+      ),
+    ).toBe('id,note\r\n1,"say ""hi"", ok"\r\n2,');
   });
 });
 
@@ -87,7 +103,9 @@ describe("export formats", () => {
   });
 
   it("writes a Markdown table, numbers right-aligned", () => {
-    expect(exportData("markdown", { ...data, rows: [["1", "a|b"]] })).toBe("| id | name |\n| --: | --- |\n| 1 | a\\|b |");
+    expect(exportData("markdown", { ...data, rows: [["1", "a|b"]] })).toBe(
+      "| id | name |\n| --: | --- |\n| 1 | a\\|b |",
+    );
   });
 });
 
@@ -95,8 +113,12 @@ describe("connection errors", () => {
   const ssh = (auth: "password" | "keyPair" | "openSsh") => ({ ssh: { enabled: true, host: "bastion", auth } });
 
   it("asks for what the failed connection needs", () => {
-    expect(connectRemedy("protocol", "Unknown SSH host key for bastion:22 (ssh-ed25519 SHA256:abc)")).toBe("trustHostKey");
-    expect(connectRemedy("permissionDenied", "SSH password required for me@bastion:22", ssh("password"))).toBe("sshSecret");
+    expect(connectRemedy("protocol", "Unknown SSH host key for bastion:22 (ssh-ed25519 SHA256:abc)")).toBe(
+      "trustHostKey",
+    );
+    expect(connectRemedy("permissionDenied", "SSH password required for me@bastion:22", ssh("password"))).toBe(
+      "sshSecret",
+    );
     expect(connectRemedy("permissionDenied", "SSH key passphrase required for /k", ssh("keyPair"))).toBe("sshSecret");
     expect(connectRemedy("permissionDenied", "SSH authentication failed for me@bastion:22", ssh("password"))).toBe(
       "sshSecret",
@@ -144,14 +166,22 @@ describe("parseSourceUrl", () => {
   });
 
   it("reads SQLite files and rejects other drivers", () => {
-    expect(parseSourceUrl("jdbc:sqlite:C:/data/shop.db")?.source).toEqual({ driver: "sqlite", file: "C:/data/shop.db", name: "shop" });
+    expect(parseSourceUrl("jdbc:sqlite:C:/data/shop.db")?.source).toEqual({
+      driver: "sqlite",
+      file: "C:/data/shop.db",
+      name: "shop",
+    });
     expect(parseSourceUrl("oracle://x")).toBeNull();
   });
 });
 
 describe("data source types", () => {
   it("presets wire-compatible products on the existing drivers", () => {
-    expect(vendorPreset(vendorById("cockroachdb")!)).toEqual({ driver: "postgres", vendor: "cockroachdb", port: 26257 });
+    expect(vendorPreset(vendorById("cockroachdb")!)).toEqual({
+      driver: "postgres",
+      vendor: "cockroachdb",
+      port: 26257,
+    });
     expect(vendorPreset(vendorById("postgres")!)).toEqual({ driver: "postgres", vendor: "", port: 5432 });
     expect(vendorPreset(vendorById("supabase")!).ssl).toBe("require");
     expect(VENDORS.every((v) => ["postgres", "mysql", "sqlite"].includes(v.driver))).toBe(true);
@@ -170,7 +200,9 @@ describe("data source types", () => {
     expect(sourceUrl({ driver: "postgres", host: "localhost", port: 5432, database: "postgres" })).toBe(
       "jdbc:postgresql://localhost:5432/postgres",
     );
-    expect(sourceUrl({ driver: "postgres", vendor: "redshift", host: "r", port: null, database: "" })).toBe("jdbc:redshift://r:5439");
+    expect(sourceUrl({ driver: "postgres", vendor: "redshift", host: "r", port: null, database: "" })).toBe(
+      "jdbc:redshift://r:5439",
+    );
     expect(sourceUrl({ driver: "mysql", vendor: "mariadb", host: "::1", port: 3307, database: "a b" })).toBe(
       "jdbc:mariadb://[::1]:3307/a%20b",
     );
@@ -178,7 +210,9 @@ describe("data source types", () => {
   });
 
   it("reads URLs of compatible products, SSL settings and driver properties", () => {
-    const tidb = parseSourceUrl("jdbc:tidb://root@tidb.local:4000/test?sslmode=verify-full&sslrootcert=/ca.pem&sql_mode=ANSI");
+    const tidb = parseSourceUrl(
+      "jdbc:tidb://root@tidb.local:4000/test?sslmode=verify-full&sslrootcert=/ca.pem&sql_mode=ANSI",
+    );
     expect(tidb?.source).toEqual({
       driver: "mysql",
       vendor: "tidb",
@@ -223,7 +257,8 @@ describe("Options tab", () => {
       ["a:other", 50_000],
       ["b", 0],
     ]);
-    const idle = (busy: string[]) => idleTargets(["a", "a:other", "b", "c"], sources, used, (t) => busy.includes(t), 60_000);
+    const idle = (busy: string[]) =>
+      idleTargets(["a", "a:other", "b", "c"], sources, used, (t) => busy.includes(t), 60_000);
     expect(idle([])).toEqual(["a"]);
     expect(idle(["a"])).toEqual([]);
   });

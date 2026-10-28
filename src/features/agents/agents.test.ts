@@ -124,21 +124,18 @@ describe("agent composer", () => {
     const config = [option("fast", ["on"], null), option("mode", ["ask", "code"], "code"), option("model", ["m"], "m")];
     expect(mainOptions(config).map((o) => o.id)).toEqual(["model", "mode"]);
     expect(nextValue(config[1]!)).toBe("ask");
-    expect(["default", "acceptEdits", "plan", "auto", "bypassPermissions", "auto_edit", "read-only", "x"].map(modeIcon)).toEqual([
-      "lock",
-      "edit",
-      "todo",
-      "run",
-      "unlock",
-      "edit",
-      "eye",
-      "lock",
-    ]);
+    expect(
+      ["default", "acceptEdits", "plan", "auto", "bypassPermissions", "auto_edit", "read-only", "x"].map(modeIcon),
+    ).toEqual(["lock", "edit", "todo", "run", "unlock", "edit", "eye", "lock"]);
     expect(usageLabel({ used: 24_000, size: 200_000 })).toEqual({
       short: "12%",
       detail: "24k / 200k tokens",
     });
-    expect(imageFromDataUrl("data:image/png;base64,AAA", "a.png")).toEqual({ mimeType: "image/png", data: "AAA", name: "a.png" });
+    expect(imageFromDataUrl("data:image/png;base64,AAA", "a.png")).toEqual({
+      mimeType: "image/png",
+      data: "AAA",
+      name: "a.png",
+    });
     expect(imageFromDataUrl("data:text/plain;base64,AAA")).toBeNull();
   });
 });

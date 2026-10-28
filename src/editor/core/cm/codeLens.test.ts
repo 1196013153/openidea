@@ -6,7 +6,9 @@ const doc = (text: string) => EditorState.create({ doc: text });
 
 describe("code lens layout", () => {
   it("places lenses above attributes, annotations and doc comments", () => {
-    const s = doc("mod a {\n    /// Docs\n    #[test]\n    #[ignore]\n    fn t() {}\n}\n@Test\nvoid x() {}\n/**\n * doc\n */\nfunction f() {}");
+    const s = doc(
+      "mod a {\n    /// Docs\n    #[test]\n    #[ignore]\n    fn t() {}\n}\n@Test\nvoid x() {}\n/**\n * doc\n */\nfunction f() {}",
+    );
     expect(s.doc.lineAt(declarationStart(s, 5)).number).toBe(2);
     expect(s.doc.lineAt(declarationStart(s, 8)).number).toBe(7);
     expect(s.doc.lineAt(declarationStart(s, 12)).number).toBe(9);

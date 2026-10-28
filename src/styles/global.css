@@ -103,28 +103,46 @@ a:hover {
   outline: none;
 }
 :where(
-  button,
-  a[href],
-  input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]),
-  select,
-  summary,
-  [role="button"],
-  [role="link"],
-  [role="checkbox"],
-  [role="radio"],
-  [role="switch"],
-  [role="tab"],
-  [role="combobox"],
-  [role="slider"],
-  [role="spinbutton"]
-):not(
-  :where(
-    input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]),
-    textarea,
-    [contenteditable="true"],
-    [contenteditable=""]
-  )
-):focus-visible {
+    button,
+    a[href],
+    input:is(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="color"],
+      [type="file"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"]
+    ),
+    select,
+    summary,
+    [role="button"],
+    [role="link"],
+    [role="checkbox"],
+    [role="radio"],
+    [role="switch"],
+    [role="tab"],
+    [role="combobox"],
+    [role="slider"],
+    [role="spinbutton"]
+  ):not(
+    :where(
+      input:not(
+        [type="checkbox"],
+        [type="radio"],
+        [type="range"],
+        [type="color"],
+        [type="file"],
+        [type="button"],
+        [type="submit"],
+        [type="reset"]
+      ),
+      textarea,
+      [contenteditable="true"],
+      [contenteditable=""]
+    )
+  ):focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }

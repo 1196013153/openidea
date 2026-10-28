@@ -25,7 +25,11 @@ export function profilerSupports(config: Pick<RunConfig, "command" | "args" | "k
 }
 
 function isLinux(): boolean {
-  return typeof navigator !== "undefined" && /linux/i.test(navigator.platform || navigator.userAgent) && !/android/i.test(navigator.userAgent);
+  return (
+    typeof navigator !== "undefined" &&
+    /linux/i.test(navigator.platform || navigator.userAgent) &&
+    !/android/i.test(navigator.userAgent)
+  );
 }
 
 /** `12.3 ms`, `1.2 s`, `340 samples`. */

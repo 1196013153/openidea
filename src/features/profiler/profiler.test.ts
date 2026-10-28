@@ -23,7 +23,18 @@ const profile: Profile = {
 };
 
 function cfg(command: string, args: string[], kind = "shell"): RunConfig {
-  return { id: "c", name: "c", kind, command, args, cwd: null, env: {}, detected: true, isTest: false, debugAdapter: null };
+  return {
+    id: "c",
+    name: "c",
+    kind,
+    command,
+    args,
+    cwd: null,
+    env: {},
+    detected: true,
+    isTest: false,
+    debugAdapter: null,
+  };
 }
 
 describe("profiler model", () => {

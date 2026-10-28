@@ -5,7 +5,8 @@ import type { IdeError, Locals, NodeAt, Range, SymbolMatch, SyntaxNode } from "@
 
 type R<T> = Promise<{ status: "ok"; data: T } | { status: "error"; error: IdeError }>;
 const ok = <T>(data: T) => Promise.resolve({ status: "ok" as const, data });
-const unavailable = () => Promise.resolve({ status: "error" as const, error: { kind: "unavailable", message: "no server" } as IdeError });
+const unavailable = () =>
+  Promise.resolve({ status: "error" as const, error: { kind: "unavailable", message: "no server" } as IdeError });
 
 const cmd = {
   lspHover: vi.fn((): R<unknown> => ok(null)),
@@ -79,7 +80,10 @@ function editor(doc: string, language = "typescript", anchor = 0) {
     state: EditorState.create({
       doc,
       selection: { anchor },
-      extensions: [lspDoc.of({ doc: 7, path: "/p/a.ts", language, uiMode: null, readOnly: false }), navigationExtension()],
+      extensions: [
+        lspDoc.of({ doc: 7, path: "/p/a.ts", language, uiMode: null, readOnly: false }),
+        navigationExtension(),
+      ],
     }),
     parent: document.body,
   });
@@ -98,15 +102,27 @@ describe("usageRole / filterSymbols", () => {
   it("reads the role from the tree", () => {
     const id = r(0, 0, 3);
     expect(fb.usageRole({ node: node("type_identifier", id), ancestors: [] })).toBe("type");
-    expect(fb.usageRole({ node: node("identifier", id, "function"), ancestors: [node("call_expression", id)] })).toBe("call");
-    expect(fb.usageRole({ node: node("identifier", id, "name"), ancestors: [node("method_invocation", id)] })).toBe("call");
-    expect(fb.usageRole({ node: node("identifier", id, "constructor"), ancestors: [node("new_expression", id)] })).toBe("new");
+    expect(fb.usageRole({ node: node("identifier", id, "function"), ancestors: [node("call_expression", id)] })).toBe(
+      "call",
+    );
+    expect(fb.usageRole({ node: node("identifier", id, "name"), ancestors: [node("method_invocation", id)] })).toBe(
+      "call",
+    );
+    expect(fb.usageRole({ node: node("identifier", id, "constructor"), ancestors: [node("new_expression", id)] })).toBe(
+      "new",
+    );
     expect(fb.usageRole({ node: node("identifier", id), ancestors: [node("binary_expression", id)] })).toBe("other");
     expect(fb.usageRole(null)).toBe("other");
   });
 
   it("keeps exact names whose kind fits the role", () => {
-    const all = [sym("Foo", "class", "/a"), sym("Foo", "function", "/b"), sym("Foo", "field", "/c"), sym("Foobar", "class", "/d"), sym("Foo", "file", "/e")];
+    const all = [
+      sym("Foo", "class", "/a"),
+      sym("Foo", "function", "/b"),
+      sym("Foo", "field", "/c"),
+      sym("Foobar", "class", "/d"),
+      sym("Foo", "file", "/e"),
+    ];
     expect(fb.filterSymbols(all, "Foo", "type").map((s) => s.path)).toEqual(["/a"]);
     expect(fb.filterSymbols(all, "Foo", "call").map((s) => s.path)).toEqual(["/a", "/b"]);
     expect(fb.filterSymbols(all, "Foo", "other").map((s) => s.path)).toEqual(["/a", "/b", "/c"]);
@@ -153,9 +169,19 @@ describe("declarationFallback", () => {
   });
 
   it("looks non-locals up in the index by exact name and role", async () => {
-    cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "foo", range: r(1, 6, 9), reason: "unresolved" }));
-    cmd.syntaxNodeAt.mockReturnValueOnce(ok({ node: node("identifier", r(1, 6, 9), "function"), ancestors: [node("call_expression", r(1, 6, 11))] }));
-    cmd.findSymbols.mockReturnValueOnce(ok([sym("foo", "function", "/p/b.ts", "util"), sym("foo", "field", "/p/c.ts"), sym("foobar", "function", "/p/d.ts")]));
+    cmd.syntaxLocals.mockReturnValueOnce(
+      ok({ status: "notLocal", name: "foo", range: r(1, 6, 9), reason: "unresolved" }),
+    );
+    cmd.syntaxNodeAt.mockReturnValueOnce(
+      ok({ node: node("identifier", r(1, 6, 9), "function"), ancestors: [node("call_expression", r(1, 6, 11))] }),
+    );
+    cmd.findSymbols.mockReturnValueOnce(
+      ok([
+        sym("foo", "function", "/p/b.ts", "util"),
+        sym("foo", "field", "/p/c.ts"),
+        sym("foobar", "function", "/p/d.ts"),
+      ]),
+    );
     const res = await fb.declarationFallback(doc, text, { line: 1, col: 7 });
     expect(cmd.findSymbols).toHaveBeenCalledWith("foo", "all", 500);
     expect(res).toEqual({
@@ -168,7 +194,9 @@ describe("declarationFallback", () => {
   it("does not filter members by role", async () => {
     cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "foo", range: r(1, 6, 9), reason: "member" }));
     cmd.syntaxNodeAt.mockReturnValueOnce(ok({ node: node("property_identifier", r(1, 6, 9)), ancestors: [] }));
-    cmd.findSymbols.mockReturnValueOnce(ok([sym("foo", "method", "/p/b.ts", "A"), sym("foo", "field", "/p/c.ts", "B")]));
+    cmd.findSymbols.mockReturnValueOnce(
+      ok([sym("foo", "method", "/p/b.ts", "A"), sym("foo", "field", "/p/c.ts", "B")]),
+    );
     const res = await fb.declarationFallback(doc, text, { line: 1, col: 7 });
     expect(res).toMatchObject({ kind: "targets", ambiguous: true });
   });
@@ -179,7 +207,9 @@ describe("declarationFallback", () => {
     await fb.declarationFallback({ ...doc, language: "nolocals" }, text, { line: 1, col: 7 });
     expect(cmd.findSymbols).toHaveBeenCalledWith("foo", "all", 500);
     cmd.syntaxSupport.mockReturnValueOnce(ok({ tree: false, locals: false }));
-    expect(await fb.declarationFallback({ ...doc, language: "nogrammar" }, text, { line: 0, col: 0 })).toEqual({ kind: "unsupported" });
+    expect(await fb.declarationFallback({ ...doc, language: "nogrammar" }, text, { line: 0, col: 0 })).toEqual({
+      kind: "unsupported",
+    });
   });
 });
 
@@ -205,13 +235,17 @@ describe("rename helpers", () => {
     const id = r(0, 0, 1);
     expect(fb.isShorthand({ node: node("shorthand_property_identifier", id), ancestors: [] })).toBe(true);
     expect(fb.isShorthand({ node: node("shorthand_property_identifier_pattern", id), ancestors: [] })).toBe(true);
-    expect(fb.isShorthand({ node: node("identifier", id), ancestors: [node("shorthand_field_initializer", id)] })).toBe(true);
+    expect(fb.isShorthand({ node: node("identifier", id), ancestors: [node("shorthand_field_initializer", id)] })).toBe(
+      true,
+    );
     expect(fb.isShorthand({ node: node("identifier", id), ancestors: [node("arguments", id)] })).toBe(false);
   });
 
   it("refuses non-locals and plans locals with shorthand detection", async () => {
     cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "foo", range: r(0, 0, 3), reason: "member" }));
-    expect(await fb.planLocalRename({ doc: 7, language: "typescript" }, { line: 0, col: 1 })).toMatchObject({ kind: "refused" });
+    expect(await fb.planLocalRename({ doc: 7, language: "typescript" }, { line: 0, col: 1 })).toMatchObject({
+      kind: "refused",
+    });
     cmd.syntaxLocals.mockReturnValueOnce(ok(local()));
     cmd.syntaxNodeAt
       .mockReturnValueOnce(ok({ node: node("identifier", r(0, 6, 7)), ancestors: [] }))
@@ -226,7 +260,10 @@ describe("rename helpers", () => {
   });
 
   it("flags ambiguity and name clashes inside the scope", async () => {
-    const plan = { symbol: (local({ certain: false, conflicts: [r(3, 0, 1)] }) as Extract<Locals, { status: "local" }>).symbol, occurrences: [] };
+    const plan = {
+      symbol: (local({ certain: false, conflicts: [r(3, 0, 1)] }) as Extract<Locals, { status: "local" }>).symbol,
+      occurrences: [],
+    };
     cmd.syntaxIdentifiers.mockReturnValueOnce(
       ok([
         { range: r(2, 0, 1), kind: "identifier", qualified: false },
@@ -269,7 +306,9 @@ describe("navigation wiring", () => {
   it("opens a chooser for several index candidates", async () => {
     cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "run", range: r(0, 4, 7), reason: "member" }));
     cmd.syntaxNodeAt.mockReturnValueOnce(ok({ node: node("property_identifier", r(0, 4, 7)), ancestors: [] }));
-    cmd.findSymbols.mockReturnValueOnce(ok([sym("run", "method", "/p/a.ts", "A"), sym("run", "method", "/p/b.ts", "B")]));
+    cmd.findSymbols.mockReturnValueOnce(
+      ok([sym("run", "method", "/p/a.ts", "A"), sym("run", "method", "/p/b.ts", "B")]),
+    );
     const view = editor("obj.run();", "typescript", 5);
     await gotoTargets(view, "definition");
     const popup = useLspPopup.getState().popup;
@@ -303,7 +342,9 @@ describe("navigation wiring", () => {
     cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "x", range: r(0, 0, 1), reason: "topLevel" }));
     const view = editor("x;", "typescript", 0);
     highlightUsages(view);
-    await vi.waitFor(() => expect(document.querySelector(".cm-lsp-hint")?.textContent).toBe("No language server available"));
+    await vi.waitFor(() =>
+      expect(document.querySelector(".cm-lsp-hint")?.textContent).toBe("No language server available"),
+    );
     expect(view.dom.querySelectorAll(".cm-lsp-occurrence")).toHaveLength(0);
   });
 });
@@ -326,7 +367,9 @@ describe("rename wiring", () => {
   });
 
   it("asks before renaming an ambiguous local", async () => {
-    cmd.syntaxLocals.mockReturnValueOnce(ok(local({ references: [r(1, 0, 1)], certain: false, conflicts: [r(2, 4, 5)] })));
+    cmd.syntaxLocals.mockReturnValueOnce(
+      ok(local({ references: [r(1, 0, 1)], certain: false, conflicts: [r(2, 4, 5)] })),
+    );
     const view = editor("const x = 1;\nx;\nvar x;", "typescript", 6);
     await startRename(view);
     const popup = useLspPopup.getState().popup;
@@ -364,14 +407,18 @@ describe("rename wiring", () => {
     });
 
     it("falls back to the syntax rename of a local, references included", async () => {
-      cmd.syntaxLocals.mockReturnValueOnce(ok(local({ name: "mesage", definition: r(0, 0, 6), references: [r(1, 6, 12)] })));
+      cmd.syntaxLocals.mockReturnValueOnce(
+        ok(local({ name: "mesage", definition: r(0, 0, 6), references: [r(1, 6, 12)] })),
+      );
       const view = editor("mesage = 'hello'\nprint(mesage)", "python", 0);
       await renameNamePart(view, { from: 0, to: 6 }, "message");
       expect(view.state.doc.toString()).toBe("message = 'hello'\nprint(message)");
     });
 
     it("changes nothing when the symbol can't be renamed safely", async () => {
-      cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "mesage", range: r(0, 0, 6), reason: "topLevel" }));
+      cmd.syntaxLocals.mockReturnValueOnce(
+        ok({ status: "notLocal", name: "mesage", range: r(0, 0, 6), reason: "topLevel" }),
+      );
       const view = editor("mesage = 'hello'\nprint(mesage)", "python", 0);
       await renameNamePart(view, { from: 0, to: 6 }, "message");
       expect(view.state.doc.toString()).toBe("mesage = 'hello'\nprint(mesage)");
@@ -387,7 +434,12 @@ describe("rename wiring", () => {
     expect(document.querySelector(".cm-lsp-hint")?.textContent).toBe("This element can't be renamed");
 
     cmd.lspPrepareRename.mockReturnValueOnce(ok(null));
-    cmd.syntaxErrors.mockReturnValueOnce(ok({ errors: [{ kind: "missing", range: r(0, 12, 12), expected: ";", message: "missing `;`" }], truncated: false }));
+    cmd.syntaxErrors.mockReturnValueOnce(
+      ok({
+        errors: [{ kind: "missing", range: r(0, 12, 12), expected: ";", message: "missing `;`" }],
+        truncated: false,
+      }),
+    );
     cmd.syntaxLocals.mockReturnValueOnce(ok(local({ references: [] })));
     await startRename(view);
     expect(useLspPopup.getState().popup?.kind).toBe("rename");

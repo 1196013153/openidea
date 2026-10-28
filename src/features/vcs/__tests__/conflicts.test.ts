@@ -23,7 +23,13 @@ describe("parseConflicts", () => {
     const blocks = parseConflicts(text);
     expect(blocks).toHaveLength(2);
     const [a, b] = blocks;
-    expect(a).toMatchObject({ ours: "ours 1\nours 2\n", base: "base\n", theirs: "theirs\n", oursLabel: "HEAD", theirsLabel: "feature" });
+    expect(a).toMatchObject({
+      ours: "ours 1\nours 2\n",
+      base: "base\n",
+      theirs: "theirs\n",
+      oursLabel: "HEAD",
+      theirsLabel: "feature",
+    });
     expect(text.slice(a!.from, a!.to)).toMatch(/^<<<<<<< HEAD\n[\s\S]*>>>>>>> feature\n$/);
     expect(b).toMatchObject({ ours: "", base: null, theirs: "only theirs\n" });
     expect(blockAt(blocks, text.indexOf("theirs\n"))).toBe(a);

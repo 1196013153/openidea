@@ -73,7 +73,12 @@ function ConnectDialog() {
       onClose={closeConnectDialog}
       width={560}
       buttons={[
-        { label: connecting ? "Connecting…" : "Open", role: "default", disabled: !ready, onClick: () => void connect() },
+        {
+          label: connecting ? "Connecting…" : "Open",
+          role: "default",
+          disabled: !ready,
+          onClick: () => void connect(),
+        },
         { label: "Cancel", role: "cancel" },
       ]}
     >
@@ -85,9 +90,7 @@ function ConnectDialog() {
         }}
       >
         <p className={styles.hint}>
-          {tx(
-            "The project runs on the remote host; the IDE backend is installed there on first use.",
-          )}
+          {tx("The project runs on the remote host; the IDE backend is installed there on first use.")}
         </p>
         <label className={styles.label}>{tx("SSH configuration:")}</label>
         <div className={styles.row}>

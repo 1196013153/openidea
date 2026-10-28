@@ -14,7 +14,13 @@ import {
   visibleCount,
 } from "../structure/outline";
 
-const item = (name: string, kind: OutlineItem["kind"], from: number, to: number, children: OutlineItem[] = []): OutlineItem => ({
+const item = (
+  name: string,
+  kind: OutlineItem["kind"],
+  from: number,
+  to: number,
+  children: OutlineItem[] = [],
+): OutlineItem => ({
   name,
   detail: null,
   kind,
@@ -24,7 +30,11 @@ const item = (name: string, kind: OutlineItem["kind"], from: number, to: number,
 });
 
 const outline = [
-  item("OrderController", "class", 0, 20, [item("list", "method", 2, 6), item("create", "method", 8, 12), item("list", "method", 14, 16)]),
+  item("OrderController", "class", 0, 20, [
+    item("list", "method", 2, 6),
+    item("create", "method", 8, 12),
+    item("list", "method", 14, 16),
+  ]),
   item("helper", "function", 22, 25),
 ];
 
@@ -91,7 +101,9 @@ describe("outline helpers", () => {
 
   it("narrows to matches and their ancestors", () => {
     const f = filterOutline(nodes, "creat", true);
-    expect(f.nodes.map((n) => [n.item.name, n.children.map((c) => c.item.name)])).toEqual([["OrderController", ["create"]]]);
+    expect(f.nodes.map((n) => [n.item.name, n.children.map((c) => c.item.name)])).toEqual([
+      ["OrderController", ["create"]],
+    ]);
     expect(f.best).toBe(nodes[0]!.children[1]!.key);
     expect(f.matches.has(nodes[0]!.key)).toBe(false);
     expect(filterOutline(nodes, "", true).nodes).toBe(nodes);

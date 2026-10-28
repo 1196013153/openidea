@@ -6,7 +6,10 @@ const unavailable = () => new IpcError({ kind: "unavailable", message: "no serve
 const protocol = () => new IpcError({ kind: "protocol", message: "boom" });
 const cancelled = () => new IpcError({ kind: "cancelled", message: "cancelled" });
 const fail = (e: Error) => () => Promise.reject(e);
-const ok = <T>(v: T) => () => Promise.resolve(v);
+const ok =
+  <T>(v: T) =>
+  () =>
+    Promise.resolve(v);
 
 describe("withFallback", () => {
   it("prefers the language server", async () => {
@@ -26,10 +29,12 @@ describe("withFallback", () => {
       value: [],
       source: "lsp",
     });
-    expect(await withFallback(ok({ items: [] }), ok({ items: [1] }), { isEmpty: (v) => v.items.length === 0 })).toEqual({
-      value: { items: [1] },
-      source: "syntax",
-    });
+    expect(await withFallback(ok({ items: [] }), ok({ items: [1] }), { isEmpty: (v) => v.items.length === 0 })).toEqual(
+      {
+        value: { items: [1] },
+        source: "syntax",
+      },
+    );
   });
 
   it("never falls back on cancellation and keeps the server outcome when the fallback fails", async () => {
@@ -47,7 +52,10 @@ describe("withFallback", () => {
 
   it("answers from the fallback when the server is slow", async () => {
     const slowLsp = () => new Promise<number[]>((resolve) => setTimeout(() => resolve([1]), 200));
-    expect(await withFallback(slowLsp, ok([2]), { when: ["slow"], slowMs: 10 })).toEqual({ value: [2], source: "syntax" });
+    expect(await withFallback(slowLsp, ok([2]), { when: ["slow"], slowMs: 10 })).toEqual({
+      value: [2],
+      source: "syntax",
+    });
     // An empty fallback waits for the server.
     expect(await withFallback(slowLsp, ok<number[]>([]), { when: ["slow"], slowMs: 10 })).toEqual({
       value: [1],

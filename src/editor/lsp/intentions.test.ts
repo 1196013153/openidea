@@ -28,8 +28,15 @@ vi.mock("@/platform/ipc", async (orig) => {
   return { ...actual, isTauri: () => true, commands: { ...actual.commands, lspResolveCodeAction } };
 });
 
-const { bulbLine, changedLines, indentUnderBrace, intentionPreview, lightsBulb, listedCodeActions, withInspectionControls } =
-  await import("./intentions");
+const {
+  bulbLine,
+  changedLines,
+  indentUnderBrace,
+  intentionPreview,
+  lightsBulb,
+  listedCodeActions,
+  withInspectionControls,
+} = await import("./intentions");
 const { setFileDiagnostics } = await import("./diagnostics");
 const { lspDoc } = await import("./lsp");
 
@@ -133,7 +140,9 @@ describe("changedLines", () => {
   });
   it("keeps separate edits apart", () => {
     const before = text("package p;\n\nclass A {\n  int a;\n  int b;\n  void f() {\n  }\n}\n");
-    const after = text("package p;\n\nimport java.util.List;\n\nclass A {\n  int a;\n  int b;\n  void f() {\n    List<String> x = null;\n    x.size();\n  }\n}\n");
+    const after = text(
+      "package p;\n\nimport java.util.List;\n\nclass A {\n  int a;\n  int b;\n  void f() {\n    List<String> x = null;\n    x.size();\n  }\n}\n",
+    );
     expect(changedLines(before, after)).toEqual([
       { from: 3, to: 4 },
       { from: 9, to: 10 },

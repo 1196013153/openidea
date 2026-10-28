@@ -18,7 +18,14 @@ import {
   type TransactionSpec,
 } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap, type ViewUpdate } from "@codemirror/view";
-import { _addEditor, _removeEditor, documentSynced, isExternalChange, type EditorDocContext, type TextEditorHandle } from "@/editor/api";
+import {
+  _addEditor,
+  _removeEditor,
+  documentSynced,
+  isExternalChange,
+  type EditorDocContext,
+  type TextEditorHandle,
+} from "@/editor/api";
 import { showContextMenu } from "@/ui";
 import { baseExtensions, compartments, contributionExtensions } from "../cm/setup";
 import { gutterMenuItems, inGutterMenuArea } from "../gutterMenu";
@@ -186,7 +193,13 @@ export class EditorSlot {
       }
       if (tr.docChanged && !isExternalChange(tr)) {
         this.model.onLocal(tr.changes, this);
-        if (tr.isUserEvent("input") || tr.isUserEvent("delete") || tr.isUserEvent("move") || tr.isUserEvent("undo") || tr.isUserEvent("redo"))
+        if (
+          tr.isUserEvent("input") ||
+          tr.isUserEvent("delete") ||
+          tr.isUserEvent("move") ||
+          tr.isUserEvent("undo") ||
+          tr.isUserEvent("redo")
+        )
           this.host.onUserEdit(this, tr);
       }
       if (tr.selection || tr.docChanged) selection = true;
@@ -241,7 +254,9 @@ export class EditorSlot {
     }
     this.view.dispatch({
       selection: EditorSelection.single(anchor, head),
-      effects: EditorView.scrollIntoView(EditorSelection.range(anchor, head), { y: r.center === false ? "nearest" : "center" }),
+      effects: EditorView.scrollIntoView(EditorSelection.range(anchor, head), {
+        y: r.center === false ? "nearest" : "center",
+      }),
       userEvent: "select.reveal",
     });
   }
@@ -256,9 +271,14 @@ export class EditorSlot {
   /** Restores a saved caret / scroll position (session restore). */
   restoreView(v: { anchor: number; head: number; topLine?: number }) {
     const doc = this.currentState().doc;
-    const selection = EditorSelection.single(Math.min(Math.max(0, v.anchor), doc.length), Math.min(Math.max(0, v.head), doc.length));
+    const selection = EditorSelection.single(
+      Math.min(Math.max(0, v.anchor), doc.length),
+      Math.min(Math.max(0, v.head), doc.length),
+    );
     const scroll =
-      v.topLine !== undefined ? EditorView.scrollIntoView(doc.line(Math.min(v.topLine + 1, doc.lines)).from, { y: "start" }) : null;
+      v.topLine !== undefined
+        ? EditorView.scrollIntoView(doc.line(Math.min(v.topLine + 1, doc.lines)).from, { y: "start" })
+        : null;
     if (this.view) {
       this.view.dispatch({ selection, effects: scroll ? [scroll] : [] });
       return;

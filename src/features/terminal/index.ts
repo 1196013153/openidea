@@ -23,7 +23,12 @@ function focusActiveSoon() {
 }
 
 function shellName(path: string): string {
-  return path.split(/[\\/]/).pop()!.replace(/\.exe$/i, "") || path;
+  return (
+    path
+      .split(/[\\/]/)
+      .pop()!
+      .replace(/\.exe$/i, "") || path
+  );
 }
 
 async function openNewTab(dir?: string) {

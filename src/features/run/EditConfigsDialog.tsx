@@ -40,7 +40,9 @@ export function EditConfigsOverlay() {
 }
 
 type Selection =
-  { type: "config"; id: string } | { type: "folder"; kind: string; name: string } | { type: "template"; kind: string };
+  | { type: "config"; id: string }
+  | { type: "folder"; kind: string; name: string }
+  | { type: "template"; kind: string };
 
 export type TreeRow =
   | { type: "group"; key: string; kind: string; label: string; icon: string }

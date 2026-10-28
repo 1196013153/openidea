@@ -18,7 +18,11 @@ vi.mock("../find/windowStore", async (orig) => ({
           { line: 4, text: "order()", ranges: [[0, 5]], textOffset: 0 },
         ],
       });
-      onFile({ path: "/p/b.kt", relPath: "b.kt", matches: [{ line: 0, text: "// order", ranges: [[3, 8]], textOffset: 0 }] });
+      onFile({
+        path: "/p/b.kt",
+        relPath: "b.kt",
+        matches: [{ line: 0, text: "// order", ranges: [[3, 8]], textOffset: 0 }],
+      });
       return null;
     },
     cancel: () => {},
@@ -78,7 +82,15 @@ describe("Find in Files popup", () => {
     fireEvent.keyDown(field(), { key: "Enter" });
     await settle();
     expect(replaced).toHaveLength(1);
-    expect(replaced[0]!.targets).toEqual([{ path: "/p/a.kt", only: [{ line: 1, col: 4 }, { line: 4, col: 0 }] }]);
+    expect(replaced[0]!.targets).toEqual([
+      {
+        path: "/p/a.kt",
+        only: [
+          { line: 1, col: 4 },
+          { line: 4, col: 0 },
+        ],
+      },
+    ]);
     // The next row still to replace is selected.
     expect(selectedRows().map((o) => o.textContent)).toEqual([expect.stringContaining("b.kt")]);
   });

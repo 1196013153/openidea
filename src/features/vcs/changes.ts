@@ -49,7 +49,11 @@ export function groupOf(fs: FileStatus): GroupId | null {
 
 export function isPartiallyStaged(fs: FileStatus): boolean {
   return (
-    !!fs.staged && !!fs.unstaged && fs.unstaged !== "untracked" && fs.unstaged !== "conflicted" && fs.staged !== "conflicted"
+    !!fs.staged &&
+    !!fs.unstaged &&
+    fs.unstaged !== "untracked" &&
+    fs.unstaged !== "conflicted" &&
+    fs.staged !== "conflicted"
   );
 }
 
@@ -73,7 +77,11 @@ export function aggregateCheck(files: readonly FileStatus[], checks: ReadonlyMap
     if (c !== "none") on++;
     if (c === "staged" || c === "hunks") partial = true;
   }
-  return { checked: on > 0 && on === files.length && !partial, indeterminate: (on > 0 && on < files.length) || partial, on };
+  return {
+    checked: on > 0 && on === files.length && !partial,
+    indeterminate: (on > 0 && on < files.length) || partial,
+    on,
+  };
 }
 
 const KIND_ORDER: GroupId[] = ["conflicts", "changes", "unversioned"];

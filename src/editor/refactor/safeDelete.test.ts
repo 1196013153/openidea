@@ -8,7 +8,9 @@ import type { LocalSymbol, Location, Locals, OutlineItem, Range, StructuralRange
 // --- backend fakes ---------------------------------------------------------
 
 type Answer<T> = () => { status: "ok"; data: T } | { status: "error"; error: { kind: string; message: string } };
-const ok = <T,>(data: T) => () => ({ status: "ok" as const, data });
+const ok =
+  <T>(data: T) =>
+  () => ({ status: "ok" as const, data });
 const unavailable = () => ({ status: "error" as const, error: { kind: "unavailable", message: "no server" } });
 
 let goto: Answer<Location[]> = ok([]);
@@ -65,7 +67,9 @@ vi.mock("@/platform/actions", () => ({ executeAction }));
 let answer = "cancel";
 const ask = vi.fn(async (_request: MessageRequest) => ({ button: answer, checked: false }));
 let confirmAnswer: { checked: boolean } | null = { checked: false };
-const confirmChecked = vi.fn(async (_opts: { title: string; message: string; checkbox?: string; checked?: boolean }) => confirmAnswer);
+const confirmChecked = vi.fn(
+  async (_opts: { title: string; message: string; checkbox?: string; checked?: boolean }) => confirmAnswer,
+);
 vi.mock("@/workbench/messages", () => ({ ask, confirmChecked }));
 
 const { deletionRange, localDeclaration, outlineItemAt, safeDelete, fileUsages, usagesMessage, textOccurrences } =
@@ -178,26 +182,51 @@ describe("outlineItemAt", () => {
 });
 
 describe("localDeclaration", () => {
-  const text = "fn f(p: i32) {\n    let x = 1;\n    let (a, b) = t;\n    let m: HashMap<K, V> = m();\n    for i in v {}\n}\n";
+  const text =
+    "fn f(p: i32) {\n    let x = 1;\n    let (a, b) = t;\n    let m: HashMap<K, V> = m();\n    for i in v {}\n}\n";
   const sym = (name: string, kind: LocalSymbol["kind"] = "var", after = "{"): LocalSymbol => {
     const at = text.indexOf(` ${name}`, text.indexOf(after)) + 1;
-    return { name, kind, definition: rangeOf(text, at, at + name.length), scope: rangeOf(text, 0, text.length), references: [], certain: true, conflicts: [] };
+    return {
+      name,
+      kind,
+      definition: rangeOf(text, at, at + name.length),
+      scope: rangeOf(text, 0, text.length),
+      references: [],
+      certain: true,
+      conflicts: [],
+    };
   };
   const stmt = (kind: string, needle: string): SyntaxNode => {
     const at = text.indexOf(needle);
-    return { kind, range: rangeOf(text, at, at + needle.length), field: null, named: true, error: false, missing: false, hasError: false };
+    return {
+      kind,
+      range: rangeOf(text, at, at + needle.length),
+      field: null,
+      named: true,
+      error: false,
+      missing: false,
+      hasError: false,
+    };
   };
 
   it("returns the declaring statement of a single local", () => {
-    expect(localDeclaration(doc(text), sym("x"), stmt("let_declaration", "let x = 1;"))).toEqual(stmt("let_declaration", "let x = 1;").range);
-    expect(localDeclaration(doc(text), sym("m"), stmt("let_declaration", "let m: HashMap<K, V> = m();"))).not.toBeTypeOf("string");
+    expect(localDeclaration(doc(text), sym("x"), stmt("let_declaration", "let x = 1;"))).toEqual(
+      stmt("let_declaration", "let x = 1;").range,
+    );
+    expect(
+      localDeclaration(doc(text), sym("m"), stmt("let_declaration", "let m: HashMap<K, V> = m();")),
+    ).not.toBeTypeOf("string");
   });
 
   it("refuses parameters, destructuring, loop variables and ambiguous locals", () => {
     expect(localDeclaration(doc(text), sym("p", "parameter", "f"), null)).toMatch(/Change Signature/);
     expect(localDeclaration(doc(text), sym("b"), stmt("let_declaration", "let (a, b) = t;"))).toMatch(/other names/);
-    expect(localDeclaration(doc(text), sym("i"), stmt("for_expression", "for i in v {}"))).toMatch(/separate statement/);
-    expect(localDeclaration(doc(text), { ...sym("x"), certain: false }, stmt("let_declaration", "let x = 1;"))).toMatch(/more than once/);
+    expect(localDeclaration(doc(text), sym("i"), stmt("for_expression", "for i in v {}"))).toMatch(
+      /separate statement/,
+    );
+    expect(localDeclaration(doc(text), { ...sym("x"), certain: false }, stmt("let_declaration", "let x = 1;"))).toMatch(
+      /more than once/,
+    );
   });
 });
 
@@ -299,7 +328,10 @@ describe("safeDelete in the editor", () => {
     const v = editor(text, "main");
     goto = ok([{ path: "/p/other.rs", range: rangeOf(text, 0, 1) }]);
     await safeDelete(v);
-    expect(showHint).toHaveBeenCalledWith(v, "Cannot perform refactoring. 'main' is declared in other.rs; Safe Delete it there");
+    expect(showHint).toHaveBeenCalledWith(
+      v,
+      "Cannot perform refactoring. 'main' is declared in other.rs; Safe Delete it there",
+    );
     expect(v.state.doc.toString()).toBe(text);
   });
 
@@ -310,10 +342,26 @@ describe("safeDelete in the editor", () => {
     const x = body.indexOf("x");
     locals = {
       status: "local",
-      symbol: { name: "x", kind: "var", definition: rangeOf(body, x, x + 1), scope: rangeOf(body, 0, body.length), references: [], certain: true, conflicts: [] },
+      symbol: {
+        name: "x",
+        kind: "var",
+        definition: rangeOf(body, x, x + 1),
+        scope: rangeOf(body, 0, body.length),
+        references: [],
+        certain: true,
+        conflicts: [],
+      },
     };
     const at = body.indexOf("let x");
-    statement = { kind: "let_declaration", range: rangeOf(body, at, at + 10), field: null, named: true, error: false, missing: false, hasError: false };
+    statement = {
+      kind: "let_declaration",
+      range: rangeOf(body, at, at + 10),
+      field: null,
+      named: true,
+      error: false,
+      missing: false,
+      hasError: false,
+    };
     const v = editor(body, " x =");
     v.dispatch({ selection: { anchor: x } });
     await safeDelete(v);
@@ -347,7 +395,10 @@ describe("fileUsages", () => {
 
   it("collects references to top-level symbols from other files", async () => {
     outline = ok([item(text, "a", "pub fn a() {}"), item(text, "B", "pub struct B;", "struct")]);
-    const r = (path: string, line: number): Location => ({ path, range: { start: { line, col: 0 }, end: { line, col: 1 } } });
+    const r = (path: string, line: number): Location => ({
+      path,
+      range: { start: { line, col: 0 }, end: { line, col: 1 } },
+    });
     references = ok([r("/p/a.rs", 0), r("/p/main.rs", 4), r("/p/main.rs", 4), r("/p/gone.rs", 1)]);
     const res = await fileUsages(["/p/a.rs", "/p/gone.rs"]);
     expect(res).toEqual({ status: "ok", usages: [r("/p/main.rs", 4)] });

@@ -96,7 +96,9 @@ export const treeHandle: { current: TreeHandle | null } = { current: null };
 export function showNewPopup(): boolean {
   const lead = treeHandle.current?.leadKey();
   const row = lead ? document.querySelector<HTMLElement>(`[data-project-key="${CSS.escape(lead)}"]`) : null;
-  const rect = (row ?? document.querySelector<HTMLElement>('[role="tree"][aria-label="Project"]'))?.getBoundingClientRect();
+  const rect = (
+    row ?? document.querySelector<HTMLElement>('[role="tree"][aria-label="Project"]')
+  )?.getBoundingClientRect();
   if (!rect) return false;
   openNewPopup({ x: rect.left + 24, y: rect.bottom }, newMenuItems(targetFolder()));
   return true;
@@ -261,7 +263,11 @@ const Row = memo(function Row({
       onDoubleClick={(e) => onDoubleClick(node, e)}
       onPointerDown={(e) => onPointerDown(node, e)}
     >
-      <Icon name={icon} size={16} className={clsx(styles.icon, node.dir && styles.folderIcon, dimIcon && styles.faded)} />
+      <Icon
+        name={icon}
+        size={16}
+        className={clsx(styles.icon, node.dir && styles.folderIcon, dimIcon && styles.faded)}
+      />
       {isEditing && editing ? (
         <InlineEditor
           editing={editing}
@@ -310,7 +316,8 @@ function folderAt(container: HTMLElement | null, x: number, y: number): { key: s
   const el = document.elementFromPoint(x, y);
   if (!el || !container.contains(el)) return null;
   const row = el.closest("[data-row]");
-  const content = (row ?? el).querySelector<HTMLElement>("[data-project-path]") ?? el.closest<HTMLElement>("[data-project-path]");
+  const content =
+    (row ?? el).querySelector<HTMLElement>("[data-project-path]") ?? el.closest<HTMLElement>("[data-project-path]");
   if (!content) return null;
   const path = content.dataset.projectPath!;
   if (content.dataset.dir) return { key: content.dataset.projectKey!, path };
@@ -410,7 +417,9 @@ export function ProjectView() {
     if (target.every((n) => n.group)) return;
     // Contributed groups may read the file first (bounded wait).
     const at = { x: e.clientX, y: e.clientY };
-    void prepareMenuGroups("projectView", menuGroupContext(target)).then(() => showContextMenu(at, contextMenuItems(target)));
+    void prepareMenuGroups("projectView", menuGroupContext(target)).then(() =>
+      showContextMenu(at, contextMenuItems(target)),
+    );
   }, []);
 
   const focusTree = useCallback(() => requestAnimationFrame(() => handle.current?.focus()), []);
@@ -630,7 +639,9 @@ export function ProjectView() {
       onBlur={() => setContext("projectViewFocus", false)}
     >
       {!model.roots.length && (
-        <div className={styles.empty}>{txTemplate(`Nothing to show in ${VIEW_MODES.find(([id]) => id === mode)?.[1] ?? "this view"}`)}</div>
+        <div className={styles.empty}>
+          {txTemplate(`Nothing to show in ${VIEW_MODES.find(([id]) => id === mode)?.[1] ?? "this view"}`)}
+        </div>
       )}
       <Tree<ProjectNode>
         aria-label="Project"

@@ -25,7 +25,10 @@ export async function readFileLines(path: string): Promise<string[] | null> {
 }
 
 /** Reads several files with bounded concurrency; missing files map to `null`. */
-export async function readManyFileLines(paths: readonly string[], concurrency = 4): Promise<Map<string, string[] | null>> {
+export async function readManyFileLines(
+  paths: readonly string[],
+  concurrency = 4,
+): Promise<Map<string, string[] | null>> {
   const out = new Map<string, string[] | null>();
   const queue = [...new Set(paths)];
   const worker = async () => {

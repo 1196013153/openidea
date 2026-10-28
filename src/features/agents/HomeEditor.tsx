@@ -134,7 +134,10 @@ export function HomeEditor() {
           )}
         </div>
         {(error || (provider && !provider.installed) || (provider && !provider.config.length)) && (
-          <p className={error || !provider?.installed ? styles.warning : styles.note} role={error ? "alert" : undefined}>
+          <p
+            className={error || !provider?.installed ? styles.warning : styles.note}
+            role={error ? "alert" : undefined}
+          >
             {error ??
               (provider && !provider.installed ? (
                 txTemplate(`${provider.command} was not found on PATH`)

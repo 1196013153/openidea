@@ -53,7 +53,14 @@ describe("language pages", () => {
     const tree = buildPageTree(LANGUAGE_PAGES.map((p) => ({ ...p, component: p.component! })));
     expect(tree.map((n) => n.title)).toEqual(["Project Structure", "Languages & Frameworks"]);
     const langs = tree.find((n) => n.title === "Languages & Frameworks")!;
-    expect(langs.children.map((n) => n.title)).toEqual(["Go", "Java", "Node.js", "Python Interpreter", "Rust", "TypeScript"]);
+    expect(langs.children.map((n) => n.title)).toEqual([
+      "Go",
+      "Java",
+      "Node.js",
+      "Python Interpreter",
+      "Rust",
+      "TypeScript",
+    ]);
   });
 
   it("filters packages and shortens home paths", () => {
@@ -64,7 +71,9 @@ describe("language pages", () => {
     expect(filterPackages(pkgs, "dj").map((p) => p.name)).toEqual(["Django"]);
     expect(filterPackages(pkgs, "")).toHaveLength(2);
     expect(tildify("/Users/me/p/.venv/bin/python")).toBe("~/p/.venv/bin/python");
-    expect(tildify("C:/Users/me/.m2/wrapper/dists/apache-maven-3.9.16")).toBe("~/.m2/wrapper/dists/apache-maven-3.9.16");
+    expect(tildify("C:/Users/me/.m2/wrapper/dists/apache-maven-3.9.16")).toBe(
+      "~/.m2/wrapper/dists/apache-maven-3.9.16",
+    );
     expect(tildify("C:/Program Files/Java/jdk-21")).toBe("C:/Program Files/Java/jdk-21");
   });
 });

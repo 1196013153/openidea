@@ -25,10 +25,18 @@ describe("editor settings behaviour", () => {
     expect(detectIndent("a\n\tb\n\t\tc\n")).toEqual({ insertSpaces: false });
     expect(detectIndent("plain\ntext\n")).toBeNull();
     const info = { id: "python", indent: { tabSize: 4, insertSpaces: true } } as Parameters<typeof effectiveIndent>[1];
-    const settings = { codeStyle: { languages: { python: { useTab: true, tabSize: 8 } }, detectIndents: true, editorconfig: false } } as unknown as EditorSettings;
+    const settings = {
+      codeStyle: { languages: { python: { useTab: true, tabSize: 8 } }, detectIndents: true, editorconfig: false },
+    } as unknown as EditorSettings;
     expect(effectiveIndent(settings, info)).toEqual({ tabSize: 8, insertSpaces: false });
-    expect(effectiveIndent(settings, info, { indentSize: 2, indentStyle: "space" } as never)).toEqual({ tabSize: 8, insertSpaces: false });
-    expect(effectiveIndent(settings, info, null, { insertSpaces: true, size: 2 })).toEqual({ tabSize: 2, insertSpaces: true });
+    expect(effectiveIndent(settings, info, { indentSize: 2, indentStyle: "space" } as never)).toEqual({
+      tabSize: 8,
+      insertSpaces: false,
+    });
+    expect(effectiveIndent(settings, info, null, { insertSpaces: true, size: 2 })).toEqual({
+      tabSize: 2,
+      insertSpaces: true,
+    });
   });
 
   it("removes trailing blank lines and strips all lines on request", () => {

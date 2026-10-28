@@ -47,7 +47,10 @@ export function locateStepTargets(lineText: string, line: number, targets: StepI
     let to = -1;
     if (t.column != null && (t.line == null || t.line === line) && t.column < lineText.length) {
       from = t.column;
-      to = t.endColumn != null && t.endColumn > from ? Math.min(t.endColumn, lineText.length) : identifierEnd(lineText, from);
+      to =
+        t.endColumn != null && t.endColumn > from
+          ? Math.min(t.endColumn, lineText.length)
+          : identifierEnd(lineText, from);
     } else {
       const name = calleeName(t.label);
       if (!name) return null;
@@ -107,7 +110,9 @@ export function startInlineSmartStep(session: DebugSessionId, thread: number, ta
   const ranges = locateStepTargets(doc.line(line + 1).text, line, targets);
   if (!ranges || ranges.length < 2) return false;
   const first = ranges.findIndex((r) => r.id === targets[0]!.id);
-  useOverlays.setState({ smartStep: { session, thread, targets, inline: { path, line, ranges, index: Math.max(0, first) } } });
+  useOverlays.setState({
+    smartStep: { session, thread, targets, inline: { path, line, ranges, index: Math.max(0, first) } },
+  });
   editor.view.focus();
   return true;
 }

@@ -4,11 +4,23 @@ import { memberAt, methodStop, methodStops, superMethods } from "./structureNav"
 
 const r = (l1: number, l2: number) => ({ start: { line: l1, col: 0 }, end: { line: l2, col: 1 } });
 function item(name: string, kind: SymbolKind, from: number, to: number, children: OutlineItem[] = []): OutlineItem {
-  return { name, kind, detail: null, range: r(from, to), selection_range: { start: { line: from, col: 4 }, end: { line: from, col: 4 + name.length } }, children };
+  return {
+    name,
+    kind,
+    detail: null,
+    range: r(from, to),
+    selection_range: { start: { line: from, col: 4 }, end: { line: from, col: 4 + name.length } },
+    children,
+  };
 }
 
 const OUTLINE = [
-  item("Foo", "class", 0, 20, [item("x", "field", 1, 1), item("a", "method", 2, 5), item("b", "method", 7, 9), item("Inner", "class", 11, 18, [item("c", "method", 12, 14)])]),
+  item("Foo", "class", 0, 20, [
+    item("x", "field", 1, 1),
+    item("a", "method", 2, 5),
+    item("b", "method", 7, 9),
+    item("Inner", "class", 11, 18, [item("c", "method", 12, 14)]),
+  ]),
   item("main", "function", 22, 25),
 ];
 
@@ -76,9 +88,12 @@ describe("Super Method", () => {
     };
     const deps = {
       supertypes: async (path: string) => (path === "/Foo.java" ? [base] : []),
-      outline: async () => [item("Base", "class", 0, 10, [item("eat(String)", "method", 2, 2), item("eat(int)", "method", 4, 4)])],
+      outline: async () => [
+        item("Base", "class", 0, 10, [item("eat(String)", "method", 2, 2), item("eat(int)", "method", 4, 4)]),
+      ],
     };
-    const lines = async (name: string) => (await superMethods("/Foo.java", { line: 0, col: 4 }, name, deps)).map((l) => l.range.start.line);
+    const lines = async (name: string) =>
+      (await superMethods("/Foo.java", { line: 0, col: 4 }, name, deps)).map((l) => l.range.start.line);
     expect(await lines("eat(int)")).toEqual([4]);
     // Without a matching signature (or without signatures at all), every overload.
     expect(await lines("eat(T)")).toEqual([2, 4]);

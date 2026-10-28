@@ -74,7 +74,15 @@ function extendsLabel(item: CompletionItem): boolean {
 export function withoutDuplicates(items: readonly CompletionItem[]): CompletionItem[] {
   const seen = new Set<string>();
   return items.filter((it) => {
-    const key = JSON.stringify([it.server, it.label, it.labelDetail, it.detail, it.kind, it.insertText, it.additionalEdits]);
+    const key = JSON.stringify([
+      it.server,
+      it.label,
+      it.labelDetail,
+      it.detail,
+      it.kind,
+      it.insertText,
+      it.additionalEdits,
+    ]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

@@ -58,7 +58,9 @@ export function AgentsView() {
         roots={roots}
         getKey={nodeKey}
         getLabel={(n) => (n.kind === "group" ? n.group.label : n.task.title)}
-        getChildren={(n) => (n.kind === "group" ? n.group.tasks.map((task) => ({ kind: "task", task }) as Node) : undefined)}
+        getChildren={(n) =>
+          n.kind === "group" ? n.group.tasks.map((task) => ({ kind: "task", task }) as Node) : undefined
+        }
         isExpandable={(n) => n.kind === "group"}
         expanded={expanded}
         onExpandedChange={(_next, node, open) =>

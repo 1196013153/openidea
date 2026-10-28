@@ -6,7 +6,11 @@
 import { HighlightStyle, type TagStyle } from "@codemirror/language";
 import { tags as t, type Tag } from "@lezer/highlight";
 
-function token(tag: Tag | Tag[], name: string, defaults: { italic?: string; bold?: string; effect?: string } = {}): TagStyle {
+function token(
+  tag: Tag | Tag[],
+  name: string,
+  defaults: { italic?: string; bold?: string; effect?: string } = {},
+): TagStyle {
   return {
     tag,
     color: `var(--syn-${name})`,
@@ -21,7 +25,20 @@ export const openideaHighlightStyle = HighlightStyle.define([
   // Markdown tags whole links / quotes; listed first so marks, URL and title inside keep their own colours.
   token(t.link, "link", { effect: "underline" }),
   token(t.quote, "string"),
-  token([t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword, t.definitionKeyword, t.modifier, t.null, t.bool, t.unit], "keyword"),
+  token(
+    [
+      t.keyword,
+      t.controlKeyword,
+      t.moduleKeyword,
+      t.operatorKeyword,
+      t.definitionKeyword,
+      t.modifier,
+      t.null,
+      t.bool,
+      t.unit,
+    ],
+    "keyword",
+  ),
   token(t.self, "self"),
   token([t.string, t.special(t.string), t.character, t.attributeValue], "string"),
   token(t.docString, "docstring", { italic: "italic" }),
@@ -31,7 +48,14 @@ export const openideaHighlightStyle = HighlightStyle.define([
   token([t.typeName, t.className, t.namespace, t.definition(t.typeName)], "type"),
   token([t.standard(t.typeName), t.standard(t.variableName), t.standard(t.function(t.variableName))], "builtin"),
   token([t.function(t.variableName), t.function(t.propertyName)], "function-call"),
-  token([t.function(t.definition(t.variableName)), t.definition(t.function(t.variableName)), t.function(t.definition(t.propertyName))], "function"),
+  token(
+    [
+      t.function(t.definition(t.variableName)),
+      t.definition(t.function(t.variableName)),
+      t.function(t.definition(t.propertyName)),
+    ],
+    "function",
+  ),
   token([t.comment, t.lineComment, t.blockComment], "comment", { italic: "var(--syn-comment-style)" }),
   token(t.docComment, "doc-comment", { italic: "italic" }),
   token([t.meta, t.annotation, t.macroName], "decorator"),

@@ -32,7 +32,8 @@ export const STORAGE_KEY = "openidea.macros.v1";
 function isStep(v: unknown): v is MacroStep {
   if (!v || typeof v !== "object") return false;
   const s = v as Record<string, unknown>;
-  if (s.kind === "action") return typeof s.id === "string" && ["undefined", "string", "number", "boolean"].includes(typeof s.arg);
+  if (s.kind === "action")
+    return typeof s.id === "string" && ["undefined", "string", "number", "boolean"].includes(typeof s.arg);
   if (s.kind === "text") return typeof s.text === "string";
   return s.kind === "key" && typeof s.key === "string";
 }
@@ -84,7 +85,8 @@ export function recordStep(step: MacroStep) {
 /** An action's argument when it can be stored (plain values only). */
 export function storableArg(arg: unknown): string | number | boolean | undefined | null {
   if (arg === undefined) return undefined;
-  if (typeof arg === "string" || typeof arg === "boolean" || (typeof arg === "number" && Number.isFinite(arg))) return arg;
+  if (typeof arg === "string" || typeof arg === "boolean" || (typeof arg === "number" && Number.isFinite(arg)))
+    return arg;
   return null;
 }
 
@@ -147,7 +149,11 @@ export async function playSteps(
   try {
     for (const step of macroSteps) {
       const ok =
-        step.kind === "action" ? await run.action(step.id, step.arg) : step.kind === "text" ? run.text(step.text) : run.key(step.key);
+        step.kind === "action"
+          ? await run.action(step.id, step.arg)
+          : step.kind === "text"
+            ? run.text(step.text)
+            : run.key(step.key);
       if (!ok) return false;
       // Let the UI settle (popups open, editors mount) before the next step.
       await new Promise((r) => setTimeout(r, 0));

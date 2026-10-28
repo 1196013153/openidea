@@ -25,11 +25,21 @@ interface Item {
 }
 
 /** Edits formatting every statement (or those overlapping `range`). */
-export function formatSql(text: string, driver: DbDriver, range: { from: number; to: number } | null = null): SqlEdit[] {
+export function formatSql(
+  text: string,
+  driver: DbDriver,
+  range: { from: number; to: number } | null = null,
+): SqlEdit[] {
   const lexed = lex(text, driver);
   const items: Item[] = [
     ...lexed.tokens,
-    ...lexed.comments.map((c) => ({ kind: "comment" as const, text: text.slice(c.from, c.to), upper: "", from: c.from, to: c.to })),
+    ...lexed.comments.map((c) => ({
+      kind: "comment" as const,
+      text: text.slice(c.from, c.to),
+      upper: "",
+      from: c.from,
+      to: c.to,
+    })),
   ].sort((a, b) => a.from - b.from);
 
   const edits: SqlEdit[] = [];
@@ -60,7 +70,23 @@ export function formatSql(text: string, driver: DbDriver, range: { from: number;
   return edits;
 }
 
-const NEWLINE_CLAUSES = new Set(["SELECT", "FROM", "WHERE", "GROUP", "HAVING", "ORDER", "LIMIT", "OFFSET", "WINDOW", "RETURNING", "VALUES", "SET", "UNION", "INTERSECT", "EXCEPT"]);
+const NEWLINE_CLAUSES = new Set([
+  "SELECT",
+  "FROM",
+  "WHERE",
+  "GROUP",
+  "HAVING",
+  "ORDER",
+  "LIMIT",
+  "OFFSET",
+  "WINDOW",
+  "RETURNING",
+  "VALUES",
+  "SET",
+  "UNION",
+  "INTERSECT",
+  "EXCEPT",
+]);
 const JOIN_START = new Set(["JOIN", "LEFT", "RIGHT", "FULL", "INNER", "CROSS", "NATURAL", "STRAIGHT_JOIN"]);
 const JOIN_MODIFIERS = new Set(["LEFT", "RIGHT", "FULL", "INNER", "CROSS", "NATURAL", "OUTER"]);
 /** Where a list item continues: the width of `select `, `from `, `set `, `values `. */
@@ -190,11 +216,17 @@ function spaceBefore(prev: Item | null, it: Item, beforePrev: Item | undefined, 
 
 /** `into users (` — a column list, written with a space. */
 function isInsertTarget(beforePrev: Item | undefined): boolean {
-  return beforePrev?.kind === "word" && (beforePrev.upper === "INTO" || beforePrev.upper === "TABLE" || beforePrev.upper === "EXISTS");
+  return (
+    beforePrev?.kind === "word" &&
+    (beforePrev.upper === "INTO" || beforePrev.upper === "TABLE" || beforePrev.upper === "EXISTS")
+  );
 }
 
 function isCreateTable(items: Item[]): boolean {
-  const words = items.filter((t) => t.kind === "word").slice(0, 3).map((t) => t.upper);
+  const words = items
+    .filter((t) => t.kind === "word")
+    .slice(0, 3)
+    .map((t) => t.upper);
   return words[0] === "CREATE" && words.includes("TABLE");
 }
 

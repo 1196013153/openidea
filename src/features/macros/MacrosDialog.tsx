@@ -60,7 +60,14 @@ function EditMacrosDialog({ onClose }: { onClose: () => void }) {
   };
   const remove = async () => {
     if (!macro) return;
-    if (await confirm({ title: "Delete Macro", message: tx`Delete the macro '${macro.name}'?`, ok: "Delete", icon: "warning" }))
+    if (
+      await confirm({
+        title: "Delete Macro",
+        message: tx`Delete the macro '${macro.name}'?`,
+        ok: "Delete",
+        icon: "warning",
+      })
+    )
       deleteMacro(macro.name);
   };
 

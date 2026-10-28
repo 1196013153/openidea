@@ -122,7 +122,8 @@ export async function parameterInfoOrLeave(view: EditorView, inside: number) {
     // No signature help: treated as nothing to fill in.
   }
   if (view.state.doc !== state.doc || view.state.selection.main.head !== inside) return;
-  if (help?.signatures.some((sig) => sig.parameters.length)) view.dispatch({ effects: setSignature.of({ pos: inside, help }) });
+  if (help?.signatures.some((sig) => sig.parameters.length))
+    view.dispatch({ effects: setSignature.of({ pos: inside, help }) });
   else view.dispatch({ selection: EditorSelection.cursor(inside + 1) });
 }
 
@@ -146,7 +147,10 @@ const signaturePlugin = ViewPlugin.fromClass(
     update(u: ViewUpdate) {
       const active = u.state.field(signatureField, false);
       let typedTrigger = false;
-      if (u.docChanged && u.transactions.some((tr) => tr.isUserEvent("input.type") || tr.isUserEvent("input.complete"))) {
+      if (
+        u.docChanged &&
+        u.transactions.some((tr) => tr.isUserEvent("input.type") || tr.isUserEvent("input.complete"))
+      ) {
         // The character before the caret: `(` is followed by an auto-inserted `)`.
         const head = u.state.selection.main.head;
         const before = u.state.sliceDoc(Math.max(0, head - 1), head);

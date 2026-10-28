@@ -189,16 +189,36 @@ export function selectModel(s: ProjectTreeState): TreeModel {
   if (s.root) {
     if (s.mode === "projectFiles") model = project();
     else if (s.mode === "scratches")
-      model = withExtraRoots(EMPTY_MODEL, contributed.filter((r) => r.scope === "scratches"), s.listings, s.options, placeholder);
+      model = withExtraRoots(
+        EMPTY_MODEL,
+        contributed.filter((r) => r.scope === "scratches"),
+        s.listings,
+        s.options,
+        placeholder,
+      );
     else if (files)
-      model = buildPathsModel([{ path: s.root, label: s.name, icon: "" }, ...extraFolders(contributed)], files, s.options.foldersFirst);
+      model = buildPathsModel(
+        [{ path: s.root, label: s.name, icon: "" }, ...extraFolders(contributed)],
+        files,
+        s.options.foldersFirst,
+      );
     else model = withExtraRoots(project(), contributed, s.listings, s.options, placeholder);
     const libraries = extraFolders(contributed).flatMap((r) =>
       r.readOnly && r.path !== undefined && isSameOrInside(r.path, s.root!) ? [r.path] : [],
     );
     model = withReadOnlyFolders(model, libraries);
   }
-  memo = { root: s.root, name: s.name, listings: s.listings, options: s.options, editing: s.editing, mode: s.mode, files, extras, model };
+  memo = {
+    root: s.root,
+    name: s.name,
+    listings: s.listings,
+    options: s.options,
+    editing: s.editing,
+    mode: s.mode,
+    files,
+    extras,
+    model,
+  };
   return model;
 }
 
@@ -240,7 +260,12 @@ const autoExpanded = new Set<string>();
 /** "Project" restores the persisted expansion; other panes start with their roots open. */
 function initialExpanded(root: string | null, mode: ViewMode): Set<string> {
   if (!root || isFilteredMode(mode)) return new Set();
-  if (mode === "scratches") return new Set(projectViewRoots(useProjectViewRoots.getState().roots).flatMap((r) => (r.scope === "scratches" && r.path ? [r.path] : [])));
+  if (mode === "scratches")
+    return new Set(
+      projectViewRoots(useProjectViewRoots.getState().roots).flatMap((r) =>
+        r.scope === "scratches" && r.path ? [r.path] : [],
+      ),
+    );
   const persisted = mode === "project" ? (readJson<string[]>(expandedKey(root)) ?? []) : [];
   const expanded = new Set(persisted.filter((p) => isSameOrInside(p, root)));
   expanded.add(root);
@@ -479,7 +504,7 @@ export function isReadOnlyPath(path: string): boolean {
 /** Group node keys above the node `key`, outermost first. */
 function groupAncestors(model: TreeModel, key: string): string[] {
   const out: string[] = [];
-  for (let child = key; ; ) {
+  for (let child = key; ;) {
     let parent: string | null = null;
     for (const [k, kids] of model.children)
       if (k.startsWith(GROUP_PREFIX) && kids.some((n) => n.key === child)) {

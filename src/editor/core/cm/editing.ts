@@ -13,7 +13,14 @@ import {
   type TransactionSpec,
 } from "@codemirror/state";
 import { EditorView, type Command } from "@codemirror/view";
-import { foldedRanges, forceParsing, syntaxTree, getIndentUnit, indentString, getIndentation } from "@codemirror/language";
+import {
+  foldedRanges,
+  forceParsing,
+  syntaxTree,
+  getIndentUnit,
+  indentString,
+  getIndentation,
+} from "@codemirror/language";
 import {
   copyLineDown,
   deleteLine as deleteDocLine,
@@ -69,7 +76,9 @@ function deleteHump(forward: boolean, camel = true): Command {
       const to = Math.max(target, r.head);
       return { changes: { from, to }, range: EditorSelection.cursor(from) };
     });
-    view.dispatch(view.state.update(tr, { scrollIntoView: true, userEvent: forward ? "delete.forward" : "delete.backward" }));
+    view.dispatch(
+      view.state.update(tr, { scrollIntoView: true, userEvent: forward ? "delete.forward" : "delete.backward" }),
+    );
     return true;
   };
 }
@@ -89,7 +98,7 @@ export function visualLineSpan(state: EditorState, from: number, to: number): { 
   let a = state.doc.lineAt(from).from;
   let b = state.doc.lineAt(to).to;
   const folded = foldedRanges(state);
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     folded.between(a, b, (f, t) => {
       const na = Math.min(a, state.doc.lineAt(f).from);
@@ -127,12 +136,19 @@ export const duplicateLineOrSelection: Command = (view) => {
     const spans = foldedLineSpans(state);
     if (!spans) return copyLineDown(view);
     // On a folded region's line the whole folded block is duplicated.
-    const changes = state.changes(spans.map((s) => ({ from: s.to, insert: state.lineBreak + state.sliceDoc(s.from, s.to) })));
+    const changes = state.changes(
+      spans.map((s) => ({ from: s.to, insert: state.lineBreak + state.sliceDoc(s.from, s.to) })),
+    );
     const ranges = state.selection.ranges.map((r) => {
       const s = spans.find((sp) => sp.from <= r.head && r.head <= sp.to)!;
       return EditorSelection.cursor(changes.mapPos(r.head, -1) + s.to - s.from + state.lineBreak.length);
     });
-    view.dispatch({ changes, selection: EditorSelection.create(ranges, state.selection.mainIndex), scrollIntoView: true, userEvent: "input.duplicate" });
+    view.dispatch({
+      changes,
+      selection: EditorSelection.create(ranges, state.selection.mainIndex),
+      scrollIntoView: true,
+      userEvent: "input.duplicate",
+    });
     return true;
   }
   const tr = state.changeByRange((r) => {
@@ -169,7 +185,12 @@ export const deleteLine: Command = (view) => {
     const line = doc.lineAt(changes.mapPos(r.head, -1));
     return EditorSelection.cursor(line.from + Math.min(col, line.length));
   });
-  view.dispatch({ changes, selection: EditorSelection.create(ranges, state.selection.mainIndex), scrollIntoView: true, userEvent: "delete.line" });
+  view.dispatch({
+    changes,
+    selection: EditorSelection.create(ranges, state.selection.mainIndex),
+    scrollIntoView: true,
+    userEvent: "delete.line",
+  });
   return true;
 };
 
@@ -194,7 +215,8 @@ export const occurrenceSearch = StateField.define<OccurrenceSearch | null>({
 });
 
 const IDENT = /[\p{L}\p{N}_$]/u;
-const identAt = (state: EditorState, pos: number) => pos >= 0 && pos < state.doc.length && IDENT.test(state.sliceDoc(pos, pos + 1));
+const identAt = (state: EditorState, pos: number) =>
+  pos >= 0 && pos < state.doc.length && IDENT.test(state.sliceDoc(pos, pos + 1));
 
 /** The identifier at or right before `pos`. */
 export function identifierAt(state: EditorState, pos: number): { from: number; to: number } | null {
@@ -221,7 +243,9 @@ function* matches(state: EditorState, text: string, from: number, wholeWords: bo
 
 /** A selection of `m` with the head on the same side as in `like`. */
 const rangeLike = (like: SelectionRange, m: { from: number; to: number }) =>
-  like.head === like.from && like.from !== like.to ? EditorSelection.range(m.to, m.from) : EditorSelection.range(m.from, m.to);
+  like.head === like.from && like.from !== like.to
+    ? EditorSelection.range(m.to, m.from)
+    : EditorSelection.range(m.from, m.to);
 
 /**
  * ⌃G: Add Selection for Next Occurrence. From a bare caret it selects the
@@ -323,13 +347,15 @@ function statementStartingAt(state: EditorState, lineNo: number): Node | null {
 }
 
 /** Lines a moved statement stops at: blank lines, statement starts and closing braces of blocks. */
-const isStopLine = (state: EditorState, lineNo: number) => firstToken(state, lineNo) === null || !!statementStartingAt(state, lineNo);
+const isStopLine = (state: EditorState, lineNo: number) =>
+  firstToken(state, lineNo) === null || !!statementStartingAt(state, lineNo);
 
 /** The statement containing the first token of the caret line. */
 function statementAround(state: EditorState, pos: number): Node | null {
   const start = firstToken(state, state.doc.lineAt(pos).number);
   if (start === null) return null;
-  for (let n: Node | null = syntaxTree(state).resolveInner(start, 1); n && n.parent; n = n.parent) if (isContainer(n.parent)) return n;
+  for (let n: Node | null = syntaxTree(state).resolveInner(start, 1); n && n.parent; n = n.parent)
+    if (isContainer(n.parent)) return n;
   return null;
 }
 
@@ -460,7 +486,7 @@ function shiftToIndentation(state: EditorState, from: number, to: number) {
   const delta = proper - countColumn(/^\s*/.exec(first.text)![0], state.tabSize);
   if (!delta) return null;
   const changes: ChangeSpec[] = [];
-  for (let pos = from; pos <= to; ) {
+  for (let pos = from; pos <= to;) {
     const line = state.doc.lineAt(pos);
     pos = line.to + 1;
     const ws = /^\s*/.exec(line.text)![0];
@@ -494,18 +520,53 @@ export const moveStatementDown = moveStatement(false);
 // --- complete statement -------------------------------------------------------
 
 export const SEMICOLON_LANGS = new Set([
-  "java", "c", "cpp", "csharp", "javascript", "javascriptreact", "typescript", "typescriptreact", "rust", "php",
-  "dart", "objective-c", "objective-cpp", "groovy", "zig",
+  "java",
+  "c",
+  "cpp",
+  "csharp",
+  "javascript",
+  "javascriptreact",
+  "typescript",
+  "typescriptreact",
+  "rust",
+  "php",
+  "dart",
+  "objective-c",
+  "objective-cpp",
+  "groovy",
+  "zig",
 ]);
 /** Blocks close with a keyword (`end`) or by indentation: never complete them with braces. */
 export const KEYWORD_BLOCK_LANGS = new Set([
-  "python", "ruby", "lua", "elixir", "haskell", "shellscript", "julia", "erlang", "fsharp", "ocaml", "ocaml.interface",
-  "yaml", "markdown", "plaintext", "makefile", "cmake", "toml", "ini", "properties", "sql", "r", "perl", "powershell",
+  "python",
+  "ruby",
+  "lua",
+  "elixir",
+  "haskell",
+  "shellscript",
+  "julia",
+  "erlang",
+  "fsharp",
+  "ocaml",
+  "ocaml.interface",
+  "yaml",
+  "markdown",
+  "plaintext",
+  "makefile",
+  "cmake",
+  "toml",
+  "ini",
+  "properties",
+  "sql",
+  "r",
+  "perl",
+  "powershell",
 ]);
 /** A line opening an indented body in `end` / layout languages (Ruby, Lua, Elixir, Haskell…). */
 const KEYWORD_HEAD =
   /\b(do(\s*\|[^|]*\|)?|then|where|of)$|^\s*(def|defp|defmodule|class|module|function|local function|if|unless|elsif|elseif|else|while|until|for|case|begin)\b/;
-const BLOCK_HEAD = /^\s*(if|else|for|while|do|switch|try|catch|finally|fn|fun|func|function|class|struct|enum|impl|trait|interface|object|match|when|loop|unsafe|mod|namespace)\b/;
+const BLOCK_HEAD =
+  /^\s*(if|else|for|while|do|switch|try|catch|finally|fn|fun|func|function|class|struct|enum|impl|trait|interface|object|match|when|loop|unsafe|mod|namespace)\b/;
 
 /** Offset in `text` where a trailing line comment starts (outside string literals), else `text.length`. */
 export function codeEnd(text: string, lineComment: string | undefined): number {
@@ -548,7 +609,11 @@ export function completeStatementSpec(state: EditorState, language: string): Tra
     const from = line.from + text.length;
     return {
       // A trailing comment moves to the end of the header line.
-      changes: { from, to: line.from + full.length, insert: insert.slice(0, 2) + full.slice(text.length) + insert.slice(2) },
+      changes: {
+        from,
+        to: line.from + full.length,
+        insert: insert.slice(0, 2) + full.slice(text.length) + insert.slice(2),
+      },
       selection: { anchor: from + 2 + full.length - text.length + br.length + baseIndent.length + unit.length },
       scrollIntoView: true,
       userEvent: "input.complete",
@@ -556,9 +621,13 @@ export function completeStatementSpec(state: EditorState, language: string): Tra
   }
   let insert = "";
   if (SEMICOLON_LANGS.has(language) && !comment && text.trim() && !/[;{},:]$/.test(text)) insert = ";";
-  if (language === "python" && BLOCK_HEAD.test(text.replace(/^\s*(def|elif)\b/, "if")) && !text.endsWith(":")) insert = ":";
+  if (language === "python" && BLOCK_HEAD.test(text.replace(/^\s*(def|elif)\b/, "if")) && !text.endsWith(":"))
+    insert = ":";
   const opensBlock =
-    text.endsWith("{") || insert === ":" || text.endsWith(":") || (KEYWORD_BLOCK_LANGS.has(language) && KEYWORD_HEAD.test(text) && !/^\s*module\b.*\bwhere$/.test(text));
+    text.endsWith("{") ||
+    insert === ":" ||
+    text.endsWith(":") ||
+    (KEYWORD_BLOCK_LANGS.has(language) && KEYWORD_HEAD.test(text) && !/^\s*module\b.*\bwhere$/.test(text));
   const nextIndent = baseIndent + (opensBlock ? unit : "");
   const indentHere = getIndentation(state, line.to);
   const newline = br + (indentHere !== null && !opensBlock ? indentString(state, indentHere) : nextIndent);
@@ -615,7 +684,10 @@ function newLineCommand(before: boolean): Command {
         const computed = syntaxTree(state).length ? getIndentation(state, line.from) : null;
         let indent = computed !== null ? indentString(state, computed) : own;
         if (/^\s*[)\]}]/.test(line.text) && indent.length <= own.length) indent = own + unit;
-        return { changes: { from: line.from, insert: indent + state.lineBreak }, range: EditorSelection.cursor(line.from + indent.length) };
+        return {
+          changes: { from: line.from, insert: indent + state.lineBreak },
+          range: EditorSelection.cursor(line.from + indent.length),
+        };
       });
       view.dispatch(state.update(tr, { scrollIntoView: true, userEvent: "input" }));
       return true;
@@ -665,13 +737,22 @@ export const joinLines: Command = (view) => {
       // Drop the comment marker of a joined line comment (`// a` + `// b` → `// a b`).
       const comment = /^(\/\/+|#+|--)\s?/.exec(nextText);
       const curTrim = cur.text.slice(0, cur.length - trail);
-      const skip = comment && new RegExp(`(^|\\s)${comment[1]!.replace(/[-/#]/g, "\\$&")}`).test(curTrim) ? comment[0].length : 0;
-      const sep = !curTrim.length || !nextText.length || /[([{]$/.test(curTrim) || /^[)\]}.,;]/.test(nextText.slice(skip)) ? "" : " ";
+      const skip =
+        comment && new RegExp(`(^|\\s)${comment[1]!.replace(/[-/#]/g, "\\$&")}`).test(curTrim) ? comment[0].length : 0;
+      const sep =
+        !curTrim.length || !nextText.length || /[([{]$/.test(curTrim) || /^[)\]}.,;]/.test(nextText.slice(skip))
+          ? ""
+          : " ";
       changes.push({ from: cur.to - trail, to: next.from + lead + skip, insert: sep });
       if (n === first.number) caret = cur.to - trail;
     }
     const set = state.changes(changes);
-    return { changes: set, range: r.empty ? EditorSelection.cursor(set.mapPos(caret, -1)) : EditorSelection.range(set.mapPos(r.from, 1), set.mapPos(r.to, -1)) };
+    return {
+      changes: set,
+      range: r.empty
+        ? EditorSelection.cursor(set.mapPos(caret, -1))
+        : EditorSelection.range(set.mapPos(r.from, 1), set.mapPos(r.to, -1)),
+    };
   });
   view.dispatch(state.update(tr, { scrollIntoView: true, userEvent: "input.join" }));
   return true;
@@ -713,7 +794,9 @@ export const toggleCase: Command = (view) => {
     const t = targets[state.selection.ranges.indexOf(r)];
     if (!t) return { range: r };
     const insert = caseOf(state, t.from, t.to, lower);
-    const range = r.empty ? EditorSelection.range(t.from, t.from + insert.length) : EditorSelection.range(r.anchor, r.head);
+    const range = r.empty
+      ? EditorSelection.range(t.from, t.from + insert.length)
+      : EditorSelection.range(r.anchor, r.head);
     return { changes: { from: t.from, to: t.to, insert }, range };
   });
   view.dispatch(state.update(tr, { userEvent: "input.case" }));
@@ -735,7 +818,11 @@ export const addCaretsToLineEnds: Command = (view) => {
     for (let n = first; n <= last; n++) ranges.push(EditorSelection.cursor(state.doc.line(n).to));
   }
   if (ranges.length === state.selection.ranges.length && state.selection.ranges.every((r) => r.empty)) return false;
-  view.dispatch({ selection: EditorSelection.create(ranges, ranges.length - 1), scrollIntoView: true, userEvent: "select" });
+  view.dispatch({
+    selection: EditorSelection.create(ranges, ranges.length - 1),
+    scrollIntoView: true,
+    userEvent: "select",
+  });
   return true;
 };
 
@@ -759,6 +846,11 @@ export const unselectOccurrence: Command = (view) => {
       main = i;
       break;
     }
-  view.dispatch({ selection: EditorSelection.create(ranges, main), effects, scrollIntoView: true, userEvent: "select" });
+  view.dispatch({
+    selection: EditorSelection.create(ranges, main),
+    effects,
+    scrollIntoView: true,
+    userEvent: "select",
+  });
   return true;
 };

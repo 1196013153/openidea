@@ -79,16 +79,14 @@ export const buildToolsRunAnything: RunAnythingProvider = {
     const head = /^\S+\s*/.exec(query)![0];
     return completions(tool, query.slice(head.length))
       .slice(0, 50)
-      .map(
-        (c): RunAnythingItem => ({
-          key: `${c.detail === "recent" ? "h" : "c"}:${c.line}`,
-          label: `${WORD[tool]} ${c.line}`,
-          detail: c.detail,
-          icon: tool === "maven" ? "file-maven" : "file-gradle",
-          completion: `${WORD[tool]} ${c.detail === "recent" ? c.line : `${c.line} `}`,
-          run: () => void executeBuildLine(tool, c.line),
-        }),
-      );
+      .map((c): RunAnythingItem => ({
+        key: `${c.detail === "recent" ? "h" : "c"}:${c.line}`,
+        label: `${WORD[tool]} ${c.line}`,
+        detail: c.detail,
+        icon: tool === "maven" ? "file-maven" : "file-gradle",
+        completion: `${WORD[tool]} ${c.detail === "recent" ? c.line : `${c.line} `}`,
+        run: () => void executeBuildLine(tool, c.line),
+      }));
   },
   execute(line) {
     const tool = lineTool(line);

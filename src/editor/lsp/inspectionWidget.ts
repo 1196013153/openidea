@@ -93,15 +93,21 @@ class InspectionWidget {
     add(c.typo, "info", "cm-openidea-inspection-typo");
     const children: HTMLElement[] = [summary];
     if (total) {
-      const prev = button(`Previous Highlighted Error${shortcutLabel("navigate.prevError") ? ` (${shortcutLabel("navigate.prevError")})` : ""}`, () => {
-        gotoDiagnostic(this.view, -1);
-        this.view.focus();
-      });
+      const prev = button(
+        `Previous Highlighted Error${shortcutLabel("navigate.prevError") ? ` (${shortcutLabel("navigate.prevError")})` : ""}`,
+        () => {
+          gotoDiagnostic(this.view, -1);
+          this.view.focus();
+        },
+      );
       prev.appendChild(iconNode("chevron-up", 14));
-      const next = button(`Next Highlighted Error${shortcutLabel("navigate.nextError") ? ` (${shortcutLabel("navigate.nextError")})` : ""}`, () => {
-        gotoDiagnostic(this.view, 1);
-        this.view.focus();
-      });
+      const next = button(
+        `Next Highlighted Error${shortcutLabel("navigate.nextError") ? ` (${shortcutLabel("navigate.nextError")})` : ""}`,
+        () => {
+          gotoDiagnostic(this.view, 1);
+          this.view.focus();
+        },
+      );
       next.appendChild(iconNode("chevron-down", 14));
       children.push(prev, next);
     }

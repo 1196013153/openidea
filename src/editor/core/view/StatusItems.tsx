@@ -361,7 +361,12 @@ export function ReadOnlyStatus() {
   if (!meta || isVirtualUri(meta.path) || meta.banner === "binary" || meta.banner === "tooLarge") return null;
   const label = meta.readOnly ? "Make file writable" : "Make file read-only";
   return (
-    <BarButton tooltip={label} aria-label={label} aria-pressed={meta.readOnly} onClick={() => void executeAction("file.toggleReadOnly")}>
+    <BarButton
+      tooltip={label}
+      aria-label={label}
+      aria-pressed={meta.readOnly}
+      onClick={() => void executeAction("file.toggleReadOnly")}
+    >
       <span className={styles.lock}>
         <Icon name={meta.readOnly ? "lock" : "unlock"} size={14} />
       </span>

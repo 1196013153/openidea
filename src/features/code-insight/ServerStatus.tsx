@@ -50,7 +50,10 @@ export function ServerStatus() {
               <div key={s.id} className={styles.server}>
                 <div className={styles.line}>
                   <span
-                    className={clsx(styles.dot, styles[s.status === "missing" && servedByOther(s, servers) ? "idle" : toneOf(s.status)])}
+                    className={clsx(
+                      styles.dot,
+                      styles[s.status === "missing" && servedByOther(s, servers) ? "idle" : toneOf(s.status)],
+                    )}
                     aria-hidden
                   />
                   <span className={styles.name}>{s.name}</span>

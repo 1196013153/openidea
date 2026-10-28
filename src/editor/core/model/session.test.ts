@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { initialTabsState, moveTabToNewSplit, openTab, paneIds, splitAtEdge, splitPane, togglePin, type TabsState } from "./tabs";
+import {
+  initialTabsState,
+  moveTabToNewSplit,
+  openTab,
+  paneIds,
+  splitAtEdge,
+  splitPane,
+  togglePin,
+  type TabsState,
+} from "./tabs";
 import { loadSession, parseSession, restoreTabsState, serializeSession, slashPath } from "./session";
 
 const file = (path: string) => ({ kind: "file", key: `file:${path}`, path });
@@ -19,7 +28,10 @@ describe("editor session", () => {
     const first = s.activePane;
     s = splitPane(s, first, "column").state;
     s = open(s, "/p/d.ts");
-    const session = serializeSession(s, { "/p/a.ts": { anchor: 3, head: 5, topLine: 10 }, "/p/zzz.ts": { anchor: 0, head: 0 } })!;
+    const session = serializeSession(s, {
+      "/p/a.ts": { anchor: 3, head: 5, topLine: 10 },
+      "/p/zzz.ts": { anchor: 0, head: 0 },
+    })!;
     expect(session.layout.kind).toBe("split");
     expect(session.activePane).toBe(1);
     expect(Object.keys(session.files)).toEqual(["/p/a.ts"]);
@@ -50,7 +62,10 @@ describe("editor session", () => {
     expect(session.layout).toMatchObject({ kind: "pane", active: 1 });
     const r = restoreTabsState(parseSession(JSON.parse(JSON.stringify(session)))!, fileKey);
     const pane = r.panes[paneIds(r)[0]!]!;
-    expect(pane.tabs.map((t) => t.input)).toEqual([file("/p/a.ts"), { kind: "agent-session", key: "agent:1", data: { task: "1" } }]);
+    expect(pane.tabs.map((t) => t.input)).toEqual([
+      file("/p/a.ts"),
+      { kind: "agent-session", key: "agent:1", data: { task: "1" } },
+    ]);
     expect(pane.active).toBe(pane.tabs[1]!.id);
     // Only restorable tabs: still a session. Junk inputs (file kind, no key) are dropped.
     const empty = initialTabsState();
@@ -59,7 +74,11 @@ describe("editor session", () => {
     expect(serializeSession(only, {})).toBeNull();
     const junk = parseSession({
       version: 1,
-      layout: { kind: "pane", tabs: [{ input: { kind: "file", key: "k" } }, { input: { kind: "x" } }, { input: { kind: "x", key: "y" } }], active: 0 },
+      layout: {
+        kind: "pane",
+        tabs: [{ input: { kind: "file", key: "k" } }, { input: { kind: "x" } }, { input: { kind: "x", key: "y" } }],
+        active: 0,
+      },
     })!;
     expect(junk.layout).toEqual({ kind: "pane", tabs: [{ input: { kind: "x", key: "y" } }], active: 0 });
   });
@@ -71,7 +90,11 @@ describe("editor session", () => {
     const ok = parseSession({
       version: 1,
       activePane: 7,
-      layout: { kind: "split", dir: "row", children: [{ kind: "pane", tabs: [{ path: "/x" }], active: 9 }, { kind: "bogus" }] },
+      layout: {
+        kind: "split",
+        dir: "row",
+        children: [{ kind: "pane", tabs: [{ path: "/x" }], active: 9 }, { kind: "bogus" }],
+      },
       files: { "/x": { anchor: 1, head: -1 } },
     })!;
     expect(ok.layout).toEqual({ kind: "pane", tabs: [{ path: "/x" }], active: 0 });
@@ -109,7 +132,13 @@ describe("moveTabToNewSplit", () => {
     const split = splitPane(s, first, "row");
     s = open(split.state, "/b");
     const bTab = s.panes[split.paneId]!.tabs.find((t) => t.input.path === "/b")!;
-    s = { ...s, panes: { ...s.panes, [split.paneId]: { ...s.panes[split.paneId]!, tabs: [bTab], active: bTab.id, mru: [bTab.id] } } };
+    s = {
+      ...s,
+      panes: {
+        ...s.panes,
+        [split.paneId]: { ...s.panes[split.paneId]!, tabs: [bTab], active: bTab.id, mru: [bTab.id] },
+      },
+    };
     const r = moveTabToNewSplit(s, split.paneId, bTab.id, first, "bottom")!;
     expect(r.state.panes[split.paneId]).toBeUndefined();
     expect(r.state.layout).toMatchObject({ kind: "split", dir: "column" });

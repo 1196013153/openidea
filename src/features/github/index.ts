@@ -63,7 +63,14 @@ export function activate(): () => void {
         when: WHEN,
         run: () => openInBrowser(),
       },
-      { id: "github.refresh", title: "Refresh Pull Requests", category: "GitHub", icon: "refresh", when: WHEN, run: () => refreshAll() },
+      {
+        id: "github.refresh",
+        title: "Refresh Pull Requests",
+        category: "GitHub",
+        icon: "refresh",
+        when: WHEN,
+        run: () => refreshAll(),
+      },
     ]),
     useProject.subscribe((s, prev) => {
       if (s.project?.root !== prev.project?.root) resetGithub();

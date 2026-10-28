@@ -93,7 +93,11 @@ export function activate(): () => void {
         return wantsHexView(probe) ? binaryInput(path, probe) : null;
       },
     }),
-    registerTextEditorWrapper({ id: "viewers.markdown", matches: isMarkdownPath, component: lazyComponent(() => import("./markdown/MarkdownEditor").then((m) => m.MarkdownEditor)) }),
+    registerTextEditorWrapper({
+      id: "viewers.markdown",
+      matches: isMarkdownPath,
+      component: lazyComponent(() => import("./markdown/MarkdownEditor").then((m) => m.MarkdownEditor)),
+    }),
     registerMarkdownLiveSource(),
     registerActions([...imageActions(), ...markdownActions()]),
   ];

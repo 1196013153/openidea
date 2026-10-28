@@ -16,7 +16,10 @@ afterEach(() => views.splice(0).forEach((v) => v.destroy()));
 // "let foo = 1; foo + foo;" — foo at 4, 13 and 19.
 function session(commit = vi.fn(), dialog = vi.fn(), extensions: Extension[] = []) {
   const view = new EditorView({
-    state: EditorState.create({ doc: "let foo = 1; foo + foo;", extensions: [inplaceRenameExtension(), ...extensions] }),
+    state: EditorState.create({
+      doc: "let foo = 1; foo + foo;",
+      extensions: [inplaceRenameExtension(), ...extensions],
+    }),
   });
   views.push(view);
   startInplaceRename(view, {
@@ -33,7 +36,11 @@ function session(commit = vi.fn(), dialog = vi.fn(), extensions: Extension[] = [
 }
 
 const type = (view: EditorView, from: number, to: number, insert: string) =>
-  view.dispatch({ changes: { from, to, insert }, selection: EditorSelection.cursor(from + insert.length), userEvent: "input.type" });
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: EditorSelection.cursor(from + insert.length),
+    userEvent: "input.type",
+  });
 
 describe("in-place rename", () => {
   it("preselects the name and mirrors edits to the other occurrences", () => {

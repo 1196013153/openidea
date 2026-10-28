@@ -1,7 +1,14 @@
 /**
  * Comment with Line Comment and Enter inside a line comment, as in IDEA.
  */
-import { EditorSelection, Facet, countColumn, type ChangeSpec, type EditorState, type SelectionRange } from "@codemirror/state";
+import {
+  EditorSelection,
+  Facet,
+  countColumn,
+  type ChangeSpec,
+  type EditorState,
+  type SelectionRange,
+} from "@codemirror/state";
 import type { Command, EditorView } from "@codemirror/view";
 import { indentString, syntaxTree } from "@codemirror/language";
 import { toggleComment } from "@codemirror/commands";
@@ -57,12 +64,16 @@ export const commentLine: Command = (view) => {
     if (!block) blocks.push(target);
     target.ranges.push(i);
     target.endLine = Math.max(target.endLine, endLine);
-    const wholeLines = r.empty || (r.from === doc.lineAt(r.from).from && r.to === doc.lineAt(r.to).from && r.to > r.from);
+    const wholeLines =
+      r.empty || (r.from === doc.lineAt(r.from).from && r.to === doc.lineAt(r.to).from && r.to > r.from);
     const emptyLine = !doc.lineAt(r.from).text.trim();
-    target.caretUpdate = r.empty && emptyLine && !repeated ? "commentStart" : r.empty ? "down" : wholeLines ? "restoreSelection" : null;
+    target.caretUpdate =
+      r.empty && emptyLine && !repeated ? "commentStart" : r.empty ? "down" : wholeLines ? "restoreSelection" : null;
   }
 
-  const tokens = blocks.map((b) => lineToken(state, doc.line(b.startLine).from + leadingWs(doc.line(b.startLine).text)));
+  const tokens = blocks.map((b) =>
+    lineToken(state, doc.line(b.startLine).from + leadingWs(doc.line(b.startLine).text)),
+  );
   // Languages without line comments (CSS, HTML…): block comments.
   if (tokens.some((t) => !t)) return toggleComment(view);
 

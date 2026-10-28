@@ -24,13 +24,20 @@ export interface ToolbarLayout {
 export const isActionEntry = (id: string) => id.startsWith(ACTION_PREFIX);
 export const entryAction = (id: string) => id.slice(ACTION_PREFIX.length);
 
-const byPriority = (a: TitleItemContribution, b: TitleItemContribution) => a.priority - b.priority || a.id.localeCompare(b.id);
+const byPriority = (a: TitleItemContribution, b: TitleItemContribution) =>
+  a.priority - b.priority || a.id.localeCompare(b.id);
 
 /** Widgets in their default place (built-ins included), by side. */
 function defaultWidgets(items: Iterable<TitleItemContribution>): { left: string[]; right: string[] } {
   const all = [...items];
-  const left = all.filter((i) => i.align === "left").sort(byPriority).map((i) => i.id);
-  const right = all.filter((i) => i.align === "right").sort(byPriority).map((i) => i.id);
+  const left = all
+    .filter((i) => i.align === "left")
+    .sort(byPriority)
+    .map((i) => i.id);
+  const right = all
+    .filter((i) => i.align === "right")
+    .sort(byPriority)
+    .map((i) => i.id);
   return { left: [PROJECT_WIDGET, ...(left.includes(VCS_WIDGET) ? [] : [VCS_WIDGET]), ...left], right };
 }
 
@@ -62,7 +69,10 @@ export function resolveToolbar(
 }
 
 /** The full editable layout (Customize Main Toolbar dialog). */
-export function editableToolbar(saved: MainToolbarSettings | null | undefined, items: Iterable<TitleItemContribution>): ToolbarLayout {
+export function editableToolbar(
+  saved: MainToolbarSettings | null | undefined,
+  items: Iterable<TitleItemContribution>,
+): ToolbarLayout {
   const list = [...items];
   const { left, right } = resolveToolbar(saved, list);
   return { left, right, hidden: saved ? [...(saved.hidden ?? [])] : [] };
@@ -84,7 +94,10 @@ export function toggleWidget(layout: ToolbarLayout, id: string, defaultSide: "le
       right: layout.right.filter((x) => x !== id),
       hidden: [...layout.hidden.filter((x) => x !== id), ...(isActionEntry(id) ? [] : [id])],
     };
-  const side = defaultSide === "left" ? { left: [...layout.left, id], right: layout.right } : { left: layout.left, right: [...layout.right, id] };
+  const side =
+    defaultSide === "left"
+      ? { left: [...layout.left, id], right: layout.right }
+      : { left: layout.left, right: [...layout.right, id] };
   return { ...side, hidden: layout.hidden.filter((x) => x !== id) };
 }
 

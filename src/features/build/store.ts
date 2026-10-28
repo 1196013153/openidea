@@ -207,7 +207,10 @@ export async function startBuild(kind: BuildKind, file: string | null = null): P
     }
   } finally {
     if (useBuildRun.getState().request === request) useBuildRun.setState({ request: null });
-    setContext(BUILD_LAST_STATUS, result?.success ? "success" : useBuildRun.getState().status === "cancelled" ? "cancelled" : "failed");
+    setContext(
+      BUILD_LAST_STATUS,
+      result?.success ? "success" : useBuildRun.getState().status === "cancelled" ? "cancelled" : "failed",
+    );
     setContext(BUILD_RUNNING, false);
     upsertTask({ id: BUILD_TASK_ID, title: taskTitle, message: null, fraction: 1, done: true });
   }

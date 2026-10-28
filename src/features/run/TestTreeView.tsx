@@ -144,15 +144,20 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
     }
     if (ids.length === 1 && nodeStatus(node) === "failed" && parseComparison(node.output))
       items.push({ label: "Show Diff", icon: "diff", run: () => void showTestDiff(node) });
-    items.push({ label: "Jump to Source", icon: "external-link", shortcut: "F4", disabled: !located, run: () => jumpToSource(node) });
+    items.push({
+      label: "Jump to Source",
+      icon: "external-link",
+      shortcut: "F4",
+      disabled: !located,
+      run: () => jumpToSource(node),
+    });
     e.preventDefault();
     showContextMenu(e, items);
   };
 
   const counts = useMemo(() => results.counts(), [results, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const roots = useMemo(() => {
-    const keep = (n: TestNode) =>
-      (showPassed || n.own !== "passed") && (showIgnored || n.own !== "skipped");
+    const keep = (n: TestNode) => (showPassed || n.own !== "passed") && (showIgnored || n.own !== "skipped");
     return showPassed && showIgnored ? [...results.roots] : filterTree(results.roots, keep);
   }, [results, version, showPassed, showIgnored]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -235,7 +240,11 @@ export function TestTreeView({ results, version, cwd, selected, onSelect, runnin
         }}
         empty={
           <div className={styles.testEmpty}>
-            {running ? tx("Waiting for test results…") : results.isEmpty ? tx("No test results") : tx("Passed tests are hidden")}
+            {running
+              ? tx("Waiting for test results…")
+              : results.isEmpty
+                ? tx("No test results")
+                : tx("Passed tests are hidden")}
           </div>
         }
       />

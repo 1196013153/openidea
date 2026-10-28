@@ -137,7 +137,12 @@ export async function renameNamePart(view: EditorView, part: Span, replacement: 
       .map((o) => rangeToOffsets(view.state.doc, o.range))
       .find((o) => o.from <= part.from && part.to <= o.to);
     if (!at) return false;
-    await commitSyntaxRename(view, doc, plan, spliceName(plan.symbol.name, part.from - at.from, word.length, replacement));
+    await commitSyntaxRename(
+      view,
+      doc,
+      plan,
+      spliceName(plan.symbol.name, part.from - at.from, word.length, replacement),
+    );
     return true;
   };
   let range;
@@ -162,7 +167,13 @@ export async function renameNamePart(view: EditorView, part: Span, replacement: 
 }
 
 /** This file's other occurrences of the symbol (document highlights with the same text). */
-async function linkedOccurrences(view: EditorView, doc: number, pos: Pos, primary: Span, name: string): Promise<Span[]> {
+async function linkedOccurrences(
+  view: EditorView,
+  doc: number,
+  pos: Pos,
+  primary: Span,
+  name: string,
+): Promise<Span[]> {
   let highlights;
   try {
     highlights = await lspRequest(() => commands.lspDocumentHighlights(doc, pos));
@@ -275,7 +286,12 @@ async function startSyntaxRename(view: EditorView, doc: EditorDocContext, pos: P
 }
 
 /** Applies a local rename in place, asking first when the syntax answer is not certain. */
-export async function commitSyntaxRename(view: EditorView, doc: EditorDocContext, plan: LocalRenamePlan, newName: string) {
+export async function commitSyntaxRename(
+  view: EditorView,
+  doc: EditorDocContext,
+  plan: LocalRenamePlan,
+  newName: string,
+) {
   const oldName = plan.symbol.name;
   if (!newName || newName === oldName) return;
   if (VALID_NAME.test(oldName) && !VALID_NAME.test(newName)) {

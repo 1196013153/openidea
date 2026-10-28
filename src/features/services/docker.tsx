@@ -368,7 +368,9 @@ function LogStream(props: {
           </div>
         ))}
         {error && <div className={styles.stderr}>{error}</div>}
-        {!lines.length && !error && <div className={styles.dim}>{tx(running ? "Waiting for output…" : "No output")}</div>}
+        {!lines.length && !error && (
+          <div className={styles.dim}>{tx(running ? "Waiting for output…" : "No output")}</div>
+        )}
       </div>
     </div>
   );
@@ -457,7 +459,9 @@ function DockerDetail({ item }: { item: ServiceTreeItem }) {
             <span className={styles.bannerText}>{snapshot.errors.join("; ")}</span>
           </div>
         )}
-        <EmptyState title={node.kind === "compose" ? txTemplate(`Compose project '${node.project}'`) : (conn?.name ?? "Docker")}>
+        <EmptyState
+          title={node.kind === "compose" ? txTemplate(`Compose project '${node.project}'`) : (conn?.name ?? "Docker")}
+        >
           <div>
             {txTemplate(`Engine ${a.serverVersion} · CLI ${a.clientVersion}`)}
             {a.context ? txTemplate(` · context ${a.context}`) : ""}

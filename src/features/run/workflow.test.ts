@@ -29,7 +29,9 @@ describe("console settings", () => {
     m.append({ kind: "stderr", text: "Error\n  at org.junit.A\n  at org.junit.B\n  at app.Main\n  at org.junit.C\n" });
     const rows = foldRows(m.lines, ["at org.junit."], new Set());
     const show = (rs: typeof rows) =>
-      rs.map((r) => (r.kind === "fold" ? `fold${r.fold.count}` : m.lines[r.index]!.text.trim() + (r.fold ? ` +${r.fold.count}` : "")));
+      rs.map((r) =>
+        r.kind === "fold" ? `fold${r.fold.count}` : m.lines[r.index]!.text.trim() + (r.fold ? ` +${r.fold.count}` : ""),
+      );
     expect(show(rows)).toEqual(["Error +2", "at app.Main +1"]);
     const first = rows[0]!.kind === "line" ? rows[0]!.fold! : null;
     const open = foldRows(m.lines, ["at org.junit."], new Set([first!.id]));
@@ -58,11 +60,19 @@ describe("external tools", () => {
     expect(expandMacros("$FileName$ $FileNameWithoutExtension$ $FileExt$ $FileRelativePath$", ctx)).toBe(
       "main.rs main rs src/main.rs",
     );
-    expect(expandMacros("$ProjectFileDir$:$LineNumber$:$ColumnNumber$ $Unknown$ $Prompt$", ctx, "x")).toBe("/p:3:5 $Unknown$ x");
+    expect(expandMacros("$ProjectFileDir$:$LineNumber$:$ColumnNumber$ $Unknown$ $Prompt$", ctx, "x")).toBe(
+      "/p:3:5 $Unknown$ x",
+    );
   });
 
   it("builds a run configuration with per-argument expansion", () => {
-    const tool = { ...DEFAULT_EXTERNAL_TOOL, id: "t", name: "Fmt", program: "rustfmt", arguments: `--edition 2021 "$FilePath$"` };
+    const tool = {
+      ...DEFAULT_EXTERNAL_TOOL,
+      id: "t",
+      name: "Fmt",
+      program: "rustfmt",
+      arguments: `--edition 2021 "$FilePath$"`,
+    };
     expect(toolRunConfig(tool, { ...ctx, filePath: "/p/my dir/a.rs" })).toMatchObject({
       id: "external:t",
       command: "rustfmt",

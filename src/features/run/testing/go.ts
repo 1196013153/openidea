@@ -46,7 +46,12 @@ export function goParser(): TestOutputParser {
         const events = flush(pkg);
         // Without -v a passing package prints nothing per test: show the package itself.
         if (!events.some((e) => e.type === "result")) {
-          events.push({ type: "result", path: [pkg], status: m[1] === "ok" ? "passed" : "failed", durationMs: parseDuration(m[3]) });
+          events.push({
+            type: "result",
+            path: [pkg],
+            status: m[1] === "ok" ? "passed" : "failed",
+            durationMs: parseDuration(m[3]),
+          });
         }
         events.push({ type: "summary", ...totals });
         return events;
@@ -57,7 +62,11 @@ export function goParser(): TestOutputParser {
         const key = current.join("/");
         if (loc && !located.has(key)) {
           located.add(key);
-          buffer.push({ type: "location", path: current, location: { path: loc[1]!, line: Number(loc[2]), resolve: "name" } });
+          buffer.push({
+            type: "location",
+            path: current,
+            location: { path: loc[1]!, line: Number(loc[2]), resolve: "name" },
+          });
         }
       }
       return [];

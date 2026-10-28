@@ -49,7 +49,12 @@ function useOutlineNodes() {
   const inherited = useOutline((s) => s.inherited);
   const extra = showInherited && supported ? inherited : null;
   return useMemo(
-    () => sortOutline(applyViewFilter(withInherited(keyOutline(items ?? []), extra), { fields, nonPublic }), alphabetical, byVisibility),
+    () =>
+      sortOutline(
+        applyViewFilter(withInherited(keyOutline(items ?? []), extra), { fields, nonPublic }),
+        alphabetical,
+        byVisibility,
+      ),
     [items, extra, alphabetical, byVisibility, fields, nonPublic],
   );
 }
@@ -88,7 +93,17 @@ const navigate = (path: string, node: OutlineNode, focus: boolean) => {
 };
 
 /** A symbol row; inherited members are greyed and name their supertype. */
-function SymbolRow({ node, indices, selected, dim }: { node: OutlineNode; indices?: readonly number[] | null; selected: boolean; dim?: boolean }) {
+function SymbolRow({
+  node,
+  indices,
+  selected,
+  dim,
+}: {
+  node: OutlineNode;
+  indices?: readonly number[] | null;
+  selected: boolean;
+  dim?: boolean;
+}) {
   return (
     <span className={clsx(styles.node, dim && styles.ancestor, node.inherited && styles.inherited)}>
       <SymbolBadge kind={badgeKind(node.item.kind)} className={styles.badge} />
@@ -334,11 +349,15 @@ function FileStructureDialog() {
     walk(filter.nodes);
     return m;
   }, [filter.nodes]);
-  const expanded = useMemo(() => new Set(allKeys(filter.nodes).filter((k) => !collapsed.has(k))), [filter.nodes, collapsed]);
+  const expanded = useMemo(
+    () => new Set(allKeys(filter.nodes).filter((k) => !collapsed.has(k))),
+    [filter.nodes, collapsed],
+  );
 
   // Preselect the symbol at the caret, then the best match while filtering.
   const caretKey = useMemo(
-    () => (caret && caret.path === path ? (symbolPathAt(nodes, { line: caret.line, col: caret.col }).pop() ?? null) : null),
+    () =>
+      caret && caret.path === path ? (symbolPathAt(nodes, { line: caret.line, col: caret.col }).pop() ?? null) : null,
     [caret, path, nodes],
   );
   const preselect = query.trim() ? filter.best : caretKey;
@@ -491,7 +510,11 @@ function FileStructureDialog() {
           onActivate={(n) => choose(n)}
           rowHeight={POPUP_ROW}
           indent={16}
-          empty={<span className={styles.popupEmpty}>{!path ? tx("Open a file first") : loading && !items ? tx("Loading…") : tx("No symbols")}</span>}
+          empty={
+            <span className={styles.popupEmpty}>
+              {!path ? tx("Open a file first") : loading && !items ? tx("Loading…") : tx("No symbols")}
+            </span>
+          }
           renderNode={(n, s) => {
             const matched = filter.matches.get(n.key);
             return <SymbolRow node={n} indices={matched} selected={s.selected} dim={!!query.trim() && !matched} />;

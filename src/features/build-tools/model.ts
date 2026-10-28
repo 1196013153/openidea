@@ -139,10 +139,17 @@ export function gradleRunConfigs(configs: readonly RunConfig[]): RunConfig[] {
 }
 
 function normalizeDir(cwd: string | null | undefined): string {
-  return (cwd ?? "").replace(/\\/g, "/").replace(/^\.\/?/, "").replace(/\/+$/, "");
+  return (cwd ?? "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\/?/, "")
+    .replace(/\/+$/, "");
 }
 
-export function mavenChildren(node: BuildNode, model: MavenModel, configs: readonly RunConfig[]): BuildNode[] | undefined {
+export function mavenChildren(
+  node: BuildNode,
+  model: MavenModel,
+  configs: readonly RunConfig[],
+): BuildNode[] | undefined {
   switch (node.kind) {
     case "profiles":
       return model.profiles.map((profile) => ({ kind: "profile", key: `mvn:profile:${profile.id}`, profile }));
@@ -153,7 +160,8 @@ export function mavenChildren(node: BuildNode, model: MavenModel, configs: reado
         { kind: "lifecycle", key: `${k}:lifecycle`, project: p },
         { kind: "plugins", key: `${k}:plugins`, project: p },
       ];
-      if (p.dependencies.length) out.push({ kind: "dependencies", key: `${k}:deps`, project: p, dependencies: p.dependencies });
+      if (p.dependencies.length)
+        out.push({ kind: "dependencies", key: `${k}:deps`, project: p, dependencies: p.dependencies });
       const runs = mavenRunConfigs(p, configs);
       if (runs.length) out.push({ kind: "runConfigs", key: `${k}:runs`, configs: runs });
       for (const pom of p.modules) {
@@ -196,7 +204,13 @@ export function mavenChildren(node: BuildNode, model: MavenModel, configs: reado
 function dependencyNodes(parent: string, deps: readonly MavenDependency[]): BuildNode[] {
   return deps.flatMap((dependency, i) =>
     dependency.omitted == null
-      ? [{ kind: "dependency" as const, key: `${parent}/${dependency.groupId}:${dependency.artifactId}:${i}`, dependency }]
+      ? [
+          {
+            kind: "dependency" as const,
+            key: `${parent}/${dependency.groupId}:${dependency.artifactId}:${i}`,
+            dependency,
+          },
+        ]
       : [],
   );
 }
@@ -232,7 +246,11 @@ export function gradleSubprojects(model: GradleModel, path: string): GradleProje
   });
 }
 
-export function gradleChildren(node: BuildNode, model: GradleModel, configs: readonly RunConfig[]): BuildNode[] | undefined {
+export function gradleChildren(
+  node: BuildNode,
+  model: GradleModel,
+  configs: readonly RunConfig[],
+): BuildNode[] | undefined {
   switch (node.kind) {
     case "gradleProject": {
       const p = node.project;
@@ -383,7 +401,11 @@ export function parseTaskLine(line: string): string[] {
   return args;
 }
 
-export function mavenArgs(goals: readonly string[], model: Pick<MavenModel, "profiles">, options: MavenRunOptions): string[] {
+export function mavenArgs(
+  goals: readonly string[],
+  model: Pick<MavenModel, "profiles">,
+  options: MavenRunOptions,
+): string[] {
   const args = [...goals];
   const has = (flag: string) => args.some((a) => a === flag || a.startsWith(`${flag}=`));
   if (options.offline && !has("-o") && !has("--offline")) args.push("-o");
@@ -465,7 +487,11 @@ export interface Completion {
 }
 
 /** Completes the last word of `line` with phases and `prefix:goal`s of `plugins`. */
-export function goalCompletions(line: string, plugins: readonly MavenPlugin[], history: readonly string[] = []): Completion[] {
+export function goalCompletions(
+  line: string,
+  plugins: readonly MavenPlugin[],
+  history: readonly string[] = [],
+): Completion[] {
   const at = /\S*$/.exec(line)!.index;
   const head = line.slice(0, at);
   const word = line.slice(at).toLowerCase();
@@ -476,7 +502,10 @@ export function goalCompletions(line: string, plugins: readonly MavenPlugin[], h
     seen.add(label);
     out.push({ line: head + label, label, detail });
   };
-  if (!head.trim()) for (const h of history) if (h.toLowerCase().startsWith(line.toLowerCase()) && h !== line) out.push({ line: h, label: h, detail: "recent" });
+  if (!head.trim())
+    for (const h of history)
+      if (h.toLowerCase().startsWith(line.toLowerCase()) && h !== line)
+        out.push({ line: h, label: h, detail: "recent" });
   if (word.startsWith("-")) return out;
   for (const phase of [...LIFECYCLE, ...ALL_PHASES]) push(phase, "phase");
   const goals = plugins.flatMap((p) => p.goals.map((g) => ({ label: `${p.prefix}:${g}`, detail: p.artifactId })));
@@ -492,7 +521,10 @@ export function taskCompletions(line: string, model: GradleModel, history: reado
   const word = line.slice(at).toLowerCase();
   const out: Completion[] = [];
   const seen = new Set<string>();
-  if (!head.trim()) for (const h of history) if (h.toLowerCase().startsWith(line.toLowerCase()) && h !== line) out.push({ line: h, label: h, detail: "recent" });
+  if (!head.trim())
+    for (const h of history)
+      if (h.toLowerCase().startsWith(line.toLowerCase()) && h !== line)
+        out.push({ line: h, label: h, detail: "recent" });
   for (const p of model.projects) {
     for (const t of p.tasks) {
       const label = p.path === ":" ? t.name : `${p.path}:${t.name}`;
@@ -501,14 +533,23 @@ export function taskCompletions(line: string, model: GradleModel, history: reado
       out.push({ line: head + label, label, detail: t.group });
     }
   }
-  return out.sort((a, b) => (a.detail === "recent" ? -1 : b.detail === "recent" ? 1 : a.label.length - b.label.length || a.label.localeCompare(b.label)));
+  return out.sort((a, b) =>
+    a.detail === "recent"
+      ? -1
+      : b.detail === "recent"
+        ? 1
+        : a.label.length - b.label.length || a.label.localeCompare(b.label),
+  );
 }
 
 /**
  * Keys of every expandable node below `roots` (Expand All). Dependency nodes are
  * not opened (transitive trees can be huge); their "Dependencies" folder is.
  */
-export function expandableKeys(roots: readonly BuildNode[], children: (n: BuildNode) => BuildNode[] | undefined): Set<string> {
+export function expandableKeys(
+  roots: readonly BuildNode[],
+  children: (n: BuildNode) => BuildNode[] | undefined,
+): Set<string> {
   const out = new Set<string>();
   const walk = (nodes: readonly BuildNode[]) => {
     for (const n of nodes) {

@@ -37,7 +37,20 @@ export function subagentStatusLabel(s: AgentSubagentStatus): string {
   }
 }
 
-const PROVIDER_ICONS = new Set(["claude", "codex", "gemini", "copilot", "cursor", "opencode", "qwen", "kimi", "goose", "auggie", "kiro", "vibe"]);
+const PROVIDER_ICONS = new Set([
+  "claude",
+  "codex",
+  "gemini",
+  "copilot",
+  "cursor",
+  "opencode",
+  "qwen",
+  "kimi",
+  "goose",
+  "auggie",
+  "kiro",
+  "vibe",
+]);
 
 /** The agent's logo; custom agents get the generic agents icon. */
 export const providerIcon = (provider: string) =>
@@ -109,7 +122,10 @@ export function age(ms: number, now = Date.now()): string {
 }
 
 /** The status change worth a notification, if any. */
-export function attentionChange(prev: AgentStatus | undefined, next: AgentStatus): "finished" | "failed" | "input" | null {
+export function attentionChange(
+  prev: AgentStatus | undefined,
+  next: AgentStatus,
+): "finished" | "failed" | "input" | null {
   if (prev === next || prev === undefined) return null;
   if (next === "needsInput") return "input";
   if (!isBusy(prev)) return null;

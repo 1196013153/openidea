@@ -6,7 +6,11 @@ describe("validateWorkflow", () => {
   it("falls back to defaults for missing or malformed values", () => {
     expect(validateWorkflow(undefined)).toEqual(DEFAULT_WORKFLOW);
     const v = validateWorkflow({
-      vcs: { historyLimit: -5, git: { updateMethod: "squash", incomingCheck: "never" }, issueNavigation: [{ pattern: "" }, { pattern: "#(\\d+)", link: "x/$1" }] },
+      vcs: {
+        historyLimit: -5,
+        git: { updateMethod: "squash", incomingCheck: "never" },
+        issueNavigation: [{ pattern: "" }, { pattern: "#(\\d+)", link: "x/$1" }],
+      },
       console: { bufferKb: 1e12, foldPatterns: ["a", 3, ""] },
       terminal: { cursorShape: "bar", env: { A: "1", B: 2 }, tabName: "  " },
       externalTools: [{ name: "Lint", id: "x" }, { name: "" }, { name: "Again", id: "x" }],

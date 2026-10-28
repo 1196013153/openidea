@@ -54,7 +54,10 @@ export function serializeSession(
       if (!pane) return null;
       const kept = pane.tabs.filter(saved);
       if (!kept.length) return null;
-      const active = Math.max(0, kept.findIndex((t) => t.id === pane.active));
+      const active = Math.max(
+        0,
+        kept.findIndex((t) => t.id === pane.active),
+      );
       return {
         kind: "pane",
         tabs: kept.map((t) => ({
@@ -131,10 +134,19 @@ export function parseSession(raw: unknown): EditorSession | null {
     for (const [path, v] of Object.entries(r.files)) {
       const f = v as Partial<FileViewState> | null;
       if (f && Number.isInteger(f.anchor) && Number.isInteger(f.head) && f.anchor! >= 0 && f.head! >= 0)
-        files[slashPath(path)] = { anchor: f.anchor!, head: f.head!, ...(Number.isInteger(f.topLine) && f.topLine! >= 0 ? { topLine: f.topLine } : {}) };
+        files[slashPath(path)] = {
+          anchor: f.anchor!,
+          head: f.head!,
+          ...(Number.isInteger(f.topLine) && f.topLine! >= 0 ? { topLine: f.topLine } : {}),
+        };
     }
   }
-  return { version: 1, layout, activePane: typeof r.activePane === "number" ? Math.max(0, Math.floor(r.activePane)) : 0, files };
+  return {
+    version: 1,
+    layout,
+    activePane: typeof r.activePane === "number" ? Math.max(0, Math.floor(r.activePane)) : 0,
+    files,
+  };
 }
 
 let seq = 0;
@@ -167,7 +179,12 @@ export function restoreTabsState(session: EditorSession, fileKey: (path: string)
       tabs.sort((a, b) => Number(b.pinned) - Number(a.pinned));
       const activeTab = l.tabs[l.active];
       const active = (activeTab && byKey.get(tabKey(activeTab))) ?? tabs[0]!;
-      panes[paneId] = { id: paneId, tabs, active: active.id, mru: [active.id, ...tabs.filter((t) => t !== active).map((t) => t.id)] };
+      panes[paneId] = {
+        id: paneId,
+        tabs,
+        active: active.id,
+        mru: [active.id, ...tabs.filter((t) => t !== active).map((t) => t.id)],
+      };
       order.push(paneId);
       return { kind: "pane", paneId };
     }

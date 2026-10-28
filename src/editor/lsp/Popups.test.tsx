@@ -117,7 +117,10 @@ describe("list popup", () => {
   it("shows the selected row's preview, fetched lazily", async () => {
     vi.useFakeTimers();
     try {
-      const preview = vi.fn(async () => ({ kind: "diff" as const, lines: [{ kind: "added" as const, text: "let x = 1;" }] }));
+      const preview = vi.fn(async () => ({
+        kind: "diff" as const,
+        lines: [{ kind: "added" as const, text: "let x = 1;" }],
+      }));
       openPopup({
         kind: "list",
         anchor: { x: 0, y: 0 },
@@ -171,7 +174,9 @@ describe("documentation", () => {
     fireEvent.keyDown(frame(), { key: "ArrowRight" });
     expect(frame().textContent).toContain("second");
     fireEvent.keyDown(frame(), { key: "F4" });
-    await vi.waitFor(() => expect(openFile).toHaveBeenCalledWith("/p/b.ts", { selection: { line: 3, col: 4 }, focus: true }));
+    await vi.waitFor(() =>
+      expect(openFile).toHaveBeenCalledWith("/p/b.ts", { selection: { line: 3, col: 4 }, focus: true }),
+    );
     expect(container).toBeTruthy();
   });
 

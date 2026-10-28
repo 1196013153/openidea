@@ -94,7 +94,8 @@ function ConfigChooser() {
   const initial = Math.max(
     0,
     rows.findIndex(
-      (r) => (r.type === "config" && r.config.id === selectedId) || (r.type === "current" && selectedId === CURRENT_FILE),
+      (r) =>
+        (r.type === "config" && r.config.id === selectedId) || (r.type === "current" && selectedId === CURRENT_FILE),
     ),
   );
   const [active, setActive] = useState(initial);
@@ -138,7 +139,9 @@ function ConfigChooser() {
     if (row.type === "current") {
       selectConfig(CURRENT_FILE);
       if (how === "run" || how === "debug")
-        void executeAction(how === "run" ? "run.runContext" : "run.debugContext").then(() => selectConfig(CURRENT_FILE));
+        void executeAction(how === "run" ? "run.runContext" : "run.debugContext").then(() =>
+          selectConfig(CURRENT_FILE),
+        );
       return;
     }
     if (row.type !== "config") return;
@@ -247,7 +250,11 @@ function ConfigChooser() {
                 <span className={styles.chooserRow}>
                   <Icon name="file" size={13} className={styles.chooserIcon} />
                   <span className={clsx(styles.chooserName, selectedId === CURRENT_FILE && styles.chooserSelected)}>
-                    {r.indices ? <HighlightedText text={CURRENT_FILE_LABEL} indices={r.indices} /> : <T>{CURRENT_FILE_LABEL}</T>}
+                    {r.indices ? (
+                      <HighlightedText text={CURRENT_FILE_LABEL} indices={r.indices} />
+                    ) : (
+                      <T>{CURRENT_FILE_LABEL}</T>
+                    )}
                   </span>
                 </span>
               );
@@ -277,15 +284,21 @@ function ConfigChooser() {
                   {r.indices ? <HighlightedText text={c.name} indices={r.indices} /> : c.name}
                 </span>
                 {c.target && <span className={styles.chooserMuted}>@ {targetName(c, runTargets)}</span>}
-                {c.isTest && <span className={styles.badge}>
+                {c.isTest && (
+                  <span className={styles.badge}>
                     <T>test</T>
-                  </span>}
-                {!c.detected && <span className={styles.chooserMuted}>
+                  </span>
+                )}
+                {!c.detected && (
+                  <span className={styles.chooserMuted}>
                     <T>user</T>
-                  </span>}
-                {temporary.includes(c.id) && <span className={styles.chooserMuted}>
+                  </span>
+                )}
+                {temporary.includes(c.id) && (
+                  <span className={styles.chooserMuted}>
                     <T>temporary</T>
-                  </span>}
+                  </span>
+                )}
                 {isActive && (
                   <span className={styles.chooserActions}>
                     <IconButton

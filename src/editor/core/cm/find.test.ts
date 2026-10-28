@@ -26,7 +26,10 @@ const views: EditorView[] = [];
 afterEach(() => views.splice(0).forEach((v) => v.destroy()));
 
 function make(doc: string, o: Partial<FindOptions>, scope?: { from: number; to: number }) {
-  const view = new EditorView({ state: EditorState.create({ doc, extensions: [findExtension()] }), parent: document.body });
+  const view = new EditorView({
+    state: EditorState.create({ doc, extensions: [findExtension()] }),
+    parent: document.body,
+  });
   views.push(view);
   const q = makeQuery({ search: "", caseSensitive: false, wholeWord: false, regexp: false, replace: "", ...o });
   view.dispatch({ effects: [setSearchQuery.of(q), ...(scope ? [setFindScope.of(scope)] : [])] });

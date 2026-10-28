@@ -41,7 +41,8 @@ export function activate(): () => void {
         icon: "profile",
         when: "projectOpen",
         keywords: ["profiler", "flame graph"],
-        run: ({ arg }) => executeAction("run.withExecutor", { executor: "profiler", context: arg ?? true }).then(() => undefined),
+        run: ({ arg }) =>
+          executeAction("run.withExecutor", { executor: "profiler", context: arg ?? true }).then(() => undefined),
       },
     ]),
     useProject.subscribe((s, prev) => {

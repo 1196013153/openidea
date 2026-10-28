@@ -5,7 +5,15 @@
  */
 import { Prec, StateEffect, StateField, type EditorState, type Extension, type Line } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { codeFolding, foldEffect, foldGutter, foldService, foldable, foldedRanges, unfoldEffect } from "@codemirror/language";
+import {
+  codeFolding,
+  foldEffect,
+  foldGutter,
+  foldService,
+  foldable,
+  foldedRanges,
+  unfoldEffect,
+} from "@codemirror/language";
 import type { FoldRange } from "@/platform/ipc";
 
 export interface BackendFold {
@@ -182,7 +190,8 @@ export function foldSelection(view: EditorView): boolean {
   const sel = view.state.selection;
   const folded = effects.filter((e) => e.is(foldEffect)).map((e) => e.value as { from: number; to: number });
   // The caret lands after the new fold, like IDEA.
-  const after = sel.ranges.some((r) => !r.empty) && folded.length ? { anchor: folded[folded.length - 1]!.to } : undefined;
+  const after =
+    sel.ranges.some((r) => !r.empty) && folded.length ? { anchor: folded[folded.length - 1]!.to } : undefined;
   view.dispatch({ effects, selection: after });
   return true;
 }
@@ -196,9 +205,13 @@ function isFolded(state: EditorState, r: { from: number; to: number }): boolean 
 }
 
 /** Every foldable region (nested ones included) of the lines in `[from, to]`, kept within `[from, to]`. */
-export function foldableRegions(state: EditorState, from = 0, to = state.doc.length): Array<{ from: number; to: number }> {
+export function foldableRegions(
+  state: EditorState,
+  from = 0,
+  to = state.doc.length,
+): Array<{ from: number; to: number }> {
   const out: Array<{ from: number; to: number }> = [];
-  for (let pos = state.doc.lineAt(from).from; pos <= to; ) {
+  for (let pos = state.doc.lineAt(from).from; pos <= to;) {
     const line = state.doc.lineAt(pos);
     const r = foldable(state, line.from, line.to);
     if (r && r.from >= from && r.to <= to) out.push(r);
@@ -268,9 +281,15 @@ function dispatchEffects(view: EditorView, effects: StateEffect<unknown>[]): boo
 export const collapseAll = (view: EditorView) => dispatchEffects(view, collapseAllEffects(view.state));
 export const expandAll = (view: EditorView) => dispatchEffects(view, expandAllEffects(view.state));
 export const collapseRecursively = (view: EditorView) =>
-  dispatchEffects(view, view.state.selection.ranges.flatMap((r) => collapseRecursivelyEffects(view.state, r.head)));
+  dispatchEffects(
+    view,
+    view.state.selection.ranges.flatMap((r) => collapseRecursivelyEffects(view.state, r.head)),
+  );
 export const expandRecursively = (view: EditorView) =>
-  dispatchEffects(view, view.state.selection.ranges.flatMap((r) => expandRecursivelyEffects(view.state, r.head)));
+  dispatchEffects(
+    view,
+    view.state.selection.ranges.flatMap((r) => expandRecursivelyEffects(view.state, r.head)),
+  );
 
 function chevron(open: boolean): HTMLElement {
   const span = document.createElement("span");

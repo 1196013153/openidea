@@ -129,7 +129,8 @@ export async function expandInto(
   // The document may have changed while reading the clipboard.
   if (view.state.doc !== state.doc) return;
   snippet(exp.snippet)(view, null, from, to);
-  if (view.state.field(fieldCompletion, false) !== undefined) view.dispatch({ effects: setFieldCompletion.of(exp.completing) });
+  if (view.state.field(fieldCompletion, false) !== undefined)
+    view.dispatch({ effects: setFieldCompletion.of(exp.completing) });
   if (exp.completeFirst) setTimeout(() => startCompletion(view), 0);
 }
 
@@ -298,7 +299,8 @@ const templateLookup = StateField.define<boolean>({
 });
 
 const endTemplateLookup = EditorView.updateListener.of((u) => {
-  if (!u.state.field(templateLookup) || completionStatus(u.startState) === null || completionStatus(u.state) !== null) return;
+  if (!u.state.field(templateLookup) || completionStatus(u.startState) === null || completionStatus(u.state) !== null)
+    return;
   queueMicrotask(() => {
     if (u.view.state.field(templateLookup) && completionStatus(u.view.state) === null)
       u.view.dispatch({ effects: setTemplateLookup.of(false) });
@@ -306,7 +308,11 @@ const endTemplateLookup = EditorView.updateListener.of((u) => {
 });
 
 /** Live templates applicable at `pos` as lookup items replacing the word before it. */
-function liveTemplateOptions(state: EditorState, pos: number, word: { from: number; text: string } | null): CompletionResult | null {
+function liveTemplateOptions(
+  state: EditorState,
+  pos: number,
+  word: { from: number; text: string } | null,
+): CompletionResult | null {
   const list = templatesAt(state, pos).filter((t) => !usesSelection(t.body));
   if (!list.length) return null;
   return {
@@ -344,7 +350,10 @@ export function insertLiveTemplate(view: EditorView) {
  * spans several lines, from the tree-sitter structure service; `null` when the
  * statement is a single line, broken, or shares its lines with other code.
  */
-export function multiLineStatement(state: EditorState, r: StructuralRanges | null): { from: number; to: number } | null {
+export function multiLineStatement(
+  state: EditorState,
+  r: StructuralRanges | null,
+): { from: number; to: number } | null {
   if (!r) return null;
   const span = (n: NonNullable<StructuralRanges["statement"]>) => ({
     from: posToOffset(state.doc, n.range.start),
@@ -364,7 +373,10 @@ export function multiLineStatement(state: EditorState, r: StructuralRanges | nul
 }
 
 /** The statement range Surround With uses for a caret (no selection), if the structure service knows it. */
-export async function surroundTarget(view: EditorView, ctx: EditorDocContext): Promise<{ from: number; to: number } | null> {
+export async function surroundTarget(
+  view: EditorView,
+  ctx: EditorDocContext,
+): Promise<{ from: number; to: number } | null> {
   const state = view.state;
   if (!state.selection.main.empty || state.selection.ranges.length > 1) return null;
   try {
@@ -550,7 +562,8 @@ export function templateEditorExtension(ctx: EditorDocContext): Extension {
     EditorState.languageData.of(() => [
       {
         [EXTRA_COMPLETION_KEY]: templateCompletionSource,
-        [EXCLUSIVE_COMPLETION_KEY]: (state: EditorState) => (state.field(templateLookup, false) ? templateLookupSource : null),
+        [EXCLUSIVE_COMPLETION_KEY]: (state: EditorState) =>
+          state.field(templateLookup, false) ? templateLookupSource : null,
       },
     ]),
     Prec.high(

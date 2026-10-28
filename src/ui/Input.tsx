@@ -24,7 +24,17 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { invalid, mono, variant = "framed", className, spellCheck = false, autoComplete = "off", placeholder, "aria-label": ariaLabel, ...rest },
+  {
+    invalid,
+    mono,
+    variant = "framed",
+    className,
+    spellCheck = false,
+    autoComplete = "off",
+    placeholder,
+    "aria-label": ariaLabel,
+    ...rest
+  },
   ref,
 ) {
   const tx = useTx();

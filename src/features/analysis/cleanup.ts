@@ -93,7 +93,13 @@ export async function runCodeCleanup(choice: ScopeChoice, options: CleanupOption
   if (!isTauri() || running) return;
   const files = await cleanupFiles(choice);
   if (typeof files === "string") {
-    notifications().notify({ group: "analysis", level: "warning", title: "Code Cleanup", body: files, key: "code.cleanup" });
+    notifications().notify({
+      group: "analysis",
+      level: "warning",
+      title: "Code Cleanup",
+      body: files,
+      key: "code.cleanup",
+    });
     return;
   }
   if (
@@ -131,7 +137,9 @@ export async function runCodeCleanup(choice: ScopeChoice, options: CleanupOption
   notifications().notify({
     group: "analysis",
     level: "info",
-    title: run.cancelled ? `Code Cleanup cancelled after ${done} of ${files.length} files` : `Code Cleanup processed ${done} files`,
+    title: run.cancelled
+      ? `Code Cleanup cancelled after ${done} of ${files.length} files`
+      : `Code Cleanup processed ${done} files`,
     key: "code.cleanup",
   });
 }

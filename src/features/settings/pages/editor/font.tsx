@@ -141,7 +141,19 @@ const WEIGHT_OPTIONS: SelectOption[] = [
   { value: "custom", label: "Custom" },
 ];
 
-function WeightRow({ label, value, onChange, defaultWeight, hint }: { label: string; value: number; onChange: (value: number) => void; defaultWeight: number; hint?: string }) {
+function WeightRow({
+  label,
+  value,
+  onChange,
+  defaultWeight,
+  hint,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  defaultWeight: number;
+  hint?: string;
+}) {
   const [customSelected, setCustomSelected] = useState(false);
   const weight = fontWeightOf(value, defaultWeight);
   const custom = customSelected || !FONT_WEIGHTS.some(([w]) => w === weight);
@@ -157,7 +169,15 @@ function WeightRow({ label, value, onChange, defaultWeight, hint }: { label: str
         aria-label={label}
       />
       {custom && (
-        <NumberInput value={weight} onChange={(n) => onChange(fontWeightOf(n, defaultWeight))} min={100} max={900} step={50} integer aria-label={tx`${label} custom value`} />
+        <NumberInput
+          value={weight}
+          onChange={(n) => onChange(fontWeightOf(n, defaultWeight))}
+          min={100}
+          max={900}
+          step={50}
+          integer
+          aria-label={tx`${label} custom value`}
+        />
       )}
     </Row>
   );
@@ -175,7 +195,14 @@ function WeightRows() {
   return (
     <>
       <WeightRow key={`${scope}-main`} label="Main font weight" value={main} onChange={setMain} defaultWeight={400} />
-      <WeightRow key={`${scope}-bold`} label="Bold font weight" value={bold} onChange={setBold} defaultWeight={700} hint="Used wherever the color scheme shows text in bold" />
+      <WeightRow
+        key={`${scope}-bold`}
+        label="Bold font weight"
+        value={bold}
+        onChange={setBold}
+        defaultWeight={700}
+        hint="Used wherever the color scheme shows text in bold"
+      />
     </>
   );
 }

@@ -5,7 +5,8 @@ import type { IdeError, Locals, Range } from "@/bindings";
 
 type R<T> = Promise<{ status: "ok"; data: T } | { status: "error"; error: IdeError }>;
 const ok = <T>(data: T) => Promise.resolve({ status: "ok" as const, data });
-const err = (kind: IdeError["kind"]) => Promise.resolve({ status: "error" as const, error: { kind, message: kind } as IdeError });
+const err = (kind: IdeError["kind"]) =>
+  Promise.resolve({ status: "error" as const, error: { kind, message: kind } as IdeError });
 
 const cmd = {
   lspReferences: vi.fn((): R<unknown> => err("unavailable")),
@@ -51,25 +52,39 @@ describe("Find Usages fallback", () => {
     expect(cmd.lspReferences).toHaveBeenCalledWith(42, 3, { line: 1, col: 0 }, false, true);
     expect(res.groups[0]!.usages.length).toBe(1);
     expect(res.note).toBe(incompleteNote("indexing", "x"));
-    expect(incompleteNote("tooManyFiles", "x")).toBe("May be incomplete: too many files mention 'x' to search them all");
+    expect(incompleteNote("tooManyFiles", "x")).toBe(
+      "May be incomplete: too many files mention 'x' to search them all",
+    );
   });
 
   it("lists a certain local's references when the server is not ready", async () => {
     cmd.syntaxLocals.mockReturnValueOnce(
       ok({
         status: "local",
-        symbol: { name: "x", kind: "var", definition: r(0, 4, 5), scope: r(0, 0, 20), references: [r(1, 0, 1)], certain: true, conflicts: [] },
+        symbol: {
+          name: "x",
+          kind: "var",
+          definition: r(0, 4, 5),
+          scope: r(0, 0, 20),
+          references: [r(1, 0, 1)],
+          certain: true,
+          conflicts: [],
+        },
       }),
     );
     const res = await fetchUsages(caret);
     expect(res.note).toBe(LOCAL_NOTE);
-    expect(res.groups.map((g) => [g.path, g.usages.map((u) => [u.line, u.col, u.text])])).toEqual([["/p/a.ts", [[1, 0, "x + y;"]]]]);
+    expect(res.groups.map((g) => [g.path, g.usages.map((u) => [u.line, u.col, u.text])])).toEqual([
+      ["/p/a.ts", [[1, 0, "x + y;"]]],
+    ]);
     expect(filesMentioning).not.toHaveBeenCalled();
   });
 
   it("searches the project for identifier occurrences of non-locals", async () => {
     cmd.lspReferences.mockReturnValueOnce(err("internal"));
-    cmd.syntaxLocals.mockReturnValueOnce(ok({ status: "notLocal", name: "y", range: r(1, 4, 5), reason: "unresolved" }));
+    cmd.syntaxLocals.mockReturnValueOnce(
+      ok({ status: "notLocal", name: "y", range: r(1, 4, 5), reason: "unresolved" }),
+    );
     cmd.syntaxIdentifiersInFiles.mockReturnValueOnce(
       ok([
         { path: "/p/b.ts", occurrences: [{ range: r(2, 0, 1), kind: "identifier", qualified: false }] },
@@ -85,8 +100,13 @@ describe("Find Usages fallback", () => {
   it("keeps the server error when the language has no grammar", async () => {
     cmd.syntaxSupport.mockReturnValueOnce(ok({ tree: false, locals: false }));
     const other = new EditorView({ state: EditorState.create({ doc: "x" }) });
-    _addEditor({ view: other, ctx: { doc: 4, path: "/p/a.txt", language: "plaintext", uiMode: null, readOnly: false } });
-    await expect(fetchUsages({ doc: 4, path: "/p/a.txt", line: 0, col: 0, word: "x", view: other })).rejects.toMatchObject({
+    _addEditor({
+      view: other,
+      ctx: { doc: 4, path: "/p/a.txt", language: "plaintext", uiMode: null, readOnly: false },
+    });
+    await expect(
+      fetchUsages({ doc: 4, path: "/p/a.txt", line: 0, col: 0, word: "x", view: other }),
+    ).rejects.toMatchObject({
       kind: "unavailable",
     });
   });

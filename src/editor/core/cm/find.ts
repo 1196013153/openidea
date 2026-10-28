@@ -7,7 +7,15 @@
  * string literals) and excluded matches filter matches through the query's
  * `test`, so CodeMirror's own commands honour them too.
  */
-import { EditorSelection, Prec, StateEffect, StateField, type ChangeDesc, type EditorState, type Extension } from "@codemirror/state";
+import {
+  EditorSelection,
+  Prec,
+  StateEffect,
+  StateField,
+  type ChangeDesc,
+  type EditorState,
+  type Extension,
+} from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import {
   SearchQuery,
@@ -52,7 +60,10 @@ export const findScope = StateField.define<FindScope | null>({
     return v && tr.docChanged ? mapScope(v, tr.changes) : v;
   },
   // Lowest precedence: the scope's mark wraps the match marks, which stay visible inside it.
-  provide: (f) => Prec.lowest(EditorView.decorations.from(f, (s) => (s ? Decoration.set([scopeDeco.range(s.from, s.to)]) : Decoration.none))),
+  provide: (f) =>
+    Prec.lowest(
+      EditorView.decorations.from(f, (s) => (s ? Decoration.set([scopeDeco.range(s.from, s.to)]) : Decoration.none)),
+    ),
 });
 
 /** IDEA's Exclude: matches skipped by Next / Previous and Replace All until the query changes. */
@@ -234,7 +245,10 @@ export function regexValid(source: string): boolean {
 export const MAX_COUNT = 9_999;
 
 /** Counts matches (capped) and the 1-based index of the selected one. */
-export function countMatches(state: EditorState, budgetMs = 30): { total: number; current: number; capped: boolean; starts: number[] } {
+export function countMatches(
+  state: EditorState,
+  budgetMs = 30,
+): { total: number; current: number; capped: boolean; starts: number[] } {
   const query = getSearchQuery(state);
   if (!query.valid) return { total: 0, current: 0, capped: false, starts: [] };
   const main = state.selection.main;
@@ -270,7 +284,8 @@ function matchesIn(state: EditorState, limit = Infinity): Match[] {
   const scope = scopeOf(state);
   const out: Match[] = [];
   const cursor = query.getCursor(state, scope.from, scope.to);
-  for (let r = cursor.next(); !r.done && out.length < limit; r = cursor.next()) if (r.value.to > r.value.from) out.push(r.value as Match);
+  for (let r = cursor.next(); !r.done && out.length < limit; r = cursor.next())
+    if (r.value.to > r.value.from) out.push(r.value as Match);
   return out;
 }
 
@@ -293,7 +308,9 @@ function step(view: EditorView, forward: boolean): boolean {
   const ms = matchesIn(view.state);
   if (!ms.length) return false;
   const { from, to } = view.state.selection.main;
-  const m = forward ? (ms.find((x) => x.from >= to && !(x.from === from && x.to === to)) ?? ms[0]!) : ([...ms].reverse().find((x) => x.to <= from) ?? ms[ms.length - 1]!);
+  const m = forward
+    ? (ms.find((x) => x.from >= to && !(x.from === from && x.to === to)) ?? ms[0]!)
+    : ([...ms].reverse().find((x) => x.to <= from) ?? ms[ms.length - 1]!);
   selectMatch(view, m);
   return true;
 }

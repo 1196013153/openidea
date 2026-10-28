@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "lint": "oxlint",
     "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "typecheck": "tsrs --noEmit && tsrs -p tsconfig.node.json --noEmit && tsrs -p perf --noEmit && tsrs -p scripts --noEmit",
     "gen:bindings": "cargo test -p openidea --test export_bindings",
     "gen:theme-docs": "node scripts/theme/gen-docs.ts",

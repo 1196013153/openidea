@@ -55,13 +55,19 @@ export function hunkAtLine<H extends Pick<LineHunk, "start" | "lines">>(
 }
 
 /** Next hunk starting after `line` (wraps around). */
-export function nextHunk<H extends Pick<LineHunk, "start" | "lines">>(hunks: readonly H[], line: number): H | undefined {
+export function nextHunk<H extends Pick<LineHunk, "start" | "lines">>(
+  hunks: readonly H[],
+  line: number,
+): H | undefined {
   if (!hunks.length) return undefined;
   return hunks.find((h) => h.start > line) ?? hunks[0];
 }
 
 /** Previous hunk ending before `line` (wraps around). */
-export function prevHunk<H extends Pick<LineHunk, "start" | "lines">>(hunks: readonly H[], line: number): H | undefined {
+export function prevHunk<H extends Pick<LineHunk, "start" | "lines">>(
+  hunks: readonly H[],
+  line: number,
+): H | undefined {
   if (!hunks.length) return undefined;
   for (let i = hunks.length - 1; i >= 0; i--) {
     const h = hunks[i]!;

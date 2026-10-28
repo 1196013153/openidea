@@ -6,7 +6,8 @@ const JVM_BUILD = /(^|\/)(pom\.xml|build\.gradle(\.kts)?)$/;
 const PY_BUILD = /(^|\/)(pyproject\.toml|setup\.py|setup\.cfg|Pipfile|requirements\.txt)$/;
 const JVM_DIR = /(^|\/)(java|kotlin|scala|groovy)$/;
 
-const moduleDir = (buildFile: string) => (buildFile.includes("/") ? buildFile.slice(0, buildFile.lastIndexOf("/")) : "");
+const moduleDir = (buildFile: string) =>
+  buildFile.includes("/") ? buildFile.slice(0, buildFile.lastIndexOf("/")) : "";
 const within = (rel: string, dir: string) => !dir || rel === dir || rel.startsWith(`${dir}/`);
 
 /**

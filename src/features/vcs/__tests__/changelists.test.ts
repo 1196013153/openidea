@@ -42,9 +42,17 @@ const shape = (nodes: ChangeNode[], depth = 0): string[] =>
 describe("change list model", () => {
   it("publishes each list with its files (unversioned left out, deletions marked)", () => {
     const { state, feature } = twoLists();
-    const lists = localChangelists([...status, fs("gone.ts", null, "deleted"), fs("c.ts", "conflicted", null)], "/r", state);
+    const lists = localChangelists(
+      [...status, fs("gone.ts", null, "deleted"), fs("c.ts", "conflicted", null)],
+      "/r",
+      state,
+    );
     expect(lists.map((l) => [l.id, l.active, l.files])).toEqual([
-      ["default", true, [{ path: "/r/src/a.ts" }, { path: "/r/README.md" }, { path: "/r/gone.ts", deleted: true }, { path: "/r/c.ts" }]],
+      [
+        "default",
+        true,
+        [{ path: "/r/src/a.ts" }, { path: "/r/README.md" }, { path: "/r/gone.ts", deleted: true }, { path: "/r/c.ts" }],
+      ],
       [feature, false, [{ path: "/r/src/b.ts" }]],
     ]);
   });

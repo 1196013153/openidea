@@ -10,7 +10,8 @@ import styles from "./ProjectPopup.module.css";
 import { tx } from "@/platform/i18n";
 
 type Entry =
-  { kind: "action"; id: string; label: string; icon: IconName } | { kind: "project"; open: boolean; m: RecentMatch };
+  | { kind: "action"; id: string; label: string; icon: IconName }
+  | { kind: "project"; open: boolean; m: RecentMatch };
 
 const ACTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "file.openProject", label: "Open…", icon: "folder" },

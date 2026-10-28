@@ -282,10 +282,15 @@ export function Tabs({
                 dnd
                   ? (e) => {
                       if ((e.target as Element).closest("[data-tab-close]")) return;
-                      startPointerDrag(e, e.currentTarget, { type: dnd.type, payload: dnd.payload(item.id) }, {
-                        onStart: () => setDragging(item.id),
-                        onEnd: () => setDragging(null),
-                      });
+                      startPointerDrag(
+                        e,
+                        e.currentTarget,
+                        { type: dnd.type, payload: dnd.payload(item.id) },
+                        {
+                          onStart: () => setDragging(item.id),
+                          onEnd: () => setDragging(null),
+                        },
+                      );
                     }
                   : undefined
               }

@@ -78,10 +78,15 @@ export function needsPreview(s: WorkspaceEditSummary): boolean {
 function lineDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
   const n = a.length;
   const m = b.length;
-  if (n * m > 250_000) return [...a.map((text) => ({ kind: "removed" as const, text })), ...b.map((text) => ({ kind: "added" as const, text }))];
+  if (n * m > 250_000)
+    return [
+      ...a.map((text) => ({ kind: "removed" as const, text })),
+      ...b.map((text) => ({ kind: "added" as const, text })),
+    ];
   const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--) lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    for (let j = m - 1; j >= 0; j--)
+      lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
   const out: DiffLine[] = [];
   let i = 0;
   let j = 0;

@@ -23,7 +23,10 @@ function plural(n: number, word: string) {
 }
 
 /** Message for the reload result (IDEA wording). */
-export function hotSwapMessage(changed: number, errors: string[]): { level: "info" | "error"; title: string; body?: string } {
+export function hotSwapMessage(
+  changed: number,
+  errors: string[],
+): { level: "info" | "error"; title: string; body?: string } {
   if (errors.length) return { level: "error", title: "Hot Swap failed", body: errors.join("\n") };
   if (changed === 0) return { level: "info", title: "Loaded classes are up to date. Nothing to reload." };
   return { level: "info", title: tx`${plural(changed, "class")} reloaded` };

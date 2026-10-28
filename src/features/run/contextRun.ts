@@ -75,7 +75,13 @@ export async function produceResolved(input: ContextInput, dir = false): Promise
 
 function reportMissing(p: Produced) {
   if (!p.missing) return;
-  notifications().notify({ group: "run", level: "warning", title: p.missing.title, body: p.missing.body, key: "run-context-missing" });
+  notifications().notify({
+    group: "run",
+    level: "warning",
+    title: p.missing.title,
+    body: p.missing.body,
+    key: "run-context-missing",
+  });
 }
 
 /** Builds with `build` in the Run window; resolves whether it succeeded. */
@@ -86,8 +92,8 @@ async function buildFirst(build: RunConfig): Promise<boolean> {
     const check = () => {
       const s = useRun.getState().sessions.find((x) => x.id === session.id);
       if (!s) return true;
-      if (s.status === "failed") return resolve(false), true;
-      if (s.status === "finished") return resolve(s.exitCode === 0), true;
+      if (s.status === "failed") return (resolve(false), true);
+      if (s.status === "finished") return (resolve(s.exitCode === 0), true);
       return false;
     };
     if (check()) return;
@@ -111,7 +117,12 @@ export async function launchProduced(p: Produced, debug: boolean): Promise<void>
   if (remoteDebugBlocked(config)) return;
   if (p.debug) {
     if (!getAction("debug.startConfig")) {
-      notifications().notify({ group: "run", level: "warning", title: "Debugger is not available", key: "run-no-debugger" });
+      notifications().notify({
+        group: "run",
+        level: "warning",
+        title: "Debugger is not available",
+        key: "run-no-debugger",
+      });
       return;
     }
     if (!(await buildFirst(p.debug.build))) return;
@@ -142,7 +153,9 @@ export async function compiledDebugPlan(config: RunConfig): Promise<Produced | n
   if (m[2]) {
     // A test: find the target by name again.
     const lines = (content ?? "").split("\n");
-    const line = lines.findIndex((l) => new RegExp(`\\bfn\\s+${m[2]!.split("::").pop()}\\b|\\bmod\\s+${m[2]}\\b`).test(l));
+    const line = lines.findIndex((l) =>
+      new RegExp(`\\bfn\\s+${m[2]!.split("::").pop()}\\b|\\bmod\\s+${m[2]}\\b`).test(l),
+    );
     return line >= 0 ? produceContext({ ...input, line }, env) : null;
   }
   return produceFile(input, env);
@@ -165,7 +178,9 @@ export async function runContextAction(debug: boolean, arg?: unknown): Promise<b
   const input = target ?? editorInput();
   if (!input) return false;
   const dir = target?.dir ?? false;
-  const choices = dir ? [] : produceContextChoices({ ...input, configs: useRun.getState().configs, goModule: goModulePath }, OPTIMISTIC);
+  const choices = dir
+    ? []
+    : produceContextChoices({ ...input, configs: useRun.getState().configs, goModule: goModulePath }, OPTIMISTIC);
   if (choices.length > 1) {
     // Several test configurations match equally well: like IDEA, let the user choose.
     showContextMenu(chooserPoint(target === null), choiceItems(choices, debug));
@@ -181,15 +196,13 @@ export async function runContextAction(debug: boolean, arg?: unknown): Promise<b
 export function choiceItems(choices: readonly Produced[], debug: boolean): MenuItem[] {
   return [
     { kind: "header", label: debug ? "Choose configuration to debug" : "Choose configuration to run" },
-    ...choices.map(
-      (p): MenuItem => ({
-        label: debug ? tx`Debug '${p.name}'` : tx`Run '${p.name}'`,
-        verbatim: true,
-        icon: debug ? "debug" : "run",
-        shortcut: p.detail,
-        run: () => void launchProduced(p, debug),
-      }),
-    ),
+    ...choices.map((p): MenuItem => ({
+      label: debug ? tx`Debug '${p.name}'` : tx`Run '${p.name}'`,
+      verbatim: true,
+      icon: debug ? "debug" : "run",
+      shortcut: p.detail,
+      run: () => void launchProduced(p, debug),
+    })),
   ];
 }
 
@@ -222,7 +235,13 @@ export function executorItems(config: RunConfig | null | undefined, name: string
   if (!config) return [];
   return runExecutors()
     .filter((e) => e.supports(config))
-    .map((e) => ({ kind: "action", action: "run.withExecutor", arg: { executor: e.id, context }, label: e.label(name), icon: e.icon }));
+    .map((e) => ({
+      kind: "action",
+      action: "run.withExecutor",
+      arg: { executor: e.id, context },
+      label: e.label(name),
+      icon: e.icon,
+    }));
 }
 
 export interface ContextArg {
@@ -322,7 +341,9 @@ export function contextMenuItems(menu: ContextMenuId, ctx: MenuGroupContext): Me
     { kind: "action", action: "run.runContext", arg, label: tx`Run '${p.name}'`, icon: "run" },
     // Like IDEA, Debug only where a debugger can run it.
     ...(p.debug || p.config?.debugAdapter || p.missing
-      ? ([{ kind: "action", action: "run.debugContext", arg, label: tx`Debug '${p.name}'`, icon: "debug" }] as MenuItem[])
+      ? ([
+          { kind: "action", action: "run.debugContext", arg, label: tx`Debug '${p.name}'`, icon: "debug" },
+        ] as MenuItem[])
       : []),
     {
       label: "More Run/Debug",

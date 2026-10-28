@@ -55,7 +55,17 @@ async function readLines(path: string): Promise<string[] | null> {
   }
 }
 
-function FileGroup({ file, root, included, onToggle }: { file: EditFile; root: string; included: boolean; onToggle: (on: boolean) => void }) {
+function FileGroup({
+  file,
+  root,
+  included,
+  onToggle,
+}: {
+  file: EditFile;
+  root: string;
+  included: boolean;
+  onToggle: (on: boolean) => void;
+}) {
   const [lines, setLines] = useState<string[] | null>(null);
   useEffect(() => {
     let live = true;
@@ -64,7 +74,9 @@ function FileGroup({ file, root, included, onToggle }: { file: EditFile; root: s
       live = false;
     };
   }, [file.path]);
-  const sorted = [...file.edits].sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.col - b.range.start.col);
+  const sorted = [...file.edits].sort(
+    (a, b) => a.range.start.line - b.range.start.line || a.range.start.col - b.range.start.col,
+  );
   return (
     <li className={styles.previewFile}>
       <div className={styles.previewFileRow}>
