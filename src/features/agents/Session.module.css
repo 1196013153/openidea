@@ -118,7 +118,7 @@
   outline: none;
 }
 
-/* A message with its actions, shown on hover. */
+/* Your message with its actions, shown on hover. */
 .message {
   position: relative;
 }
@@ -137,19 +137,6 @@
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
-}
-/* Over the bottom-right corner of an agent message (code blocks keep the top one), taking no room of its own. */
-.floatingActions {
-  position: absolute;
-  z-index: 1;
-  bottom: -14px;
-  right: 0;
-  margin: 0;
-  padding: 1px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  background: var(--bg-popup);
-  box-shadow: var(--shadow-tooltip);
 }
 .message:hover .messageActions,
 .messageActions:focus-within {

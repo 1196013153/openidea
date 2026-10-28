@@ -368,14 +368,7 @@ function Entry({ task, entry }: { task: AgentTask; entry: AgentEntry }) {
     case "user":
       return <UserMessage task={task} entry={entry} />;
     case "agent":
-      return (
-        <div className={styles.message}>
-          <Markdown text={entry.text} cwd={task.cwd} />
-          <div className={clsx(styles.messageActions, styles.floatingActions)}>
-            <IconButton icon="copy" title="Copy" size="small" onClick={() => void copyText(entry.text)} />
-          </div>
-        </div>
-      );
+      return <Markdown text={entry.text} cwd={task.cwd} />;
     case "thought":
       return (
         <details className={styles.thought}>
