@@ -105,8 +105,35 @@ fn split_script_args(args: &[String]) -> ScriptArgs {
     out
 }
 
-/// The JVM command line `bin/jdtls` builds: its system properties and module
-/// options, the user's `--jvm-arg`s, then the Equinox launcher with `-data`.
+/// Memory and GC options added unless the user's JVM arguments set their own,
+/// VS Code's Java extension defaults (`java.jdt.ls.vmargs`) instead of the script's
+/// `-Xms1G` and the JVM's default heap limit (a quarter of physical memory).
+/// The parallel collector with this throughput goal shrinks the heap and gives
+/// unused memory back to the OS; its tuning flags only apply to it, so a GC of
+/// the user's choice drops the whole group. `-Xlog:disable` keeps JVM warnings
+/// off stdout, which carries the LSP stream.
+pub fn default_jvm_args(user_jvm: &[String]) -> Vec<String> {
+    let user_sets = |prefixes: &[&str]| user_jvm.iter().any(|a| prefixes.iter().any(|p| a.starts_with(p)));
+    let user_gc = user_jvm.iter().any(|a| a.starts_with("-XX:+Use") && a.ends_with("GC"));
+    let mut args: Vec<&str> = Vec::new();
+    if !user_gc {
+        args.extend(["-XX:+UseParallelGC", "-XX:GCTimeRatio=4", "-XX:AdaptiveSizePolicyWeight=90"]);
+    }
+    args.push("-Dsun.zip.disableMemoryMapping=true");
+    // `-Xmx` wins over the RAM percentages whatever the order, so those count too.
+    if !user_sets(&["-Xmx", "-XX:MaxHeapSize=", "-XX:MaxRAMPercentage=", "-XX:MaxRAM="]) {
+        args.push("-Xmx2G");
+    }
+    if !user_sets(&["-Xms", "-XX:InitialHeapSize=", "-XX:InitialRAMPercentage="]) {
+        args.push("-Xms100m");
+    }
+    args.push("-Xlog:disable");
+    args.into_iter().map(String::from).collect()
+}
+
+/// The JVM command line `bin/jdtls` builds: its system properties, the memory
+/// and GC [defaults](default_jvm_args), its module options, the user's
+/// `--jvm-arg`s (last, so they win), then the Equinox launcher with `-data`.
 pub fn java_args(install: &JdtlsInstall, java_major: u32, script_args: &[String]) -> Vec<String> {
     let parsed = split_script_args(script_args);
     let mut args: Vec<String> = Vec::new();
@@ -124,10 +151,11 @@ pub fn java_args(install: &JdtlsInstall, java_major: u32, script_args: &[String]
     );
     args.push(format!("-Dosgi.sharedConfiguration.area={}", install.config.to_string_lossy()));
     args.extend(
+        ["-Dosgi.sharedConfiguration.area.readOnly=true", "-Dosgi.configuration.cascaded=true"].map(String::from),
+    );
+    args.extend(default_jvm_args(&parsed.jvm));
+    args.extend(
         [
-            "-Dosgi.sharedConfiguration.area.readOnly=true",
-            "-Dosgi.configuration.cascaded=true",
-            "-Xms1G",
             "--add-modules=ALL-SYSTEM",
             "--add-opens",
             "java.base/java.util=ALL-UNNAMED",
@@ -222,7 +250,12 @@ mod tests {
                 &format!(r"-Dosgi.sharedConfiguration.area={tools}\config_win"),
                 "-Dosgi.sharedConfiguration.area.readOnly=true",
                 "-Dosgi.configuration.cascaded=true",
-                "-Xms1G",
+                "-XX:+UseParallelGC",
+                "-XX:GCTimeRatio=4",
+                "-XX:AdaptiveSizePolicyWeight=90",
+                "-Dsun.zip.disableMemoryMapping=true",
+                "-Xms100m",
+                "-Xlog:disable",
                 "--add-modules=ALL-SYSTEM",
                 "--add-opens",
                 "java.base/java.util=ALL-UNNAMED",
@@ -267,6 +300,59 @@ mod tests {
             ])
         );
         assert!(!args.iter().any(|a| a.contains("validate-java-version")));
+    }
+
+    #[test]
+    fn default_memory_and_gc_options() {
+        assert_eq!(
+            default_jvm_args(&[]),
+            strings(&[
+                "-XX:+UseParallelGC",
+                "-XX:GCTimeRatio=4",
+                "-XX:AdaptiveSizePolicyWeight=90",
+                "-Dsun.zip.disableMemoryMapping=true",
+                "-Xmx2G",
+                "-Xms100m",
+                "-Xlog:disable",
+            ])
+        );
+        // Unrelated user options keep every default.
+        assert_eq!(default_jvm_args(&strings(&["-javaagent:/l.jar", "-Dlog.level=ALL"])), default_jvm_args(&[]));
+    }
+
+    #[test]
+    fn user_memory_and_gc_options_replace_the_defaults() {
+        let own_max = default_jvm_args(&strings(&["-Xmx4g"]));
+        assert!(!own_max.iter().any(|a| a.starts_with("-Xmx")));
+        assert!(own_max.contains(&"-Xms100m".to_owned()) && own_max.contains(&"-XX:+UseParallelGC".to_owned()));
+        let percentage = default_jvm_args(&strings(&["-XX:MaxRAMPercentage=10"]));
+        assert!(!percentage.iter().any(|a| a.starts_with("-Xmx")));
+
+        let own_min = default_jvm_args(&strings(&["-Xms512m"]));
+        assert!(!own_min.iter().any(|a| a.starts_with("-Xms")));
+        assert!(own_min.contains(&"-Xmx2G".to_owned()));
+
+        let g1 = default_jvm_args(&strings(&["-XX:+UseG1GC"]));
+        assert_eq!(
+            g1,
+            strings(&["-Dsun.zip.disableMemoryMapping=true", "-Xmx2G", "-Xms100m", "-Xlog:disable"]),
+            "the parallel collector's tuning is dropped with it"
+        );
+        assert!(!default_jvm_args(&strings(&["-XX:+UseZGC"])).iter().any(|a| a.starts_with("-XX:")));
+    }
+
+    #[test]
+    fn defaults_come_after_system_properties_and_before_the_users_options() {
+        let install =
+            JdtlsInstall { launcher: PathBuf::from("/j/plugins/launcher.jar"), config: PathBuf::from("/j/config_mac") };
+        let args = java_args(&install, 25, &strings(&["--jvm-arg=-Xmx4g", "--jvm-arg=-XX:+UseG1GC", "-data", "/d"]));
+        let at = |a: &str| args.iter().position(|x| x == a).unwrap_or_else(|| panic!("{a} missing"));
+        assert!(at("-Dosgi.configuration.cascaded=true") < at("-Dsun.zip.disableMemoryMapping=true"));
+        assert!(at("-Xlog:disable") < at("--add-modules=ALL-SYSTEM"));
+        assert!(at("--add-modules=ALL-SYSTEM") < at("-Xmx4g"));
+        assert!(at("-Xmx4g") < at("-XX:+UseG1GC") && at("-XX:+UseG1GC") < at("-jar"));
+        assert!(!args.iter().any(|a| a == "-Xmx2G" || a == "-XX:+UseParallelGC" || a == "-Xms1G"));
+        assert!(args.contains(&"-Xms100m".to_owned()));
     }
 
     #[test]
