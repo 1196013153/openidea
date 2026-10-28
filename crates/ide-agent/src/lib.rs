@@ -950,6 +950,11 @@ impl Task {
             self.mark_dirty(changed);
         }
         self.push_entry(AgentEntry::Error { message: failure.message.clone() });
+        // The next message starts the agent again (loading the session): what failed may
+        // be fixed outside it meanwhile (signed in, updated, another model chosen).
+        if !gone && let Some(live) = self.live.lock().take() {
+            live.peer.kill();
+        }
         match failure.limit {
             Some(resets) => {
                 self.state.lock().task.resets_ms = resets;

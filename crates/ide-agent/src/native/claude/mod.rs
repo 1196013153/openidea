@@ -58,7 +58,7 @@ pub(crate) fn connect(
     on_stderr: Box<dyn Fn(String) + Send + Sync>,
 ) -> std::io::Result<Peer> {
     let config = Config {
-        program: spec.command.clone(),
+        program: super::newest_install(&spec.command),
         args: spec.args.clone(),
         env: spec.env.clone(),
         config_dir: cli::config_dir(&spec.env),

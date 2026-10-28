@@ -1,21 +1,24 @@
 //! End-to-end task flow against an in-memory ACP agent.
 
 use super::*;
-use std::sync::OnceLock;
 use tokio::io::duplex;
 
 /// Says "Hi", edits a file, asks to run a command and reports what it was allowed.
 #[derive(Default)]
 struct FakeAgent {
-    peer: OnceLock<Peer>,
     /// Every connection's agent side, kept open.
     servers: Mutex<Vec<Peer>>,
     calls: Mutex<Vec<String>>,
 }
 
 impl FakeAgent {
+    /// The connection opened last: the agent restarted, or a fork's.
+    fn latest(&self) -> Peer {
+        self.servers.lock().last().cloned().expect("a connection")
+    }
+
     fn update(&self, session: &str, update: Value) {
-        let peer = self.peer.get().unwrap();
+        let peer = self.latest();
         peer.notify("session/update", json!({ "sessionId": session, "update": update })).unwrap();
     }
 
@@ -45,7 +48,7 @@ impl FakeAgent {
             json!({"sessionUpdate": "tool_call", "toolCallId": "c1-t1", "title": "Read lexer.rs",
             "kind": "read", "status": "completed"}),
         );
-        let peer = self.peer.get().unwrap().clone();
+        let peer = self.latest();
         let _: Value = tokio::runtime::Handle::current()
             .block_on(peer.request(
                 "session/request_permission",
@@ -151,7 +154,7 @@ impl Handler for FakeAgent {
                     "kind": "edit", "status": "completed",
                     "content": [{"type": "diff", "path": "/p/a.rs", "oldText": "a\n", "newText": "b\n"}]}),
                 );
-                let peer = self.peer.get().unwrap().clone();
+                let peer = self.latest();
                 let answer: Value = tokio::runtime::Handle::current()
                     .block_on(peer.request(
                         "session/request_permission",
@@ -180,8 +183,6 @@ fn manager_at(dir: &Path, models_file: &Path, agent: Arc<FakeAgent>) -> AgentMan
         let (ar, aw) = tokio::io::split(a);
         let (br, bw) = tokio::io::split(b);
         let server = Peer::connect_framed(br, bw, agent.clone(), Framing::Lines);
-        // Updates go to the first connection; later ones (a fork's) stay open.
-        let _ = agent.peer.set(server.clone());
         agent.servers.lock().push(server);
         Ok(Peer::connect_framed(ar, aw, client, Framing::Lines))
     });
