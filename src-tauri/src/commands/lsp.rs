@@ -313,8 +313,7 @@ pub fn lsp_servers(window: Window, state: State<'_, AppState>) -> IdeResult<Vec<
 #[tauri::command]
 #[specta::specta]
 pub fn lsp_resend_diagnostics(window: Window, state: State<'_, AppState>) -> IdeResult<()> {
-    project!(window, state).lsp.resend_diagnostics();
-    Ok(())
+    ide_host::ops::lsp::lsp_resend_diagnostics(&state.host, window.label())
 }
 
 #[tauri::command]

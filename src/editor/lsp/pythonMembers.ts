@@ -14,12 +14,13 @@ import { readFileLines } from "./files";
 import { showHint } from "./hint";
 
 const CLASS_HEADER = /^(\s*)class\s+\w+\s*\((.*)\)\s*:/;
+const CLASS = /^\s*class\s/;
 const DEF = /^\s*(?:async\s+)?def\s+(\w+)/;
 
 const indentOf = (line: string) => line.length - line.trimStart().length;
 const isPython = (view: EditorView) => docOf(view)?.uiMode === "Python";
 
-/** 1-based number of the class header line enclosing `line` (or on it), with bases. */
+/** 1-based number of the class header line enclosing `line` (or on it); null unless it has bases. */
 export function enclosingClass(lines: readonly string[], line: number): number | null {
   let limit = Infinity;
   for (let n = line; n >= 1; n--) {
@@ -27,7 +28,7 @@ export function enclosingClass(lines: readonly string[], line: number): number |
     if (!text.trim()) continue;
     const indent = indentOf(text);
     if (n !== line && indent >= limit) continue;
-    if (CLASS_HEADER.test(text)) return n;
+    if (CLASS.test(text)) return CLASS_HEADER.test(text) ? n : null;
     limit = Math.min(limit, indent);
     if (indent === 0 && n !== line) return null;
   }
@@ -38,8 +39,19 @@ export function enclosingClass(lines: readonly string[], line: number): number |
 function bodyEnd(lines: readonly string[], header: number): number {
   const indent = indentOf(lines[header - 1]!);
   let last = header;
+  let quote: string | null = null;
   for (let n = header + 1; n <= lines.length; n++) {
     const text = lines[n - 1]!;
+    // Lines inside a triple-quoted string belong to it, however indented.
+    const inString = quote !== null;
+    for (const q of text.match(/"""|'''/g) ?? []) {
+      if (quote === null) quote = q;
+      else if (q === quote) quote = null;
+    }
+    if (inString) {
+      last = n;
+      continue;
+    }
     if (!text.trim()) continue;
     if (indentOf(text) <= indent) break;
     last = n;
@@ -88,7 +100,12 @@ export function classMembers(lines: readonly string[], header: number): PythonMe
       out.push({
         name: def[1]!,
         abstract,
-        lines: [...decorators.filter((d) => !/^@(abc\.)?abstractmethod\b/.test(d)), ...sig],
+        lines: [
+          ...decorators
+            .filter((d) => !/^@(abc\.)?abstractmethod\b/.test(d))
+            .map((d) => d.replace(/^@(abc\.)?abstractproperty\b/, "@property")),
+          ...sig,
+        ],
       });
     }
     decorators = [];

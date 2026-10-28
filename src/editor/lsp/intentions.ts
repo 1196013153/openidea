@@ -7,6 +7,7 @@ import { StateEffect, StateField, type Extension, type Text } from "@codemirror/
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { forEachDiagnostic } from "@codemirror/lint";
 import { indentUnit } from "@codemirror/language";
+import { diff } from "@codemirror/merge";
 import { commands, isCancelled, type CodeAction } from "@/platform/ipc";
 import { contributedIntentions, intentionProviders, whenSynced } from "@/editor/api";
 import { shortcutLabel } from "@/platform/keymap";
@@ -153,14 +154,16 @@ export async function applyCodeAction(view: EditorView, action: CodeAction) {
  */
 async function reformatGenerated(view: EditorView, before: Text) {
   for (let i = 0; i < 100 && view.state.doc === before; i++) await new Promise((r) => setTimeout(r, 20));
-  const after = view.state.doc;
-  const lines = changedLines(before, after);
-  if (!lines || lines.to - lines.from < 1) return;
-  const shift = indentUnderBrace(after, lines.from, lines.to, view.state.facet(indentUnit));
-  // A server that generated code without its context formats ranges the same
-  // way (back to column 0): its range formatting is skipped then.
-  if (shift.length) view.dispatch({ changes: shift, userEvent: "format", scrollIntoView: false });
-  else await formatLines(view, after.line(lines.from).from, after.line(lines.to).to);
+  // Bottom up, so the line numbers of the hunks above stay valid.
+  for (const lines of changedLines(before, view.state.doc).reverse()) {
+    if (lines.to - lines.from < 1) continue;
+    const doc = view.state.doc;
+    const shift = indentUnderBrace(doc, lines.from, lines.to, view.state.facet(indentUnit));
+    // A server that generated code without its context formats ranges the same
+    // way (back to column 0): its range formatting is skipped then.
+    if (shift.length) view.dispatch({ changes: shift, userEvent: "format", scrollIntoView: false });
+    else if (!(await formatLines(view, doc.line(lines.from).from, doc.line(lines.to).to)) && view.state.doc !== doc) return;
+  }
 }
 
 /**
@@ -187,20 +190,28 @@ export function indentUnderBrace(doc: Text, fromLine: number, toLine: number, un
   return out;
 }
 
-/** 1-based lines of `after` that differ from `before` (common head and tail lines excluded); null if equal. */
-export function changedLines(before: Text, after: Text): { from: number; to: number } | null {
-  if (before.eq(after)) return null;
-  let head = 0;
-  while (head < before.lines && head < after.lines && before.line(head + 1).text === after.line(head + 1).text) head++;
-  let tail = 0;
-  while (
-    tail < before.lines - head &&
-    tail < after.lines - head &&
-    before.line(before.lines - tail).text === after.line(after.lines - tail).text
-  )
-    tail++;
-  const from = Math.min(head + 1, after.lines);
-  return { from, to: Math.max(from, after.lines - tail) };
+/**
+ * 1-based line spans of `after` that an edit changed, top to bottom: an added
+ * import and the code using it are separate spans, so the user's code between
+ * them is left alone.
+ */
+export function changedLines(before: Text, after: Text): Array<{ from: number; to: number }> {
+  if (before.eq(after)) return [];
+  const spans: Array<{ from: number; to: number }> = [];
+  const a = before.toString();
+  const b = after.toString();
+  for (const c of diff(a, b)) {
+    // Text inserted at a line's end or start (`{⏎ added`, `added⏎`) leaves that line as it was.
+    const lead = b[c.fromB] === "\n" && (c.toA === c.fromA || a[c.fromA] === "\n");
+    const trail = c.toB > c.fromB && b[c.toB - 1] === "\n" && (c.toA === c.fromA || a[c.toA - 1] === "\n");
+    const from = after.lineAt(lead ? c.fromB + 1 : c.fromB).number;
+    const end = trail ? c.toB - 1 : c.toB;
+    const to = Math.max(from, after.lineAt(end).number);
+    const last = spans[spans.length - 1];
+    if (last && from <= last.to + 1) last.to = Math.max(last.to, to);
+    else spans.push({ from, to });
+  }
+  return spans;
 }
 
 /**

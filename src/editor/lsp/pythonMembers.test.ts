@@ -43,6 +43,28 @@ describe("python members", () => {
     expect(members[1]!.lines).toEqual(["def area(", "    self, scale: float = 1.0", ") -> float:"]);
   });
 
+  it("stops at a nested class without bases", () => {
+    const nested = ["class Outer(Base):", "    class Inner:", "        x = 1", ""];
+    expect(enclosingClass(nested, 3)).toBeNull();
+  });
+
+  it("keeps a body going through an unindented string", () => {
+    const lines = [
+      "class A(ABC):",
+      "    @abc.abstractproperty",
+      "    def doc(self):",
+      '        return """',
+      "text",
+      '"""',
+      "    @abstractmethod",
+      "    def run(self): ...",
+      "x = 1",
+    ];
+    const members = classMembers(lines, 1);
+    expect(members.map((m) => m.lines)).toEqual([["@property", "def doc(self):"], ["def run(self):"]]);
+    expect(members.every((m) => m.abstract)).toBe(true);
+  });
+
   it("writes stubs at the body's indentation", () => {
     const [name] = classMembers(src, 4);
     expect(memberStubs([name!], "    ", "    ")).toBe("    @property\n    def name(self) -> str:\n        pass");

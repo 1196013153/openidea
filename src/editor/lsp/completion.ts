@@ -418,7 +418,10 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
   });
   let list;
   try {
-    list = await lspRequest(() => commands.lspCompletion(id, doc.doc, offsetToPos(ctx.state.doc, ctx.pos), trigger));
+    list = await lspRequest(
+      () => commands.lspCompletion(id, doc.doc, offsetToPos(ctx.state.doc, ctx.pos), trigger),
+      () => inflight === id,
+    );
   } catch (e) {
     if (isUnavailable(e)) {
       serverBackoff.mark(doc.doc);

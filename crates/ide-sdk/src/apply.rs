@@ -342,6 +342,7 @@ fn custom_server(name: &str, ls: &LanguageServerSettings) -> LanguageServerConfi
         }),
         connect: None,
         fallback: false,
+        max_java: None,
         launch_error: None,
     }
 }

@@ -241,6 +241,11 @@ pub fn lsp_servers(host: &Host, window: &str) -> IdeResult<Vec<ServerInfo>> {
     Ok(host.project(window)?.lsp.servers())
 }
 
+pub fn lsp_resend_diagnostics(host: &Host, window: &str) -> IdeResult<()> {
+    host.project(window)?.lsp.resend_diagnostics();
+    Ok(())
+}
+
 pub async fn lsp_restart(host: &Host, window: &str, server: ServerId) -> IdeResult<()> {
     host.project(window)?.lsp.restart(server).await
 }
@@ -349,6 +354,7 @@ pub(crate) fn register(d: &mut Dispatcher) {
         lsp_type_hierarchy(&c.host, &c.window, c.arg("doc")?, c.arg("pos")?, c.arg("direction")?).await
     });
     d.add("lsp_servers", |c| async move { lsp_servers(&c.host, &c.window) });
+    d.add("lsp_resend_diagnostics", |c| async move { lsp_resend_diagnostics(&c.host, &c.window) });
     d.add("lsp_restart", |c| async move { lsp_restart(&c.host, &c.window, c.arg("server")?).await });
     d.add("apply_workspace_edit", |c| async move { apply_workspace_edit(&c.host, &c.window, c.arg("edit")?) });
     d.add("lsp_execute_command", |c| async move {

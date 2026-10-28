@@ -51,7 +51,10 @@ export async function requestHover(view: EditorView, pos: number): Promise<Hover
   if (hoverRequest !== null && isTauri()) void commands.cancelRequest(hoverRequest);
   const id = (hoverRequest = nextRequestId());
   try {
-    const h = await lspRequest(() => commands.lspHover(id, doc.doc, offsetToPos(view.state.doc, pos)));
+    const h = await lspRequest(
+      () => commands.lspHover(id, doc.doc, offsetToPos(view.state.doc, pos)),
+      () => hoverRequest === id,
+    );
     return h && !isEmptyMarkup(h.contents) ? h : null;
   } finally {
     if (hoverRequest === id) hoverRequest = null;

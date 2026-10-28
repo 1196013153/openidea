@@ -427,27 +427,25 @@ function ChangesPanel() {
                   </span>
                 );
                 // Pointer-driven (HTML5 drag and drop never reaches the Tauri webview):
-                // files and folders drag, changelist rows take them.
+                // files and folders drag; any row takes them into its changelist.
                 const list = n.changelist;
                 const dnd =
                   list === undefined
                     ? {}
-                    : n.type === "group"
-                      ? {
-                          ref: (el: HTMLSpanElement | null) =>
-                            el
-                              ? registerDropTarget(el, {
-                                  accepts: (type) => type === CHANGES_MIME,
-                                  over: () => setDropTarget(list),
-                                  leave: () => setDropTarget(null),
-                                  drop: (data) => {
-                                    setDropTarget(null);
-                                    moveToChangelist(data.payload.split("\n"), list);
-                                  },
-                                })
-                              : undefined,
-                        }
-                      : {
+                    : {
+                        ref: (el: HTMLSpanElement | null) =>
+                          el
+                            ? registerDropTarget(el, {
+                                accepts: (type) => type === CHANGES_MIME,
+                                over: () => setDropTarget(list),
+                                leave: () => setDropTarget(null),
+                                drop: (data) => {
+                                  setDropTarget(null);
+                                  moveToChangelist(data.payload.split("\n"), list);
+                                },
+                              })
+                            : undefined,
+                        ...(n.type !== "group" && {
                           onPointerDown: (e: PointerEvent<HTMLSpanElement>) => {
                             const paths =
                               selected.has(n.key) && selected.size > 1
@@ -458,7 +456,8 @@ function ChangesPanel() {
                               payload: paths.map(stripSlash).join("\n"),
                             });
                           },
-                        };
+                        }),
+                      };
                 return (
                   <span
                     className={clsx(

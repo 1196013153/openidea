@@ -49,23 +49,36 @@ export function onLspRefresh(kind: LspRefreshKind, fn: () => void): () => void {
 /** A busy spell at least this long is indexing / a build, not the server answering a request. */
 const LONG_BUSY_MS = 1500;
 
+/** A busy spell starting this soon after `fn` ran may be `fn`'s own requests. */
+const ECHO_MS = 2000;
+
 /**
  * Calls `fn` when a server becomes ready after starting or after a long busy
  * spell (indexing), when earlier answers may have been incomplete. Short busy
  * spells are ignored: jdtls reports progress for the very requests a caller
- * sends, and re-asking on each of them would never stop.
+ * sends, and re-asking on each of them would never stop. For the same reason
+ * a long spell that began right after `fn` ran (slow requests `fn` sent, or
+ * indexing right after start) re-runs it only once in a row.
  */
 export function onServerSettled(fn: () => void): () => void {
   if (!isTauri()) return () => {};
   const since = new Map<number, number>();
+  const fired = new Map<number, { at: number; echoed: boolean }>();
   return onIdeEvent("languageServer", (e) => {
-    if (e.status === "starting") since.set(e.server, -Infinity);
-    else if (e.status === "busy") {
+    if (e.status === "starting") {
+      since.set(e.server, -Infinity);
+      fired.delete(e.server);
+    } else if (e.status === "busy") {
       if (!since.has(e.server)) since.set(e.server, Date.now());
     } else if (e.status === "ready") {
       const t = since.get(e.server);
       since.delete(e.server);
-      if (t !== undefined && Date.now() - t >= LONG_BUSY_MS) fn();
+      if (t === undefined || Date.now() - t < LONG_BUSY_MS) return;
+      const last = fired.get(e.server);
+      const echo = !!last && t - last.at < ECHO_MS;
+      if (echo && last.echoed) return;
+      fired.set(e.server, { at: Date.now(), echoed: echo });
+      fn();
     } else since.delete(e.server);
   });
 }

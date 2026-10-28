@@ -163,8 +163,9 @@ export async function requestInline(view: EditorView, automatic: boolean): Promi
   const id = (inflight = nextRequestId());
   const caret = sel.main.head;
   try {
-    const items = await lspRequest(() =>
-      commands.lspInlineCompletion(id, doc.doc, offsetToPos(state.doc, caret), automatic),
+    const items = await lspRequest(
+      () => commands.lspInlineCompletion(id, doc.doc, offsetToPos(state.doc, caret), automatic),
+      () => inflight === id,
     );
     if (view.state.doc !== state.doc || !view.state.selection.eq(sel)) return false;
     const suggestions = toSuggestions(view.state, caret, items);

@@ -129,10 +129,18 @@ describe("listedCodeActions", () => {
 describe("changedLines", () => {
   const text = (s: string) => EditorState.create({ doc: s }).doc;
   it("spans the lines an edit inserted", () => {
-    expect(changedLines(text("class A {\n}\n"), text("class A {\n  f() {\n  }\n}\n"))).toEqual({ from: 2, to: 3 });
+    expect(changedLines(text("class A {\n}\n"), text("class A {\n  f() {\n  }\n}\n"))).toEqual([{ from: 2, to: 3 }]);
   });
-  it("is null for equal texts", () => {
-    expect(changedLines(text("a\nb"), text("a\nb"))).toBeNull();
+  it("keeps separate edits apart", () => {
+    const before = text("package p;\n\nclass A {\n  int a;\n  int b;\n  void f() {\n  }\n}\n");
+    const after = text("package p;\n\nimport java.util.List;\n\nclass A {\n  int a;\n  int b;\n  void f() {\n    List<String> x = null;\n    x.size();\n  }\n}\n");
+    expect(changedLines(before, after)).toEqual([
+      { from: 3, to: 4 },
+      { from: 9, to: 10 },
+    ]);
+  });
+  it("is empty for equal texts", () => {
+    expect(changedLines(text("a\nb"), text("a\nb"))).toEqual([]);
   });
 });
 

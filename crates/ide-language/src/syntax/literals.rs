@@ -80,18 +80,8 @@ fn is_name_leaf(kind: &str) -> bool {
 }
 
 /// Node kinds whose `name` field is a use, not a declaration.
-const USE_PARENTS: &[&str] = &[
-    "invocation",
-    "call",
-    "access",
-    "scoped",
-    "reference",
-    "expression",
-    "selector",
-    "qualified",
-    "use_",
-    "import",
-];
+const USE_PARENTS: &[&str] =
+    &["invocation", "call", "access", "scoped", "reference", "expression", "selector", "qualified", "use_", "import"];
 
 /// Whether the identifier leaf under `cursor` is the name a declaration
 /// introduces (`fn name`, `let pattern`, `int *declarator`, parameters,

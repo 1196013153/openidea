@@ -20,12 +20,15 @@ type Result<T> = { status: "ok"; data: T } | { status: "error"; error: IdeError 
 /**
  * Runs an LSP command. Synchronous throws (no Tauri runtime in a plain browser)
  * become `unavailable` rejections so callers have a single error path.
+ * `wanted` is checked once pending edits are synced: a request cancelled
+ * meanwhile is not sent (the backend ignores cancelling an id it hasn't seen).
  */
-export async function lspRequest<T>(run: () => Promise<Result<T>>): Promise<T> {
+export async function lspRequest<T>(run: () => Promise<Result<T>>, wanted?: () => boolean): Promise<T> {
   if (!isTauri()) throw new IpcError({ kind: "unavailable", message: "No language server available" });
   try {
     // Edits typed just before (⌘B right after typing) must reach the server first.
     await whenAllSynced();
+    if (wanted && !wanted()) throw new IpcError({ kind: "cancelled", message: "Cancelled" });
     return await call(run());
   } catch (e) {
     if (e instanceof IpcError) throw e;
