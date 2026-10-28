@@ -39,6 +39,7 @@ import {
   subagentStatusLabel,
   subagentTitle,
   subagentWorking,
+  turnNumbers,
   type SubagentEntry,
 } from "./model";
 import {
@@ -49,6 +50,8 @@ import {
   refreshChanges,
   editMessage,
   editQueued,
+  forkTask,
+  rewindTask,
   quoteInComposer,
   removeQueued,
   resendMessage,
@@ -189,6 +192,7 @@ function Header({ task, entries, head }: { task: AgentTask; entries: AgentEntry[
           )}
           {" · "}
           <T>{statusLabel(task.status)}</T>
+          {task.status === "limited" && task.resetsMs != null && ` · ${tx`resets ${formatSentAt(task.resetsMs)}`}`}
         </span>
       </span>
       <Meters task={task} entries={entries} />
@@ -199,6 +203,18 @@ function Header({ task, entries, head }: { task: AgentTask; entries: AgentEntry[
         size="small"
         onClick={() => void executeAction("terminal.openAt", task.cwd)}
       />
+      {!busy && task.status !== "archived" && task.capabilities?.fork && (
+        <IconButton
+          icon="branch"
+          title="Copy to a New Task"
+          size="small"
+          onClick={() =>
+            void forkTask(task.id, null).catch((e: unknown) =>
+              notifications().notify({ level: "error", title: "Couldn't copy the task", body: String(e) }),
+            )
+          }
+        />
+      )}
       {!busy && task.status !== "archived" && (
         <IconButton icon="close" title="Archive Task" size="small" onClick={() => void archiveTask(task.id)} />
       )}
@@ -316,6 +332,8 @@ function Stream({ task, entries, subagent, onOpenSubagent, finding, findFocus, o
   });
   const waiting = entries?.some((e) => e.type === "permission" && !e.chosen);
   const lastUser = entries?.findLast((e): e is UserEntry => e.type === "user");
+  // Forks and undo apply to the task's own turns, not a subagent's conversation.
+  const turns = useMemo(() => (entries && !subagent ? turnNumbers(entries) : null), [entries, subagent]);
   return (
     <div className={styles.streamArea}>
       {finding && <FindBar streamRef={ref} focus={findFocus} onClose={onCloseFind} />}
@@ -343,7 +361,16 @@ function Stream({ task, entries, subagent, onOpenSubagent, finding, findFocus, o
         {entries === null ? (
           <Spinner />
         ) : (
-          entries.map((entry, i) => <Entry key={i} task={task} entry={entry} onOpenSubagent={onOpenSubagent} />)
+          entries.map((entry, i) => (
+            <Entry
+              key={i}
+              task={task}
+              entry={entry}
+              turn={turns?.get(i) ?? null}
+              turnCount={turns?.size ?? 0}
+              onOpenSubagent={onOpenSubagent}
+            />
+          ))
         )}
         {subagent && subagentWorking(subagent.status) && (
           <div className={styles.working}>
@@ -551,15 +578,20 @@ const TOOL_ICONS: Record<string, string> = {
 function Entry({
   task,
   entry,
+  turn,
+  turnCount,
   onOpenSubagent,
 }: {
   task: AgentTask;
   entry: AgentEntry;
+  /** Number of the turn this message started (from 0), when it started one. */
+  turn: number | null;
+  turnCount: number;
   onOpenSubagent: (id: string) => void;
 }) {
   switch (entry.type) {
     case "user":
-      return <UserMessage task={task} entry={entry} />;
+      return <UserMessage task={task} entry={entry} turn={turn} turnCount={turnCount} />;
     case "agent":
       return <Markdown text={entry.text} cwd={task.cwd} />;
     case "thought":
@@ -620,11 +652,26 @@ function Entry({
   }
 }
 
-function UserMessage({ task, entry }: { task: AgentTask; entry: UserEntry }) {
+function UserMessage({
+  task,
+  entry,
+  turn,
+  turnCount,
+}: {
+  task: AgentTask;
+  entry: UserEntry;
+  turn: number | null;
+  turnCount: number;
+}) {
   const tx = useTx();
   const fail = (e: unknown) =>
     notifications().notify({ level: "error", title: "Couldn't send the message", body: String(e) });
+  const failed = (title: string) => (e: unknown) => notifications().notify({ level: "error", title, body: String(e) });
   const archived = task.status === "archived";
+  const idle = !archived && !isBusy(task.status) && turn !== null;
+  const { fork = false, rollback = false } = task.capabilities ?? {};
+  // A copy up to an earlier turn drops the later ones from the copied session.
+  const canFork = idle && fork && (rollback || turn === turnCount - 1);
   return (
     <div className={styles.message}>
       <div className={styles.user}>
@@ -667,6 +714,22 @@ function UserMessage({ task, entry }: { task: AgentTask; entry: UserEntry }) {
               title="Send Again"
               size="small"
               onClick={() => void resendMessage(task.id, entry.text).catch(fail)}
+            />
+          )}
+          {canFork && (
+            <IconButton
+              icon="branch"
+              title="Copy to a New Task From Here"
+              size="small"
+              onClick={() => void forkTask(task.id, turn + 1).catch(failed("Couldn't copy the task"))}
+            />
+          )}
+          {idle && rollback && (
+            <IconButton
+              icon="undo"
+              title="Undo From Here"
+              size="small"
+              onClick={() => void rewindTask(task.id, turn).catch(failed("Couldn't undo the turns"))}
             />
           )}
         </span>

@@ -11,7 +11,12 @@ import styles from "./Agents.module.css";
 import { tx } from "@/platform/i18n";
 
 export function AgentsHeaderActions() {
-  return <IconButton icon="plus" action="agents.newTask" size="small" />;
+  return (
+    <>
+      <IconButton icon="plus" action="agents.newTask" size="small" />
+      <IconButton icon="plugin" action="agents.addAgent" size="small" />
+    </>
+  );
 }
 
 type Node = { kind: "group"; group: TaskGroup } | { kind: "task"; task: AgentTask };
@@ -32,6 +37,8 @@ export function TaskStatusIcon({ status }: { status: Status }) {
       return <Icon name="check" size={13} className={styles.ready} label="Ready" />;
     case "failed":
       return <Icon name="close" size={13} className={styles.failed} label="Failed" />;
+    case "limited":
+      return <Icon name="clock" size={13} className={styles.failed} label="Usage limit" />;
     case "archived":
       return <Icon name="minus" size={13} className={styles.archived} label="Archived" />;
   }

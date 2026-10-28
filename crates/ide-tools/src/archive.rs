@@ -11,6 +11,7 @@ pub enum ArchiveKind {
     Zip,
     TarGz,
     TarXz,
+    TarBz2,
     /// A single gzip-compressed executable.
     Gz,
     /// The download is the executable itself.
@@ -26,6 +27,8 @@ impl ArchiveKind {
             Self::TarGz
         } else if n.ends_with(".tar.xz") || n.ends_with(".txz") {
             Self::TarXz
+        } else if n.ends_with(".tar.bz2") || n.ends_with(".tbz2") {
+            Self::TarBz2
         } else if n.ends_with(".gz") {
             Self::Gz
         } else {
@@ -48,7 +51,8 @@ pub fn extract(archive: &Path, kind: ArchiveKind, dest: &Path, single_name: &str
             let gz = flate2::read::GzDecoder::new(BufReader::new(File::open(archive)?));
             extract_tar(tar::Archive::new(gz), dest)
         }
-        ArchiveKind::TarXz => extract_tar_xz(archive, dest),
+        ArchiveKind::TarXz => extract_with_tar(archive, dest, "-xJf"),
+        ArchiveKind::TarBz2 => extract_with_tar(archive, dest, "-xjf"),
         ArchiveKind::Gz => {
             let mut gz = flate2::read::GzDecoder::new(BufReader::new(File::open(archive)?));
             let target = dest.join(single_name);
@@ -110,11 +114,12 @@ fn extract_zip(archive: &Path, dest: &Path) -> IdeResult<()> {
     Ok(())
 }
 
-/// `.tar.xz` goes through the system `tar` (bsdtar on macOS/Windows, GNU tar + xz on Linux).
-fn extract_tar_xz(archive: &Path, dest: &Path) -> IdeResult<()> {
-    let tar = which::which("tar").map_err(|_| IdeError::unavailable("`tar` is required to unpack .tar.xz archives"))?;
+/// `.tar.xz` / `.tar.bz2` go through the system `tar` (bsdtar on macOS/Windows, GNU tar
+/// + xz / bzip2 on Linux).
+fn extract_with_tar(archive: &Path, dest: &Path, flags: &str) -> IdeResult<()> {
+    let tar = which::which("tar").map_err(|_| IdeError::unavailable("`tar` is required to unpack this archive"))?;
     let out = ide_core::process::prepare(&mut std::process::Command::new(tar))
-        .arg("-xJf")
+        .arg(flags)
         .arg(archive)
         .arg("-C")
         .arg(dest)
@@ -258,6 +263,7 @@ mod tests {
         assert_eq!(ArchiveKind::from_name("a.tar.gz"), ArchiveKind::TarGz);
         assert_eq!(ArchiveKind::from_name("a.tgz"), ArchiveKind::TarGz);
         assert_eq!(ArchiveKind::from_name("zls.tar.xz"), ArchiveKind::TarXz);
+        assert_eq!(ArchiveKind::from_name("goose.tar.bz2"), ArchiveKind::TarBz2);
         assert_eq!(ArchiveKind::from_name("taplo-darwin-aarch64.gz"), ArchiveKind::Gz);
         assert_eq!(ArchiveKind::from_name("marksman-macos"), ArchiveKind::Raw);
         assert_eq!(ArchiveKind::from_name("marksman.exe"), ArchiveKind::Raw);

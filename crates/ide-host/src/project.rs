@@ -280,6 +280,7 @@ impl Host {
         tracing::info!("opened {} in window {window} in {} ms {laps:?}", root.display(), started.elapsed().as_millis());
 
         let (db, http_history, agents) = self.project_services(&root, &project_key);
+        ide_agent::registry::maintain(crate::ops::agent::registry_paths(self));
         let project = Arc::new(Project {
             root,
             sink,

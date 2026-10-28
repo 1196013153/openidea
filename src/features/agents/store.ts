@@ -13,6 +13,8 @@ import type {
 } from "@/bindings";
 import { call, commands, isTauri } from "@/platform/ipc";
 import { editorService, notifications } from "@/workbench/contributions";
+import { confirm } from "@/workbench/messages";
+import { tx } from "@/platform/i18n";
 import { canSend, emptyDraft, toPrompt, type ComposerDraft, type FileRef } from "./composerModel";
 import { withQuote } from "./conversation";
 import {
@@ -179,6 +181,12 @@ function onEvent(e: AgentEvent) {
       editorService().closeInput?.(sessionKey(e.id));
       break;
     }
+    case "truncated": {
+      const current = s.entries.get(e.task);
+      if (current) useAgents.setState({ entries: new Map(s.entries).set(e.task, current.slice(0, e.length)) });
+      scheduleChanges(e.task);
+      break;
+    }
     case "entry": {
       const key = entriesKey(e.task, e.subagent);
       const current = s.entries.get(key);
@@ -243,7 +251,8 @@ function scheduleChanges(task: string) {
   );
 }
 
-async function refreshProviders() {
+/** Reloads the agent list (custom and registry agents are re-read). */
+export async function refreshProviders() {
   const providers = await call(commands.agentProviders()).catch(() => null);
   if (providers) useAgents.setState({ providers });
 }
@@ -343,6 +352,27 @@ export function editMessage(task: string, text: string) {
   const current = composerDraft(task).text;
   updateComposer(task, { text: current.trim() ? `${text}\n${current}` : text });
   focusComposer(task);
+}
+
+/** Copies the task's conversation into a new task (up to its first `turns` turns) and opens it. */
+export async function forkTask(task: string, turns: number | null): Promise<void> {
+  const copy = await call(commands.agentFork(task, turns));
+  useAgents.setState((s) => ({
+    tasks: s.tasks.has(copy.id) ? s.tasks : new Map(s.tasks).set(copy.id, copy),
+  }));
+  openTask(copy.id);
+}
+
+/** Drops the task's turns after its first `turns` and puts the first dropped message back in the composer. */
+export async function rewindTask(task: string, turns: number): Promise<void> {
+  const ok = await confirm({
+    title: "Undo From Here",
+    message: tx`Remove this message and everything after it from the conversation? Files the agent changed stay as they are.`,
+    ok: "Undo",
+  });
+  if (!ok) return;
+  const message = await call(commands.agentRollback(task, turns));
+  if (message?.text) editMessage(task, message.text);
 }
 
 /** Sends an earlier message again (queued while the agent works). */

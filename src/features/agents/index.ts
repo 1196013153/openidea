@@ -10,13 +10,16 @@ import { isVirtualUri } from "@/platform/virtualDocs";
 import {
   registerEditorKind,
   registerMenuGroup,
+  registerOverlay,
   registerStatusItem,
   registerToolWindow,
   toolWindowService,
 } from "@/workbench/contributions";
+import { AddAgentHost } from "./AddAgentHost";
 import { AgentsStatus } from "./AgentsStatus";
 import { HOME_KIND, SESSION_KIND, TOOL_WINDOW } from "./model";
 import { sendPaths, sendSelection } from "./references";
+import { openAddAgent } from "./registry";
 import { focusedSession } from "./sessionFocus";
 import { connect, disconnect, openHome, useAgents } from "./store";
 
@@ -61,6 +64,7 @@ export function activate(): () => void {
       icon: () => "toolwindow-agents",
       restorable: true,
     }),
+    registerOverlay({ id: "agents.addAgent", component: AddAgentHost }),
     registerStatusItem({ id: "agents.status", align: "right", priority: 3, title: "Agents", component: AgentsStatus }),
     registerMenuGroup({
       id: "agents.send",
@@ -89,6 +93,15 @@ export function activate(): () => void {
         when: "projectOpen",
         keywords: ["agent", "claude", "codex", "gemini", "ai"],
         run: ({ arg }) => openHome(typeof arg === "string" ? arg : undefined),
+      },
+      {
+        id: "agents.addAgent",
+        title: "Add Agent…",
+        description: "Installs, updates or removes agents from the ACP Registry.",
+        category: "Agents",
+        icon: "plugin",
+        keywords: ["agent", "acp", "registry", "install", "update"],
+        run: () => openAddAgent(),
       },
       {
         id: "agents.sendToAgent",

@@ -174,14 +174,24 @@ impl Http {
 
     /// GETs `url` as text.
     pub fn get_text(&self, url: &str, cancel: &CancellationToken) -> IdeResult<String> {
+        self.get_text_limited(url, None, cancel)
+    }
+
+    /// GETs `url` as text, failing when the response is larger than `max_bytes`.
+    pub fn get_text_limited(&self, url: &str, max_bytes: Option<u64>, cancel: &CancellationToken) -> IdeResult<String> {
         let mut cmd = self.base(url);
+        if let Some(max) = max_bytes {
+            cmd.arg("--max-filesize").arg(max.to_string());
+        }
         cmd.arg(url).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| IdeError::unavailable(format!("cannot run curl: {e}")))?;
-        let mut stdout = child.stdout.take().expect("piped");
+        let stdout = child.stdout.take().expect("piped");
         let mut stderr = child.stderr.take().expect("piped");
+        // Past the limit the pipe closes, which stops curl.
+        let limit = max_bytes.map_or(u64::MAX, |m| m + 1);
         let out_t = std::thread::spawn(move || {
             let mut s = Vec::new();
-            let _ = stdout.read_to_end(&mut s);
+            let _ = stdout.take(limit).read_to_end(&mut s);
             s
         });
         let status = loop {
@@ -195,6 +205,11 @@ impl Http {
             }
         };
         let body = out_t.join().unwrap_or_default();
+        if let Some(max) = max_bytes
+            && body.len() as u64 > max
+        {
+            return Err(IdeError::new(ErrorKind::Io, format!("{url}: response is larger than {max} bytes")));
+        }
         if !status.success() {
             let mut err = String::new();
             let _ = stderr.read_to_string(&mut err);

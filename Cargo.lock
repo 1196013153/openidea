@@ -3976,8 +3976,10 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 name = "ide-agent"
 version = "0.1.22"
 dependencies = [
+ "dunce",
  "ide-core",
  "ide-jsonrpc",
+ "ide-tools",
  "ide-vcs",
  "parking_lot",
  "serde",
@@ -3988,6 +3990,7 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "tracing",
  "uuid",
+ "which",
 ]
 
 [[package]]

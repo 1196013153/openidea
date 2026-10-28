@@ -62,6 +62,18 @@ export const commands = {
 	agentSubscribe: (onEvent: Channel<AgentEvent>) => typedError<AgentTask[], IdeError>(__TAURI_INVOKE("agent_subscribe", { onEvent })),
 	agentProviders: () => typedError<AgentProvider[], IdeError>(__TAURI_INVOKE("agent_providers")),
 	/**
+	 *  Agents of the ACP Registry this machine can run, with what is installed; the list
+	 *  saved earlier when the registry is unreachable. Cancel with `cancel_request(request)`.
+	 */
+	agentRegistryList: (request: RequestId) => typedError<AgentRegistry, IdeError>(__TAURI_INVOKE("agent_registry_list", { request })),
+	/**
+	 *  Installs the registry's current version of agent `id` (also to update it), streaming
+	 *  progress through `on_event`. Cancel with `cancel_request(request)`.
+	 */
+	agentRegistryInstall: (id: string, request: RequestId, onEvent: Channel<InstallEvent>) => typedError<null, IdeError>(__TAURI_INVOKE("agent_registry_install", { id, request, onEvent })),
+	/**  Removes a registry agent: its agent file and installed files. */
+	agentRegistryRemove: (id: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_registry_remove", { id })),
+	/**
 	 *  Slash commands to complete for `provider` in `task`'s directory, or in the project
 	 *  before a task exists (skills and custom commands on disk included).
 	 */
@@ -77,6 +89,19 @@ export const commands = {
 	agentSendQueuedNow: (task: string, queued: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_send_queued_now", { task, queued })),
 	/**  Changes a session setting (model, mode, thinking effort…). */
 	agentSetConfig: (task: string, option: string, value: string) => typedError<null, IdeError>(__TAURI_INVOKE("agent_set_config", { task, option, value })),
+	/**  Copies the task's conversation into a new task, up to its first `turns` turns (all when `None`). */
+	agentFork: (task: string, turns: number | null) => typedError<AgentTask, IdeError>(__TAURI_INVOKE("agent_fork", { task, turns })),
+	/**  Drops the task's turns after its first `turns`; returns the message of the first dropped one. */
+	agentRollback: (task: string, turns: number) => typedError<{
+	text: string,
+	files: IpcPath[],
+	images: AgentImage[],
+} | null, IdeError>(__TAURI_INVOKE("agent_rollback", { task, turns })),
+	/**
+	 *  What the agent reports about itself when it starts (no session: no MCP servers, hooks
+	 *  or sign-in run). Remembered until `refresh`.
+	 */
+	agentProbe: (provider: string, refresh: boolean) => typedError<AgentProbe, IdeError>(__TAURI_INVOKE("agent_probe", { provider, refresh })),
 	/**  Stops the task's current turn, or with `subagent` only that subagent's work. */
 	agentCancel: (task: string, subagent: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("agent_cancel", { task, subagent })),
 	/**  Answers a permission request; `option: null` cancels it. */
@@ -958,6 +983,21 @@ export type ActiveTheme = {
 	theme: ThemeDef,
 };
 
+/**
+ *  What a task's agent can do beyond a plain conversation, as it reported when its
+ *  session started.
+ */
+export type AgentCapabilities = {
+	/**  Images in messages. */
+	images?: boolean,
+	/**  The conversation can be copied into a new task (`session/fork`). */
+	fork?: boolean,
+	/**  Its latest turns can be dropped. */
+	rollback?: boolean,
+	/**  A message can join the running turn instead of waiting for it. */
+	steer?: boolean,
+};
+
 /**  A file the task changed, relative to [`AgentTask::base_commit`]. */
 export type AgentChange = {
 	path: IpcPath,
@@ -1016,7 +1056,9 @@ attachments: string[];
 /**  When it was sent (ms since the epoch); `None` in tasks saved before this was kept. */
 sentMs?: number | null; 
 /**  When the turn it started ended; `None` while it runs or when it was cut off. */
-doneMs?: number | null } | { type: "agent"; text: string } | { type: "thought"; text: string } | { type: "tool"; id: string; title: string; 
+doneMs?: number | null; 
+/**  Sent into a running turn rather than starting one. */
+steered?: boolean } | { type: "agent"; text: string } | { type: "thought"; text: string } | { type: "tool"; id: string; title: string; 
 /**  ACP tool kind: `read`, `edit`, `execute`, `search`, `fetch`, `think`… */
 kind: string; status: AgentToolStatus; locations: IpcPath[]; 
 /**  Text the tool reported (command output…), truncated. */
@@ -1046,6 +1088,8 @@ chosen: string | null } | { type: "error"; message: string };
 export type AgentEvent = 
 /**  A task was created or its metadata changed. */
 { type: "task"; task: AgentTask } | { type: "removed"; id: string } | 
+/**  The task's conversation was cut to its first `length` entries (turns rolled back). */
+{ type: "truncated"; task: string; length: number } | 
 /**  Entry `index` of `task` (of its subagent `subagent`) was added or replaced. */
 { type: "entry"; task: string; subagent: string | null; index: number; entry: AgentEntry };
 
@@ -1069,6 +1113,24 @@ export type AgentPlanItem = {
 	status: string,
 };
 
+/**
+ *  What an agent says about itself when it starts (`initialize` only: no session, so no
+ *  MCP servers, hooks or sign-in run).
+ */
+export type AgentProbe = {
+	provider: string,
+	/**  The agent's own name and version, when it reports them. */
+	name: string | null,
+	version: string | null,
+	/**  How it is driven: `ACP v1`, `ACP v2` or `native`. */
+	protocol: string,
+	capabilities: AgentCapabilities,
+	/**  Ways to sign in it offers. */
+	authMethods: string[],
+	/**  Why it could not be started. */
+	error: string | null,
+};
+
 /**  A message to the agent: text, plus files to look at and images. */
 export type AgentPrompt = {
 	text: string,
@@ -1087,6 +1149,7 @@ export type AgentProvider = {
 	config: AgentConfigOption[],
 	/**  Slash commands it offered last time. */
 	commands: AgentCommand[],
+	source: AgentSource,
 };
 
 export type AgentQueued = {
@@ -1094,13 +1157,30 @@ export type AgentQueued = {
 	prompt: AgentPrompt,
 };
 
+export type AgentRegistry = {
+	agents: RegistryAgent[],
+	/**  Set when the registry could not be reached and the copy saved earlier is shown. */
+	warning: string | null,
+};
+
+/**  Where an agent comes from. */
+export type AgentSource = { kind: "builtin" } | 
+/**  Defined by the user in `<config>/agents/<id>.toml`. */
+{ kind: "custom" } | 
+/**  Installed from the ACP Registry. */
+{ kind: "registry"; version: string; 
+/**  A newer version the registry offers. */
+update: string | null };
+
 export type AgentStatus = 
 /**  Creating the worktree / starting the agent. */
 "starting" | "running" | 
 /**  Waiting for a permission answer. */
 "needsInput" | 
 /**  The turn ended; the result can be reviewed or the conversation continued. */
-"ready" | "failed" | "archived";
+"ready" | "failed" | 
+/**  The account's usage limit was reached; the conversation can go on once it resets. */
+"limited" | "archived";
 
 /**  What a subagent is doing, as its parent reports it. */
 export type AgentSubagentStatus = "running" | 
@@ -1139,6 +1219,9 @@ export type AgentTask = {
 	usage: AgentUsage | null,
 	/**  Messages waiting for the current turn to end, oldest first. */
 	queue: AgentQueued[],
+	capabilities?: AgentCapabilities,
+	/**  When a [`AgentStatus::Limited`] task's limit resets (ms since the epoch), if the agent said. */
+	resetsMs?: number | null,
 };
 
 export type AgentToolDiff = {
@@ -4511,6 +4594,36 @@ export type ReferencesIncomplete =
 "indexing" | 
 /**  More project files mention the name than were checked. */
 "tooManyFiles";
+
+/**  A registry agent this machine can run (or has installed). */
+export type RegistryAgent = {
+	id: string,
+	name: string,
+	/**  The registry's current version. */
+	version: string,
+	description: string,
+	repository: string | null,
+	website: string | null,
+	authors: string[],
+	license: string | null,
+	/**
+	 *  How it installs here; `None` when it no longer can (an installed agent whose
+	 *  runtime went away).
+	 */
+	distribution: RegistryDistribution | null,
+	/**  The installed version. */
+	installed: string | null,
+	/**  Whether [`Self::version`] is newer than the installed one. */
+	update: boolean,
+};
+
+export type RegistryDistribution = 
+/**  A release archive for this OS and architecture. */
+"binary" | 
+/**  An npm package (needs Node.js). */
+"npx" | 
+/**  A Python package run by uv. */
+"uvx";
 
 export type Remote = {
 	name: string,
