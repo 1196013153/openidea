@@ -28,7 +28,7 @@ export async function lspRequest<T>(run: () => Promise<Result<T>>, wanted?: () =
   try {
     // Edits typed just before (⌘B right after typing) must reach the server first.
     await whenAllSynced();
-    if (wanted && !wanted()) throw new IpcError({ kind: "cancelled", message: "Cancelled" });
+    if (wanted && !wanted()) throw new IpcError({ kind: "cancelled", message: "cancelled" });
     return await call(run());
   } catch (e) {
     if (e instanceof IpcError) throw e;
