@@ -120,11 +120,6 @@ pub fn default_jvm_args(user_jvm: &[String]) -> Vec<String> {
         args.extend(["-XX:+UseParallelGC", "-XX:GCTimeRatio=4", "-XX:AdaptiveSizePolicyWeight=90"]);
     }
     args.push("-Dsun.zip.disableMemoryMapping=true");
-    // No AWT/AppKit: on macOS a JVM that touches them registers as a foreground app and
-    // gets its own Dock icon, named after the IDE bundle it was started from.
-    if !user_sets(&["-Djava.awt.headless="]) {
-        args.push("-Djava.awt.headless=true");
-    }
     // `-Xmx` wins over the RAM percentages whatever the order, so those count too.
     if !user_sets(&["-Xmx", "-XX:MaxHeapSize=", "-XX:MaxRAMPercentage=", "-XX:MaxRAM="]) {
         args.push("-Xmx2G");
@@ -259,7 +254,6 @@ mod tests {
                 "-XX:GCTimeRatio=4",
                 "-XX:AdaptiveSizePolicyWeight=90",
                 "-Dsun.zip.disableMemoryMapping=true",
-                "-Djava.awt.headless=true",
                 "-Xms100m",
                 "-Xlog:disable",
                 "--add-modules=ALL-SYSTEM",
@@ -317,7 +311,6 @@ mod tests {
                 "-XX:GCTimeRatio=4",
                 "-XX:AdaptiveSizePolicyWeight=90",
                 "-Dsun.zip.disableMemoryMapping=true",
-                "-Djava.awt.headless=true",
                 "-Xmx2G",
                 "-Xms100m",
                 "-Xlog:disable",
@@ -342,13 +335,7 @@ mod tests {
         let g1 = default_jvm_args(&strings(&["-XX:+UseG1GC"]));
         assert_eq!(
             g1,
-            strings(&[
-                "-Dsun.zip.disableMemoryMapping=true",
-                "-Djava.awt.headless=true",
-                "-Xmx2G",
-                "-Xms100m",
-                "-Xlog:disable"
-            ]),
+            strings(&["-Dsun.zip.disableMemoryMapping=true", "-Xmx2G", "-Xms100m", "-Xlog:disable"]),
             "the parallel collector's tuning is dropped with it"
         );
         assert!(!default_jvm_args(&strings(&["-XX:+UseZGC"])).iter().any(|a| a.starts_with("-XX:")));
