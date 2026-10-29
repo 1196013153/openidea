@@ -108,16 +108,22 @@ fn split_script_args(args: &[String]) -> ScriptArgs {
 /// Memory and GC options added unless the user's JVM arguments set their own,
 /// VS Code's Java extension defaults (`java.jdt.ls.vmargs`) instead of the script's
 /// `-Xms1G` and the JVM's default heap limit (a quarter of physical memory).
-/// The parallel collector with this throughput goal shrinks the heap and gives
-/// unused memory back to the OS; its tuning flags only apply to it, so a GC of
-/// the user's choice drops the whole group. `-Xlog:disable` keeps JVM warnings
+/// G1 with a periodic GC hands the heap grown while importing a project back to
+/// the OS once the server is idle (other collectors only shrink during a GC, which
+/// an idle server never runs); its tuning flags only apply to it, so a GC of the
+/// user's choice drops the whole group. `-Xlog:disable` keeps JVM warnings
 /// off stdout, which carries the LSP stream.
 pub fn default_jvm_args(user_jvm: &[String]) -> Vec<String> {
     let user_sets = |prefixes: &[&str]| user_jvm.iter().any(|a| prefixes.iter().any(|p| a.starts_with(p)));
     let user_gc = user_jvm.iter().any(|a| a.starts_with("-XX:+Use") && a.ends_with("GC"));
     let mut args: Vec<&str> = Vec::new();
     if !user_gc {
-        args.extend(["-XX:+UseParallelGC", "-XX:GCTimeRatio=4", "-XX:AdaptiveSizePolicyWeight=90"]);
+        args.extend([
+            "-XX:+UseG1GC",
+            "-XX:G1PeriodicGCInterval=60000",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=30",
+        ]);
     }
     args.push("-Dsun.zip.disableMemoryMapping=true");
     // `-Xmx` wins over the RAM percentages whatever the order, so those count too.
@@ -256,9 +262,10 @@ mod tests {
                 &format!(r"-Dosgi.sharedConfiguration.area={tools}\config_win"),
                 "-Dosgi.sharedConfiguration.area.readOnly=true",
                 "-Dosgi.configuration.cascaded=true",
-                "-XX:+UseParallelGC",
-                "-XX:GCTimeRatio=4",
-                "-XX:AdaptiveSizePolicyWeight=90",
+                "-XX:+UseG1GC",
+                "-XX:G1PeriodicGCInterval=60000",
+                "-XX:MinHeapFreeRatio=10",
+                "-XX:MaxHeapFreeRatio=30",
                 "-Dsun.zip.disableMemoryMapping=true",
                 "-Xms100m",
                 "-Xlog:disable",
@@ -318,9 +325,10 @@ mod tests {
         assert_eq!(
             default_jvm_args(&[]),
             strings(&[
-                "-XX:+UseParallelGC",
-                "-XX:GCTimeRatio=4",
-                "-XX:AdaptiveSizePolicyWeight=90",
+                "-XX:+UseG1GC",
+                "-XX:G1PeriodicGCInterval=60000",
+                "-XX:MinHeapFreeRatio=10",
+                "-XX:MaxHeapFreeRatio=30",
                 "-Dsun.zip.disableMemoryMapping=true",
                 "-Xmx2G",
                 "-Xms100m",
@@ -335,7 +343,7 @@ mod tests {
     fn user_memory_and_gc_options_replace_the_defaults() {
         let own_max = default_jvm_args(&strings(&["-Xmx4g"]));
         assert!(!own_max.iter().any(|a| a.starts_with("-Xmx")));
-        assert!(own_max.contains(&"-Xms100m".to_owned()) && own_max.contains(&"-XX:+UseParallelGC".to_owned()));
+        assert!(own_max.contains(&"-Xms100m".to_owned()) && own_max.contains(&"-XX:+UseG1GC".to_owned()));
         let percentage = default_jvm_args(&strings(&["-XX:MaxRAMPercentage=10"]));
         assert!(!percentage.iter().any(|a| a.starts_with("-Xmx")));
 
@@ -343,11 +351,11 @@ mod tests {
         assert!(!own_min.iter().any(|a| a.starts_with("-Xms")));
         assert!(own_min.contains(&"-Xmx2G".to_owned()));
 
-        let g1 = default_jvm_args(&strings(&["-XX:+UseG1GC"]));
+        let parallel = default_jvm_args(&strings(&["-XX:+UseParallelGC"]));
         assert_eq!(
-            g1,
+            parallel,
             strings(&["-Dsun.zip.disableMemoryMapping=true", "-Xmx2G", "-Xms100m", "-Xlog:disable"]),
-            "the parallel collector's tuning is dropped with it"
+            "G1's tuning is dropped with it"
         );
         assert!(!default_jvm_args(&strings(&["-XX:+UseZGC"])).iter().any(|a| a.starts_with("-XX:")));
     }
@@ -356,13 +364,18 @@ mod tests {
     fn defaults_come_after_system_properties_and_before_the_users_options() {
         let install =
             JdtlsInstall { launcher: PathBuf::from("/j/plugins/launcher.jar"), config: PathBuf::from("/j/config_mac") };
-        let args = java_args(&install, 25, &strings(&["--jvm-arg=-Xmx4g", "--jvm-arg=-XX:+UseG1GC", "-data", "/d"]));
+        let args = java_args(&install, 25, &strings(&["--jvm-arg=-Xmx4g", "--jvm-arg=-XX:+UseZGC", "-data", "/d"]));
         let at = |a: &str| args.iter().position(|x| x == a).unwrap_or_else(|| panic!("{a} missing"));
         assert!(at("-Dosgi.configuration.cascaded=true") < at("-Dsun.zip.disableMemoryMapping=true"));
         assert!(at("-Xlog:disable") < at("--add-modules=ALL-SYSTEM"));
         assert!(at("--add-modules=ALL-SYSTEM") < at("-Xmx4g"));
-        assert!(at("-Xmx4g") < at("-XX:+UseG1GC") && at("-XX:+UseG1GC") < at("-jar"));
-        assert!(!args.iter().any(|a| a == "-Xmx2G" || a == "-XX:+UseParallelGC" || a == "-Xms1G"));
+        assert!(at("-Xmx4g") < at("-XX:+UseZGC") && at("-XX:+UseZGC") < at("-jar"));
+        assert!(
+            !args.iter().any(|a| a == "-Xmx2G"
+                || a == "-XX:+UseG1GC"
+                || a == "-XX:G1PeriodicGCInterval=60000"
+                || a == "-Xms1G")
+        );
         assert!(args.contains(&"-Xms100m".to_owned()));
     }
 
