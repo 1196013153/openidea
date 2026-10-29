@@ -249,7 +249,7 @@ export function JavaPage() {
         <Row
           label="JVM options"
           htmlFor={id}
-          hint="Passed to the JVM running jdtls (java.jdt.ls.vmargs), e.g. -Xmx2g. A Lombok agent is added automatically: the one installed in Language Servers, else, when the project uses Lombok (its build, an inherited parent POM or Gradle build, or its sources' imports), the newest from the Maven / Gradle caches."
+          hint="Passed to the JVM running jdtls (java.jdt.ls.vmargs), e.g. -Xmx4g. Defaults: -Xmx2G and G1 with a periodic GC, which returns unused memory to the system when idle; your own heap or GC options replace them. A Lombok agent is added automatically: the one installed in Language Servers, else, when the project uses Lombok (its build, an inherited parent POM or Gradle build, or its sources' imports), the newest from the Maven / Gradle caches."
         >
           <Input
             id={id}

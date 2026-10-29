@@ -176,6 +176,11 @@ pub struct GeneralSettings {
     pub confirm_exit: bool,
     /// Where Open… puts a project while one is open: `ask` | `new` | `same`.
     pub open_project_in: String,
+    /// macOS: a new project window opens as a native tab of the current window.
+    pub open_project_in_tab: bool,
+    /// Stop the language servers of a project window (or tab) after this many minutes
+    /// while another project window is in use; they start again when it is. 0 = never.
+    pub stop_background_language_servers_minutes: u32,
     /// Initial folder of the Open / Clone dialogs; empty = the OS default.
     pub default_project_directory: String,
     /// Save all files after `idle_seconds` without input.
@@ -195,6 +200,8 @@ impl Default for GeneralSettings {
             reopen_last_project: true,
             confirm_exit: false,
             open_project_in: "ask".into(),
+            open_project_in_tab: true,
+            stop_background_language_servers_minutes: 10,
             default_project_directory: String::new(),
             save_on_idle: false,
             idle_seconds: 15,

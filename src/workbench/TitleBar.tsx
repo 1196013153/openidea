@@ -23,6 +23,7 @@ import {
 import { WindowControls } from "./WindowControls";
 import { usePlatform } from "@/platform/platformInfo";
 import { projectInitials } from "./projectColor";
+import { useNativeTabBarHeight } from "./nativeTabBar";
 import { keymapItems, themeItems, VIEW_MODE_ITEMS } from "./quickSwitch";
 import { currentThemeId, useThemeOverride } from "./theme";
 import styles from "./TitleBar.module.css";
@@ -277,50 +278,62 @@ export function TitleBar({
   const frameless = usePlatform((s) => s.framelessTitleBar);
   const { map, shown, menu } = useToolbar();
   const [menuExpanded, setMenuExpanded] = useState(false);
-  const className = clsx(styles.bar, overlay && styles.overlay, frameless && styles.frameless);
+  // macOS window tabs: the native title bar row and tab bar cover the top of the page,
+  // so the bar starts below them and no longer leaves room for the traffic lights.
+  const tabBar = useNativeTabBarHeight(!dialog);
+  const className = clsx(styles.bar, overlay && tabBar === 0 && styles.overlay, frameless && styles.frameless);
+  const tabBarSpace = tabBar > 0 && (
+    <div className={styles.nativeTabBar} style={{ height: tabBar }} data-tauri-drag-region aria-hidden />
+  );
   // Distraction Free Mode: the window frame only. Where the title bar carries the
   // main menu (Windows) it stays, or nothing would lead back out of the mode.
   if (bare)
     return (
-      <header className={className} data-tauri-drag-region data-titlebar="bare">
-        {frameless && (
-          <>
-            <MainMenu />
-            <div className={styles.drag} data-tauri-drag-region />
-            <WindowControls />
-          </>
-        )}
-      </header>
+      <>
+        {tabBarSpace}
+        <header className={className} data-tauri-drag-region data-titlebar="bare">
+          {frameless && (
+            <>
+              <MainMenu />
+              <div className={styles.drag} data-tauri-drag-region />
+              <WindowControls />
+            </>
+          )}
+        </header>
+      </>
     );
   const entry = (id: string) => <ToolbarEntry key={id} id={id} items={map} />;
   const toolbar = !minimal && !lightEdit;
   return (
-    <header
-      className={clsx(className, minimal && styles.minimal, dialog && styles.dialogBar)}
-      data-tauri-drag-region
-      onContextMenu={(e) => {
-        if (!toolbar || e.defaultPrevented) return;
-        e.preventDefault();
-        showContextMenu(e, menu);
-      }}
-    >
-      {frameless && !minimal && <MainMenu onExpandedChange={setMenuExpanded} />}
-      {title && (
-        <span className={styles.windowTitle} data-tauri-drag-region>
-          {typeof title === "string" ? <T>{title}</T> : title}
-        </span>
-      )}
-      {toolbar && !menuExpanded && shown.left.map(entry)}
-      <div className={styles.drag} data-tauri-drag-region />
-      {!minimal && (
-        <>
-          {toolbar && shown.right.map(entry)}
-          <div className={styles.tools}>
-            <GearButton customize={menu} />
-          </div>
-        </>
-      )}
-      {frameless && <WindowControls dialog={dialog} />}
-    </header>
+    <>
+      {tabBarSpace}
+      <header
+        className={clsx(className, minimal && styles.minimal, dialog && styles.dialogBar)}
+        data-tauri-drag-region
+        onContextMenu={(e) => {
+          if (!toolbar || e.defaultPrevented) return;
+          e.preventDefault();
+          showContextMenu(e, menu);
+        }}
+      >
+        {frameless && !minimal && <MainMenu onExpandedChange={setMenuExpanded} />}
+        {title && (
+          <span className={styles.windowTitle} data-tauri-drag-region>
+            {typeof title === "string" ? <T>{title}</T> : title}
+          </span>
+        )}
+        {toolbar && !menuExpanded && shown.left.map(entry)}
+        <div className={styles.drag} data-tauri-drag-region />
+        {!minimal && (
+          <>
+            {toolbar && shown.right.map(entry)}
+            <div className={styles.tools}>
+              <GearButton customize={menu} />
+            </div>
+          </>
+        )}
+        {frameless && <WindowControls dialog={dialog} />}
+      </header>
+    </>
   );
 }

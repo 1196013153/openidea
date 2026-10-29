@@ -158,6 +158,9 @@ pub struct LspManager {
     servers_hook: RwLock<Option<Arc<ServersFn>>>,
     candidates_hook: RwLock<Option<Arc<CandidateFn>>>,
     shutting_down: AtomicBool,
+    /// Servers stopped by [`LspManager::suspend`] (a project window in the background),
+    /// restarted by [`LspManager::resume`]; nothing starts while it is set.
+    suspended: Mutex<Option<Vec<Arc<Server>>>>,
     /// `window/showMessage` texts already surfaced; servers repeat them on every restart/reconfigure.
     shown_messages: Mutex<HashSet<(String, String)>>,
     /// Virtual (non-`file:`) URIs a server returned, by the server that owns them.
@@ -277,6 +280,7 @@ impl LspManager {
             servers_hook: RwLock::new(None),
             candidates_hook: RwLock::new(None),
             shutting_down: AtomicBool::new(false),
+            suspended: Mutex::new(None),
             shown_messages: Mutex::new(HashSet::new()),
             virtual_origins: Mutex::new(HashMap::new()),
             virtual_docs: Mutex::new(HashMap::new()),
@@ -367,7 +371,7 @@ impl LspManager {
     }
 
     fn ensure_started(&self, server: &Arc<Server>) {
-        if self.shutting_down.load(Ordering::Acquire) {
+        if self.shutting_down.load(Ordering::Acquire) || self.suspended.lock().is_some() {
             return;
         }
         let Some(generation) = server.begin_start() else { return };
@@ -2050,6 +2054,55 @@ impl LspManager {
         server.end_stop(run.generation);
         self.clear_server_state(server);
         server.set_status(&self.sink, ide_core::event::ServerStatus::Stopped, None);
+    }
+
+    /// Stops the running servers to free their memory while the project's window is in
+    /// the background; [`LspManager::resume`] starts them again. Their open documents
+    /// stay attached and are reopened on restart.
+    pub async fn suspend(&self) {
+        let running: Vec<Arc<Server>> = {
+            let mut suspended = self.suspended.lock();
+            if suspended.is_some() {
+                return;
+            }
+            let running: Vec<Arc<Server>> = self
+                .servers
+                .lock()
+                .iter()
+                .filter(|s| {
+                    matches!(
+                        s.status(),
+                        ide_core::event::ServerStatus::Ready
+                            | ide_core::event::ServerStatus::Busy
+                            | ide_core::event::ServerStatus::Starting
+                    )
+                })
+                .cloned()
+                .collect();
+            *suspended = Some(running.clone());
+            running
+        };
+        if running.is_empty() {
+            return;
+        }
+        tracing::info!("suspending {} language server(s) of {}", running.len(), self.project_root.display());
+        join_all(running.iter().map(|s| self.stop_instance(s, false))).await;
+    }
+
+    /// Restarts the servers [`LspManager::suspend`] stopped.
+    pub fn resume(&self) {
+        let Some(servers) = self.suspended.lock().take() else { return };
+        if !servers.is_empty() {
+            tracing::info!("resuming {} language server(s) of {}", servers.len(), self.project_root.display());
+        }
+        for s in &servers {
+            s.reset_for_restart();
+            self.ensure_started(s);
+        }
+    }
+
+    pub fn is_suspended(&self) -> bool {
+        self.suspended.lock().is_some()
     }
 
     pub async fn shutdown_all(&self) {

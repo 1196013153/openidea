@@ -13,6 +13,8 @@
 import { create } from "zustand";
 import { getAction, isActionKeyEnabled, executeAction } from "./actions";
 import { getContext } from "./context";
+import { eclipseMacos } from "./keymaps/eclipse-macos";
+import { eclipseWindows } from "./keymaps/eclipse-windows";
 import { intellijMacos } from "./keymaps/intellij-macos";
 import { intellijWindows } from "./keymaps/intellij-windows";
 import { vscodeMacos } from "./keymaps/vscode-macos";
@@ -35,6 +37,8 @@ export const PRESETS: Record<string, Keymap> = {
   "intellij-windows": intellijWindows,
   "vscode-macos": vscodeMacos,
   "vscode-windows": vscodeWindows,
+  "eclipse-macos": eclipseMacos,
+  "eclipse-windows": eclipseWindows,
 };
 
 /** Display names of the presets, in menu order. */
@@ -43,6 +47,8 @@ export const PRESET_TITLES: Record<string, string> = {
   "intellij-windows": "Windows",
   "vscode-macos": "VS Code (macOS)",
   "vscode-windows": "VS Code (Windows)",
+  "eclipse-macos": "Eclipse (macOS)",
+  "eclipse-windows": "Eclipse (Windows)",
 };
 
 /** ⌘ held on macOS, Ctrl elsewhere: the modifier of ⌘/Ctrl-click and copy/paste. */

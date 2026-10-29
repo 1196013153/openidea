@@ -105,8 +105,41 @@ fn split_script_args(args: &[String]) -> ScriptArgs {
     out
 }
 
-/// The JVM command line `bin/jdtls` builds: its system properties and module
-/// options, the user's `--jvm-arg`s, then the Equinox launcher with `-data`.
+/// Memory and GC options added unless the user's JVM arguments set their own,
+/// VS Code's Java extension defaults (`java.jdt.ls.vmargs`) instead of the script's
+/// `-Xms1G` and the JVM's default heap limit (a quarter of physical memory).
+/// G1 with a periodic GC hands the heap grown while importing a project back to
+/// the OS once the server is idle (other collectors only shrink during a GC, which
+/// an idle server never runs); its tuning flags only apply to it, so a GC of the
+/// user's choice drops the whole group. `-Xlog:disable` keeps JVM warnings
+/// off stdout, which carries the LSP stream.
+pub fn default_jvm_args(user_jvm: &[String]) -> Vec<String> {
+    let user_sets = |prefixes: &[&str]| user_jvm.iter().any(|a| prefixes.iter().any(|p| a.starts_with(p)));
+    let user_gc = user_jvm.iter().any(|a| a.starts_with("-XX:+Use") && a.ends_with("GC"));
+    let mut args: Vec<&str> = Vec::new();
+    if !user_gc {
+        args.extend([
+            "-XX:+UseG1GC",
+            "-XX:G1PeriodicGCInterval=60000",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=30",
+        ]);
+    }
+    args.push("-Dsun.zip.disableMemoryMapping=true");
+    // `-Xmx` wins over the RAM percentages whatever the order, so those count too.
+    if !user_sets(&["-Xmx", "-XX:MaxHeapSize=", "-XX:MaxRAMPercentage=", "-XX:MaxRAM="]) {
+        args.push("-Xmx2G");
+    }
+    if !user_sets(&["-Xms", "-XX:InitialHeapSize=", "-XX:InitialRAMPercentage="]) {
+        args.push("-Xms100m");
+    }
+    args.push("-Xlog:disable");
+    args.into_iter().map(String::from).collect()
+}
+
+/// The JVM command line `bin/jdtls` builds: its system properties, the memory
+/// and GC [defaults](default_jvm_args), its module options, the user's
+/// `--jvm-arg`s (last, so they win), then the Equinox launcher with `-data`.
 pub fn java_args(install: &JdtlsInstall, java_major: u32, script_args: &[String]) -> Vec<String> {
     let parsed = split_script_args(script_args);
     let mut args: Vec<String> = Vec::new();
@@ -124,10 +157,11 @@ pub fn java_args(install: &JdtlsInstall, java_major: u32, script_args: &[String]
     );
     args.push(format!("-Dosgi.sharedConfiguration.area={}", install.config.to_string_lossy()));
     args.extend(
+        ["-Dosgi.sharedConfiguration.area.readOnly=true", "-Dosgi.configuration.cascaded=true"].map(String::from),
+    );
+    args.extend(default_jvm_args(&parsed.jvm));
+    args.extend(
         [
-            "-Dosgi.sharedConfiguration.area.readOnly=true",
-            "-Dosgi.configuration.cascaded=true",
-            "-Xms1G",
             "--add-modules=ALL-SYSTEM",
             "--add-opens",
             "java.base/java.util=ALL-UNNAMED",
@@ -141,7 +175,13 @@ pub fn java_args(install: &JdtlsInstall, java_major: u32, script_args: &[String]
     if let Some(data) = parsed.data {
         args.extend(["-data".to_owned(), data]);
     }
+    // Without it the Equinox launcher loads its Cocoa library for a splash screen, which
+    // checks the JVM in as a foreground app: a second Dock icon named after the IDE.
+    let nosplash = !parsed.rest.iter().any(|a| a == "-nosplash");
     args.extend(parsed.rest);
+    if nosplash {
+        args.push("-nosplash".to_owned());
+    }
     args
 }
 
@@ -222,7 +262,13 @@ mod tests {
                 &format!(r"-Dosgi.sharedConfiguration.area={tools}\config_win"),
                 "-Dosgi.sharedConfiguration.area.readOnly=true",
                 "-Dosgi.configuration.cascaded=true",
-                "-Xms1G",
+                "-XX:+UseG1GC",
+                "-XX:G1PeriodicGCInterval=60000",
+                "-XX:MinHeapFreeRatio=10",
+                "-XX:MaxHeapFreeRatio=30",
+                "-Dsun.zip.disableMemoryMapping=true",
+                "-Xms100m",
+                "-Xlog:disable",
                 "--add-modules=ALL-SYSTEM",
                 "--add-opens",
                 "java.base/java.util=ALL-UNNAMED",
@@ -235,6 +281,7 @@ mod tests {
                 &format!(r"{tools}\plugins\org.eclipse.equinox.launcher_1.7.0.v20250424-1814.jar"),
                 "-data",
                 data,
+                "-nosplash",
             ])
         );
     }
@@ -255,7 +302,7 @@ mod tests {
         assert_eq!(args[0], "-Declipse.application=org.eclipse.jdt.ls.core.id1", "no JDK 24+ flags on 21");
         assert!(args.contains(&"-Dosgi.sharedConfiguration.area=/Users/me/Library/Application Support/ai.l0ng.openidea/tools/jdtls/config_mac_arm".to_owned()));
         assert_eq!(
-            args[args.len() - 7..],
+            args[args.len() - 8..],
             strings(&[
                 "java.base/java.lang=ALL-UNNAMED",
                 "-Dlog.level=ALL",
@@ -264,9 +311,72 @@ mod tests {
                 "-data",
                 "/d",
                 "--extra",
+                "-nosplash",
             ])
         );
+        // Given by the user already: not repeated.
+        let own = java_args(&install, 21, &strings(&["-data", "/d", "-nosplash"]));
+        assert_eq!(own.iter().filter(|a| *a == "-nosplash").count(), 1);
         assert!(!args.iter().any(|a| a.contains("validate-java-version")));
+    }
+
+    #[test]
+    fn default_memory_and_gc_options() {
+        assert_eq!(
+            default_jvm_args(&[]),
+            strings(&[
+                "-XX:+UseG1GC",
+                "-XX:G1PeriodicGCInterval=60000",
+                "-XX:MinHeapFreeRatio=10",
+                "-XX:MaxHeapFreeRatio=30",
+                "-Dsun.zip.disableMemoryMapping=true",
+                "-Xmx2G",
+                "-Xms100m",
+                "-Xlog:disable",
+            ])
+        );
+        // Unrelated user options keep every default.
+        assert_eq!(default_jvm_args(&strings(&["-javaagent:/l.jar", "-Dlog.level=ALL"])), default_jvm_args(&[]));
+    }
+
+    #[test]
+    fn user_memory_and_gc_options_replace_the_defaults() {
+        let own_max = default_jvm_args(&strings(&["-Xmx4g"]));
+        assert!(!own_max.iter().any(|a| a.starts_with("-Xmx")));
+        assert!(own_max.contains(&"-Xms100m".to_owned()) && own_max.contains(&"-XX:+UseG1GC".to_owned()));
+        let percentage = default_jvm_args(&strings(&["-XX:MaxRAMPercentage=10"]));
+        assert!(!percentage.iter().any(|a| a.starts_with("-Xmx")));
+
+        let own_min = default_jvm_args(&strings(&["-Xms512m"]));
+        assert!(!own_min.iter().any(|a| a.starts_with("-Xms")));
+        assert!(own_min.contains(&"-Xmx2G".to_owned()));
+
+        let parallel = default_jvm_args(&strings(&["-XX:+UseParallelGC"]));
+        assert_eq!(
+            parallel,
+            strings(&["-Dsun.zip.disableMemoryMapping=true", "-Xmx2G", "-Xms100m", "-Xlog:disable"]),
+            "G1's tuning is dropped with it"
+        );
+        assert!(!default_jvm_args(&strings(&["-XX:+UseZGC"])).iter().any(|a| a.starts_with("-XX:")));
+    }
+
+    #[test]
+    fn defaults_come_after_system_properties_and_before_the_users_options() {
+        let install =
+            JdtlsInstall { launcher: PathBuf::from("/j/plugins/launcher.jar"), config: PathBuf::from("/j/config_mac") };
+        let args = java_args(&install, 25, &strings(&["--jvm-arg=-Xmx4g", "--jvm-arg=-XX:+UseZGC", "-data", "/d"]));
+        let at = |a: &str| args.iter().position(|x| x == a).unwrap_or_else(|| panic!("{a} missing"));
+        assert!(at("-Dosgi.configuration.cascaded=true") < at("-Dsun.zip.disableMemoryMapping=true"));
+        assert!(at("-Xlog:disable") < at("--add-modules=ALL-SYSTEM"));
+        assert!(at("--add-modules=ALL-SYSTEM") < at("-Xmx4g"));
+        assert!(at("-Xmx4g") < at("-XX:+UseZGC") && at("-XX:+UseZGC") < at("-jar"));
+        assert!(
+            !args.iter().any(|a| a == "-Xmx2G"
+                || a == "-XX:+UseG1GC"
+                || a == "-XX:G1PeriodicGCInterval=60000"
+                || a == "-Xms1G")
+        );
+        assert!(args.contains(&"-Xms100m".to_owned()));
     }
 
     #[test]
@@ -337,7 +447,7 @@ mod tests {
         assert!(direct.args.iter().any(|a| a == "-Xmx1G"));
         let jar = direct.args.iter().position(|a| a == "-jar").unwrap();
         assert!(direct.args[jar + 1].ends_with("org.eclipse.equinox.launcher_1.7.0.jar"));
-        assert_eq!(direct.args[jar + 2..], strings(&["-data", "/ws"]));
+        assert_eq!(direct.args[jar + 2..], strings(&["-data", "/ws", "-nosplash"]));
 
         // Someone's own wrapper, or no usable JDK: the command is kept.
         std::fs::write(home.join("bin/my-jdtls"), "#!/bin/sh\n").unwrap();

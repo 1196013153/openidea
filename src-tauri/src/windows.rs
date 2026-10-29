@@ -261,6 +261,11 @@ fn hex_color(hex: &str) -> Option<Color> {
 /// Builds a project window painted in the saved theme's frame colour, so it
 /// doesn't flash the light default before its page (and splash) loads.
 fn build_project_window(app: &AppHandle, mut config: WindowConfig) -> IdeResult<WebviewWindow> {
+    // macOS: project windows can be merged into native tabs (Window › Merge All Windows).
+    // The custom traffic-light inset is dropped for them: tao re-applies it on every redraw
+    // by shrinking the title bar container, which squeezes out the tab bar's row.
+    config.tabbing_identifier = Some(crate::native_tabs::PROJECT_TABBING_ID.into());
+    config.traffic_light_position = None;
     let state = app.try_state::<AppState>();
     let appearance = state.as_ref().map(|s| s.global_settings.effective().appearance);
     // A plugin theme replaces the built-in one in either OS mode; the UI records its resolved frame.
@@ -322,7 +327,8 @@ fn create_window_for(app: &AppHandle, title: Option<String>, launch: Launch) -> 
     }
     // Cascade from the window the user is looking at; window-state overrides
     // this with the remembered geometry when it has one for the label.
-    if let Some(anchor) = target_window(app)
+    let anchor = target_window(app).filter(|w| !is_settings_window(w.label()));
+    if let Some(anchor) = &anchor
         && let (Ok(pos), Ok(scale)) = (anchor.outer_position(), anchor.scale_factor())
     {
         let pos = pos.to_logical::<f64>(scale);
@@ -332,8 +338,17 @@ fn create_window_for(app: &AppHandle, title: Option<String>, launch: Launch) -> 
     }
     app.state::<WindowsState>().set_launch(&label, launch);
     let window = build_project_window(app, config)?;
-    focus(&window);
+    match anchor.filter(|_| open_in_tab(app)) {
+        Some(anchor) => crate::native_tabs::join_tab_group(app, &anchor, &window),
+        None => focus(&window),
+    }
     Ok(window)
+}
+
+/// Settings › System Settings › "Open new project windows as tabs" (macOS).
+fn open_in_tab(app: &AppHandle) -> bool {
+    cfg!(target_os = "macos")
+        && app.try_state::<AppState>().is_some_and(|s| s.global_settings.effective().general.open_project_in_tab)
 }
 
 /// `create_window` off the event-loop thread (building a window from a
@@ -528,6 +543,8 @@ pub fn open_settings_window(
     config.maximized = false;
     config.fullscreen = false;
     config.drag_drop_enabled = false;
+    // Its own group: settings windows never become tabs of project windows.
+    config.tabbing_identifier = Some(crate::native_tabs::SETTINGS_TABBING_ID.into());
     // macOS shows a child window as soon as it is attached, before the page loads: paint the theme's frame colour.
     if let Some(color) = background.as_deref().and_then(hex_color) {
         config.background_color = Some(color);

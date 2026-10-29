@@ -53,6 +53,8 @@ export interface CommitSettingsValid {
 
 export interface VcsSettingsValid {
   showDirtyDirectories: boolean;
+  /** Author, date and subject of the caret line's commit at its end. */
+  inlineBlame: boolean;
   limitHistory: boolean;
   historyLimit: number;
   git: GitSettingsValid;
@@ -177,6 +179,7 @@ export const DEFAULT_WORKFLOW: WorkflowSettings = {
   vcs: {
     // IDEA's VcsConfiguration.SHOW_DIRTY_RECURSIVELY is off by default.
     showDirtyDirectories: false,
+    inlineBlame: true,
     limitHistory: true,
     historyLimit: 1000,
     git: {
@@ -196,7 +199,8 @@ export const DEFAULT_WORKFLOW: WorkflowSettings = {
       combineStashAndShelf: false,
     },
     commit: {
-      nonModal: true,
+      // Fork default: Local Changes, Stash and Log share the Git tool window.
+      nonModal: false,
       clearInitialMessage: false,
       analyzeCode: true,
       checkTodo: true,
@@ -300,6 +304,7 @@ export function validateVcs(raw: unknown): VcsSettingsValid {
   const confirm = ["ask", "silently", "never"] as const;
   return {
     showDirtyDirectories: bool(v.showDirtyDirectories, d.showDirtyDirectories),
+    inlineBlame: bool(v.inlineBlame, d.inlineBlame),
     limitHistory: bool(v.limitHistory, d.limitHistory),
     historyLimit: num(v.historyLimit, d.historyLimit, L.historyLimit, true),
     git: {

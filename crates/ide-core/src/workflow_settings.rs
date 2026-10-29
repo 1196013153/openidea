@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 pub struct VcsSettings {
     /// Colour folders that contain changed files (project tree, tabs).
     pub show_dirty_directories: bool,
+    /// Inline blame: author, date and subject of the caret line's commit at its end.
+    pub inline_blame: bool,
     /// Stop file history (Show History) after `history_limit` commits.
     pub limit_history: bool,
     pub history_limit: u32,
@@ -27,6 +29,7 @@ impl Default for VcsSettings {
         Self {
             // IDEA's VcsConfiguration.SHOW_DIRTY_RECURSIVELY is off by default.
             show_dirty_directories: false,
+            inline_blame: true,
             limit_history: true,
             history_limit: 1000,
             git: GitSettings::default(),
@@ -115,7 +118,8 @@ pub struct CommitSettings {
 impl Default for CommitSettings {
     fn default() -> Self {
         Self {
-            non_modal: true,
+            // Fork default: Local Changes, Stash and Log share the Git tool window.
+            non_modal: false,
             clear_initial_message: false,
             analyze_code: true,
             check_todo: true,

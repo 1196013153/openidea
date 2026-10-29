@@ -607,6 +607,11 @@ export const commands = {
 	windowOpenSettings: (page: string | null, newProjects: boolean, background: string | null) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_settings", { page, newProjects, background })),
 	/**  Focuses the next / previous window (⌘` / ⇧⌘`). */
 	windowCycle: (forward: boolean) => __TAURI_INVOKE<void>("window_cycle", { forward }),
+	/**
+	 *  Height of the native title bar row + tab bar over this window's page while it is a
+	 *  macOS window tab (0 when it is not).
+	 */
+	windowNativeTabBar: () => __TAURI_INVOKE<number | null>("window_native_tab_bar"),
 	windowToggleFullscreen: () => typedError<boolean, IdeError>(__TAURI_INVOKE("window_toggle_fullscreen")),
 	/**  What this window was opened for (taken once). */
 	windowTakeLaunch: () => __TAURI_INVOKE<{
@@ -2873,6 +2878,13 @@ export type GeneralSettings = {
 	confirmExit?: boolean,
 	/**  Where Open… puts a project while one is open: `ask` | `new` | `same`. */
 	openProjectIn?: string,
+	/**  macOS: a new project window opens as a native tab of the current window. */
+	openProjectInTab?: boolean,
+	/**
+	 *  Stop the language servers of a project window (or tab) after this many minutes
+	 *  while another project window is in use; they start again when it is. 0 = never.
+	 */
+	stopBackgroundLanguageServersMinutes?: number,
 	/**  Initial folder of the Open / Clone dialogs; empty = the OS default. */
 	defaultProjectDirectory?: string,
 	/**  Save all files after `idle_seconds` without input. */
@@ -5683,6 +5695,8 @@ export type VcsRoot = {
 export type VcsSettings = {
 	/**  Colour folders that contain changed files (project tree, tabs). */
 	showDirtyDirectories?: boolean,
+	/**  Inline blame: author, date and subject of the caret line's commit at its end. */
+	inlineBlame?: boolean,
 	/**  Stop file history (Show History) after `history_limit` commits. */
 	limitHistory?: boolean,
 	historyLimit?: number,
