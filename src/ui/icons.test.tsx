@@ -3,6 +3,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { activateFeatures } from "@/features";
+import { useProject } from "@/platform/project";
+import type { Settings } from "@/bindings";
 import { useContributions } from "@/workbench/contributions";
 import { Icon, ICON_NAMES, SymbolBadge, fileIconName, hasIcon, iconMarkup, iconMarkupOrFallback } from "./icons";
 
@@ -10,6 +12,8 @@ describe("tool window icons", () => {
   let dispose: () => void = () => {};
   beforeAll(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
+    // The Commit tool window exists with the non-modal commit interface only (off by default).
+    useProject.setState({ settings: { vcs: { commit: { nonModal: true } } } as Settings });
     dispose = activateFeatures();
   });
   afterAll(() => {

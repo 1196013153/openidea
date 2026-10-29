@@ -199,7 +199,8 @@ export const DEFAULT_WORKFLOW: WorkflowSettings = {
       combineStashAndShelf: false,
     },
     commit: {
-      nonModal: true,
+      // Fork default: Local Changes, Stash and Log share the Git tool window.
+      nonModal: false,
       clearInitialMessage: false,
       analyzeCode: true,
       checkTodo: true,

@@ -118,7 +118,8 @@ pub struct CommitSettings {
 impl Default for CommitSettings {
     fn default() -> Self {
         Self {
-            non_modal: true,
+            // Fork default: Local Changes, Stash and Log share the Git tool window.
+            non_modal: false,
             clear_initial_message: false,
             analyze_code: true,
             check_todo: true,

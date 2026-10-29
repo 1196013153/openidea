@@ -21,7 +21,7 @@ describe("validateWorkflow", () => {
     expect(v.vcs.git.incomingCheck).toBe("never");
     expect(v.vcs.git.largeFileMb).toBe(1);
     expect(v.vcs.issueNavigation).toEqual([{ pattern: "#(\\d+)", link: "x/$1" }]);
-    expect(v.vcs.commit.nonModal).toBe(true);
+    expect(v.vcs.commit.nonModal).toBe(false);
     expect(v.vcs.inlineBlame).toBe(true);
     expect(validateWorkflow({ vcs: { inlineBlame: false } }).vcs.inlineBlame).toBe(false);
     expect(v.vcs.confirmation.onPatchCreated).toBe("ask");
