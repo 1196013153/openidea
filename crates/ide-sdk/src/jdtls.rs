@@ -169,7 +169,13 @@ pub fn java_args(install: &JdtlsInstall, java_major: u32, script_args: &[String]
     if let Some(data) = parsed.data {
         args.extend(["-data".to_owned(), data]);
     }
+    // Without it the Equinox launcher loads its Cocoa library for a splash screen, which
+    // checks the JVM in as a foreground app: a second Dock icon named after the IDE.
+    let nosplash = !parsed.rest.iter().any(|a| a == "-nosplash");
     args.extend(parsed.rest);
+    if nosplash {
+        args.push("-nosplash".to_owned());
+    }
     args
 }
 
@@ -268,6 +274,7 @@ mod tests {
                 &format!(r"{tools}\plugins\org.eclipse.equinox.launcher_1.7.0.v20250424-1814.jar"),
                 "-data",
                 data,
+                "-nosplash",
             ])
         );
     }
@@ -288,7 +295,7 @@ mod tests {
         assert_eq!(args[0], "-Declipse.application=org.eclipse.jdt.ls.core.id1", "no JDK 24+ flags on 21");
         assert!(args.contains(&"-Dosgi.sharedConfiguration.area=/Users/me/Library/Application Support/ai.l0ng.openidea/tools/jdtls/config_mac_arm".to_owned()));
         assert_eq!(
-            args[args.len() - 7..],
+            args[args.len() - 8..],
             strings(&[
                 "java.base/java.lang=ALL-UNNAMED",
                 "-Dlog.level=ALL",
@@ -297,8 +304,12 @@ mod tests {
                 "-data",
                 "/d",
                 "--extra",
+                "-nosplash",
             ])
         );
+        // Given by the user already: not repeated.
+        let own = java_args(&install, 21, &strings(&["-data", "/d", "-nosplash"]));
+        assert_eq!(own.iter().filter(|a| *a == "-nosplash").count(), 1);
         assert!(!args.iter().any(|a| a.contains("validate-java-version")));
     }
 
@@ -423,7 +434,7 @@ mod tests {
         assert!(direct.args.iter().any(|a| a == "-Xmx1G"));
         let jar = direct.args.iter().position(|a| a == "-jar").unwrap();
         assert!(direct.args[jar + 1].ends_with("org.eclipse.equinox.launcher_1.7.0.jar"));
-        assert_eq!(direct.args[jar + 2..], strings(&["-data", "/ws"]));
+        assert_eq!(direct.args[jar + 2..], strings(&["-data", "/ws", "-nosplash"]));
 
         // Someone's own wrapper, or no usable JDK: the command is kept.
         std::fs::write(home.join("bin/my-jdtls"), "#!/bin/sh\n").unwrap();
