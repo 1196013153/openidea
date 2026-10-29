@@ -3,6 +3,7 @@
 //! This crate is glue only. Each `commands/<domain>.rs` is a thin, typed
 //! adapter from IPC to a backend crate; no domain logic lives here.
 
+mod background_lsp;
 mod commands;
 mod events;
 mod logging;
@@ -93,6 +94,7 @@ pub fn run() {
             app.on_menu_event(on_menu_event);
             windows::create_main_window(app.handle())?;
             native_tabs::watch(app.handle());
+            background_lsp::watch(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -100,6 +102,7 @@ pub fn run() {
                 if let Some(w) = window.try_state::<WindowsState>() {
                     w.focused(window.label());
                 }
+                background_lsp::on_focused(window.app_handle(), window.label());
             }
             tauri::WindowEvent::Destroyed => {
                 if let Some(settings) = window.app_handle().get_webview_window(&windows::settings_label(window.label()))

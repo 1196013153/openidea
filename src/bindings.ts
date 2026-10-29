@@ -2880,6 +2880,11 @@ export type GeneralSettings = {
 	openProjectIn?: string,
 	/**  macOS: a new project window opens as a native tab of the current window. */
 	openProjectInTab?: boolean,
+	/**
+	 *  Stop the language servers of a project window (or tab) after this many minutes
+	 *  while another project window is in use; they start again when it is. 0 = never.
+	 */
+	stopBackgroundLanguageServersMinutes?: number,
 	/**  Initial folder of the Open / Clone dialogs; empty = the OS default. */
 	defaultProjectDirectory?: string,
 	/**  Save all files after `idle_seconds` without input. */

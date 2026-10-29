@@ -1137,6 +1137,37 @@ async fn shutdown_all_stops_gracefully() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn suspend_stops_servers_and_resume_restarts_them_with_open_documents() {
+    let h = harness(&[("mock", incremental_caps())]);
+    let (doc, path) = h.open("a.mk", "one");
+    h.wait_status("mock", ServerStatus::Ready).await;
+    let s = h.launcher.state("mock");
+    let uri = uri_of(&path);
+    eventually(|| s.docs.lock().contains_key(&uri)).await;
+
+    tokio::time::timeout(Duration::from_secs(5), h.mgr.suspend()).await.unwrap();
+    assert!(h.mgr.is_suspended());
+    assert_eq!(s.requested("shutdown").len(), 1);
+    assert_eq!(h.statuses("mock").last(), Some(&ServerStatus::Stopped));
+    // Nothing starts while suspended: not an edit, not another document.
+    h.mgr.did_change(doc, 2, &[change(rng(0, 3, 0, 3), " two")], &|| unreachable!());
+    h.open("b.mk", "y");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(s.launches.load(Ordering::SeqCst), 1);
+
+    h.mgr.resume();
+    assert!(!h.mgr.is_suspended());
+    h.wait_status("mock", ServerStatus::Ready).await;
+    assert_eq!(s.launches.load(Ordering::SeqCst), 2);
+    // The edit made while suspended reaches the new instance.
+    eventually(|| s.docs.lock().get(&uri).map(String::as_str) == Some("one two")).await;
+    // Resuming again is a no-op.
+    h.mgr.resume();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(s.launches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn noop_handler_is_usable_for_raw_peers() {
     // Sanity check that the public jsonrpc API composes with the launcher seam.
     let (a, b) = tokio::io::duplex(1024);

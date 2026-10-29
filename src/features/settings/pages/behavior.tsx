@@ -17,6 +17,7 @@ import { useLabelMatch, useSetting } from "../components/context";
 import {
   ZOOM_LIMITS,
   IDLE_LIMITS,
+  BACKGROUND_LSP_LIMITS,
   type Antialiasing,
   type ConcreteTheme,
   type DateFormatValid,
@@ -590,6 +591,15 @@ export const BEHAVIOR_PAGES: PageSpec[] = [
             key: "general.openProjectInTab",
             label: "Open new project windows as tabs",
             hint: "macOS: a new project window joins the current window as a tab. Window › Merge All Windows groups existing ones.",
+          },
+          {
+            kind: "number",
+            key: "general.stopBackgroundLanguageServersMinutes",
+            label: "Stop language servers of background project windows after",
+            ...BACKGROUND_LSP_LIMITS,
+            integer: true,
+            unit: "min",
+            hint: "Frees their memory (Java: about 1 GB per project) while another project window or tab is in use; they start again when you switch back. 0 = never.",
           },
           { kind: "custom", label: "Default directory", component: DefaultDirectoryRow },
         ],

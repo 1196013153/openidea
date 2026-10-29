@@ -1280,6 +1280,8 @@
   "Open pom.xml": "打开 pom.xml",
   "Open project in": "打开项目的位置",
   "Open new project windows as tabs": "以标签页打开新的项目窗口",
+  "Stop language servers of background project windows after": "后台项目窗口的语言服务器在以下时间后停止",
+  "Frees their memory (Java: about 1 GB per project) while another project window or tab is in use; they start again when you switch back. 0 = never.": "使用其他项目窗口或标签页期间释放其内存（Java 每个项目约 1 GB）；切换回来时自动重新启动。0 表示从不停止。",
   "macOS: a new project window joins the current window as a tab. Window › Merge All Windows groups existing ones.": "macOS：新的项目窗口作为标签页并入当前窗口；已打开的窗口可通过 窗口 › 合并所有窗口 合并。",
   "Open to the Side": "在侧边打开",
   "OpenSSH config and authentication agent": "OpenSSH 配置和身份验证代理",

@@ -45,6 +45,8 @@ export interface GeneralExtras {
   openProjectIn: OpenProjectIn;
   /** macOS: a new project window opens as a native tab of the current window. */
   openProjectInTab: boolean;
+  /** Minutes before a background project window's language servers stop; 0 = never. */
+  stopBackgroundLanguageServersMinutes: number;
   defaultProjectDirectory: string;
   saveOnIdle: boolean;
   idleSeconds: number;
@@ -64,6 +66,7 @@ export interface NotificationsValid {
 
 export const ZOOM_LIMITS = { min: 50, max: 300 } as const;
 export const IDLE_LIMITS = { min: 1, max: 3600 } as const;
+export const BACKGROUND_LSP_LIMITS = { min: 0, max: 1440 } as const;
 
 export const DEFAULT_APPEARANCE_EXTRAS: AppearanceExtras = {
   syncWithOs: false,
@@ -90,6 +93,7 @@ export const DEFAULT_APPEARANCE_EXTRAS: AppearanceExtras = {
 export const DEFAULT_GENERAL_EXTRAS: GeneralExtras = {
   openProjectIn: "ask",
   openProjectInTab: true,
+  stopBackgroundLanguageServersMinutes: 10,
   defaultProjectDirectory: "",
   saveOnIdle: false,
   idleSeconds: 15,
@@ -145,6 +149,11 @@ export function validateGeneralExtras(raw: unknown): GeneralExtras {
   return {
     openProjectIn: oneOf(g.openProjectIn, ["ask", "new", "same"] as const, d.openProjectIn),
     openProjectInTab: bool(g.openProjectInTab, d.openProjectInTab),
+    stopBackgroundLanguageServersMinutes: int(
+      g.stopBackgroundLanguageServersMinutes,
+      d.stopBackgroundLanguageServersMinutes,
+      BACKGROUND_LSP_LIMITS,
+    ),
     defaultProjectDirectory: typeof g.defaultProjectDirectory === "string" ? g.defaultProjectDirectory : "",
     saveOnIdle: bool(g.saveOnIdle, d.saveOnIdle),
     idleSeconds: int(g.idleSeconds, d.idleSeconds, IDLE_LIMITS),
